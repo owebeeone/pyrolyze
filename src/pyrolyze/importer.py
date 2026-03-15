@@ -29,7 +29,7 @@ def should_transform(
     return any(line.strip() == "#@pyrolyze" for line in marker_window)
 
 
-@dataclass
+@dataclass(slots=True)
 class BytecodeCache:
     """In-memory cache keyed by module name and cache key."""
 
@@ -50,11 +50,12 @@ class BytecodeCache:
         return payload
 
 
-@dataclass
+@dataclass(slots=True)
 class PersistentArtifactCache:
     """Disk-backed cache for transformed artifacts keyed by module and cache key."""
 
     cache_dir: str | Path
+    _root: Path = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         self._root = Path(self.cache_dir)

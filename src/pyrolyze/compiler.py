@@ -50,7 +50,7 @@ class PyRolyzeCompileError(RuntimeError):
         self.suggested_fix = suggested_fix
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class HookRecord:
     name: str
     line: int
@@ -58,18 +58,18 @@ class HookRecord:
     component: str
 
 
-@dataclass
+@dataclass(slots=True)
 class CompileMetadata:
     hooks: list[HookRecord] = field(default_factory=list)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class CompileWarning:
     code: str
     message: str
 
 
-@dataclass
+@dataclass(slots=True)
 class CompileArtifact:
     metadata: CompileMetadata
     init_ir: dict[str, Any]
@@ -81,7 +81,7 @@ class CompileArtifact:
     non_reactive: bool = False
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ComponentFactory:
     module_name: str
     mode: str = "reactive"
@@ -97,13 +97,13 @@ class ComponentFactory:
         return payload
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class _ReactiveComponentDef:
     name: str
     node: ast.FunctionDef | ast.AsyncFunctionDef
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class _ComponentAnalysis:
     hooks: list[HookRecord]
     has_if: bool
@@ -521,7 +521,6 @@ __all__ = [
     "compile_source",
     "compile_source_with_env",
 ]
-
 
 
 

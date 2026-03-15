@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 WidgetEventFn = Callable[[Any], None]
 
 
-@dataclass
+@dataclass(slots=True)
 class PyrolyzeWindow:
     app: QApplication
     window: QMainWindow
