@@ -19,6 +19,7 @@ from .context import (
     SlotContext,
     SlotId,
     SlotOwnershipError,
+    UseEffectBinding,
     UseEffectRequest,
     module_registry,
 )
@@ -42,6 +43,7 @@ __all__ = [
     "SlotContext",
     "SlotId",
     "SlotOwnershipError",
+    "UseEffectBinding",
     "UseEffectRequest",
     "module_registry",
 ]

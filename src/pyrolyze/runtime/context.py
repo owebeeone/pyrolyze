@@ -195,6 +195,84 @@ class ExternalStoreBinding(PlainCallBinding):
         return dirty
 
 
+_EFFECT_DEPS_UNSET = object()
+
+
+@dataclass(slots=True)
+class UseEffectBinding(PlainCallBinding):
+    slot: PlainCallSlotContext
+    request: UseEffectRequest | None = None
+    cleanup: Callable[[], None] | None = None
+    deps: object = _EFFECT_DEPS_UNSET
+    staged_request: UseEffectRequest | None = None
+
+    @classmethod
+    def bind(
+        cls,
+        slot: PlainCallSlotContext,
+        request: UseEffectRequest,
+    ) -> UseEffectBinding:
+        binding = cls(slot=slot)
+        binding.stage(request)
+        return binding
+
+    def exposed_value(self) -> None:
+        return None
+
+    def stage(self, request: UseEffectRequest) -> None:
+        self.staged_request = request
+
+    def commit(self) -> None:
+        request = self.staged_request
+        if request is None:
+            return
+
+        self.staged_request = None
+        should_run = self._should_run(request)
+        self.request = request
+        self.deps = request.deps
+        if should_run:
+            self.slot.render_context._enqueue_post_commit(
+                self._make_post_commit_callback(request)
+            )
+
+    def rollback(self) -> None:
+        self.staged_request = None
+
+    def deactivate(self) -> None:
+        self.staged_request = None
+        cleanup = self.cleanup
+        self.cleanup = None
+        self.request = None
+        self.deps = _EFFECT_DEPS_UNSET
+        if cleanup is not None:
+            cleanup()
+
+    def _should_run(self, request: UseEffectRequest) -> bool:
+        if self.request is None:
+            return True
+        if request.deps is None:
+            return True
+        return self.deps is _EFFECT_DEPS_UNSET or request.deps != self.deps
+
+    def _make_post_commit_callback(
+        self,
+        request: UseEffectRequest,
+    ) -> Callable[[], None]:
+        def run_effect() -> None:
+            cleanup = self.cleanup
+            if cleanup is not None:
+                self.cleanup = None
+                cleanup()
+
+            next_cleanup = request.effect_fn()
+            if next_cleanup is not None and not callable(next_cleanup):
+                raise TypeError("effect must return a cleanup callable or None")
+            self.cleanup = cast(Callable[[], None] | None, next_cleanup)
+
+        return run_effect
+
+
 class PlainCallSemanticsHandler:
     def can_handle(self, result: object) -> bool:
         raise NotImplementedError
@@ -241,8 +319,26 @@ class PlainValueHandler(PlainCallSemanticsHandler):
         return PlainValueBinding(value=result)
 
 
+class UseEffectHandler(PlainCallSemanticsHandler):
+    def can_handle(self, result: object) -> bool:
+        return isinstance(result, UseEffectRequest)
+
+    def bind(
+        self,
+        slot: PlainCallSlotContext,
+        result: object,
+        previous: PlainCallBinding | None,
+    ) -> PlainCallBinding:
+        request = cast(UseEffectRequest, result)
+        if isinstance(previous, UseEffectBinding):
+            previous.stage(request)
+            return previous
+        return UseEffectBinding.bind(slot, request)
+
+
 _PLAIN_CALL_HANDLERS: tuple[PlainCallSemanticsHandler, ...] = (
     ExternalStoreHandler(),
+    UseEffectHandler(),
     PlainValueHandler(),
 )
 
@@ -342,6 +438,8 @@ class ContextBase:
         self._literal_initialized: list[bool] = []
         self._literal_index = 0
         self._scope_active = False
+        self._pass_child_order: tuple[SlotId, ...] = ()
+        self._pass_child_dirty: dict[SlotId, bool] = {}
 
     @property
     def root_context(self) -> RenderContext:
@@ -441,6 +539,10 @@ class ContextBase:
 
         self._scope_active = True
         self._literal_index = 0
+        self._pass_child_order = tuple(self._children.keys())
+        self._pass_child_dirty = {
+            slot_id: child.invoke_dirty for slot_id, child in self._children.items()
+        }
         for child in self._children.values():
             child.seen_in_pass = False
 
@@ -462,6 +564,34 @@ class ContextBase:
             child.invoke_dirty = False
 
         self._scope_active = False
+        self._pass_child_order = ()
+        self._pass_child_dirty = {}
+
+    def _rollback_scope_pass(self) -> None:
+        if not self._scope_active:
+            raise RuntimeError("scope is not active")
+
+        committed_ids = set(self._pass_child_order)
+        for slot_id, child in list(self._children.items()):
+            if slot_id not in committed_ids:
+                child.deactivate()
+                continue
+
+            if isinstance(child, PlainCallSlotContext):
+                child.rollback_binding()
+            child.invoke_dirty = self._pass_child_dirty.get(slot_id, child.invoke_dirty)
+            child.seen_in_pass = True
+
+        restored_children: dict[SlotId, SlotContext] = {}
+        for slot_id in self._pass_child_order:
+            child = self._children.get(slot_id)
+            if child is not None:
+                restored_children[slot_id] = child
+        self._children = restored_children
+
+        self._scope_active = False
+        self._pass_child_order = ()
+        self._pass_child_dirty = {}
 
     def _ensure_slot(self, slot_id: SlotId, slot_type: type[S]) -> S:
         resolved_slot_id = self._resolve_slot_id(slot_id)
@@ -615,6 +745,11 @@ class PlainCallSlotContext(RerunnableSlotContext):
         if binding is not None:
             binding.commit()
 
+    def rollback_binding(self) -> None:
+        binding = self.binding
+        if binding is not None:
+            binding.rollback()
+
     def deactivate(self) -> None:
         binding = self.binding
         self.binding = None
@@ -750,7 +885,10 @@ class _ContainerCallHandle(AbstractContextManager[ContainerSlotContext]):
     def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
         suppress = False
         try:
-            self.slot._commit_scope_pass()
+            if exc_type is None:
+                self.slot._commit_scope_pass()
+            else:
+                self.slot._rollback_scope_pass()
         finally:
             host_exit = getattr(self._host_context, "__exit__", None)
             if callable(host_exit):
@@ -767,7 +905,10 @@ class _PassScopeHandle(AbstractContextManager[None]):
         return None
 
     def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
-        self.context.end_pass()
+        if exc_type is None:
+            self.context.end_pass()
+        else:
+            self.context.rollback_pass()
         return False
 
 
@@ -799,9 +940,15 @@ class _KeyedLoopIterable(Generic[T]):
                 item._begin_scope_pass()
                 try:
                     yield item
-                finally:
+                except BaseException:
+                    item._rollback_scope_pass()
+                    raise
+                else:
                     item._commit_scope_pass()
-        finally:
+        except BaseException:
+            self.owner._rollback_scope_pass()
+            raise
+        else:
             self.owner._commit_scope_pass()
 
 
@@ -815,6 +962,7 @@ class RenderContext(ContextBase):
         self._slots_by_id: dict[SlotId, SlotContext] = {}
         self._owner_slot = owner_slot
         self._mounted_callback: Callable[[], None] | None = None
+        self._post_commit_callbacks: list[Callable[[], None]] = []
         if scheduler_root is None:
             self._scheduler_root = self
             self._scheduler = _InvalidationScheduler()
@@ -844,6 +992,11 @@ class RenderContext(ContextBase):
 
     def end_pass(self) -> None:
         self._commit_scope_pass()
+        self._flush_post_commit()
+
+    def rollback_pass(self) -> None:
+        self._rollback_scope_pass()
+        self._post_commit_callbacks.clear()
 
     def debug_children_of(self, slot_id: SlotId | None = None) -> tuple[SlotId, ...]:
         if slot_id is None:
@@ -932,22 +1085,36 @@ class RenderContext(ContextBase):
 
             return
 
+    def _enqueue_post_commit(self, callback: Callable[[], None]) -> None:
+        self._post_commit_callbacks.append(callback)
+
+    def _flush_post_commit(self) -> None:
+        callbacks = self._post_commit_callbacks
+        self._post_commit_callbacks = []
+        for callback in callbacks:
+            callback()
+
 
 __all__ = [
     "CompValue",
     "ComponentCallSlotContext",
     "ContainerSlotContext",
     "DuplicateKeyError",
+    "ExternalStoreBinding",
     "ExternalStoreRef",
     "KeyedLoopSlotContext",
     "LoopItemSlotContext",
     "ModuleId",
     "ModuleRegistry",
+    "PlainCallRuntimeContext",
     "PlainCallSlotContext",
+    "PlainValueBinding",
     "RenderContext",
     "RerunnableSlotContext",
     "SlotContext",
     "SlotId",
     "SlotOwnershipError",
+    "UseEffectBinding",
+    "UseEffectRequest",
     "module_registry",
 ]

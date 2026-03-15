@@ -41,7 +41,7 @@ def _make_welcome_program(log: list[tuple[object, ...]]):
         with ctx.pass_scope():
             title = ctx.call_plain(
                 _TITLE_SLOT,
-                ctx.literal(_format_title),
+                _format_title,
                 name,
             )
 
@@ -55,7 +55,7 @@ def _make_welcome_program(log: list[tuple[object, ...]]):
                     if title.dirty or section_ctx.visit_slot_and_dirty(_BADGE_SLOT):
                         section_ctx.leaf_call(
                             _BADGE_SLOT,
-                            _badge,
+                            section_ctx.literal(_badge),
                             title,
                             tone=ctx.literal("info"),
                         )
@@ -87,7 +87,7 @@ def _make_welcome_conditional_program(log: list[tuple[object, ...]]):
         with ctx.pass_scope():
             title = ctx.call_plain(
                 _TITLE_SLOT,
-                ctx.literal(_format_title),
+                _format_title,
                 name,
             )
 
@@ -102,7 +102,7 @@ def _make_welcome_conditional_program(log: list[tuple[object, ...]]):
                         if title.dirty or show_badge.dirty or section_ctx.visit_slot_and_dirty(_BADGE_SLOT):
                             section_ctx.leaf_call(
                                 _BADGE_SLOT,
-                                _badge,
+                                section_ctx.literal(_badge),
                                 title,
                                 tone=ctx.literal("info"),
                             )
@@ -134,7 +134,7 @@ def _make_wrong_child_owner_program(log: list[tuple[object, ...]]):
         with ctx.pass_scope():
             title = ctx.call_plain(
                 _TITLE_SLOT,
-                ctx.literal(_format_title),
+                _format_title,
                 name,
             )
 
@@ -148,7 +148,7 @@ def _make_wrong_child_owner_program(log: list[tuple[object, ...]]):
                     if title.dirty or ctx.visit_slot_and_dirty(_BADGE_SLOT):
                         section_ctx.leaf_call(
                             _BADGE_SLOT,
-                            _badge,
+                            section_ctx.literal(_badge),
                             title,
                             tone=ctx.literal("info"),
                         )
@@ -216,7 +216,7 @@ def test_first_visit_is_dirty_and_later_stable_visit_is_clean() -> None:
         assert ctx.visit_slot_and_dirty(slot) is False
 
 
-def test_pass_scope_commits_cleanup_when_body_raises() -> None:
+def test_pass_scope_rolls_back_when_body_raises() -> None:
     ctx = RenderContext()
     slot = SlotId(_MODULE_ID, 100, line_no=100)
 
@@ -226,7 +226,7 @@ def test_pass_scope_commits_cleanup_when_body_raises() -> None:
             raise RuntimeError("boom")
 
     with ctx.pass_scope():
-        assert ctx.visit_slot_and_dirty(slot) is False
+        assert ctx.visit_slot_and_dirty(slot) is True
 
 
 def test_child_visitation_must_use_the_owning_container_context() -> None:
