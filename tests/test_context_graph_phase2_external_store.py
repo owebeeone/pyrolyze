@@ -5,8 +5,12 @@ from typing import Any, Callable, Generic, TypeVar, cast
 
 from pyrolyze.runtime.context import (
     CompValue,
+    ExternalStoreBinding,
     ExternalStoreRef,
     ModuleRegistry,
+    PlainCallRuntimeContext,
+    PlainCallSlotContext,
+    PlainValueBinding,
     RenderContext,
     SlotId,
 )
@@ -82,7 +86,7 @@ def _make_external_reader_program(
         with ctx.pass_scope():
             value = ctx.call_plain(
                 _STORE_SLOT,
-                ctx.literal(use_grip),
+                use_grip,
                 grip_name,
             )
             observed.append((value.value, value.dirty))
@@ -109,6 +113,12 @@ def _make_switching_helper_program(log: list[tuple[object, ...]]):
     return _pyr_reader, observed
 
 
+def _binding_for(ctx: RenderContext):
+    slot = ctx._slots_by_id[_STORE_SLOT]
+    assert isinstance(slot, PlainCallSlotContext)
+    return slot.binding
+
+
 def _make_conditional_program(
     log: list[tuple[object, ...]],
     store: _StoreProbe[str],
@@ -128,7 +138,7 @@ def _make_conditional_program(
             if show.value:
                 value = ctx.call_plain(
                     _STORE_SLOT,
-                    ctx.literal(use_grip),
+                    use_grip,
                     grip_name,
                 )
                 observed.append((value.value, value.dirty))
@@ -151,6 +161,7 @@ def test_external_store_notification_refreshes_via_get_without_helper_rerun() ->
         ("get", "weather", "sunny"),
     ]
     assert store.active_listener_count == 1
+    assert isinstance(_binding_for(ctx), ExternalStoreBinding)
 
     pyr_reader(ctx, CompValue("weather", dirty=False))
 
@@ -232,6 +243,7 @@ def test_switching_from_external_helper_to_plain_helper_unsubscribes_old_binding
         CompValue("weather", dirty=True),
     )
     assert store.active_listener_count == 1
+    assert isinstance(_binding_for(ctx), ExternalStoreBinding)
     log.clear()
 
     pyr_reader(
@@ -246,19 +258,60 @@ def test_switching_from_external_helper_to_plain_helper_unsubscribes_old_binding
         ("unsubscribe", "weather"),
     ]
     assert store.active_listener_count == 0
+    assert isinstance(_binding_for(ctx), PlainValueBinding)
 
-    store.notify("storm")
-    pyr_reader(
-        ctx,
-        CompValue(plain_helper, dirty=False),
-        CompValue("weather", dirty=False),
-    )
 
-    assert observed == [("sunny", True), ("plain:weather", True), ("plain:weather", False)]
-    assert log == [
-        ("plain_helper", "weather"),
-        ("unsubscribe", "weather"),
+def test_plain_call_runtime_context_injects_slot_local_storage() -> None:
+    ctx = RenderContext()
+    observed: list[tuple[str, int, bool]] = []
+
+    def helper(label: str, runtime: PlainCallRuntimeContext) -> str:
+        sequence = runtime.get_or_init_local("sequence", lambda: 0)
+        runtime.set_local("sequence", sequence + 1)
+        return f"{label}:{sequence}"
+
+    def _pyr_reader(ctx: RenderContext, label: CompValue[str]) -> None:
+        with ctx.pass_scope():
+            value = ctx.call_plain(_STORE_SLOT, helper, label)
+            observed.append((value.value, id(_binding_for(ctx)), value.dirty))
+
+    _pyr_reader(ctx, CompValue("alpha", dirty=True))
+    _pyr_reader(ctx, CompValue("alpha", dirty=False))
+    _pyr_reader(ctx, CompValue("beta", dirty=True))
+
+    assert observed == [
+        ("alpha:0", observed[0][1], True),
+        ("alpha:0", observed[0][1], False),
+        ("beta:1", observed[0][1], True),
     ]
+    assert isinstance(_binding_for(ctx), PlainValueBinding)
+
+
+def test_plain_result_uses_plain_value_binding() -> None:
+    ctx = RenderContext()
+    observed: list[tuple[str, bool]] = []
+    log: list[tuple[object, ...]] = []
+
+    def plain_helper(name: str) -> str:
+        log.append(("plain_helper", name))
+        return f"plain:{name}"
+
+    def pyr_reader(name: CompValue[str]) -> None:
+        with ctx.pass_scope():
+            value = ctx.call_plain(_STORE_SLOT, plain_helper, name)
+            observed.append((value.value, value.dirty))
+
+    pyr_reader(CompValue("weather", dirty=True))
+
+    assert observed == [("plain:weather", True)]
+    assert log == [("plain_helper", "weather")]
+    assert isinstance(_binding_for(ctx), PlainValueBinding)
+
+    pyr_reader(CompValue("weather", dirty=False))
+
+    assert observed == [("plain:weather", True), ("plain:weather", False)]
+    assert log == [("plain_helper", "weather")]
+    assert isinstance(_binding_for(ctx), PlainValueBinding)
 
 
 def test_deactivating_an_external_plain_call_unsubscribes_the_store() -> None:
