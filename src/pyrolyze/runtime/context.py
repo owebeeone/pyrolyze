@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import inspect
+import logging
+import os
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from typing import Any, Callable, Generic, TypeVar, cast
+
+from pyrolyze.api import UIElement
 
 
 T = TypeVar("T")
@@ -71,6 +75,18 @@ def _wrap_comp_value(value: CompValue[T] | T) -> CompValue[T]:
     if isinstance(value, CompValue):
         return value
     return CompValue(value=value, dirty=False)
+
+
+def _unwrap_native_value(value: Any) -> Any:
+    if isinstance(value, CompValue):
+        return _unwrap_native_value(value.value)
+    if isinstance(value, dict):
+        return {key: _unwrap_native_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_unwrap_native_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_unwrap_native_value(item) for item in value)
+    return value
 
 
 @dataclass(frozen=True, slots=True)
@@ -440,6 +456,9 @@ class ContextBase:
         self._scope_active = False
         self._pass_child_order: tuple[SlotId, ...] = ()
         self._pass_child_dirty: dict[SlotId, bool] = {}
+        self._committed_ui: tuple[UIElement, ...] = ()
+        self._pass_committed_ui: tuple[UIElement, ...] = ()
+        self._staged_ui: list[UIElement] = []
 
     @property
     def root_context(self) -> RenderContext:
@@ -499,6 +518,19 @@ class ContextBase:
         self._require_active_scope()
         slot = self._ensure_slot(slot_id, ContainerSlotContext)
         raw_container_fn, _ = _unwrap(container_fn)
+        native_context_param = _native_context_param_name(cast(Callable[..., Any], raw_container_fn))
+        if native_context_param is not None:
+            normalized_args = tuple(_wrap_comp_value(arg) for arg in args)
+            normalized_kwargs = {
+                key: _wrap_comp_value(value) for key, value in kwargs.items()
+            }
+            return _NativeContainerCallHandle(
+                slot=slot,
+                container_fn=cast(Callable[..., Any], raw_container_fn),
+                args=normalized_args,
+                kwargs=normalized_kwargs,
+                context_param=native_context_param,
+            )
         raw_args = tuple(_unwrap(arg)[0] for arg in args)
         raw_kwargs = {key: _unwrap(value)[0] for key, value in kwargs.items()}
         return _ContainerCallHandle(
@@ -518,6 +550,18 @@ class ContextBase:
         self._require_active_scope()
         slot = self._ensure_slot(slot_id, LeafSlotContext)
         raw_leaf_fn, _ = _unwrap(leaf_fn)
+        native_context_param = _native_context_param_name(cast(Callable[..., Any], raw_leaf_fn))
+        if native_context_param is not None:
+            normalized_args = tuple(_wrap_comp_value(arg) for arg in args)
+            normalized_kwargs = {
+                key: _wrap_comp_value(value) for key, value in kwargs.items()
+            }
+            return slot.invoke_native(
+                cast(Callable[..., Any], raw_leaf_fn),
+                normalized_args,
+                normalized_kwargs,
+                context_param=native_context_param,
+            )
         raw_args = tuple(_unwrap(arg)[0] for arg in args)
         raw_kwargs = {key: _unwrap(value)[0] for key, value in kwargs.items()}
         return slot.invoke(cast(Callable[..., Any], raw_leaf_fn), raw_args, raw_kwargs)
@@ -543,6 +587,8 @@ class ContextBase:
         self._pass_child_dirty = {
             slot_id: child.invoke_dirty for slot_id, child in self._children.items()
         }
+        self._pass_committed_ui = self._committed_ui
+        self._staged_ui = []
         for child in self._children.values():
             child.seen_in_pass = False
 
@@ -560,12 +606,16 @@ class ContextBase:
             if isinstance(child, PlainCallSlotContext):
                 child.commit_binding()
 
+        self._committed_ui = self._build_committed_ui()
+
         for child in self._children.values():
             child.invoke_dirty = False
 
         self._scope_active = False
         self._pass_child_order = ()
         self._pass_child_dirty = {}
+        self._pass_committed_ui = ()
+        self._staged_ui = []
 
     def _rollback_scope_pass(self) -> None:
         if not self._scope_active:
@@ -588,10 +638,13 @@ class ContextBase:
             if child is not None:
                 restored_children[slot_id] = child
         self._children = restored_children
+        self._committed_ui = self._pass_committed_ui
 
         self._scope_active = False
         self._pass_child_order = ()
         self._pass_child_dirty = {}
+        self._pass_committed_ui = ()
+        self._staged_ui = []
 
     def _ensure_slot(self, slot_id: SlotId, slot_type: type[S]) -> S:
         resolved_slot_id = self._resolve_slot_id(slot_id)
@@ -621,6 +674,49 @@ class ContextBase:
         if not self._scope_active:
             raise RuntimeError("scope is not active")
 
+    def call_native(
+        self,
+        factory: Callable[..., UIElement | None],
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
+        self._require_active_scope()
+
+        raw_args = tuple(_unwrap_native_value(arg) for arg in args)
+        raw_kwargs = {key: _unwrap_native_value(value) for key, value in kwargs.items()}
+        result = factory(*raw_args, **raw_kwargs)
+        if result is None:
+            return
+        if isinstance(result, UIElement):
+            self._staged_ui.append(result)
+            return
+        if os.environ.get("PYROLYZE_ENV") == "prod":
+            logging.getLogger(__name__).warning(
+                "call_native ignored unsupported result type %s",
+                type(result).__name__,
+            )
+            return
+        raise TypeError("call_native factory must return UIElement or None")
+
+    def _build_committed_ui(self) -> tuple[UIElement, ...]:
+        own_elements = tuple(self._staged_ui)
+        child_elements = tuple(
+            element
+            for child in self._children.values()
+            if isinstance(child, ContextBase)
+            for element in child._committed_ui
+        )
+        if isinstance(self, ContainerSlotContext) and self.expects_native_root:
+            if len(own_elements) != 1:
+                raise RuntimeError("native container helpers must emit exactly one root UIElement")
+            root = own_elements[0]
+            if child_elements:
+                root = UIElement(kind=root.kind, props=root.props, children=child_elements)
+            return (root,)
+        if own_elements:
+            return own_elements + child_elements
+        return child_elements
+
     def _resolve_slot_id(self, slot_id: SlotId) -> SlotId:
         runtime_key_path = self._runtime_key_path()
         return SlotId(
@@ -635,6 +731,36 @@ class ContextBase:
         if isinstance(slot_id, SlotId):
             return slot_id.key_path
         return ()
+
+
+_NATIVE_CONTEXT_PARAM_ATTR = "_pyrolyze_native_context_param"
+_NATIVE_CONTEXT_ANNOTATIONS = {
+    "ContextBase",
+    "ContainerSlotContext",
+    "LeafSlotContext",
+    "RenderContext",
+}
+
+
+def _native_context_param_name(func: Callable[..., Any]) -> str | None:
+    cached = getattr(func, _NATIVE_CONTEXT_PARAM_ATTR, None)
+    if cached is not None or hasattr(func, _NATIVE_CONTEXT_PARAM_ATTR):
+        return cast(str | None, cached)
+
+    signature = inspect.signature(func)
+    parameters = tuple(signature.parameters.values())
+    found_name: str | None = None
+    if parameters:
+        first = parameters[0]
+        annotation = first.annotation
+        annotation_name = getattr(annotation, "__forward_arg__", annotation)
+        if annotation_name in _NATIVE_CONTEXT_ANNOTATIONS:
+            found_name = first.name
+        elif isinstance(annotation, type) and issubclass(annotation, ContextBase):
+            found_name = first.name
+
+    setattr(func, _NATIVE_CONTEXT_PARAM_ATTR, found_name)
+    return found_name
 
 
 @dataclass(slots=True)
@@ -760,7 +886,7 @@ class PlainCallSlotContext(RerunnableSlotContext):
 
 @dataclass(slots=True)
 class ContainerSlotContext(RerunnableSlotContext):
-    pass
+    expects_native_root: bool = False
 
 
 @dataclass(slots=True)
@@ -855,7 +981,7 @@ class LoopItemSlotContext(RerunnableSlotContext):
 
 
 @dataclass(slots=True)
-class LeafSlotContext(SlotContext):
+class LeafSlotContext(RerunnableSlotContext):
     last_args: tuple[Any, ...] = ()
     last_kwargs: tuple[tuple[str, Any], ...] = ()
 
@@ -863,6 +989,28 @@ class LeafSlotContext(SlotContext):
         self.last_args = args
         self.last_kwargs = tuple(sorted(kwargs.items()))
         return leaf_fn(*args, **kwargs)
+
+    def invoke_native(
+        self,
+        leaf_fn: Callable[..., Any],
+        args: tuple[CompValue[Any], ...],
+        kwargs: dict[str, CompValue[Any]],
+        *,
+        context_param: str,
+    ) -> Any:
+        self.last_args = tuple(arg.value for arg in args)
+        self.last_kwargs = tuple(sorted((key, value.value) for key, value in kwargs.items()))
+        self._begin_scope_pass()
+        try:
+            _ = context_param
+            result = leaf_fn(self, *args, **kwargs)
+            if result is not None:
+                raise TypeError("@pyrolyse functions must return None")
+        except BaseException:
+            self._rollback_scope_pass()
+            raise
+        self._commit_scope_pass()
+        return None
 
 
 @dataclass(slots=True)
@@ -894,6 +1042,41 @@ class _ContainerCallHandle(AbstractContextManager[ContainerSlotContext]):
             if callable(host_exit):
                 suppress = bool(host_exit(exc_type, exc, tb))
         return suppress
+
+
+@dataclass(slots=True)
+class _NativeContainerCallHandle(AbstractContextManager[ContainerSlotContext]):
+    slot: ContainerSlotContext
+    container_fn: Callable[..., Any]
+    args: tuple[CompValue[Any], ...]
+    kwargs: dict[str, CompValue[Any]]
+    context_param: str
+
+    def __enter__(self) -> ContainerSlotContext:
+        self.slot.expects_native_root = True
+        self.slot._begin_scope_pass()
+        try:
+            _ = self.context_param
+            result = self.container_fn(self.slot, *self.args, **self.kwargs)
+            if result is not None:
+                raise TypeError("@pyrolyse functions must return None")
+            if len(self.slot._staged_ui) != 1:
+                raise RuntimeError("native container helpers must emit exactly one root UIElement")
+        except BaseException:
+            self.slot._rollback_scope_pass()
+            self.slot.expects_native_root = False
+            raise
+        return self.slot
+
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
+        try:
+            if exc_type is None:
+                self.slot._commit_scope_pass()
+            else:
+                self.slot._rollback_scope_pass()
+        finally:
+            self.slot.expects_native_root = False
+        return False
 
 
 @dataclass(slots=True)
@@ -1015,6 +1198,16 @@ class RenderContext(ContextBase):
         scheduler_root = self._scheduler_root
         return tuple(boundary._debug_boundary_id() for boundary in scheduler_root._scheduler.queue)
 
+    def debug_ui(self, slot_id: SlotId | None = None) -> tuple[UIElement, ...]:
+        if slot_id is None:
+            owner: ContextBase = self
+        else:
+            slot = self._slots_by_id.get(slot_id)
+            if slot is None or not isinstance(slot, ContextBase):
+                return ()
+            owner = slot
+        return owner._committed_ui
+
     def _run_boundary(self) -> None:
         callback = self._mounted_callback
         if callback is None:
@@ -1098,11 +1291,13 @@ class RenderContext(ContextBase):
 __all__ = [
     "CompValue",
     "ComponentCallSlotContext",
+    "ContextBase",
     "ContainerSlotContext",
     "DuplicateKeyError",
     "ExternalStoreBinding",
     "ExternalStoreRef",
     "KeyedLoopSlotContext",
+    "LeafSlotContext",
     "LoopItemSlotContext",
     "ModuleId",
     "ModuleRegistry",
