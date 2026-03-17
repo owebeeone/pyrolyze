@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Generic, Iterable, ParamSpec, Protocol, TypeVar, cast
+from typing import Annotated, Any, Callable, Generic, Iterable, ParamSpec, Protocol, TypeVar, cast
 
 
 T = TypeVar("T")
@@ -49,6 +49,11 @@ class ComponentRef(Protocol[P]):
     def __call__(self, *args: P.args, **kwargs: P.kwargs) -> None: ...
 
 
+@dataclass(frozen=True, slots=True)
+class PyrolyzeEventParam:
+    """Marker attached to event-boundary callback parameters."""
+
+
 
 def keyed(items: Iterable[T], key: Callable[[T], Any]) -> KeyedIterable[T]:
     return KeyedIterable(items=items, key=key)
@@ -61,6 +66,11 @@ def pyrolyse(fn: Callable[..., T]) -> Callable[..., T]:
 
 def reactive_component(fn: Callable[..., T]) -> Callable[..., T]:
     return pyrolyse(fn)
+
+
+def pyrolyze_slotted(fn: Callable[..., T]) -> Callable[..., T]:
+    setattr(fn, "_pyrolyze_slotted", True)
+    return fn
 
 
 def pyrolyze_component_ref(
@@ -87,6 +97,9 @@ def Label(*, text: str) -> UIElement:
     return UIElement(kind="Label", props={"text": text})
 
 
+type PyrolyteHandler[**P, T] = Annotated[Callable[P, T], PyrolyzeEventParam()]
+
+
 __all__ = [
     "CallFromNonPyrolyzeContext",
     "call_native",
@@ -94,9 +107,12 @@ __all__ = [
     "ComponentRef",
     "KeyedIterable",
     "Label",
+    "PyrolyteHandler",
+    "PyrolyzeEventParam",
     "UIElement",
     "keyed",
     "pyrolyze_component_ref",
+    "pyrolyze_slotted",
     "pyrolyse",
     "reactive_component",
 ]

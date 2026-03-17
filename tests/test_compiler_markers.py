@@ -56,3 +56,42 @@ def profile_form():
 
     assert "profile_form" in artifact.components
     assert [hook.name for hook in artifact.metadata.hooks] == ["use_state"]
+
+
+def test_compile_source_discovers_class_members_and_explicit_nested_pyrolyze_functions() -> None:
+    source = """
+from pyrolyze.api import pyrolyse, pyrolyze_slotted, use_state
+
+class Panel:
+    @pyrolyse
+    def render(self):
+        @pyrolyse
+        def inner():
+            count, set_count = use_state(0)
+        inner()
+
+    @classmethod
+    @pyrolyse
+    def build(cls):
+        pass
+
+    @staticmethod
+    @pyrolyse
+    def show():
+        pass
+
+    @pyrolyze_slotted
+    def helper(self, value):
+        return value
+"""
+
+    artifact = compile_source(source, module_name="panel_module")
+
+    assert "Panel.render" in artifact.components
+    assert "Panel.build" in artifact.components
+    assert "Panel.show" in artifact.components
+    assert "Panel.render.<locals>.inner" in artifact.components
+    assert "Panel.helper" not in artifact.components
+    assert [(hook.name, hook.component) for hook in artifact.metadata.hooks] == [
+        ("use_state", "Panel.render.<locals>.inner")
+    ]

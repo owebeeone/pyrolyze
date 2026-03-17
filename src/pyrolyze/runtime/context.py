@@ -7,7 +7,7 @@ import logging
 import os
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
-from typing import Any, Callable, Generic, TypeVar, cast
+from typing import Any, Callable, Generic, Iterator, TypeVar, cast
 
 from pyrolyze.api import UIElement
 
@@ -20,6 +20,31 @@ S = TypeVar("S", bound="SlotContext")
 class CompValue(Generic[T]):
     value: T
     dirty: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class DirtyStateContext:
+    values: dict[str, bool]
+
+    def get(self, name: str, default: bool = False) -> bool:
+        return bool(self.values.get(name, default))
+
+    def __getattr__(self, name: str) -> bool:
+        return self.get(name)
+
+
+def dirtyof(**values: bool) -> DirtyStateContext:
+    return DirtyStateContext(values={key: bool(value) for key, value in values.items()})
+
+
+@dataclass(frozen=True, slots=True)
+class PlainCallResult(Generic[T]):
+    dirty: Any
+    value: T
+
+    def __iter__(self) -> Iterator[Any]:
+        yield self.dirty
+        yield self.value
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,20 +90,34 @@ class DuplicateKeyError(RuntimeError):
     """Raised when a keyed loop encounters the same key more than once in one pass."""
 
 
-def _unwrap(value: CompValue[Any] | Any) -> tuple[Any, bool]:
+def _dirty_state_truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, tuple):
+        return any(_dirty_state_truthy(item) for item in value)
+    return bool(value)
+
+
+def _unwrap(value: PlainCallResult[Any] | CompValue[Any] | Any) -> tuple[Any, bool]:
     if isinstance(value, CompValue):
         return value.value, value.dirty
+    if isinstance(value, PlainCallResult):
+        return value.value, _dirty_state_truthy(value.dirty)
     return value, False
 
 
-def _wrap_comp_value(value: CompValue[T] | T) -> CompValue[T]:
+def _wrap_comp_value(value: PlainCallResult[T] | CompValue[T] | T) -> CompValue[T]:
     if isinstance(value, CompValue):
         return value
+    if isinstance(value, PlainCallResult):
+        return CompValue(value=value.value, dirty=_dirty_state_truthy(value.dirty))
     return CompValue(value=value, dirty=False)
 
 
 def _unwrap_native_value(value: Any) -> Any:
     if isinstance(value, CompValue):
+        return _unwrap_native_value(value.value)
+    if isinstance(value, PlainCallResult):
         return _unwrap_native_value(value.value)
     if isinstance(value, dict):
         return {key: _unwrap_native_value(item) for key, item in value.items()}
@@ -87,6 +126,19 @@ def _unwrap_native_value(value: Any) -> Any:
     if isinstance(value, tuple):
         return tuple(_unwrap_native_value(item) for item in value)
     return value
+
+
+def _project_dirty_state(dirty: bool, result_shape: object | None) -> Any:
+    if result_shape is None or result_shape == "scalar":
+        return dirty
+    if (
+        isinstance(result_shape, tuple)
+        and len(result_shape) == 2
+        and result_shape[0] == "tuple"
+        and isinstance(result_shape[1], int)
+    ):
+        return tuple(dirty for _ in range(result_shape[1]))
+    raise TypeError(f"unsupported result_shape {result_shape!r}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -502,11 +554,12 @@ class ContextBase:
         slot_id: SlotId,
         func: CompValue[Callable[..., T]] | Callable[..., T],
         *args: CompValue[Any] | Any,
+        result_shape: object | None = None,
         **kwargs: CompValue[Any] | Any,
-    ) -> CompValue[T]:
+    ) -> PlainCallResult[T]:
         self._require_active_scope()
         slot = self._ensure_slot(slot_id, PlainCallSlotContext)
-        return slot.evaluate(func, args, kwargs)
+        return slot.evaluate(func, args, kwargs, result_shape=result_shape)
 
     def container_call(
         self,
@@ -571,11 +624,23 @@ class ContextBase:
         slot_id: SlotId,
         component: CompValue[Callable[..., Any]] | Callable[..., Any],
         *args: CompValue[Any] | Any,
+        dirty_state: DirtyStateContext | None = None,
         **kwargs: CompValue[Any] | Any,
     ) -> None:
         self._require_active_scope()
         slot = self._ensure_slot(slot_id, ComponentCallSlotContext)
-        slot.invoke(component, args, kwargs)
+        slot.invoke(component, args, kwargs, dirty_state=dirty_state)
+
+    def event_handler(
+        self,
+        slot_id: SlotId,
+        *,
+        dirty: bool,
+        callback: Callable[..., Any],
+    ) -> Callable[..., None]:
+        self._require_active_scope()
+        slot = self._ensure_slot(slot_id, EventHandlerSlotContext)
+        return slot.stage_callback(callback=callback, dirty=dirty)
 
     def _begin_scope_pass(self) -> None:
         if self._scope_active:
@@ -605,6 +670,8 @@ class ContextBase:
         for child in self._children.values():
             if isinstance(child, PlainCallSlotContext):
                 child.commit_binding()
+            elif isinstance(child, EventHandlerSlotContext):
+                child.commit_handler()
 
         self._committed_ui = self._build_committed_ui()
 
@@ -629,6 +696,8 @@ class ContextBase:
 
             if isinstance(child, PlainCallSlotContext):
                 child.rollback_binding()
+            elif isinstance(child, EventHandlerSlotContext):
+                child.rollback_handler()
             child.invoke_dirty = self._pass_child_dirty.get(slot_id, child.invoke_dirty)
             child.seen_in_pass = True
 
@@ -741,6 +810,8 @@ _NATIVE_CONTEXT_ANNOTATIONS = {
     "RenderContext",
 }
 
+_BOUND_METHOD_SELF_MISSING = object()
+
 
 def _native_context_param_name(func: Callable[..., Any]) -> str | None:
     cached = getattr(func, _NATIVE_CONTEXT_PARAM_ATTR, None)
@@ -763,6 +834,42 @@ def _native_context_param_name(func: Callable[..., Any]) -> str | None:
     return found_name
 
 
+def _callback_key(callback: Callable[..., Any]) -> object:
+    bound_self = getattr(callback, "__self__", _BOUND_METHOD_SELF_MISSING)
+    bound_func = getattr(callback, "__func__", None)
+    if bound_self is not _BOUND_METHOD_SELF_MISSING and callable(bound_func):
+        return ("bound_method", id(bound_self), bound_func)
+    return callback
+
+
+def _component_call_key(component: object) -> tuple[object, object]:
+    underlying = getattr(component, "__func__", None)
+    if underlying is not None:
+        metadata = getattr(underlying, "_pyrolyze_meta", None)
+        if metadata is not None:
+            bound_self = getattr(component, "__self__", _BOUND_METHOD_SELF_MISSING)
+            return metadata, bound_self
+
+    metadata = getattr(component, "_pyrolyze_meta", None)
+    if metadata is not None:
+        return metadata, _BOUND_METHOD_SELF_MISSING
+
+    return None, _BOUND_METHOD_SELF_MISSING
+
+
+def _clean_dirty_state(previous: DirtyStateContext | None) -> DirtyStateContext:
+    if previous is None:
+        return dirtyof()
+    return dirtyof(**{key: False for key in previous.values})
+
+
+def _resolve_runtime_component_func(runtime_func: object) -> Callable[..., Any] | None:
+    if isinstance(runtime_func, (classmethod, staticmethod)):
+        candidate = runtime_func.__func__
+        return candidate if callable(candidate) else None
+    return cast(Callable[..., Any] | None, runtime_func if callable(runtime_func) else None)
+
+
 @dataclass(slots=True)
 class SlotContext:
     render_context: RenderContext
@@ -780,6 +887,59 @@ class SlotContext:
         self.render_context._slots_by_id.pop(self.slot_id, None)
         if self.parent._children.get(self.slot_id) is self:
             self.parent._children.pop(self.slot_id, None)
+
+
+@dataclass(slots=True)
+class EventHandlerSlotContext(SlotContext):
+    committed_callback: Callable[..., Any] | None = None
+    committed_key: object | None = None
+    staged_callback: Callable[..., Any] | None = None
+    staged_key: object | None = None
+    dispatch: Callable[..., None] | None = None
+
+    def stage_callback(
+        self,
+        *,
+        callback: Callable[..., Any],
+        dirty: bool,
+    ) -> Callable[..., None]:
+        callback_key = _callback_key(callback)
+        if dirty or self.committed_callback is None or self.committed_key != callback_key:
+            self.staged_callback = callback
+            self.staged_key = callback_key
+        return self._dispatch_callable()
+
+    def commit_handler(self) -> None:
+        if self.staged_callback is None:
+            return
+        self.committed_callback = self.staged_callback
+        self.committed_key = self.staged_key
+        self.staged_callback = None
+        self.staged_key = None
+
+    def rollback_handler(self) -> None:
+        self.staged_callback = None
+        self.staged_key = None
+
+    def deactivate(self) -> None:
+        self.staged_callback = None
+        self.staged_key = None
+        self.committed_callback = None
+        self.committed_key = None
+        super().deactivate()
+
+    def _dispatch_callable(self) -> Callable[..., None]:
+        if self.dispatch is None:
+            def dispatch(*args: Any, **kwargs: Any) -> None:
+                callback = self.committed_callback
+                if callback is None:
+                    if os.environ.get("PYROLYZE_ENV") == "prod":
+                        return
+                    raise RuntimeError("event handler is inactive")
+                callback(*args, **kwargs)
+
+            self.dispatch = dispatch
+        return self.dispatch
 
 
 @dataclass(slots=True)
@@ -802,7 +962,9 @@ class PlainCallSlotContext(RerunnableSlotContext):
         func: CompValue[Callable[..., T]] | Callable[..., T],
         args: tuple[CompValue[Any] | Any, ...],
         kwargs: dict[str, CompValue[Any] | Any],
-    ) -> CompValue[T]:
+        *,
+        result_shape: object | None = None,
+    ) -> PlainCallResult[T]:
         raw_func, func_dirty = _unwrap(func)
         normalized_args = tuple(_unwrap(arg) for arg in args)
         normalized_kwargs = {key: _unwrap(value) for key, value in kwargs.items()}
@@ -847,7 +1009,10 @@ class PlainCallSlotContext(RerunnableSlotContext):
         binding = self.binding
         if binding is None:
             raise RuntimeError("plain-call slot has no binding after evaluation")
-        return CompValue(value=cast(T, binding.exposed_value()), dirty=result_dirty)
+        return PlainCallResult(
+            dirty=_project_dirty_state(result_dirty, result_shape),
+            value=cast(T, binding.exposed_value()),
+        )
 
     def _commit_evaluated_result(self, next_result: T) -> bool:
         previous_binding = self.binding
@@ -895,25 +1060,39 @@ class ComponentCallSlotContext(RerunnableSlotContext):
     schema: tuple[int, tuple[str, ...]] = (0, ())
     child_context: RenderContext | None = None
     last_runtime_func: Callable[..., Any] | None = None
+    last_bound_receiver: object = _BOUND_METHOD_SELF_MISSING
     last_args: tuple[CompValue[Any], ...] = ()
     last_kwargs: dict[str, CompValue[Any]] = field(default_factory=dict)
+    last_plain_args: tuple[Any, ...] = ()
+    last_plain_kwargs: dict[str, Any] = field(default_factory=dict)
+    last_dirty_state: DirtyStateContext | None = None
+    pending_dirty_state: DirtyStateContext | None = None
+    uses_dirty_state_api: bool = False
 
     def invoke(
         self,
         component: CompValue[Callable[..., Any]] | Callable[..., Any],
         args: tuple[CompValue[Any] | Any, ...],
         kwargs: dict[str, CompValue[Any] | Any],
+        *,
+        dirty_state: DirtyStateContext | None = None,
     ) -> None:
         raw_component, _ = _unwrap(component)
-        metadata = getattr(raw_component, "_pyrolyze_meta", None)
-        runtime_func = getattr(metadata, "_func", None)
-        if metadata is None or not callable(runtime_func):
+        metadata, bound_receiver = _component_call_key(raw_component)
+        runtime_func = _resolve_runtime_component_func(getattr(metadata, "_func", None))
+        if metadata is None or runtime_func is None:
             raise TypeError("component_call expects a ComponentRef with _pyrolyze_meta._func")
+
+        if bound_receiver is _BOUND_METHOD_SELF_MISSING:
+            identity_key = raw_component
+        else:
+            underlying = getattr(raw_component, "__func__", None)
+            identity_key = ("bound_component", id(bound_receiver), underlying)
 
         schema = (len(args), tuple(sorted(kwargs)))
         if (
             self.child_context is None
-            or self.component_identity is not raw_component
+            or self.component_identity != identity_key
             or self.schema != schema
         ):
             self._dispose_child_context()
@@ -921,14 +1100,29 @@ class ComponentCallSlotContext(RerunnableSlotContext):
                 owner_slot=self,
                 scheduler_root=self.render_context._scheduler_root,
             )
-            self.component_identity = raw_component
+            self.component_identity = identity_key
             self.schema = schema
 
-        normalized_args = tuple(_wrap_comp_value(arg) for arg in args)
-        normalized_kwargs = {key: _wrap_comp_value(value) for key, value in kwargs.items()}
         self.last_runtime_func = runtime_func
-        self.last_args = normalized_args
-        self.last_kwargs = normalized_kwargs
+        self.last_bound_receiver = bound_receiver
+        if dirty_state is None:
+            normalized_args = tuple(_wrap_comp_value(arg) for arg in args)
+            normalized_kwargs = {key: _wrap_comp_value(value) for key, value in kwargs.items()}
+            self.last_args = normalized_args
+            self.last_kwargs = normalized_kwargs
+            self.last_plain_args = ()
+            self.last_plain_kwargs = {}
+            self.last_dirty_state = None
+            self.pending_dirty_state = None
+            self.uses_dirty_state_api = False
+        else:
+            self.last_plain_args = tuple(_unwrap(arg)[0] for arg in args)
+            self.last_plain_kwargs = {key: _unwrap(value)[0] for key, value in kwargs.items()}
+            self.last_dirty_state = dirty_state
+            self.pending_dirty_state = dirty_state
+            self.last_args = ()
+            self.last_kwargs = {}
+            self.uses_dirty_state_api = True
         self.child_context._mounted_callback = self._rerun_child
         self.child_context._run_boundary()
 
@@ -937,7 +1131,38 @@ class ComponentCallSlotContext(RerunnableSlotContext):
         runtime_func = self.last_runtime_func
         if child_context is None or runtime_func is None:
             raise RuntimeError("component child is not mounted")
-        runtime_func(child_context, *self.last_args, **self.last_kwargs)
+        if self.uses_dirty_state_api:
+            dirty_state = self.pending_dirty_state
+            if dirty_state is None:
+                dirty_state = _clean_dirty_state(self.last_dirty_state)
+            else:
+                self.pending_dirty_state = None
+            if self.last_bound_receiver is _BOUND_METHOD_SELF_MISSING:
+                runtime_func(
+                    child_context,
+                    dirty_state,
+                    *self.last_plain_args,
+                    **self.last_plain_kwargs,
+                )
+            else:
+                runtime_func(
+                    self.last_bound_receiver,
+                    child_context,
+                    dirty_state,
+                    *self.last_plain_args,
+                    **self.last_plain_kwargs,
+                )
+            return
+
+        if self.last_bound_receiver is _BOUND_METHOD_SELF_MISSING:
+            runtime_func(child_context, *self.last_args, **self.last_kwargs)
+        else:
+            runtime_func(
+                self.last_bound_receiver,
+                child_context,
+                *self.last_args,
+                **self.last_kwargs,
+            )
 
     def _dispose_child_context(self) -> None:
         child_context = self.child_context
@@ -953,6 +1178,7 @@ class ComponentCallSlotContext(RerunnableSlotContext):
         child_context._slots_by_id.clear()
         child_context._mounted_callback = None
         self.child_context = None
+        self.pending_dirty_state = None
 
     def deactivate(self) -> None:
         self._dispose_child_context()
@@ -1293,7 +1519,9 @@ __all__ = [
     "ComponentCallSlotContext",
     "ContextBase",
     "ContainerSlotContext",
+    "DirtyStateContext",
     "DuplicateKeyError",
+    "EventHandlerSlotContext",
     "ExternalStoreBinding",
     "ExternalStoreRef",
     "KeyedLoopSlotContext",
@@ -1301,6 +1529,7 @@ __all__ = [
     "LoopItemSlotContext",
     "ModuleId",
     "ModuleRegistry",
+    "PlainCallResult",
     "PlainCallRuntimeContext",
     "PlainCallSlotContext",
     "PlainValueBinding",
@@ -1311,5 +1540,6 @@ __all__ = [
     "SlotOwnershipError",
     "UseEffectBinding",
     "UseEffectRequest",
+    "dirtyof",
     "module_registry",
 ]

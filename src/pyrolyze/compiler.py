@@ -176,12 +176,16 @@ class _ComponentAnalyzer(ast.NodeVisitor):
         self._loop_depth -= 1
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> Any:
+        if _is_transformed_function(node):
+            return None
         self._nested_fn_depth += 1
         for stmt in node.body:
             self.visit(stmt)
         self._nested_fn_depth -= 1
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> Any:
+        if _is_transformed_function(node):
+            return None
         self._nested_fn_depth += 1
         for stmt in node.body:
             self.visit(stmt)
@@ -373,20 +377,23 @@ def _analyze_component(module_name: str, component: _ReactiveComponentDef) -> _C
 def _extract_reactive_components(module_ast: ast.Module) -> list[_ReactiveComponentDef]:
     components: list[_ReactiveComponentDef] = []
 
-    for node in module_ast.body:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and _is_reactive_component(node):
-            components.append(_ReactiveComponentDef(name=node.name, node=node))
-            continue
+    def walk_body(body: list[ast.stmt], prefix: str = "") -> None:
+        for node in body:
+            if isinstance(node, ast.ClassDef):
+                class_prefix = f"{prefix}.{node.name}" if prefix else node.name
+                walk_body(node.body, class_prefix)
+                continue
 
-        if isinstance(node, ast.ClassDef):
-            for member in node.body:
-                if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)) and _is_reactive_component(member):
-                    components.append(
-                        _ReactiveComponentDef(
-                            name=f"{node.name}.{member.name}",
-                            node=member,
-                        )
-                    )
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+
+            qualified_name = f"{prefix}.{node.name}" if prefix else node.name
+            if _is_reactive_component(node):
+                components.append(_ReactiveComponentDef(name=qualified_name, node=node))
+
+            walk_body(node.body, f"{qualified_name}.<locals>")
+
+    walk_body(module_ast.body)
 
     return components
 
@@ -408,6 +415,17 @@ def _is_reactive_component(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool
         _decorator_name(decorator) in {"pyrolyse", "reactive_component"}
         for decorator in node.decorator_list
     )
+
+
+def _is_pyrolyze_slotted(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    return any(
+        _decorator_name(decorator) == "pyrolyze_slotted"
+        for decorator in node.decorator_list
+    )
+
+
+def _is_transformed_function(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    return _is_reactive_component(node) or _is_pyrolyze_slotted(node)
 
 
 
@@ -521,7 +539,6 @@ __all__ = [
     "compile_source",
     "compile_source_with_env",
 ]
-
 
 
 
