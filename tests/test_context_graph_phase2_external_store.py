@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Generic, TypeVar, cast
+from typing import Any, Callable, Generic, TypeVar
 
 from pyrolyze.runtime.context import (
-    CompValue,
     ExternalStoreBinding,
     ExternalStoreRef,
     ModuleRegistry,
@@ -13,6 +12,7 @@ from pyrolyze.runtime.context import (
     PlainValueBinding,
     RenderContext,
     SlotId,
+    dirtyof,
 )
 
 
@@ -82,14 +82,14 @@ def _make_external_reader_program(
         log.append(("helper", grip_name))
         return resolve_store(grip_name).ref()
 
-    def _pyr_reader(ctx: RenderContext, grip_name: CompValue[str]) -> None:
+    def _pyr_reader(ctx: RenderContext, __pyr_dirty_state, grip_name: str) -> None:
         with ctx.pass_scope():
-            value = ctx.call_plain(
+            __pyr_value_dirty, value = ctx.call_plain(
                 _STORE_SLOT,
                 use_grip,
                 grip_name,
             )
-            observed.append((value.value, value.dirty))
+            observed.append((value, __pyr_value_dirty))
 
     return _pyr_reader, observed
 
@@ -97,18 +97,14 @@ def _make_external_reader_program(
 def _make_switching_helper_program(log: list[tuple[object, ...]]):
     observed: list[tuple[str, bool]] = []
 
-    def _pyr_reader(
-        ctx: RenderContext,
-        helper: CompValue[Callable[[str], object]],
-        grip_name: CompValue[str],
-    ) -> None:
+    def _pyr_reader(ctx: RenderContext, __pyr_dirty_state, helper: Callable[[str], object], grip_name: str) -> None:
         with ctx.pass_scope():
-            value = ctx.call_plain(
+            __pyr_value_dirty, value = ctx.call_plain(
                 _STORE_SLOT,
-                cast(CompValue[Callable[..., str]], helper),
+                helper,
                 grip_name,
             )
-            observed.append((cast(str, value.value), value.dirty))
+            observed.append((value, __pyr_value_dirty))
 
     return _pyr_reader, observed
 
@@ -131,17 +127,18 @@ def _make_conditional_program(
 
     def _pyr_conditional(
         ctx: RenderContext,
-        show: CompValue[bool],
-        grip_name: CompValue[str],
+        __pyr_dirty_state,
+        show: bool,
+        grip_name: str,
     ) -> None:
         with ctx.pass_scope():
-            if show.value:
-                value = ctx.call_plain(
+            if show:
+                __pyr_value_dirty, value = ctx.call_plain(
                     _STORE_SLOT,
                     use_grip,
                     grip_name,
                 )
-                observed.append((value.value, value.dirty))
+                observed.append((value, __pyr_value_dirty))
 
     return _pyr_conditional, observed
 
@@ -152,7 +149,7 @@ def test_external_store_notification_refreshes_via_get_without_helper_rerun() ->
     store = _StoreProbe(name="weather", initial_value="sunny", log=log)
     pyr_reader, observed = _make_external_reader_program(log, lambda _: store)
 
-    pyr_reader(ctx, CompValue("weather", dirty=True))
+    pyr_reader(ctx, dirtyof(grip_name=True), "weather")
 
     assert observed == [("sunny", True)]
     assert log == [
@@ -163,7 +160,7 @@ def test_external_store_notification_refreshes_via_get_without_helper_rerun() ->
     assert store.active_listener_count == 1
     assert isinstance(_binding_for(ctx), ExternalStoreBinding)
 
-    pyr_reader(ctx, CompValue("weather", dirty=False))
+    pyr_reader(ctx, dirtyof(grip_name=False), "weather")
 
     assert observed == [("sunny", True), ("sunny", False)]
     assert log == [
@@ -173,7 +170,7 @@ def test_external_store_notification_refreshes_via_get_without_helper_rerun() ->
     ]
 
     store.notify("rain")
-    pyr_reader(ctx, CompValue("weather", dirty=False))
+    pyr_reader(ctx, dirtyof(grip_name=False), "weather")
 
     assert observed == [("sunny", True), ("sunny", False), ("rain", True)]
     assert log == [
@@ -183,7 +180,7 @@ def test_external_store_notification_refreshes_via_get_without_helper_rerun() ->
         ("get", "weather", "rain"),
     ]
 
-    pyr_reader(ctx, CompValue("weather", dirty=False))
+    pyr_reader(ctx, dirtyof(grip_name=False), "weather")
 
     assert observed == [
         ("sunny", True),
@@ -207,10 +204,10 @@ def test_rebinding_external_store_subscribes_new_before_unsubscribing_old() -> N
     stores = {"alpha": alpha, "beta": beta}
     pyr_reader, observed = _make_external_reader_program(log, stores.__getitem__)
 
-    pyr_reader(ctx, CompValue("alpha", dirty=True))
+    pyr_reader(ctx, dirtyof(grip_name=True), "alpha")
     log.clear()
 
-    pyr_reader(ctx, CompValue("beta", dirty=True))
+    pyr_reader(ctx, dirtyof(grip_name=True), "beta")
 
     assert observed == [("A", True), ("B", True)]
     assert log == [
@@ -237,20 +234,12 @@ def test_switching_from_external_helper_to_plain_helper_unsubscribes_old_binding
         log.append(("plain_helper", grip_name))
         return f"plain:{grip_name}"
 
-    pyr_reader(
-        ctx,
-        CompValue(external_helper, dirty=True),
-        CompValue("weather", dirty=True),
-    )
+    pyr_reader(ctx, dirtyof(helper=True, grip_name=True), external_helper, "weather")
     assert store.active_listener_count == 1
     assert isinstance(_binding_for(ctx), ExternalStoreBinding)
     log.clear()
 
-    pyr_reader(
-        ctx,
-        CompValue(plain_helper, dirty=True),
-        CompValue("weather", dirty=False),
-    )
+    pyr_reader(ctx, dirtyof(helper=True, grip_name=False), plain_helper, "weather")
 
     assert observed == [("sunny", True), ("plain:weather", True)]
     assert log == [
@@ -270,14 +259,14 @@ def test_plain_call_runtime_context_injects_slot_local_storage() -> None:
         runtime.set_local("sequence", sequence + 1)
         return f"{label}:{sequence}"
 
-    def _pyr_reader(ctx: RenderContext, label: CompValue[str]) -> None:
+    def _pyr_reader(ctx: RenderContext, __pyr_dirty_state, label: str) -> None:
         with ctx.pass_scope():
-            value = ctx.call_plain(_STORE_SLOT, helper, label)
-            observed.append((value.value, id(_binding_for(ctx)), value.dirty))
+            __pyr_value_dirty, value = ctx.call_plain(_STORE_SLOT, helper, label)
+            observed.append((value, id(_binding_for(ctx)), __pyr_value_dirty))
 
-    _pyr_reader(ctx, CompValue("alpha", dirty=True))
-    _pyr_reader(ctx, CompValue("alpha", dirty=False))
-    _pyr_reader(ctx, CompValue("beta", dirty=True))
+    _pyr_reader(ctx, dirtyof(label=True), "alpha")
+    _pyr_reader(ctx, dirtyof(label=False), "alpha")
+    _pyr_reader(ctx, dirtyof(label=True), "beta")
 
     assert observed == [
         ("alpha:0", observed[0][1], True),
@@ -296,18 +285,18 @@ def test_plain_result_uses_plain_value_binding() -> None:
         log.append(("plain_helper", name))
         return f"plain:{name}"
 
-    def pyr_reader(name: CompValue[str]) -> None:
+    def pyr_reader(name: str, __pyr_dirty_state) -> None:
         with ctx.pass_scope():
-            value = ctx.call_plain(_STORE_SLOT, plain_helper, name)
-            observed.append((value.value, value.dirty))
+            __pyr_value_dirty, value = ctx.call_plain(_STORE_SLOT, plain_helper, name)
+            observed.append((value, __pyr_value_dirty))
 
-    pyr_reader(CompValue("weather", dirty=True))
+    pyr_reader("weather", dirtyof(name=True))
 
     assert observed == [("plain:weather", True)]
     assert log == [("plain_helper", "weather")]
     assert isinstance(_binding_for(ctx), PlainValueBinding)
 
-    pyr_reader(CompValue("weather", dirty=False))
+    pyr_reader("weather", dirtyof(name=False))
 
     assert observed == [("plain:weather", True), ("plain:weather", False)]
     assert log == [("plain_helper", "weather")]
@@ -322,8 +311,9 @@ def test_deactivating_an_external_plain_call_unsubscribes_the_store() -> None:
 
     pyr_conditional(
         ctx,
-        CompValue(True, dirty=True),
-        CompValue("weather", dirty=True),
+        dirtyof(show=True, grip_name=True),
+        True,
+        "weather",
     )
 
     assert observed == [("sunny", True)]
@@ -331,8 +321,9 @@ def test_deactivating_an_external_plain_call_unsubscribes_the_store() -> None:
 
     pyr_conditional(
         ctx,
-        CompValue(False, dirty=True),
-        CompValue("weather", dirty=False),
+        dirtyof(show=True, grip_name=False),
+        False,
+        "weather",
     )
 
     assert store.active_listener_count == 0

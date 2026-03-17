@@ -4,11 +4,11 @@ import pytest
 
 from pyrolyze.api import UIElement
 from pyrolyze.runtime.context import (
-    CompValue,
     ContextBase,
     ModuleRegistry,
     RenderContext,
     SlotId,
+    dirtyof,
 )
 
 
@@ -23,24 +23,24 @@ _BAD_SLOT = SlotId(_MODULE_ID, 5, line_no=14)
 _DOUBLE_SECTION_SLOT = SlotId(_MODULE_ID, 6, line_no=15)
 
 
-def _pyr_badge(ctx: ContextBase, text: CompValue[str], *, tone: CompValue[str]) -> None:
+def _pyr_badge(ctx: ContextBase, text: str, *, tone: str) -> None:
     ctx.call_native(
         UIElement,
-        kind=ctx.literal("badge"),
+        kind="badge",
         props={"text": text, "tone": tone},
     )
 
 
 def _pyr_button(
     ctx: ContextBase,
-    label: CompValue[str],
+    label: str,
     *,
-    enabled: CompValue[bool],
-    meta: CompValue[dict[str, object]],
+    enabled: bool,
+    meta: dict[str, object],
 ) -> None:
     ctx.call_native(
         UIElement,
-        kind=ctx.literal("button"),
+        kind="button",
         props={
             "label": label,
             "enabled": enabled,
@@ -51,13 +51,13 @@ def _pyr_button(
 
 def _pyr_section(
     ctx: ContextBase,
-    title: CompValue[str],
+    title: str,
     *,
-    accent: CompValue[str],
+    accent: str,
 ) -> None:
     ctx.call_native(
         UIElement,
-        kind=ctx.literal("section"),
+        kind="section",
         props={"title": title, "accent": accent},
     )
 
@@ -71,41 +71,38 @@ def _pyr_invalid(ctx: ContextBase) -> None:
 
 
 def _pyr_double_root(ctx: ContextBase) -> None:
-    ctx.call_native(UIElement, kind=ctx.literal("section"), props={"title": ctx.literal("One")})
-    ctx.call_native(UIElement, kind=ctx.literal("section"), props={"title": ctx.literal("Two")})
+    ctx.call_native(UIElement, kind="section", props={"title": "One"})
+    ctx.call_native(UIElement, kind="section", props={"title": "Two"})
 
 
 def _make_toolbar_program() -> callable:
-    def _pyr_toolbar(ctx: RenderContext, active: CompValue[bool]) -> None:
+    def _pyr_toolbar(ctx: RenderContext, __pyr_dirty_state, active: bool) -> None:
         with ctx.pass_scope():
-            if active.dirty or ctx.visit_slot_and_dirty(_SECTION_SLOT):
+            if __pyr_dirty_state.active or ctx.visit_slot_and_dirty(_SECTION_SLOT):
                 with ctx.container_call(
                     _SECTION_SLOT,
                     _pyr_section,
-                    ctx.literal("Toolbar"),
-                    accent=ctx.literal("cyan"),
+                    "Toolbar",
+                    accent="cyan",
                 ) as section_ctx:
-                    if active.dirty or section_ctx.visit_slot_and_dirty(_BADGE_SLOT):
+                    if __pyr_dirty_state.active or section_ctx.visit_slot_and_dirty(_BADGE_SLOT):
                         section_ctx.leaf_call(
                             _BADGE_SLOT,
                             _pyr_badge,
-                            section_ctx.literal("Ready") if active.value else section_ctx.literal("Paused"),
-                            tone=section_ctx.literal("info"),
+                            "Ready" if active else "Paused",
+                            tone="info",
                         )
 
-                    if active.dirty or section_ctx.visit_slot_and_dirty(_BUTTON_SLOT):
+                    if __pyr_dirty_state.active or section_ctx.visit_slot_and_dirty(_BUTTON_SLOT):
                         section_ctx.leaf_call(
                             _BUTTON_SLOT,
                             _pyr_button,
-                            section_ctx.literal("Run"),
-                            enabled=CompValue(value=not active.value, dirty=active.dirty),
-                            meta=CompValue(
-                                value={
-                                    "tags": [CompValue("primary"), CompValue("toolbar")],
-                                    "status": {"active": active},
-                                },
-                                dirty=active.dirty,
-                            ),
+                            "Run",
+                            enabled=not active,
+                            meta={
+                                "tags": ["primary", "toolbar"],
+                                "status": {"active": active},
+                            },
                         )
 
     return _pyr_toolbar
@@ -115,7 +112,7 @@ def test_native_ui_helpers_build_committed_tree_and_retain_on_stable_pass() -> N
     ctx = RenderContext()
     pyr_toolbar = _make_toolbar_program()
 
-    pyr_toolbar(ctx, CompValue(True, dirty=True))
+    pyr_toolbar(ctx, dirtyof(active=True), True)
 
     assert ctx.debug_ui() == (
         UIElement(
@@ -138,7 +135,7 @@ def test_native_ui_helpers_build_committed_tree_and_retain_on_stable_pass() -> N
         ),
     )
 
-    pyr_toolbar(ctx, CompValue(True, dirty=False))
+    pyr_toolbar(ctx, dirtyof(active=False), True)
 
     assert ctx.debug_ui() == (
         UIElement(
@@ -202,8 +199,8 @@ def test_failed_native_rerun_rolls_back_to_last_committed_ui() -> None:
         ctx.leaf_call(
             _BADGE_SLOT,
             _pyr_badge,
-            ctx.literal("Ready"),
-            tone=ctx.literal("info"),
+            "Ready",
+            tone="info",
         )
 
     assert ctx.debug_ui() == (

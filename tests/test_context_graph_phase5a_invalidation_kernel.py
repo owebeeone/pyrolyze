@@ -10,11 +10,12 @@ from pyrolyze.api import (
     pyrolyze_component_ref,
 )
 from pyrolyze.runtime.context import (
-    CompValue,
+    DirtyStateContext,
     ExternalStoreRef,
     ModuleRegistry,
     RenderContext,
     SlotId,
+    dirtyof,
 )
 
 
@@ -101,30 +102,33 @@ def _make_weather_program(
         log.append(("helper", grip_name))
         return store.ref()
 
-    def _pyr_weather_panel(ctx: RenderContext) -> None:
+    def _pyr_weather_panel(
+        ctx: RenderContext,
+        __pyr_dirty_state: DirtyStateContext,
+    ) -> None:
         with ctx.pass_scope():
-            location = ctx.call_plain(
+            __pyr_location_dirty, location = ctx.call_plain(
                 _ROOT_STORE_SLOT,
                 use_grip,
-                ctx.literal("weather"),
+                "weather",
             )
 
-            if location.dirty or ctx.visit_slot_and_dirty(_ROOT_SECTION_SLOT):
+            if __pyr_location_dirty or ctx.visit_slot_and_dirty(_ROOT_SECTION_SLOT):
                 with ctx.container_call(
                     _ROOT_SECTION_SLOT,
                     _section,
-                    ctx.literal("Weather"),
-                    accent=ctx.literal("blue"),
+                    "Weather",
+                    accent="blue",
                 ) as section_ctx:
-                    if location.dirty or section_ctx.visit_slot_and_dirty(_ROOT_BADGE_SLOT):
+                    if __pyr_location_dirty or section_ctx.visit_slot_and_dirty(_ROOT_BADGE_SLOT):
                         section_ctx.leaf_call(
                             _ROOT_BADGE_SLOT,
-                            section_ctx.literal(_badge),
+                            _badge,
                             location,
-                            tone=ctx.literal("info"),
+                            tone="info",
                         )
 
-    return _pyr_weather_panel
+    return lambda ctx: _pyr_weather_panel(ctx, dirtyof())
 
 
 def _make_parent_child_program(
@@ -151,56 +155,63 @@ def _make_parent_child_program(
         log.append(("child.helper", grip_name))
         return child_store.ref()
 
-    def __pyr_child_badge(ctx: RenderContext) -> None:
+    def __pyr_child_badge(
+        ctx: RenderContext,
+        __pyr_dirty_state: DirtyStateContext,
+    ) -> None:
         with ctx.pass_scope():
-            value = ctx.call_plain(
+            __pyr_value_dirty, value = ctx.call_plain(
                 _CHILD_STORE_SLOT,
                 use_child_grip,
-                ctx.literal("child"),
+                "child",
             )
 
-            if value.dirty or ctx.visit_slot_and_dirty(_CHILD_BADGE_SLOT):
+            if __pyr_value_dirty or ctx.visit_slot_and_dirty(_CHILD_BADGE_SLOT):
                 ctx.leaf_call(
                     _CHILD_BADGE_SLOT,
-                    ctx.literal(_badge),
+                    _badge,
                     value,
-                    tone=ctx.literal("child"),
+                    tone="child",
                 )
 
     @pyrolyze_component_ref(ComponentMetadata("child_badge", __pyr_child_badge))
     def child_badge() -> None:
         raise CallFromNonPyrolyzeContext("child_badge")
 
-    def _pyr_parent_panel(ctx: RenderContext) -> None:
+    def _pyr_parent_panel(
+        ctx: RenderContext,
+        __pyr_dirty_state: DirtyStateContext,
+    ) -> None:
         with ctx.pass_scope():
-            parent_value = ctx.call_plain(
+            __pyr_parent_dirty, parent_value = ctx.call_plain(
                 _ROOT_STORE_SLOT,
                 use_parent_grip,
-                ctx.literal("parent"),
+                "parent",
             )
 
-            if parent_value.dirty or ctx.visit_slot_and_dirty(_ROOT_SECTION_SLOT):
+            if __pyr_parent_dirty or ctx.visit_slot_and_dirty(_ROOT_SECTION_SLOT):
                 with ctx.container_call(
                     _ROOT_SECTION_SLOT,
                     _section,
-                    ctx.literal("Parent"),
-                    accent=ctx.literal("green"),
+                    "Parent",
+                    accent="green",
                 ) as section_ctx:
-                    if parent_value.dirty or section_ctx.visit_slot_and_dirty(_ROOT_BADGE_SLOT):
+                    if __pyr_parent_dirty or section_ctx.visit_slot_and_dirty(_ROOT_BADGE_SLOT):
                         section_ctx.leaf_call(
                             _ROOT_BADGE_SLOT,
-                            section_ctx.literal(_badge),
+                            _badge,
                             parent_value,
-                            tone=ctx.literal("parent"),
+                            tone="parent",
                         )
 
                     if section_ctx.visit_slot_and_dirty(_CHILD_COMPONENT_SLOT):
                         section_ctx.component_call(
                             _CHILD_COMPONENT_SLOT,
-                            section_ctx.literal(child_badge),
+                            child_badge,
+                            dirty_state=dirtyof(),
                         )
 
-    return _pyr_parent_panel
+    return lambda ctx: _pyr_parent_panel(ctx, dirtyof())
 
 
 def _make_sibling_component_program(
@@ -219,59 +230,70 @@ def _make_sibling_component_program(
         log.append(("right.helper", grip_name))
         return right_store.ref()
 
-    def __pyr_left_badge(ctx: RenderContext) -> None:
+    def __pyr_left_badge(
+        ctx: RenderContext,
+        __pyr_dirty_state: DirtyStateContext,
+    ) -> None:
         with ctx.pass_scope():
-            value = ctx.call_plain(
+            __pyr_value_dirty, value = ctx.call_plain(
                 _LEFT_STORE_SLOT,
                 use_left_grip,
-                ctx.literal("left"),
+                "left",
             )
-            if value.dirty or ctx.visit_slot_and_dirty(_LEFT_BADGE_SLOT):
+            if __pyr_value_dirty or ctx.visit_slot_and_dirty(_LEFT_BADGE_SLOT):
                 ctx.leaf_call(
                     _LEFT_BADGE_SLOT,
-                    ctx.literal(_badge),
+                    _badge,
                     value,
-                    tone=ctx.literal("left"),
+                    tone="left",
                 )
 
     @pyrolyze_component_ref(ComponentMetadata("left_badge", __pyr_left_badge))
     def left_badge() -> None:
         raise CallFromNonPyrolyzeContext("left_badge")
 
-    def __pyr_right_badge(ctx: RenderContext) -> None:
+    def __pyr_right_badge(
+        ctx: RenderContext,
+        __pyr_dirty_state: DirtyStateContext,
+    ) -> None:
         with ctx.pass_scope():
-            value = ctx.call_plain(
+            __pyr_value_dirty, value = ctx.call_plain(
                 _RIGHT_STORE_SLOT,
                 use_right_grip,
-                ctx.literal("right"),
+                "right",
             )
-            if value.dirty or ctx.visit_slot_and_dirty(_RIGHT_BADGE_SLOT):
+            if __pyr_value_dirty or ctx.visit_slot_and_dirty(_RIGHT_BADGE_SLOT):
                 ctx.leaf_call(
                     _RIGHT_BADGE_SLOT,
-                    ctx.literal(_badge),
+                    _badge,
                     value,
-                    tone=ctx.literal("right"),
+                    tone="right",
                 )
 
     @pyrolyze_component_ref(ComponentMetadata("right_badge", __pyr_right_badge))
     def right_badge() -> None:
         raise CallFromNonPyrolyzeContext("right_badge")
 
-    def _pyr_siblings(ctx: RenderContext) -> None:
+    def _pyr_siblings(
+        ctx: RenderContext,
+        __pyr_dirty_state: DirtyStateContext,
+    ) -> None:
         with ctx.pass_scope():
             if ctx.visit_slot_and_dirty(_LEFT_COMPONENT_SLOT):
                 ctx.component_call(
                     _LEFT_COMPONENT_SLOT,
-                    ctx.literal(left_badge),
+                    left_badge,
+                    dirty_state=dirtyof(),
                 )
 
             if ctx.visit_slot_and_dirty(_RIGHT_COMPONENT_SLOT):
                 ctx.component_call(
                     _RIGHT_COMPONENT_SLOT,
-                    ctx.literal(right_badge),
+                    right_badge,
+                    dirty_state=dirtyof(),
                 )
 
-    return _pyr_siblings
+    return lambda ctx: _pyr_siblings(ctx, dirtyof())
 
 
 def test_external_store_notification_queues_mounted_root_once_and_reruns_on_drain() -> None:

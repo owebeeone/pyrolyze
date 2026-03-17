@@ -5,11 +5,12 @@ from contextlib import contextmanager
 import pytest
 
 from pyrolyze.runtime.context import (
-    CompValue,
+    DirtyStateContext,
     ModuleRegistry,
     RenderContext,
     SlotId,
     SlotOwnershipError,
+    dirtyof,
 )
 
 
@@ -37,27 +38,31 @@ def _make_welcome_program(log: list[tuple[object, ...]]):
     def _badge(text: str, *, tone: str) -> None:
         log.append(("badge", text, tone))
 
-    def _pyr_welcome(ctx: RenderContext, name: CompValue[str]) -> None:
+    def _pyr_welcome(
+        ctx: RenderContext,
+        __pyr_dirty_state: DirtyStateContext,
+        name: str,
+    ) -> None:
         with ctx.pass_scope():
-            title = ctx.call_plain(
+            __pyr_title_dirty, title = ctx.call_plain(
                 _TITLE_SLOT,
                 _format_title,
                 name,
             )
 
-            if title.dirty or ctx.visit_slot_and_dirty(_SECTION_SLOT):
+            if __pyr_title_dirty or ctx.visit_slot_and_dirty(_SECTION_SLOT):
                 with ctx.container_call(
                     _SECTION_SLOT,
                     _section,
-                    ctx.literal("Greeting"),
-                    accent=ctx.literal("blue"),
+                    "Greeting",
+                    accent="blue",
                 ) as section_ctx:
-                    if title.dirty or section_ctx.visit_slot_and_dirty(_BADGE_SLOT):
+                    if __pyr_title_dirty or section_ctx.visit_slot_and_dirty(_BADGE_SLOT):
                         section_ctx.leaf_call(
                             _BADGE_SLOT,
-                            section_ctx.literal(_badge),
+                            _badge,
                             title,
-                            tone=ctx.literal("info"),
+                            tone="info",
                         )
 
     return _pyr_welcome
@@ -81,30 +86,39 @@ def _make_welcome_conditional_program(log: list[tuple[object, ...]]):
 
     def _pyr_welcome_conditional(
         ctx: RenderContext,
-        name: CompValue[str],
-        show_badge: CompValue[bool],
+        __pyr_dirty_state: DirtyStateContext,
+        name: str,
+        show_badge: bool,
     ) -> None:
         with ctx.pass_scope():
-            title = ctx.call_plain(
+            __pyr_title_dirty, title = ctx.call_plain(
                 _TITLE_SLOT,
                 _format_title,
                 name,
             )
 
-            if title.dirty or show_badge.dirty or ctx.visit_slot_and_dirty(_SECTION_SLOT):
+            if (
+                __pyr_title_dirty
+                or __pyr_dirty_state.show_badge
+                or ctx.visit_slot_and_dirty(_SECTION_SLOT)
+            ):
                 with ctx.container_call(
                     _SECTION_SLOT,
                     _section,
-                    ctx.literal("Greeting"),
-                    accent=ctx.literal("blue"),
+                    "Greeting",
+                    accent="blue",
                 ) as section_ctx:
-                    if show_badge.value:
-                        if title.dirty or show_badge.dirty or section_ctx.visit_slot_and_dirty(_BADGE_SLOT):
+                    if show_badge:
+                        if (
+                            __pyr_title_dirty
+                            or __pyr_dirty_state.show_badge
+                            or section_ctx.visit_slot_and_dirty(_BADGE_SLOT)
+                        ):
                             section_ctx.leaf_call(
                                 _BADGE_SLOT,
-                                section_ctx.literal(_badge),
+                                _badge,
                                 title,
-                                tone=ctx.literal("info"),
+                                tone="info",
                             )
 
     return _pyr_welcome_conditional
@@ -128,39 +142,45 @@ def _make_wrong_child_owner_program(log: list[tuple[object, ...]]):
 
     def _pyr_wrong_child_owner(
         ctx: RenderContext,
-        name: CompValue[str],
-        accent: CompValue[str],
+        __pyr_dirty_state: DirtyStateContext,
+        name: str,
+        accent: str,
     ) -> None:
         with ctx.pass_scope():
-            title = ctx.call_plain(
+            __pyr_title_dirty, title = ctx.call_plain(
                 _TITLE_SLOT,
                 _format_title,
                 name,
             )
 
-            if title.dirty or accent.dirty or ctx.visit_slot_and_dirty(_SECTION_SLOT):
+            if (
+                __pyr_title_dirty
+                or __pyr_dirty_state.accent
+                or ctx.visit_slot_and_dirty(_SECTION_SLOT)
+            ):
                 with ctx.container_call(
                     _SECTION_SLOT,
                     _section,
-                    ctx.literal("Greeting"),
+                    "Greeting",
                     accent=accent,
                 ) as section_ctx:
-                    if title.dirty or ctx.visit_slot_and_dirty(_BADGE_SLOT):
+                    if __pyr_title_dirty or ctx.visit_slot_and_dirty(_BADGE_SLOT):
                         section_ctx.leaf_call(
                             _BADGE_SLOT,
-                            section_ctx.literal(_badge),
+                            _badge,
                             title,
-                            tone=ctx.literal("info"),
+                            tone="info",
                         )
 
     return _pyr_wrong_child_owner
+
 
 def test_first_pass_executes_and_stable_second_pass_retains_subtree() -> None:
     ctx = RenderContext()
     log: list[tuple[object, ...]] = []
     pyr_welcome = _make_welcome_program(log)
 
-    pyr_welcome(ctx, CompValue("Ada", dirty=True))
+    pyr_welcome(ctx, dirtyof(name=True), "Ada")
 
     assert log == [
         ("format_title", "Ada"),
@@ -171,7 +191,7 @@ def test_first_pass_executes_and_stable_second_pass_retains_subtree() -> None:
     assert ctx.debug_children_of() == (_TITLE_SLOT, _SECTION_SLOT)
     assert ctx.debug_children_of(_SECTION_SLOT) == (_BADGE_SLOT,)
 
-    pyr_welcome(ctx, CompValue("Ada", dirty=False))
+    pyr_welcome(ctx, dirtyof(name=False), "Ada")
 
     assert log == [
         ("format_title", "Ada"),
@@ -190,15 +210,17 @@ def test_parent_rerun_deactivates_previously_active_child_when_branch_is_omitted
 
     pyr_welcome_conditional(
         ctx,
-        CompValue("Ada", dirty=True),
-        CompValue(True, dirty=True),
+        dirtyof(name=True, show_badge=True),
+        "Ada",
+        True,
     )
     assert ctx.debug_children_of(_SECTION_SLOT) == (_BADGE_SLOT,)
 
     pyr_welcome_conditional(
         ctx,
-        CompValue("Bea", dirty=True),
-        CompValue(False, dirty=True),
+        dirtyof(name=True, show_badge=True),
+        "Bea",
+        False,
     )
 
     assert ("badge", "Hello Bea", "info") not in log
@@ -235,11 +257,12 @@ def test_child_visitation_must_use_the_owning_container_context() -> None:
     pyr_welcome = _make_welcome_program(log)
     pyr_wrong_child_owner = _make_wrong_child_owner_program(log)
 
-    pyr_welcome(ctx, CompValue("Ada", dirty=True))
+    pyr_welcome(ctx, dirtyof(name=True), "Ada")
 
     with pytest.raises(SlotOwnershipError):
         pyr_wrong_child_owner(
             ctx,
-            CompValue("Ada", dirty=False),
-            CompValue("violet", dirty=True),
+            dirtyof(name=False, accent=True),
+            "Ada",
+            "violet",
         )

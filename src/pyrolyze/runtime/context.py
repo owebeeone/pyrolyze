@@ -7,7 +7,7 @@ import logging
 import os
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
-from typing import Any, Callable, Generic, Iterator, TypeVar, cast
+from typing import Any, Callable, Generic, Iterator, Protocol, TypeVar, cast
 
 from pyrolyze.api import UIElement
 
@@ -146,6 +146,17 @@ class UseEffectRequest:
     effect_fn: Callable[[], Callable[[], None] | None]
     deps: tuple[Any, ...] | None = None
     phase: str = "passive"
+
+
+class AsyncEffectHandle(Protocol):
+    def cancel(self) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class UseEffectAsyncRequest:
+    start: Callable[[Callable[[], None]], AsyncEffectHandle | None]
+    deps: tuple[Any, ...] | None = None
+    cleanup: Callable[[], None] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -341,6 +352,97 @@ class UseEffectBinding(PlainCallBinding):
         return run_effect
 
 
+@dataclass(slots=True)
+class UseEffectAsyncBinding(PlainCallBinding):
+    slot: PlainCallSlotContext
+    request: UseEffectAsyncRequest | None = None
+    deps: object = _EFFECT_DEPS_UNSET
+    staged_request: UseEffectAsyncRequest | None = None
+    handle: AsyncEffectHandle | None = None
+    active_token: object | None = None
+    cleanup: Callable[[], None] | None = None
+
+    @classmethod
+    def bind(
+        cls,
+        slot: PlainCallSlotContext,
+        request: UseEffectAsyncRequest,
+    ) -> UseEffectAsyncBinding:
+        binding = cls(slot=slot)
+        binding.stage(request)
+        return binding
+
+    def exposed_value(self) -> None:
+        return None
+
+    def stage(self, request: UseEffectAsyncRequest) -> None:
+        self.staged_request = request
+
+    def commit(self) -> None:
+        request = self.staged_request
+        if request is None:
+            return
+
+        self.staged_request = None
+        should_run = self._should_run(request)
+        self.request = request
+        self.deps = request.deps
+        if should_run:
+            self.slot.render_context._enqueue_post_commit(
+                self._make_post_commit_callback(request)
+            )
+
+    def rollback(self) -> None:
+        self.staged_request = None
+
+    def deactivate(self) -> None:
+        self.staged_request = None
+        self.request = None
+        self.deps = _EFFECT_DEPS_UNSET
+        self._teardown_active()
+
+    def _should_run(self, request: UseEffectAsyncRequest) -> bool:
+        if self.request is None:
+            return True
+        if request.deps is None:
+            return True
+        return self.deps is _EFFECT_DEPS_UNSET or request.deps != self.deps
+
+    def _make_post_commit_callback(
+        self,
+        request: UseEffectAsyncRequest,
+    ) -> Callable[[], None]:
+        def start_effect() -> None:
+            self._teardown_active()
+            self.cleanup = request.cleanup
+            token = object()
+            self.active_token = token
+
+            def on_complete() -> None:
+                if self.active_token is not token:
+                    return
+                self.handle = None
+                self.slot.render_context._queue_invalidation_from(
+                    self.slot,
+                    include_source=False,
+                )
+
+            self.handle = request.start(on_complete)
+
+        return start_effect
+
+    def _teardown_active(self) -> None:
+        handle = self.handle
+        self.handle = None
+        self.active_token = None
+        if handle is not None:
+            handle.cancel()
+        cleanup = self.cleanup
+        self.cleanup = None
+        if cleanup is not None:
+            cleanup()
+
+
 class PlainCallSemanticsHandler:
     def can_handle(self, result: object) -> bool:
         raise NotImplementedError
@@ -373,7 +475,7 @@ class ExternalStoreHandler(PlainCallSemanticsHandler):
 
 class PlainValueHandler(PlainCallSemanticsHandler):
     def can_handle(self, result: object) -> bool:
-        return not isinstance(result, (ExternalStoreRef, UseEffectRequest))
+        return not isinstance(result, (ExternalStoreRef, UseEffectRequest, UseEffectAsyncRequest))
 
     def bind(
         self,
@@ -404,8 +506,26 @@ class UseEffectHandler(PlainCallSemanticsHandler):
         return UseEffectBinding.bind(slot, request)
 
 
+class UseEffectAsyncHandler(PlainCallSemanticsHandler):
+    def can_handle(self, result: object) -> bool:
+        return isinstance(result, UseEffectAsyncRequest)
+
+    def bind(
+        self,
+        slot: PlainCallSlotContext,
+        result: object,
+        previous: PlainCallBinding | None,
+    ) -> PlainCallBinding:
+        request = cast(UseEffectAsyncRequest, result)
+        if isinstance(previous, UseEffectAsyncBinding):
+            previous.stage(request)
+            return previous
+        return UseEffectAsyncBinding.bind(slot, request)
+
+
 _PLAIN_CALL_HANDLERS: tuple[PlainCallSemanticsHandler, ...] = (
     ExternalStoreHandler(),
+    UseEffectAsyncHandler(),
     UseEffectHandler(),
     PlainValueHandler(),
 )
@@ -465,6 +585,9 @@ class _InvalidationScheduler:
         if not self.queue:
             return None
         return self.queue.pop(0)
+
+    def has_pending_work(self) -> bool:
+        return bool(self.queue or self.deferred)
 
     def remove(self, boundary: RenderContext) -> None:
         self.queue = [queued for queued in self.queue if queued is not boundary]
@@ -573,15 +696,13 @@ class ContextBase:
         raw_container_fn, _ = _unwrap(container_fn)
         native_context_param = _native_context_param_name(cast(Callable[..., Any], raw_container_fn))
         if native_context_param is not None:
-            normalized_args = tuple(_wrap_comp_value(arg) for arg in args)
-            normalized_kwargs = {
-                key: _wrap_comp_value(value) for key, value in kwargs.items()
-            }
+            raw_args = tuple(_unwrap(arg)[0] for arg in args)
+            raw_kwargs = {key: _unwrap(value)[0] for key, value in kwargs.items()}
             return _NativeContainerCallHandle(
                 slot=slot,
                 container_fn=cast(Callable[..., Any], raw_container_fn),
-                args=normalized_args,
-                kwargs=normalized_kwargs,
+                args=raw_args,
+                kwargs=raw_kwargs,
                 context_param=native_context_param,
             )
         raw_args = tuple(_unwrap(arg)[0] for arg in args)
@@ -605,14 +726,12 @@ class ContextBase:
         raw_leaf_fn, _ = _unwrap(leaf_fn)
         native_context_param = _native_context_param_name(cast(Callable[..., Any], raw_leaf_fn))
         if native_context_param is not None:
-            normalized_args = tuple(_wrap_comp_value(arg) for arg in args)
-            normalized_kwargs = {
-                key: _wrap_comp_value(value) for key, value in kwargs.items()
-            }
+            raw_args = tuple(_unwrap(arg)[0] for arg in args)
+            raw_kwargs = {key: _unwrap(value)[0] for key, value in kwargs.items()}
             return slot.invoke_native(
                 cast(Callable[..., Any], raw_leaf_fn),
-                normalized_args,
-                normalized_kwargs,
+                raw_args,
+                raw_kwargs,
                 context_param=native_context_param,
             )
         raw_args = tuple(_unwrap(arg)[0] for arg in args)
@@ -1196,9 +1315,9 @@ class LoopItemSlotContext(RerunnableSlotContext):
     current_dirty: bool = True
     current_initialized: bool = False
 
-    def current_value(self) -> CompValue[Any]:
+    def current_value(self) -> PlainCallResult[Any]:
         self._require_active_scope()
-        return CompValue(value=self.current, dirty=self.current_dirty)
+        return PlainCallResult(dirty=self.current_dirty, value=self.current)
 
     def update_current(self, value: Any) -> None:
         self.current_dirty = (not self.current_initialized) or (value != self.current)
@@ -1219,13 +1338,13 @@ class LeafSlotContext(RerunnableSlotContext):
     def invoke_native(
         self,
         leaf_fn: Callable[..., Any],
-        args: tuple[CompValue[Any], ...],
-        kwargs: dict[str, CompValue[Any]],
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
         *,
         context_param: str,
     ) -> Any:
-        self.last_args = tuple(arg.value for arg in args)
-        self.last_kwargs = tuple(sorted((key, value.value) for key, value in kwargs.items()))
+        self.last_args = args
+        self.last_kwargs = tuple(sorted(kwargs.items()))
         self._begin_scope_pass()
         try:
             _ = context_param
@@ -1274,8 +1393,8 @@ class _ContainerCallHandle(AbstractContextManager[ContainerSlotContext]):
 class _NativeContainerCallHandle(AbstractContextManager[ContainerSlotContext]):
     slot: ContainerSlotContext
     container_fn: Callable[..., Any]
-    args: tuple[CompValue[Any], ...]
-    kwargs: dict[str, CompValue[Any]]
+    args: tuple[Any, ...]
+    kwargs: dict[str, Any]
     context_param: str
 
     def __enter__(self) -> ContainerSlotContext:
@@ -1372,6 +1491,9 @@ class RenderContext(ContextBase):
         self._owner_slot = owner_slot
         self._mounted_callback: Callable[[], None] | None = None
         self._post_commit_callbacks: list[Callable[[], None]] = []
+        self._flush_poster: Callable[[Callable[[], None]], None] | None = None
+        self._flush_posted = False
+        self._flush_running = False
         if scheduler_root is None:
             self._scheduler_root = self
             self._scheduler = _InvalidationScheduler()
@@ -1387,14 +1509,26 @@ class RenderContext(ContextBase):
         self._mounted_callback = callback
         self._run_boundary()
 
+    def set_flush_poster(self, post: Callable[[Callable[[], None]], None]) -> None:
+        self._scheduler_root._flush_poster = post
+
     def run_pending_invalidations(self) -> None:
         scheduler_root = self._scheduler_root
         scheduler = scheduler_root._scheduler
-        while True:
-            boundary = scheduler.pop_next()
-            if boundary is None:
-                break
-            boundary._run_boundary()
+        if scheduler_root._flush_running:
+            return
+        scheduler_root._flush_posted = False
+        scheduler_root._flush_running = True
+        try:
+            while True:
+                boundary = scheduler.pop_next()
+                if boundary is None:
+                    break
+                boundary._run_boundary()
+        finally:
+            scheduler_root._flush_running = False
+        if scheduler_root._scheduler.has_pending_work():
+            scheduler_root._post_flush_if_needed(was_pending=False)
 
     def begin_pass(self) -> None:
         self._begin_scope_pass()
@@ -1434,6 +1568,9 @@ class RenderContext(ContextBase):
             owner = slot
         return owner._committed_ui
 
+    def committed_ui(self) -> tuple[UIElement, ...]:
+        return self._committed_ui
+
     def _run_boundary(self) -> None:
         callback = self._mounted_callback
         if callback is None:
@@ -1450,6 +1587,8 @@ class RenderContext(ContextBase):
 
     def _queue_invalidation_from(self, slot: SlotContext, *, include_source: bool = True) -> None:
         boundary = slot.render_context
+        scheduler_root = boundary._scheduler_root
+        was_pending = scheduler_root._scheduler.has_pending_work()
         current: ContextBase | None = slot if include_source else slot.parent
         while True:
             if isinstance(current, SlotContext):
@@ -1468,6 +1607,7 @@ class RenderContext(ContextBase):
             break
 
         boundary._scheduler.request(boundary)
+        scheduler_root._post_flush_if_needed(was_pending=was_pending)
 
     def _debug_boundary_id(self) -> SlotId | None:
         owner_slot = self._owner_slot
@@ -1513,6 +1653,17 @@ class RenderContext(ContextBase):
         for callback in callbacks:
             callback()
 
+    def _post_flush_if_needed(self, *, was_pending: bool) -> None:
+        scheduler_root = self._scheduler_root
+        if scheduler_root._flush_poster is None:
+            return
+        if was_pending or not scheduler_root._scheduler.has_pending_work():
+            return
+        if scheduler_root._flush_posted or scheduler_root._flush_running:
+            return
+        scheduler_root._flush_posted = True
+        scheduler_root._flush_poster(scheduler_root.run_pending_invalidations)
+
 
 __all__ = [
     "CompValue",
@@ -1539,6 +1690,8 @@ __all__ = [
     "SlotId",
     "SlotOwnershipError",
     "UseEffectBinding",
+    "UseEffectAsyncBinding",
+    "UseEffectAsyncRequest",
     "UseEffectRequest",
     "dirtyof",
     "module_registry",

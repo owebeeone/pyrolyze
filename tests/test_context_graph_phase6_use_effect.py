@@ -4,7 +4,7 @@ from typing import Callable
 
 import pytest
 
-from pyrolyze.runtime.context import CompValue, ModuleRegistry, RenderContext, SlotId, UseEffectRequest
+from pyrolyze.runtime.context import DirtyStateContext, ModuleRegistry, RenderContext, SlotId, UseEffectRequest, dirtyof
 
 
 module_registry = ModuleRegistry()
@@ -24,24 +24,25 @@ def test_effect_runs_after_successful_commit_and_skips_stable_deps() -> None:
     ctx = RenderContext()
     log: list[tuple[str, str]] = []
 
-    def render(label: CompValue[str]) -> None:
+    def render(label: str, __pyr_dirty_state: DirtyStateContext) -> None:
+        _ = __pyr_dirty_state
         with ctx.pass_scope():
-            log.append(("render", label.value))
+            log.append(("render", label))
 
             def effect() -> Callable[[], None]:
-                log.append(("setup", label.value))
+                log.append(("setup", label))
 
                 def cleanup() -> None:
-                    log.append(("cleanup", label.value))
+                    log.append(("cleanup", label))
 
                 return cleanup
 
-            ctx.call_plain(_EFFECT_SLOT, _register_effect, effect, (label.value,))
-            log.append(("render-end", label.value))
+            ctx.call_plain(_EFFECT_SLOT, _register_effect, effect, (label,))
+            log.append(("render-end", label))
 
-    render(CompValue("alpha", dirty=True))
-    render(CompValue("alpha", dirty=False))
-    render(CompValue("beta", dirty=True))
+    render("alpha", dirtyof(label=True))
+    render("alpha", dirtyof(label=False))
+    render("beta", dirtyof(label=True))
 
     assert log == [
         ("render", "alpha"),
@@ -60,20 +61,21 @@ def test_effect_without_deps_runs_after_every_successful_commit() -> None:
     ctx = RenderContext()
     log: list[tuple[str, str]] = []
 
-    def render(label: CompValue[str]) -> None:
+    def render(label: str, __pyr_dirty_state: DirtyStateContext) -> None:
+        _ = __pyr_dirty_state
         with ctx.pass_scope():
             def effect() -> Callable[[], None]:
-                log.append(("setup", label.value))
+                log.append(("setup", label))
 
                 def cleanup() -> None:
-                    log.append(("cleanup", label.value))
+                    log.append(("cleanup", label))
 
                 return cleanup
 
             ctx.call_plain(_EFFECT_SLOT, _register_effect, effect, None)
 
-    render(CompValue("alpha", dirty=True))
-    render(CompValue("beta", dirty=True))
+    render("alpha", dirtyof(label=True))
+    render("beta", dirtyof(label=True))
 
     assert log == [
         ("setup", "alpha"),
@@ -86,21 +88,22 @@ def test_effect_cleanup_runs_when_the_effect_slot_is_deactivated() -> None:
     ctx = RenderContext()
     log: list[tuple[str, str]] = []
 
-    def render(show: CompValue[bool], label: CompValue[str]) -> None:
+    def render(show: bool, label: str, __pyr_dirty_state: DirtyStateContext) -> None:
+        _ = __pyr_dirty_state
         with ctx.pass_scope():
-            if show.value:
+            if show:
                 def effect() -> Callable[[], None]:
-                    log.append(("setup", label.value))
+                    log.append(("setup", label))
 
                     def cleanup() -> None:
-                        log.append(("cleanup", label.value))
+                        log.append(("cleanup", label))
 
                     return cleanup
 
                 ctx.call_plain(_EFFECT_SLOT, _register_effect, effect, ())
 
-    render(CompValue(True, dirty=True), CompValue("alpha", dirty=True))
-    render(CompValue(False, dirty=True), CompValue("alpha", dirty=False))
+    render(True, "alpha", dirtyof(show=True, label=True))
+    render(False, "alpha", dirtyof(show=True, label=False))
 
     assert log == [
         ("setup", "alpha"),
@@ -112,27 +115,28 @@ def test_failed_pass_preserves_previously_committed_effect() -> None:
     ctx = RenderContext()
     log: list[tuple[str, str]] = []
 
-    def render(label: CompValue[str], fail: CompValue[bool]) -> None:
+    def render(label: str, fail: bool, __pyr_dirty_state: DirtyStateContext) -> None:
+        _ = __pyr_dirty_state
         with ctx.pass_scope():
             def effect() -> Callable[[], None]:
-                log.append(("setup", label.value))
+                log.append(("setup", label))
 
                 def cleanup() -> None:
-                    log.append(("cleanup", label.value))
+                    log.append(("cleanup", label))
 
                 return cleanup
 
-            ctx.call_plain(_EFFECT_SLOT, _register_effect, effect, (label.value,))
+            ctx.call_plain(_EFFECT_SLOT, _register_effect, effect, (label,))
 
-            if fail.value:
+            if fail:
                 raise RuntimeError("boom")
 
-    render(CompValue("alpha", dirty=True), CompValue(False, dirty=True))
+    render("alpha", False, dirtyof(label=True, fail=True))
 
     with pytest.raises(RuntimeError, match="boom"):
-        render(CompValue("beta", dirty=True), CompValue(True, dirty=True))
+        render("beta", True, dirtyof(label=True, fail=True))
 
-    render(CompValue("gamma", dirty=True), CompValue(False, dirty=True))
+    render("gamma", False, dirtyof(label=True, fail=False))
 
     assert log == [
         ("setup", "alpha"),

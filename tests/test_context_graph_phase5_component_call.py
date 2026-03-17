@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import Callable
 
 import pytest
 
@@ -11,7 +10,7 @@ from pyrolyze.api import (
     ComponentRef,
     pyrolyze_component_ref,
 )
-from pyrolyze.runtime.context import CompValue, ModuleRegistry, RenderContext, SlotId
+from pyrolyze.runtime.context import DirtyStateContext, ModuleRegistry, RenderContext, SlotId, dirtyof
 
 
 module_registry = ModuleRegistry()
@@ -39,15 +38,19 @@ def _make_component_program(log: list[tuple[object, ...]]):
     def _badge(text: str, *, tone: str) -> None:
         log.append(("badge", text, tone))
 
-    def __pyr_neutral_badge(ctx: RenderContext, text: CompValue[str]) -> None:
-        log.append(("render", "neutral", text.value, text.dirty))
+    def __pyr_neutral_badge(
+        ctx: RenderContext,
+        __pyr_dirty_state: DirtyStateContext,
+        text: str,
+    ) -> None:
+        log.append(("render", "neutral", text, __pyr_dirty_state.text))
         with ctx.pass_scope():
-            if text.dirty or ctx.visit_slot_and_dirty(_NEUTRAL_BADGE_LEAF_SLOT):
+            if __pyr_dirty_state.text or ctx.visit_slot_and_dirty(_NEUTRAL_BADGE_LEAF_SLOT):
                 ctx.leaf_call(
                     _NEUTRAL_BADGE_LEAF_SLOT,
-                    ctx.literal(_badge),
+                    _badge,
                     text,
-                    tone=ctx.literal("neutral"),
+                    tone="neutral",
                 )
 
     @pyrolyze_component_ref(
@@ -56,15 +59,19 @@ def _make_component_program(log: list[tuple[object, ...]]):
     def neutral_badge(text: str) -> None:
         raise CallFromNonPyrolyzeContext("neutral_badge")
 
-    def __pyr_info_badge(ctx: RenderContext, text: CompValue[str]) -> None:
-        log.append(("render", "info", text.value, text.dirty))
+    def __pyr_info_badge(
+        ctx: RenderContext,
+        __pyr_dirty_state: DirtyStateContext,
+        text: str,
+    ) -> None:
+        log.append(("render", "info", text, __pyr_dirty_state.text))
         with ctx.pass_scope():
-            if text.dirty or ctx.visit_slot_and_dirty(_INFO_BADGE_LEAF_SLOT):
+            if __pyr_dirty_state.text or ctx.visit_slot_and_dirty(_INFO_BADGE_LEAF_SLOT):
                 ctx.leaf_call(
                     _INFO_BADGE_LEAF_SLOT,
-                    ctx.literal(_badge),
+                    _badge,
                     text,
-                    tone=ctx.literal("info"),
+                    tone="info",
                 )
 
     @pyrolyze_component_ref(
@@ -76,53 +83,72 @@ def _make_component_program(log: list[tuple[object, ...]]):
     def pick_badge(kind: str) -> ComponentRef[[str]]:
         return info_badge if kind == "info" else neutral_badge
 
-    def __pyr_badge_panel(ctx: RenderContext, kind: CompValue[str], text: CompValue[str]) -> None:
+    def __pyr_badge_panel(
+        ctx: RenderContext,
+        __pyr_dirty_state: DirtyStateContext,
+        kind: str,
+        text: str,
+    ) -> None:
         with ctx.pass_scope():
-            chosen = ctx.call_plain(
+            __pyr_chosen_dirty, chosen = ctx.call_plain(
                 _PICK_BADGE_SLOT,
                 pick_badge,
                 kind,
             )
 
-            if chosen.dirty or text.dirty or ctx.visit_slot_and_dirty(_SECTION_SLOT):
+            if __pyr_chosen_dirty or __pyr_dirty_state.text or ctx.visit_slot_and_dirty(_SECTION_SLOT):
                 with ctx.container_call(
                     _SECTION_SLOT,
                     _section,
-                    ctx.literal("Badges"),
-                    accent=ctx.literal("slate"),
+                    "Badges",
+                    accent="slate",
                 ) as section_ctx:
-                    if chosen.dirty or text.dirty or section_ctx.visit_slot_and_dirty(_CHOSEN_COMPONENT_SLOT):
+                    if (
+                        __pyr_chosen_dirty
+                        or __pyr_dirty_state.text
+                        or section_ctx.visit_slot_and_dirty(_CHOSEN_COMPONENT_SLOT)
+                    ):
                         section_ctx.component_call(
                             _CHOSEN_COMPONENT_SLOT,
                             chosen,
                             text,
+                            dirty_state=dirtyof(text=__pyr_dirty_state.text),
                         )
 
-                    fallback = section_ctx.call_plain(
+                    __pyr_fallback_dirty, fallback = section_ctx.call_plain(
                         _FALLBACK_PICK_SLOT,
                         pick_badge,
-                        ctx.literal("neutral"),
+                        "neutral",
                     )
 
-                    if fallback.dirty or section_ctx.visit_slot_and_dirty(_FALLBACK_COMPONENT_SLOT):
+                    if __pyr_fallback_dirty or section_ctx.visit_slot_and_dirty(_FALLBACK_COMPONENT_SLOT):
                         section_ctx.component_call(
                             _FALLBACK_COMPONENT_SLOT,
                             fallback,
-                            ctx.literal("fallback"),
+                            "fallback",
+                            dirty_state=dirtyof(text=True),
                         )
 
     def __pyr_direct_component(
         ctx: RenderContext,
-        component: CompValue[ComponentRef[[str]]],
-        text: CompValue[str],
-        refresh: CompValue[int],
+        __pyr_dirty_state: DirtyStateContext,
+        component: ComponentRef[[str]],
+        text: str,
+        refresh: int,
     ) -> None:
+        _ = refresh
         with ctx.pass_scope():
-            if refresh.dirty or component.dirty or text.dirty or ctx.visit_slot_and_dirty(_DIRECT_COMPONENT_SLOT):
+            if (
+                __pyr_dirty_state.refresh
+                or __pyr_dirty_state.component
+                or __pyr_dirty_state.text
+                or ctx.visit_slot_and_dirty(_DIRECT_COMPONENT_SLOT)
+            ):
                 ctx.component_call(
                     _DIRECT_COMPONENT_SLOT,
                     component,
                     text,
+                    dirty_state=dirtyof(text=__pyr_dirty_state.text),
                 )
 
     return {
@@ -140,8 +166,9 @@ def test_component_call_mounts_child_component_from_helper_returned_component_re
 
     program["badge_panel"](
         ctx,
-        CompValue("info", dirty=True),
-        CompValue("Hello", dirty=True),
+        dirtyof(kind=True, text=True),
+        "info",
+        "Hello",
     )
 
     assert log == [
@@ -155,8 +182,9 @@ def test_component_call_mounts_child_component_from_helper_returned_component_re
 
     program["badge_panel"](
         ctx,
-        CompValue("info", dirty=False),
-        CompValue("Hello", dirty=False),
+        dirtyof(kind=False, text=False),
+        "info",
+        "Hello",
     )
 
     assert log == [
@@ -176,17 +204,19 @@ def test_component_call_rerenders_existing_child_context_when_identity_is_stable
 
     program["direct_component"](
         ctx,
-        CompValue(program["neutral_badge"], dirty=True),
-        CompValue("Hello", dirty=True),
-        CompValue(1, dirty=True),
+        dirtyof(component=True, text=True, refresh=True),
+        program["neutral_badge"],
+        "Hello",
+        1,
     )
     log.clear()
 
     program["direct_component"](
         ctx,
-        CompValue(program["neutral_badge"], dirty=False),
-        CompValue("Hello", dirty=False),
-        CompValue(1, dirty=True),
+        dirtyof(component=False, text=False, refresh=True),
+        program["neutral_badge"],
+        "Hello",
+        1,
     )
 
     assert log == [
@@ -201,17 +231,19 @@ def test_component_call_replaces_child_context_when_component_identity_changes()
 
     program["direct_component"](
         ctx,
-        CompValue(program["neutral_badge"], dirty=True),
-        CompValue("Hello", dirty=True),
-        CompValue(1, dirty=True),
+        dirtyof(component=True, text=True, refresh=True),
+        program["neutral_badge"],
+        "Hello",
+        1,
     )
     log.clear()
 
     program["direct_component"](
         ctx,
-        CompValue(program["info_badge"], dirty=True),
-        CompValue("Hello", dirty=False),
-        CompValue(2, dirty=True),
+        dirtyof(component=True, text=False, refresh=True),
+        program["info_badge"],
+        "Hello",
+        2,
     )
 
     assert log == [
@@ -222,9 +254,10 @@ def test_component_call_replaces_child_context_when_component_identity_changes()
     log.clear()
     program["direct_component"](
         ctx,
-        CompValue(program["neutral_badge"], dirty=True),
-        CompValue("Hello", dirty=False),
-        CompValue(3, dirty=True),
+        dirtyof(component=True, text=False, refresh=True),
+        program["neutral_badge"],
+        "Hello",
+        3,
     )
 
     assert log == [
@@ -244,7 +277,8 @@ def test_component_call_rejects_undecorated_callable() -> None:
     with pytest.raises(TypeError, match="ComponentRef"):
         program["direct_component"](
             ctx,
-            CompValue(not_a_component, dirty=True),
-            CompValue("Hello", dirty=True),
-            CompValue(1, dirty=True),
+            dirtyof(component=True, text=True, refresh=True),
+            not_a_component,
+            "Hello",
+            1,
         )

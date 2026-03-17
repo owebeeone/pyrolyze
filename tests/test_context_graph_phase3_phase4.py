@@ -7,12 +7,12 @@ from typing import Callable, Generic, TypeVar
 import pytest
 
 from pyrolyze.runtime.context import (
-    CompValue,
     DuplicateKeyError,
     ExternalStoreRef,
     ModuleRegistry,
     RenderContext,
     SlotId,
+    dirtyof,
 )
 
 
@@ -86,28 +86,29 @@ def _make_container_reorder_program(log: list[tuple[object, ...]]):
 
     def _pyr_container_reorder(
         ctx: RenderContext,
-        reverse: CompValue[bool],
+        __pyr_dirty_state,
+        reverse: bool,
     ) -> None:
         with ctx.pass_scope():
-            if reverse.dirty or ctx.visit_slot_and_dirty(_SECTION_SLOT):
+            if __pyr_dirty_state.reverse or ctx.visit_slot_and_dirty(_SECTION_SLOT):
                 with ctx.container_call(
                     _SECTION_SLOT,
                     _section,
-                    ctx.literal("Stats"),
-                    accent=ctx.literal("green"),
+                    "Stats",
+                    accent="green",
                 ) as section_ctx:
                     ordered = (
                         ((_SECOND_BADGE_SLOT, "second"), (_FIRST_BADGE_SLOT, "first"))
-                        if reverse.value
+                        if reverse
                         else ((_FIRST_BADGE_SLOT, "first"), (_SECOND_BADGE_SLOT, "second"))
                     )
                     for slot_id, label in ordered:
-                        if reverse.dirty or section_ctx.visit_slot_and_dirty(slot_id):
+                        if __pyr_dirty_state.reverse or section_ctx.visit_slot_and_dirty(slot_id):
                             section_ctx.leaf_call(
                                 slot_id,
                                 _badge,
-                                ctx.literal(label),
-                                tone=ctx.literal("info"),
+                                label,
+                                tone="info",
                             )
 
     return _pyr_container_reorder
@@ -141,33 +142,34 @@ def _make_nested_keyed_program(
 
     def _pyr_nested_values(
         ctx: RenderContext,
-        xs: CompValue[list[str]],
-        ys: CompValue[list[str]],
+        __pyr_dirty_state,
+        xs: list[str],
+        ys: list[str],
     ) -> None:
         with ctx.pass_scope():
-            if xs.dirty or ys.dirty or ctx.visit_slot_and_dirty(_LOOP_SECTION_SLOT):
+            if __pyr_dirty_state.xs or __pyr_dirty_state.ys or ctx.visit_slot_and_dirty(_LOOP_SECTION_SLOT):
                 with ctx.container_call(
                     _LOOP_SECTION_SLOT,
                     _section,
-                    ctx.literal("Nested"),
-                    accent=ctx.literal("violet"),
+                    "Nested",
+                    accent="violet",
                 ) as section_ctx:
-                    if xs.dirty or ys.dirty or section_ctx.visit_slot_and_dirty(_FOO_LOOP_SLOT):
+                    if __pyr_dirty_state.xs or __pyr_dirty_state.ys or section_ctx.visit_slot_and_dirty(_FOO_LOOP_SLOT):
                         for foo_item in section_ctx.keyed_loop(_FOO_LOOP_SLOT, xs, key_fn=identity_key):
-                            foo = foo_item.current_value()
+                            __pyr_foo_dirty, foo = foo_item.current_value()
 
-                            if foo.dirty or ys.dirty or foo_item.visit_slot_and_dirty(_BAR_LOOP_SLOT):
+                            if __pyr_foo_dirty or __pyr_dirty_state.ys or foo_item.visit_slot_and_dirty(_BAR_LOOP_SLOT):
                                 for bar_item in foo_item.keyed_loop(_BAR_LOOP_SLOT, ys, key_fn=identity_key):
-                                    bar = bar_item.current_value()
-                                    grip = bar_item.call_plain(_GRIP_SLOT, make_grip, foo, bar)
-                                    value = bar_item.call_plain(_VALUE_SLOT, use_grip, grip)
+                                    __pyr_bar_dirty, bar = bar_item.current_value()
+                                    __pyr_grip_dirty, grip = bar_item.call_plain(_GRIP_SLOT, make_grip, foo, bar)
+                                    __pyr_value_dirty, value = bar_item.call_plain(_VALUE_SLOT, use_grip, grip)
 
-                                    if value.dirty or bar_item.visit_slot_and_dirty(_BADGE_SLOT):
+                                    if __pyr_value_dirty or bar_item.visit_slot_and_dirty(_BADGE_SLOT):
                                         bar_item.leaf_call(
                                             _BADGE_SLOT,
-                                            bar_item.literal(_badge),
+                                            _badge,
                                             value,
-                                            tone=ctx.literal("neutral"),
+                                            tone="neutral",
                                         )
 
     return _pyr_nested_values
@@ -178,10 +180,10 @@ def test_container_children_follow_encounter_order_after_reorder() -> None:
     log: list[tuple[object, ...]] = []
     pyr_container_reorder = _make_container_reorder_program(log)
 
-    pyr_container_reorder(ctx, CompValue(False, dirty=True))
+    pyr_container_reorder(ctx, dirtyof(reverse=True), False)
     assert ctx.debug_children_of(_SECTION_SLOT) == (_FIRST_BADGE_SLOT, _SECOND_BADGE_SLOT)
 
-    pyr_container_reorder(ctx, CompValue(True, dirty=True))
+    pyr_container_reorder(ctx, dirtyof(reverse=True), True)
 
     assert ctx.debug_children_of(_SECTION_SLOT) == (_SECOND_BADGE_SLOT, _FIRST_BADGE_SLOT)
     assert log == [
@@ -209,8 +211,9 @@ def test_nested_keyed_loops_reuse_contexts_on_reorder_and_preserve_subscriptions
 
     pyr_nested_values(
         ctx,
-        CompValue(["a", "b"], dirty=True),
-        CompValue(["x", "y"], dirty=True),
+        dirtyof(xs=True, ys=True),
+        ["a", "b"],
+        ["x", "y"],
     )
 
     assert ctx.debug_children_of(_LOOP_SECTION_SLOT) == (_FOO_LOOP_SLOT,)
@@ -233,8 +236,9 @@ def test_nested_keyed_loops_reuse_contexts_on_reorder_and_preserve_subscriptions
     log.clear()
     pyr_nested_values(
         ctx,
-        CompValue(["b", "a"], dirty=True),
-        CompValue(["y", "x"], dirty=True),
+        dirtyof(xs=True, ys=True),
+        ["b", "a"],
+        ["y", "x"],
     )
 
     assert [entry for entry in log if entry[:1] == ("use_grip",)] == []
@@ -260,15 +264,17 @@ def test_keyed_loop_deactivates_removed_item_subtrees_and_unsubscribes() -> None
 
     pyr_nested_values(
         ctx,
-        CompValue(["a", "b"], dirty=True),
-        CompValue(["x", "y"], dirty=True),
+        dirtyof(xs=True, ys=True),
+        ["a", "b"],
+        ["x", "y"],
     )
     log.clear()
 
     pyr_nested_values(
         ctx,
-        CompValue(["a"], dirty=True),
-        CompValue(["x"], dirty=True),
+        dirtyof(xs=True, ys=True),
+        ["a"],
+        ["x"],
     )
 
     assert stores[("a", "x")].active_listener_count == 1
@@ -296,6 +302,7 @@ def test_duplicate_keys_raise_runtime_error() -> None:
     with pytest.raises(DuplicateKeyError):
         pyr_nested_values(
             ctx,
-            CompValue(["a", "a"], dirty=True),
-            CompValue(["x"], dirty=True),
+            dirtyof(xs=True, ys=True),
+            ["a", "a"],
+            ["x"],
         )
