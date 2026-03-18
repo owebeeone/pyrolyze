@@ -121,10 +121,18 @@ def compile_source(
             return fallback
         raise
 
-    transformed_source = emit_transformed_source(source, module_name=module_name, filename=filename)
-    debug_artifacts = build_debug_artifacts(plan, transformed_source)
-    artifact = _compile_artifact_from_plan(plan, debug_artifacts=debug_artifacts)
-    _maybe_dump_debug_artifacts(debug_artifacts, compile_artifact=artifact)
+    artifact = _compile_artifact_from_plan(plan)
+    try:
+        transformed_source = emit_transformed_source(source, module_name=module_name, filename=filename)
+    except PyRolyzeCompileError as exc:
+        if not _is_deferred_phase_error(exc.code):
+            raise
+    else:
+        debug_artifacts = build_debug_artifacts(plan, transformed_source)
+        artifact.source_map = debug_artifacts.source_map
+        artifact.transformed_source = debug_artifacts.transformed_source
+        artifact.generated_relpath = debug_artifacts.generated_relpath
+        _maybe_dump_debug_artifacts(debug_artifacts, compile_artifact=artifact)
     return artifact
 
 
@@ -148,8 +156,6 @@ def compile_source_with_env(
 
 def _compile_artifact_from_plan(
     plan: ModuleTransformPlan,
-    *,
-    debug_artifacts: Any,
 ) -> CompileArtifact:
     component_records = {
         component.public_name: {
@@ -186,12 +192,21 @@ def _compile_artifact_from_plan(
         init_ir={"kind": "InitGraph", "components": init_components},
         update_ir={"kind": "UpdateGraph", "blocks": blocks},
         components=component_records,
-        source_map=debug_artifacts.source_map,
+        source_map={
+            "module_name": plan.module_name,
+            "version": 1,
+            "mappings": [
+                {
+                    "component": component.public_name,
+                    "source_line": component.source_line,
+                    "generated_symbol": component.generated_private_name,
+                }
+                for component in plan.component_plans
+            ],
+        },
         component_factory=ComponentFactory(module_name=plan.module_name),
         warnings=[],
         non_reactive=False,
-        transformed_source=debug_artifacts.transformed_source,
-        generated_relpath=debug_artifacts.generated_relpath,
     )
 
 
@@ -292,3 +307,7 @@ def _artifact_to_json_safe(artifact: CompileArtifact) -> dict[str, Any]:
 
 def source_placeholder(*, module_name: str) -> str:
     return f"# raw fallback for {module_name}\n"
+
+
+def _is_deferred_phase_error(code: str) -> bool:
+    return code.startswith("PYR-E-PHASE3-") or code == "PYR-E-ASYNC-UNSUPPORTED"
