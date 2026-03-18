@@ -310,4 +310,4 @@ def source_placeholder(*, module_name: str) -> str:
 
 
 def _is_deferred_phase_error(code: str) -> bool:
-    return code.startswith("PYR-E-PHASE3-") or code == "PYR-E-ASYNC-UNSUPPORTED"
+    return code.startswith("PYR-E-PHASE") or code == "PYR-E-ASYNC-UNSUPPORTED"

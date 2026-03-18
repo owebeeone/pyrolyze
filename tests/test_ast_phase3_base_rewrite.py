@@ -208,7 +208,7 @@ class Panel:
     ]
 
 
-def test_phase3_rejects_structural_control_flow_until_phase4() -> None:
+def test_phase4_still_rejects_unsupported_control_flow() -> None:
     source = """
 from pyrolyze.api import pyrolyse
 
@@ -217,11 +217,11 @@ def record(value):
 
 @pyrolyse
 def conditional_panel(flag, label):
-    if flag:
+    while flag:
         record(label)
 """
 
-    with pytest.raises(PyRolyzeCompileError, match="Phase 03 only supports straight-line"):
+    with pytest.raises(PyRolyzeCompileError, match="Phase 04 does not yet lower this control-flow form"):
         emit_transformed_source(
             source,
             module_name="example.conditional_panel",

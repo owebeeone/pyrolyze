@@ -139,19 +139,21 @@ def detect_module(
     module_name: str,
     filename: str | None = None,
 ) -> DetectionResult:
-    unsupported = _find_unsupported_syntax(module_ast)
-    if unsupported is not None:
-        raise error_from_node(
-            unsupported.node,
-            code="PYR-E-UNSUPPORTED-SYNTAX",
-            message=unsupported.reason,
-            module_name=filename or module_name,
-            suggested_fix="rewrite_unsupported_syntax",
-        )
+    reactive_components = _extract_reactive_components(module_ast)
+    for component_name, component_node in reactive_components:
+        unsupported = _find_unsupported_syntax(component_node)
+        if unsupported is not None:
+            raise error_from_node(
+                unsupported.node,
+                code="PYR-E-UNSUPPORTED-SYNTAX",
+                message=unsupported.reason,
+                module_name=filename or component_name,
+                suggested_fix="rewrite_unsupported_syntax",
+            )
 
     components = tuple(
         _analyze_component(module_name, component)
-        for component in _extract_reactive_components(module_ast)
+        for component in reactive_components
     )
     slotted_helpers = tuple(detect_slotted_helpers(module_ast))
     event_boundaries = tuple(
