@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.abc
 import importlib.machinery
 import importlib.util
+import inspect
 import os
 import sys
 from typing import Any, Callable
@@ -54,7 +55,12 @@ class _PyRolyzeLoader(importlib.abc.Loader):
             cache_key = compute_source_fingerprint(source, mtime=mtime, python_magic=python_magic)
             artifact = self._cache.get(module_name=self._fullname, cache_key=cache_key)
             if artifact is None:
-                artifact = self._compiler_fn(source, module_name=self._fullname)
+                artifact = _invoke_compiler(
+                    self._compiler_fn,
+                    source,
+                    module_name=self._fullname,
+                    filename=str(file_path),
+                )
                 self._cache.put(module_name=self._fullname, cache_key=cache_key, payload=artifact)
 
             setattr(module, "__pyrolyze_artifact__", artifact)
@@ -190,8 +196,20 @@ def _get_code_from_loader(loader: importlib.abc.Loader, fullname: str) -> Any:
     raise ImportError(f"Unable to load module code for '{fullname}' via delegated loader.")
 
 
-__all__ = ["PyRolyzeFinder", "install_import_hook", "uninstall_import_hook"]
+def _invoke_compiler(
+    compiler_fn: Callable[..., Any],
+    source: str,
+    *,
+    module_name: str,
+    filename: str,
+) -> Any:
+    signature = inspect.signature(compiler_fn)
+    if "filename" in signature.parameters:
+        return compiler_fn(source, module_name=module_name, filename=filename)
+    return compiler_fn(source, module_name=module_name)
 
+
+__all__ = ["PyRolyzeFinder", "install_import_hook", "uninstall_import_hook"]
 
 
 
