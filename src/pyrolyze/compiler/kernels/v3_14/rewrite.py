@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 import copy
 
-from .artifacts import ComponentTransformPlan, ModuleTransformPlan
+from ...artifacts import ComponentTransformPlan, ModuleTransformPlan
 
 
 def lower_module_plan(plan: ModuleTransformPlan) -> ast.Module:

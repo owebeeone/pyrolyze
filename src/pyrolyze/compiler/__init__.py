@@ -21,6 +21,7 @@ from .facade import (
     load_transformed_namespace,
     lower_plan_to_ast,
 )
+from . import kernel_loader
 
 __all__ = [
     "CompileArtifact",
@@ -37,6 +38,7 @@ __all__ = [
     "compile_source",
     "compile_source_with_env",
     "emit_transformed_source",
+    "kernel_loader",
     "load_transformed_namespace",
     "lower_plan_to_ast",
     "write_debug_artifacts",

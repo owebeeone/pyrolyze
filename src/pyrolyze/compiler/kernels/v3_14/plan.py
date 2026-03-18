@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 import re
 
-from .artifacts import ComponentDetection, ComponentTransformPlan, DetectionResult, ModuleTransformPlan, ProvenanceRecord
+from ...artifacts import ComponentDetection, ComponentTransformPlan, DetectionResult, ModuleTransformPlan, ProvenanceRecord
 
 
 def build_transform_plan(

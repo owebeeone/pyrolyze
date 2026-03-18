@@ -4,7 +4,7 @@ import ast
 from types import CodeType
 from typing import Any
 
-from .artifacts import ModuleTransformPlan
+from ...artifacts import ModuleTransformPlan
 from .rewrite import lower_module_plan
 
 

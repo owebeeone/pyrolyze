@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import ast
 
-from .artifacts import ModuleTransformPlan
-from .diagnostics import PyRolyzeCompileError
+from ...artifacts import ModuleTransformPlan
+from ...diagnostics import PyRolyzeCompileError
 
 
 def validate_plan(plan: ModuleTransformPlan) -> None:

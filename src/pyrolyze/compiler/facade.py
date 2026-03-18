@@ -13,13 +13,8 @@ from .artifacts import (
     ModuleTransformPlan,
 )
 from .debug import build_debug_artifacts, dump_dir, write_debug_artifacts
-from .detect import detect_module
 from .diagnostics import PyRolyzeCompileError
-from .eligibility import parse_module
-from .emit import emit_source, exec_module_ast
-from .plan import build_transform_plan
-from .rewrite import lower_module_plan
-from .validate import validate_module_ast, validate_plan, validate_provenance
+from .kernel_loader import load_ast_kernel
 
 
 def analyze_source(
@@ -28,10 +23,11 @@ def analyze_source(
     module_name: str,
     filename: str | None = None,
 ) -> ModuleTransformPlan:
-    module_ast = parse_module(source, module_name=module_name, filename=filename)
-    detection = detect_module(module_ast, module_name=module_name, filename=filename)
-    plan = build_transform_plan(detection, module_name=module_name)
-    validate_plan(plan)
+    kernel = load_ast_kernel()
+    module_ast = kernel.parse_module(source, module_name=module_name, filename=filename)
+    detection = kernel.detect_module(module_ast, module_name=module_name, filename=filename)
+    plan = kernel.build_transform_plan(detection, module_name=module_name)
+    kernel.validate_plan(plan)
     return plan
 
 
@@ -41,9 +37,10 @@ def lower_plan_to_ast(
     filename: str | None = None,
 ) -> Any:
     del filename
-    module_ast = lower_module_plan(plan)
-    validate_module_ast(module_ast, module_name=plan.module_name)
-    validate_provenance(plan, module_ast)
+    kernel = load_ast_kernel()
+    module_ast = kernel.lower_module_plan(plan)
+    kernel.validate_module_ast(module_ast, module_name=plan.module_name)
+    kernel.validate_provenance(plan, module_ast)
     return module_ast
 
 
@@ -55,7 +52,7 @@ def emit_transformed_source(
 ) -> str:
     plan = analyze_source(source, module_name=module_name, filename=filename)
     module_ast = lower_plan_to_ast(plan, filename=filename)
-    return emit_source(module_ast)
+    return load_ast_kernel().emit_source(module_ast)
 
 
 def build_debug_artifacts_for_source(
@@ -82,7 +79,11 @@ def load_transformed_namespace(
     namespace.setdefault("__name__", module_name)
     namespace.setdefault("__file__", filename or plan.filename)
     namespace.setdefault("__package__", module_name.rpartition(".")[0])
-    exec_module_ast(module_ast, filename=filename or plan.filename, namespace=namespace)
+    load_ast_kernel().exec_module_ast(
+        module_ast,
+        filename=filename or plan.filename,
+        namespace=namespace,
+    )
     return namespace
 
 
@@ -233,9 +234,10 @@ def _build_fallback_debug_artifacts(
 ) -> DebugArtifacts:
     from .debug import _generated_relpath  # local import to keep surface small
 
-    module_ast = parse_module(source, module_name=module_name, filename=filename)
+    kernel = load_ast_kernel()
+    module_ast = kernel.parse_module(source, module_name=module_name, filename=filename)
     source_filename = filename or module_name
-    transformed_source = emit_source(module_ast)
+    transformed_source = kernel.emit_source(module_ast)
     generated_relpath = _generated_relpath(module_name, source_filename).as_posix()
     fallback.transformed_source = transformed_source
     fallback.generated_relpath = generated_relpath

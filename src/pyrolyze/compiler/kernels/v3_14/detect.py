@@ -4,14 +4,14 @@ import ast
 from dataclasses import dataclass
 from typing import Any
 
-from .artifacts import (
+from ...artifacts import (
     ComponentDetection,
     DetectionResult,
     EventBoundaryInfo,
     HookRecord,
     SlottedHelperInfo,
 )
-from .diagnostics import PyRolyzeCompileError, error_from_node
+from ...diagnostics import error_from_node
 
 
 _HOOK_NAMES = {
@@ -149,7 +149,10 @@ def detect_module(
             suggested_fix="rewrite_unsupported_syntax",
         )
 
-    components = tuple(_analyze_component(module_name, component) for component in _extract_reactive_components(module_ast))
+    components = tuple(
+        _analyze_component(module_name, component)
+        for component in _extract_reactive_components(module_ast)
+    )
     slotted_helpers = tuple(detect_slotted_helpers(module_ast))
     event_boundaries = tuple(
         boundary

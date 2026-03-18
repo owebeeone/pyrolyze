@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ast
 
-from .diagnostics import PyRolyzeCompileError
+from ...diagnostics import PyRolyzeCompileError
 
 
 def is_pyrolyze_module(source: str, *, module_name: str) -> bool:
