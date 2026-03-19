@@ -11,6 +11,8 @@ from typing import Any, Callable, Generic, Iterator, Protocol, TypeVar, cast
 
 from pyrolyze.api import UIElement
 
+from .app_context import AppContextKey, AppContextStore, GENERATION_TRACKER_KEY
+
 
 T = TypeVar("T")
 S = TypeVar("S", bound="SlotContext")
@@ -180,6 +182,19 @@ class PlainCallRuntimeContext:
 
     def stable_local_id(self, key: str) -> tuple[SlotId, str]:
         return (self.slot.slot_id, key)
+
+    def get_app_context(self, key: AppContextKey[T]) -> T:
+        return self.slot.root_context._scheduler_root._app_context_store.get(key)
+
+    def has_app_context(self, key: AppContextKey[Any]) -> bool:
+        return self.slot.root_context._scheduler_root._app_context_store.has(key)
+
+    def current_generation_id(self) -> int:
+        tracker = self.get_app_context(GENERATION_TRACKER_KEY)
+        return tracker.current()
+
+    def current_slot_id(self) -> SlotId:
+        return self.slot.slot_id
 
 
 class PlainCallBinding:
@@ -638,6 +653,20 @@ class ContextBase:
     @property
     def root_context(self) -> RenderContext:
         return self._render_context
+
+    def get_app_context(self, key: AppContextKey[T]) -> T:
+        return self.root_context._scheduler_root._app_context_store.get(key)
+
+    def has_app_context(self, key: AppContextKey[Any]) -> bool:
+        return self.root_context._scheduler_root._app_context_store.has(key)
+
+    def current_generation_id(self) -> int:
+        tracker = self.get_app_context(GENERATION_TRACKER_KEY)
+        return tracker.current()
+
+    def current_slot_id(self) -> SlotId | None:
+        slot_id = getattr(self, "slot_id", None)
+        return slot_id if isinstance(slot_id, SlotId) else None
 
     def pass_scope(self) -> _PassScopeHandle:
         return _PassScopeHandle(context=self, activate=not self._scope_active)
@@ -1584,6 +1613,7 @@ class RenderContext(ContextBase):
         *,
         owner_slot: ComponentCallSlotContext | None = None,
         scheduler_root: RenderContext | None = None,
+        app_context_store: AppContextStore | None = None,
     ) -> None:
         self._slots_by_id: dict[SlotId, SlotContext] = {}
         self._owner_slot = owner_slot
@@ -1595,9 +1625,11 @@ class RenderContext(ContextBase):
         if scheduler_root is None:
             self._scheduler_root = self
             self._scheduler = _InvalidationScheduler()
+            self._app_context_store = app_context_store or AppContextStore()
         else:
             self._scheduler_root = scheduler_root
             self._scheduler = scheduler_root._scheduler
+            self._app_context_store = scheduler_root._app_context_store
         super().__init__(self)
 
     def pass_scope(self) -> _PassScopeHandle:
@@ -1669,6 +1701,9 @@ class RenderContext(ContextBase):
     def committed_ui(self) -> tuple[UIElement, ...]:
         return self._committed_ui
 
+    def close_app_contexts(self) -> None:
+        self._scheduler_root._app_context_store.close_all()
+
     def _run_boundary(self) -> None:
         callback = self._mounted_callback
         if callback is None:
@@ -1676,10 +1711,19 @@ class RenderContext(ContextBase):
 
         scheduler_root = self._scheduler_root
         scheduler = scheduler_root._scheduler
+        is_outermost_boundary = not scheduler.active
+        if is_outermost_boundary:
+            scheduler_root._app_context_store.get(GENERATION_TRACKER_KEY).begin()
         scheduler.enter_active(self)
         try:
             callback()
             self._clear_ancestor_dirty_path()
+            if is_outermost_boundary:
+                scheduler_root._app_context_store.get(GENERATION_TRACKER_KEY).commit()
+        except BaseException:
+            if is_outermost_boundary:
+                scheduler_root._app_context_store.get(GENERATION_TRACKER_KEY).rollback()
+            raise
         finally:
             scheduler.exit_active(self)
 

@@ -1,5 +1,6 @@
 """Runtime module surface."""
 
+from .app_context import AppContextKey, AppContextStore, GENERATION_TRACKER_KEY, GenerationTracker
 from .context import (
     CompValue,
     ComponentCallSlotContext,
@@ -33,6 +34,8 @@ from .context import (
 )
 
 __all__ = [
+    "AppContextKey",
+    "AppContextStore",
     "CompValue",
     "ComponentCallSlotContext",
     "ContextBase",
@@ -42,6 +45,8 @@ __all__ = [
     "EventHandlerSlotContext",
     "ExternalStoreBinding",
     "ExternalStoreRef",
+    "GENERATION_TRACKER_KEY",
+    "GenerationTracker",
     "KeyedLoopSlotContext",
     "LeafSlotContext",
     "LoopItemSlotContext",
