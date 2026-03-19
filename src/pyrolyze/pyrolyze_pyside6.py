@@ -7,10 +7,21 @@ from typing import Any, Callable, Mapping, Sequence, cast
 
 from pyrolyze.api import UIElement
 from pyrolyze.runtime.context import ModuleRegistry, SlotId
-from pyrolyze.runtime.ui_nodes import UiNodeSpec, normalize_ui_elements
+from pyrolyze.runtime.ui_nodes import (
+    UiBackendAdapter,
+    UiNode,
+    UiNodeBinding,
+    UiNodeSpec,
+    UiOwnerCommitState,
+    mount_subtree,
+    normalize_ui_inputs,
+    reconcile_owner,
+)
+from PySide6.QtCore import QSignalBlocker, QThread, QTimer
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QComboBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -39,6 +50,7 @@ class PyrolyzeWindow:
     scroll_area: QScrollArea
     content_widget: QWidget
     content_layout: QVBoxLayout
+    owner_state: UiOwnerCommitState | None = None
 
     def show(self) -> None:
         self.window.show()
@@ -98,6 +110,7 @@ def clear_layout(layout: QVBoxLayout) -> None:
 
 
 def set_window_content(host: PyrolyzeWindow, widgets: Sequence[QWidget]) -> None:
+    host.owner_state = None
     clear_layout(host.content_layout)
     for widget in widgets:
         host.content_layout.addWidget(widget)
@@ -120,16 +133,448 @@ def compose_section(
     return section
 
 
+@dataclass(eq=False, slots=True, kw_only=True)
+class _QtRootBinding(UiNodeBinding):
+    container: QWidget
+    layout: QVBoxLayout
+
+    def update_props(
+        self,
+        next_spec: UiNodeSpec,
+        *,
+        changed_props: Mapping[str, Any],
+        changed_events: Mapping[str, Callable[..., None] | None],
+    ) -> None:
+        return None
+
+    def place_child(self, child: UiNode, index: int) -> None:
+        widget = _binding_widget(child.binding)
+        _layout_place_widget(self.layout, widget, index)
+
+    def detach_child(self, child: UiNode) -> None:
+        _layout_detach_widget(self.layout, _binding_widget(child.binding))
+
+    def dispose(self) -> None:
+        return None
+
+
+@dataclass(eq=False, slots=True, kw_only=True)
+class _QtBindingBase(UiNodeBinding):
+    widget: QWidget
+    layout: QVBoxLayout | QHBoxLayout | None = None
+    child_offset: int = 0
+
+    def update_props(
+        self,
+        next_spec: UiNodeSpec,
+        *,
+        changed_props: Mapping[str, Any],
+        changed_events: Mapping[str, Callable[..., None] | None],
+    ) -> None:
+        return None
+
+    def place_child(self, child: UiNode, index: int) -> None:
+        if self.layout is None:
+            raise ValueError(f"{type(self).__name__} does not accept children")
+        _layout_place_widget(self.layout, _binding_widget(child.binding), index + self.child_offset)
+
+    def detach_child(self, child: UiNode) -> None:
+        if self.layout is None:
+            return
+        _layout_detach_widget(self.layout, _binding_widget(child.binding))
+
+    def dispose(self) -> None:
+        self.widget.setParent(None)
+        self.widget.deleteLater()
+
+
+@dataclass(eq=False, slots=True, kw_only=True)
+class _QtSectionBinding(_QtBindingBase):
+    widget: QGroupBox
+    layout: QVBoxLayout
+
+    def update_props(
+        self,
+        next_spec: UiNodeSpec,
+        *,
+        changed_props: Mapping[str, Any],
+        changed_events: Mapping[str, Callable[..., None] | None],
+    ) -> None:
+        if "title" in changed_props:
+            self.widget.setTitle(str(next_spec.props["title"]))
+        if "accent" in changed_props:
+            self.widget.setProperty("accent", _optional_str(next_spec.props.get("accent")))
+        if "visible" in changed_props:
+            self.widget.setVisible(bool(next_spec.props["visible"]))
+
+
+@dataclass(eq=False, slots=True, kw_only=True)
+class _QtRowBinding(_QtBindingBase):
+    widget: QWidget
+    layout: QHBoxLayout
+    headline: QLabel
+    child_offset: int = 1
+
+    def update_props(
+        self,
+        next_spec: UiNodeSpec,
+        *,
+        changed_props: Mapping[str, Any],
+        changed_events: Mapping[str, Callable[..., None] | None],
+    ) -> None:
+        if "headline" in changed_props:
+            self.headline.setText(str(next_spec.props["headline"]))
+            self.widget.setProperty("headline", next_spec.props["headline"])
+        if "row_id" in changed_props:
+            self.widget.setProperty("row_id", next_spec.props["row_id"])
+        if "visible" in changed_props:
+            self.widget.setVisible(bool(next_spec.props["visible"]))
+
+
+@dataclass(eq=False, slots=True, kw_only=True)
+class _QtBadgeBinding(_QtBindingBase):
+    widget: QLabel
+
+    def update_props(
+        self,
+        next_spec: UiNodeSpec,
+        *,
+        changed_props: Mapping[str, Any],
+        changed_events: Mapping[str, Callable[..., None] | None],
+    ) -> None:
+        if "text" in changed_props:
+            self.widget.setText(str(next_spec.props["text"]))
+        if "tone" in changed_props:
+            self.widget.setProperty("tone", next_spec.props.get("tone"))
+        if "visible" in changed_props:
+            self.widget.setVisible(bool(next_spec.props["visible"]))
+
+
+@dataclass(eq=False, slots=True, kw_only=True)
+class _QtButtonBinding(_QtBindingBase):
+    widget: QPushButton
+    on_after_event: Callable[[], None] | None
+    on_press: Callable[..., None] | None = None
+
+    def __post_init__(self) -> None:
+        self.widget.clicked.connect(self._handle_click)
+
+    def update_props(
+        self,
+        next_spec: UiNodeSpec,
+        *,
+        changed_props: Mapping[str, Any],
+        changed_events: Mapping[str, Callable[..., None] | None],
+    ) -> None:
+        if "label" in changed_props:
+            self.widget.setText(str(next_spec.props["label"]))
+        if "enabled" in changed_props:
+            self.widget.setEnabled(bool(next_spec.props["enabled"]))
+        if "tone" in changed_props:
+            self.widget.setProperty("tone", next_spec.props.get("tone"))
+        if "visible" in changed_props:
+            self.widget.setVisible(bool(next_spec.props["visible"]))
+        if "on_press" in changed_events:
+            self.on_press = next_spec.event_props.get("on_press")
+
+    def _handle_click(self, checked: bool = False) -> None:
+        del checked
+        if callable(self.on_press):
+            _dispatch_widget_event(
+                cast(WidgetEventFn, self.on_press),
+                _NO_EVENT_PAYLOAD,
+                on_after_event=self.on_after_event,
+            )
+
+
+@dataclass(eq=False, slots=True, kw_only=True)
+class _QtTextFieldBinding(_QtBindingBase):
+    widget: QWidget
+    layout: QVBoxLayout
+    label: QLabel
+    line_edit: QLineEdit
+    on_after_event: Callable[[], None] | None
+    on_change: Callable[..., None] | None = None
+    on_submit: Callable[..., None] | None = None
+
+    def __post_init__(self) -> None:
+        self.line_edit.textChanged.connect(self._handle_text_changed)
+        self.line_edit.returnPressed.connect(self._handle_submit)
+
+    def update_props(
+        self,
+        next_spec: UiNodeSpec,
+        *,
+        changed_props: Mapping[str, Any],
+        changed_events: Mapping[str, Callable[..., None] | None],
+    ) -> None:
+        if "label" in changed_props:
+            self.label.setText(str(next_spec.props["label"]))
+        if "value" in changed_props:
+            next_value = str(next_spec.props["value"])
+            if self.line_edit.text() != next_value:
+                blocker = QSignalBlocker(self.line_edit)
+                self.line_edit.setText(next_value)
+                del blocker
+        if "enabled" in changed_props:
+            self.line_edit.setEnabled(bool(next_spec.props["enabled"]))
+        if "placeholder" in changed_props:
+            placeholder = next_spec.props.get("placeholder")
+            self.line_edit.setPlaceholderText("" if placeholder is None else str(placeholder))
+        if "visible" in changed_props:
+            self.widget.setVisible(bool(next_spec.props["visible"]))
+        if "on_change" in changed_events:
+            self.on_change = next_spec.event_props.get("on_change")
+        if "on_submit" in changed_events:
+            self.on_submit = next_spec.event_props.get("on_submit")
+
+    def _handle_text_changed(self, next_value: str) -> None:
+        if callable(self.on_change):
+            _dispatch_widget_event(
+                cast(WidgetEventFn, self.on_change),
+                next_value,
+                on_after_event=self.on_after_event,
+            )
+
+    def _handle_submit(self) -> None:
+        if callable(self.on_submit):
+            _dispatch_widget_event(
+                cast(WidgetEventFn, self.on_submit),
+                _NO_EVENT_PAYLOAD,
+                on_after_event=self.on_after_event,
+            )
+
+
+@dataclass(eq=False, slots=True, kw_only=True)
+class _QtToggleBinding(_QtBindingBase):
+    widget: QCheckBox
+    on_after_event: Callable[[], None] | None
+    on_toggle: Callable[..., None] | None = None
+
+    def __post_init__(self) -> None:
+        self.widget.toggled.connect(self._handle_toggle)
+
+    def update_props(
+        self,
+        next_spec: UiNodeSpec,
+        *,
+        changed_props: Mapping[str, Any],
+        changed_events: Mapping[str, Callable[..., None] | None],
+    ) -> None:
+        if "label" in changed_props:
+            self.widget.setText(str(next_spec.props["label"]))
+        if "checked" in changed_props:
+            blocker = QSignalBlocker(self.widget)
+            self.widget.setChecked(bool(next_spec.props["checked"]))
+            del blocker
+        if "enabled" in changed_props:
+            self.widget.setEnabled(bool(next_spec.props["enabled"]))
+        if "visible" in changed_props:
+            self.widget.setVisible(bool(next_spec.props["visible"]))
+        if "on_toggle" in changed_events:
+            self.on_toggle = next_spec.event_props.get("on_toggle")
+
+    def _handle_toggle(self, next_value: bool) -> None:
+        if callable(self.on_toggle):
+            _dispatch_widget_event(
+                cast(WidgetEventFn, self.on_toggle),
+                next_value,
+                on_after_event=self.on_after_event,
+            )
+
+
+@dataclass(eq=False, slots=True, kw_only=True)
+class _QtSelectFieldBinding(_QtBindingBase):
+    widget: QWidget
+    layout: QVBoxLayout
+    label: QLabel
+    combo_box: QComboBox
+    on_after_event: Callable[[], None] | None
+    on_change: Callable[..., None] | None = None
+
+    def __post_init__(self) -> None:
+        self.combo_box.currentTextChanged.connect(self._handle_change)
+
+    def update_props(
+        self,
+        next_spec: UiNodeSpec,
+        *,
+        changed_props: Mapping[str, Any],
+        changed_events: Mapping[str, Callable[..., None] | None],
+    ) -> None:
+        if "label" in changed_props:
+            self.label.setText(str(next_spec.props["label"]))
+        if "options" in changed_props:
+            _replace_combo_items(self.combo_box, next_spec.props["options"])
+        if "value" in changed_props or "options" in changed_props:
+            _set_combo_value(self.combo_box, str(next_spec.props["value"]))
+        if "enabled" in changed_props:
+            self.combo_box.setEnabled(bool(next_spec.props["enabled"]))
+        if "visible" in changed_props:
+            self.widget.setVisible(bool(next_spec.props["visible"]))
+        if "on_change" in changed_events:
+            self.on_change = next_spec.event_props.get("on_change")
+
+    def _handle_change(self, next_value: str) -> None:
+        if callable(self.on_change):
+            _dispatch_widget_event(
+                cast(WidgetEventFn, self.on_change),
+                next_value,
+                on_after_event=self.on_after_event,
+            )
+
+
+@dataclass(slots=True)
+class _PySideBackend(UiBackendAdapter):
+    app: QApplication
+    on_after_event: Callable[[], None] | None = None
+    backend_id: str = "pyside6"
+
+    def create_binding(
+        self,
+        spec: UiNodeSpec,
+        *,
+        parent_binding: UiNodeBinding | None,
+    ) -> UiNodeBinding:
+        del parent_binding
+        if spec.kind == "section":
+            section = QGroupBox(str(spec.props["title"]))
+            section.setProperty("accent", _optional_str(spec.props.get("accent")))
+            section.setVisible(bool(spec.props["visible"]))
+            layout = QVBoxLayout(section)
+            layout.setContentsMargins(14, 14, 14, 14)
+            layout.setSpacing(10)
+            return _QtSectionBinding(widget=section, layout=layout)
+
+        if spec.kind == "row":
+            container = QWidget()
+            container.setVisible(bool(spec.props["visible"]))
+            container.setProperty("row_id", spec.props["row_id"])
+            container.setProperty("headline", spec.props["headline"])
+            layout = QHBoxLayout(container)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(8)
+            headline = QLabel(str(spec.props["headline"]))
+            layout.addWidget(headline)
+            return _QtRowBinding(widget=container, layout=layout, headline=headline)
+
+        if spec.kind == "badge":
+            label = QLabel(str(spec.props["text"]))
+            label.setWordWrap(True)
+            label.setVisible(bool(spec.props["visible"]))
+            label.setProperty("tone", spec.props.get("tone"))
+            return _QtBadgeBinding(widget=label)
+
+        if spec.kind == "button":
+            button = QPushButton(str(spec.props["label"]))
+            button.setEnabled(bool(spec.props["enabled"]))
+            button.setVisible(bool(spec.props["visible"]))
+            button.setProperty("tone", spec.props.get("tone"))
+            return _QtButtonBinding(
+                widget=button,
+                on_after_event=self.on_after_event,
+                on_press=spec.event_props.get("on_press"),
+            )
+
+        if spec.kind == "text_field":
+            container = QWidget()
+            container.setVisible(bool(spec.props["visible"]))
+            layout = QVBoxLayout(container)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(4)
+            label = QLabel(str(spec.props["label"]))
+            line_edit = QLineEdit()
+            line_edit.setObjectName(str(spec.props["field_id"]))
+            line_edit.setText(str(spec.props["value"]))
+            line_edit.setEnabled(bool(spec.props["enabled"]))
+            placeholder = spec.props.get("placeholder")
+            line_edit.setPlaceholderText("" if placeholder is None else str(placeholder))
+            layout.addWidget(label)
+            layout.addWidget(line_edit)
+            return _QtTextFieldBinding(
+                widget=container,
+                layout=layout,
+                label=label,
+                line_edit=line_edit,
+                on_after_event=self.on_after_event,
+                on_change=spec.event_props.get("on_change"),
+                on_submit=spec.event_props.get("on_submit"),
+            )
+
+        if spec.kind == "toggle":
+            checkbox = QCheckBox(str(spec.props["label"]))
+            checkbox.setChecked(bool(spec.props["checked"]))
+            checkbox.setEnabled(bool(spec.props["enabled"]))
+            checkbox.setVisible(bool(spec.props["visible"]))
+            return _QtToggleBinding(
+                widget=checkbox,
+                on_after_event=self.on_after_event,
+                on_toggle=spec.event_props.get("on_toggle"),
+            )
+
+        if spec.kind == "select_field":
+            container = QWidget()
+            container.setVisible(bool(spec.props["visible"]))
+            layout = QVBoxLayout(container)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(4)
+            label = QLabel(str(spec.props["label"]))
+            combo_box = QComboBox()
+            combo_box.setObjectName(str(spec.props["field_id"]))
+            _replace_combo_items(combo_box, spec.props["options"])
+            _set_combo_value(combo_box, str(spec.props["value"]))
+            combo_box.setEnabled(bool(spec.props["enabled"]))
+            layout.addWidget(label)
+            layout.addWidget(combo_box)
+            return _QtSelectFieldBinding(
+                widget=container,
+                layout=layout,
+                label=label,
+                combo_box=combo_box,
+                on_after_event=self.on_after_event,
+                on_change=spec.event_props.get("on_change"),
+            )
+
+        raise ValueError(f"Unsupported semantic node kind: {spec.kind!r}")
+
+    def can_reuse(self, current: UiNode, next_spec: UiNodeSpec) -> bool:
+        return current.spec.kind == next_spec.kind
+
+    def assert_ui_thread(self) -> None:
+        if QThread.currentThread() is not self.app.thread():
+            raise RuntimeError("PySide6 reconciliation must run on the UI thread")
+
+    def post_to_ui(self, callback: Callable[[], None]) -> None:
+        QTimer.singleShot(0, callback)
+
+
+def reconcile_window_content(
+    host: PyrolyzeWindow,
+    elements: Sequence[UIElement | Mapping[str, Any]],
+    *,
+    on_after_event: Callable[[], None] | None = None,
+) -> None:
+    specs = normalize_ui_inputs(_UI_OWNER_SLOT, tuple(elements))
+    if host.owner_state is None:
+        clear_layout(host.content_layout)
+        host.owner_state = UiOwnerCommitState(owner_id=_UI_OWNER_SLOT)
+    reconcile_owner(
+        host.owner_state,
+        specs,
+        backend=_PySideBackend(app=host.app, on_after_event=on_after_event),
+        parent_binding=_QtRootBinding(
+            container=host.content_widget,
+            layout=host.content_layout,
+        ),
+    )
+
+
 def render_ui_element(
     element: UIElement | Mapping[str, Any],
     *,
     on_after_event: Callable[[], None] | None = None,
 ) -> QWidget:
-    spec = normalize_ui_elements(
-        _UI_OWNER_SLOT,
-        (_coerce_ui_element(element),),
-    )[0]
-    return _render_ui_spec(spec, on_after_event=on_after_event)
+    return render_ui_elements((element,), on_after_event=on_after_event)[0]
 
 
 def render_ui_elements(
@@ -137,15 +582,26 @@ def render_ui_elements(
     *,
     on_after_event: Callable[[], None] | None = None,
 ) -> list[QWidget]:
-    specs = normalize_ui_elements(
-        _UI_OWNER_SLOT,
-        tuple(_coerce_ui_element(element) for element in elements),
+    backend = _PySideBackend(
+        app=QApplication.instance() or QApplication([]),
+        on_after_event=on_after_event,
     )
-    return [_render_ui_spec(spec, on_after_event=on_after_event) for spec in specs]
+    specs = normalize_ui_inputs(_UI_OWNER_SLOT, tuple(elements))
+    widgets: list[QWidget] = []
+    for spec in specs:
+        node = mount_subtree(spec, backend=backend)
+        widget = _binding_widget(node.binding)
+        setattr(widget, "_pyrolyze_node", node)
+        widgets.append(widget)
+    return widgets
 
 
-def render_semantic_node(node: Mapping[str, Any]) -> QWidget:
-    return render_ui_element(_coerce_ui_element(node))
+def render_semantic_node(
+    node: Mapping[str, Any],
+    *,
+    on_after_event: Callable[[], None] | None = None,
+) -> QWidget:
+    return render_ui_element(node, on_after_event=on_after_event)
 
 
 def render_widget_binding(
@@ -442,6 +898,63 @@ def _dispatch_widget_event(
         on_after_event()
 
 
+def _binding_widget(binding: UiNodeBinding) -> QWidget:
+    widget = getattr(binding, "widget", None)
+    if not isinstance(widget, QWidget):
+        raise TypeError(f"binding {type(binding).__name__} does not expose a QWidget")
+    return widget
+
+
+def _layout_place_widget(
+    layout: QVBoxLayout | QHBoxLayout,
+    widget: QWidget,
+    index: int,
+) -> None:
+    current_index = _layout_index(layout, widget)
+    if current_index == index:
+        return
+    if current_index >= 0:
+        layout.removeWidget(widget)
+    layout.insertWidget(index, widget)
+
+
+def _layout_detach_widget(layout: QVBoxLayout | QHBoxLayout, widget: QWidget) -> None:
+    if _layout_index(layout, widget) < 0:
+        return
+    layout.removeWidget(widget)
+    widget.setParent(None)
+
+
+def _layout_index(layout: QVBoxLayout | QHBoxLayout, widget: QWidget) -> int:
+    for index in range(layout.count()):
+        item = layout.itemAt(index)
+        if item is not None and item.widget() is widget:
+            return index
+    return -1
+
+
+def _replace_combo_items(combo_box: QComboBox, options: Any) -> None:
+    blocker = QSignalBlocker(combo_box)
+    combo_box.clear()
+    combo_box.addItems([str(option) for option in tuple(options)])
+    del blocker
+
+
+def _set_combo_value(combo_box: QComboBox, value: str) -> None:
+    if combo_box.currentText() == value:
+        return
+    blocker = QSignalBlocker(combo_box)
+    match_index = combo_box.findText(value)
+    if match_index >= 0:
+        combo_box.setCurrentIndex(match_index)
+    elif combo_box.count() == 0:
+        combo_box.addItem(value)
+        combo_box.setCurrentIndex(0)
+    else:
+        combo_box.setCurrentText(value)
+    del blocker
+
+
 def _mapping(value: Any) -> dict[str, Any]:
     if isinstance(value, Mapping):
         return dict(value)
@@ -475,6 +988,7 @@ __all__ = [
     "clear_layout",
     "compose_section",
     "create_window",
+    "reconcile_window_content",
     "render_ui_element",
     "render_ui_elements",
     "render_rows_map",

@@ -50,6 +50,12 @@ class PlainCallResult(Generic[T]):
 
 
 @dataclass(frozen=True, slots=True)
+class _CommittedUiEntry:
+    generation_id: int
+    element: UIElement
+
+
+@dataclass(frozen=True, slots=True)
 class ExternalStoreRef(Generic[T]):
     identity: object
     subscribe: Callable[[Callable[[], None]], Callable[[], None]]
@@ -647,8 +653,13 @@ class ContextBase:
         self._pass_child_order: tuple[SlotId, ...] = ()
         self._pass_child_dirty: dict[SlotId, bool] = {}
         self._committed_ui: tuple[UIElement, ...] = ()
+        self._own_committed_ui: tuple[UIElement, ...] = ()
+        self._own_committed_ui_entries: tuple[_CommittedUiEntry, ...] = ()
         self._pass_committed_ui: tuple[UIElement, ...] = ()
+        self._pass_own_committed_ui: tuple[UIElement, ...] = ()
+        self._pass_own_committed_ui_entries: tuple[_CommittedUiEntry, ...] = ()
         self._staged_ui: list[UIElement] = []
+        self._staged_ui_entries: list[_CommittedUiEntry] = []
 
     @property
     def root_context(self) -> RenderContext:
@@ -667,6 +678,9 @@ class ContextBase:
     def current_slot_id(self) -> SlotId | None:
         slot_id = getattr(self, "slot_id", None)
         return slot_id if isinstance(slot_id, SlotId) else None
+
+    def context_kind(self) -> str:
+        return _context_kind(self)
 
     def pass_scope(self) -> _PassScopeHandle:
         return _PassScopeHandle(context=self, activate=not self._scope_active)
@@ -827,7 +841,10 @@ class ContextBase:
             slot_id: child.invoke_dirty for slot_id, child in self._children.items()
         }
         self._pass_committed_ui = self._committed_ui
+        self._pass_own_committed_ui = self._own_committed_ui
+        self._pass_own_committed_ui_entries = self._own_committed_ui_entries
         self._staged_ui = []
+        self._staged_ui_entries = []
         for child in self._children.values():
             child.seen_in_pass = False
 
@@ -847,6 +864,8 @@ class ContextBase:
             elif isinstance(child, EventHandlerSlotContext):
                 child.commit_handler()
 
+        self._own_committed_ui_entries = tuple(self._staged_ui_entries)
+        self._own_committed_ui = tuple(entry.element for entry in self._own_committed_ui_entries)
         self._committed_ui = self._build_committed_ui()
 
         for child in self._children.values():
@@ -856,7 +875,10 @@ class ContextBase:
         self._pass_child_order = ()
         self._pass_child_dirty = {}
         self._pass_committed_ui = ()
+        self._pass_own_committed_ui = ()
+        self._pass_own_committed_ui_entries = ()
         self._staged_ui = []
+        self._staged_ui_entries = []
 
     def _rollback_scope_pass(self) -> None:
         if not self._scope_active:
@@ -882,12 +904,17 @@ class ContextBase:
                 restored_children[slot_id] = child
         self._children = restored_children
         self._committed_ui = self._pass_committed_ui
+        self._own_committed_ui = self._pass_own_committed_ui
+        self._own_committed_ui_entries = self._pass_own_committed_ui_entries
 
         self._scope_active = False
         self._pass_child_order = ()
         self._pass_child_dirty = {}
         self._pass_committed_ui = ()
+        self._pass_own_committed_ui = ()
+        self._pass_own_committed_ui_entries = ()
         self._staged_ui = []
+        self._staged_ui_entries = []
 
     def _ensure_slot(self, slot_id: SlotId, slot_type: type[S]) -> S:
         resolved_slot_id = self._resolve_slot_id(slot_id)
@@ -932,6 +959,12 @@ class ContextBase:
             return
         if isinstance(result, UIElement):
             self._staged_ui.append(result)
+            self._staged_ui_entries.append(
+                _CommittedUiEntry(
+                    generation_id=self.current_generation_id(),
+                    element=result,
+                )
+            )
             return
         if os.environ.get("PYROLYZE_ENV") == "prod":
             logging.getLogger(__name__).warning(
@@ -974,6 +1007,12 @@ class ContextBase:
         if isinstance(slot_id, SlotId):
             return slot_id.key_path
         return ()
+
+    def _refresh_committed_ui_from_children(self) -> None:
+        self._committed_ui = self._build_committed_ui()
+        parent = getattr(self, "parent", None)
+        if isinstance(parent, ContextBase):
+            parent._refresh_committed_ui_from_children()
 
 
 _NATIVE_CONTEXT_PARAM_ATTR = "_pyrolyze_native_context_param"
@@ -1051,6 +1090,15 @@ class SlotContext:
     slot_id: SlotId
     invoke_dirty: bool = True
     seen_in_pass: bool = False
+
+    def current_slot_id(self) -> SlotId:
+        return self.slot_id
+
+    def current_generation_id(self) -> int:
+        return self.render_context.current_generation_id()
+
+    def context_kind(self) -> str:
+        return _context_kind(self)
 
     def visit_self_and_dirty(self) -> bool:
         if not isinstance(self, ContextBase):
@@ -1305,6 +1353,7 @@ class ComponentCallSlotContext(RerunnableSlotContext):
             self.uses_dirty_state_api = True
         self.child_context._mounted_callback = self._rerun_child
         self.child_context._run_boundary()
+        self._committed_ui = self.child_context._committed_ui
 
     def _rerun_child(self) -> None:
         child_context = self.child_context
@@ -1332,6 +1381,9 @@ class ComponentCallSlotContext(RerunnableSlotContext):
                     *self.last_plain_args,
                     **self.last_plain_kwargs,
                 )
+            self._committed_ui = child_context._committed_ui
+            if not self.parent._scope_active:
+                self.parent._refresh_committed_ui_from_children()
             return
 
         if self.last_bound_receiver is _BOUND_METHOD_SELF_MISSING:
@@ -1343,6 +1395,9 @@ class ComponentCallSlotContext(RerunnableSlotContext):
                 *self.last_args,
                 **self.last_kwargs,
             )
+        self._committed_ui = child_context._committed_ui
+        if not self.parent._scope_active:
+            self.parent._refresh_committed_ui_from_children()
 
     def _dispose_child_context(self) -> None:
         child_context = self.child_context
@@ -1359,6 +1414,7 @@ class ComponentCallSlotContext(RerunnableSlotContext):
         child_context._mounted_callback = None
         self.child_context = None
         self.pending_dirty_state = None
+        self._committed_ui = ()
 
     def deactivate(self) -> None:
         self._dispose_child_context()
@@ -1701,6 +1757,19 @@ class RenderContext(ContextBase):
     def committed_ui(self) -> tuple[UIElement, ...]:
         return self._committed_ui
 
+    def _refresh_committed_ui_from_children(self) -> None:
+        self._committed_ui = self._build_committed_ui()
+        owner_slot = self._owner_slot
+        if owner_slot is None:
+            return
+        owner_slot._committed_ui = self._committed_ui
+        owner_slot.parent._refresh_committed_ui_from_children()
+
+    def walk_context_graph(self, listener: object) -> None:
+        from pyrolyze.visitor import walk_context_graph
+
+        walk_context_graph(self, listener)
+
     def close_app_contexts(self) -> None:
         self._scheduler_root._app_context_store.close_all()
 
@@ -1805,6 +1874,28 @@ class RenderContext(ContextBase):
             return
         scheduler_root._flush_posted = True
         scheduler_root._flush_poster(scheduler_root.run_pending_invalidations)
+
+
+def _context_kind(context: object) -> str:
+    if isinstance(context, RenderContext):
+        return "render_root" if context._owner_slot is None else "component_render"
+    if isinstance(context, ContainerSlotContext):
+        return "container"
+    if isinstance(context, PlainCallSlotContext):
+        return "plain_call"
+    if isinstance(context, ComponentCallSlotContext):
+        return "component_call"
+    if isinstance(context, KeyedLoopSlotContext):
+        return "keyed_loop"
+    if isinstance(context, LoopItemSlotContext):
+        return "loop_item"
+    if isinstance(context, EventHandlerSlotContext):
+        return "event_handler"
+    if isinstance(context, LeafSlotContext):
+        return "leaf"
+    if isinstance(context, SlotContext):
+        return "slot"
+    return type(context).__name__
 
 
 __all__ = [

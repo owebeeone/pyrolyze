@@ -63,7 +63,7 @@ def test_normalize_ui_elements_splits_value_props_and_event_props() -> None:
 
     button, text_field = section.children
     assert button.node_id == UiNodeId(owner_slot_id=_OWNER_SLOT, region_index=1)
-    assert button.props == {"label": "Run", "enabled": False, "visible": True}
+    assert button.props == {"label": "Run", "enabled": False, "tone": "default", "visible": True}
     assert button.event_props == {"on_press": on_press}
 
     assert text_field.node_id == UiNodeId(owner_slot_id=_OWNER_SLOT, region_index=2)
@@ -75,7 +75,22 @@ def test_normalize_ui_elements_splits_value_props_and_event_props() -> None:
         "placeholder": None,
         "visible": True,
     }
-    assert text_field.event_props == {"on_change": on_change}
+    assert text_field.event_props == {"on_change": on_change, "on_submit": None}
+
+
+def test_normalize_ui_elements_fills_missing_events_with_none() -> None:
+    specs = normalize_ui_elements(
+        _OWNER_SLOT,
+        (
+            UIElement(
+                kind="button",
+                props={"label": "Run", "enabled": True, "visible": True},
+            ),
+        ),
+    )
+
+    assert len(specs) == 1
+    assert specs[0].event_props == {"on_press": None}
 
 
 def test_normalize_ui_elements_rejects_unknown_props_and_non_v1_kinds() -> None:

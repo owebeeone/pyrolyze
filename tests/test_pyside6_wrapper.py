@@ -1,21 +1,46 @@
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QGroupBox, QLabel, QLineEdit, QPushButton
+from PySide6.QtWidgets import QComboBox, QGroupBox, QLabel, QLineEdit, QPushButton
 
 from pyrolyze.api import UIElement
 from pyrolyze.pyrolyze_pyside6 import (
     PyrolyzeWindow,
     create_window,
+    reconcile_window_content,
     render_ui_element,
     render_semantic_node,
     render_widget_binding,
     set_window_content,
 )
+
+
+@dataclass(frozen=True)
+class _SlotRef:
+    owner: str
+    slot_kind: str
+    index: int
+
+
+def _semantic_badge(*, owner: str, index: int, text: str) -> dict[str, object]:
+    return {
+        "kind": "badge",
+        "slot_id": _SlotRef(owner=owner, slot_kind="widget", index=index),
+        "values": {"text": text, "tone": "info"},
+    }
+
+
+def _semantic_button(*, owner: str, index: int, label: str) -> dict[str, object]:
+    return {
+        "kind": "button",
+        "slot_id": _SlotRef(owner=owner, slot_kind="widget", index=index),
+        "values": {"label": label, "enabled": True, "tone": "default"},
+    }
 
 
 def test_create_window_builds_reusable_window_host() -> None:
@@ -135,5 +160,62 @@ def test_set_window_content_replaces_previous_widgets() -> None:
     set_window_content(host, [render_semantic_node({"kind": "badge", "values": {"text": "Two", "tone": "info"}})])
     assert host.content_layout.count() == 1
     assert host.content_layout.itemAt(0).widget().findChild(QLabel) is None
+
+    host.close()
+
+
+def test_render_semantic_node_builds_select_field_widget() -> None:
+    widget = render_semantic_node(
+        {
+            "kind": "select_field",
+            "field_id": "location",
+            "slot_id": _SlotRef(owner="weather", slot_kind="widget", index=1),
+            "values": {
+                "label": "Location",
+                "value": "Berlin",
+                "options": ("Berlin", "Paris"),
+                "enabled": True,
+            },
+        }
+    )
+
+    combo = widget.findChild(QComboBox)
+
+    assert combo is not None
+    assert combo.currentText() == "Berlin"
+    assert combo.count() == 2
+
+
+def test_reconcile_window_content_updates_badge_in_place() -> None:
+    host = create_window("Retained Badge")
+
+    reconcile_window_content(host, [_semantic_badge(owner="root", index=1, text="One")])
+    first_widget = host.content_layout.itemAt(0).widget()
+
+    reconcile_window_content(host, [_semantic_badge(owner="root", index=1, text="Two")])
+    second_widget = host.content_layout.itemAt(0).widget()
+
+    assert second_widget is first_widget
+    assert isinstance(second_widget, QLabel)
+    assert second_widget.text() == "Two"
+
+    host.close()
+
+
+def test_reconcile_window_content_reorders_reused_widgets() -> None:
+    host = create_window("Retained Reorder")
+    first_nodes = [
+        _semantic_button(owner="root", index=1, label="One"),
+        _semantic_button(owner="root", index=2, label="Two"),
+    ]
+
+    reconcile_window_content(host, first_nodes)
+    first_widget = host.content_layout.itemAt(0).widget()
+    second_widget = host.content_layout.itemAt(1).widget()
+
+    reconcile_window_content(host, list(reversed(first_nodes)))
+
+    assert host.content_layout.itemAt(0).widget() is second_widget
+    assert host.content_layout.itemAt(1).widget() is first_widget
 
     host.close()

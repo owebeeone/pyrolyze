@@ -5,7 +5,7 @@ import copy
 import importlib
 import inspect
 from dataclasses import dataclass, field
-from typing import Any, cast, get_args, get_origin
+from typing import Annotated, Any, cast, get_args, get_origin, get_type_hints
 
 from ...artifacts import ComponentTransformPlan, ModuleTransformPlan
 from ...diagnostics import error_from_node
@@ -798,12 +798,31 @@ def _lower_expr_call(statement: ast.Expr, *, state: _LoweringState) -> list[ast.
     call = statement.value
     if _is_call_native_expr(call):
         return _lower_call_native_expr(statement, call=call, state=state)
+    if _is_slotted_helper_call(call, state=state):
+        return _lower_slotted_expr_call(statement, call=call, state=state)
 
     call_name = _call_name(call)
     if call_name is not None and _callable_kind_for_name(call_name, state=state) == _CALLABLE_KIND_COMPONENT_REF:
         return _lower_component_expr_call(statement, call=call, state=state)
 
     return [copy_reason_location(ast.Expr(value=copy.deepcopy(call)), statement)]
+
+
+def _lower_slotted_expr_call(
+    statement: ast.Expr,
+    *,
+    call: ast.Call,
+    state: _LoweringState,
+) -> list[ast.stmt]:
+    _slot_index, slot_name, slot_setup = state.next_slot_id(reason=statement)
+    lowered = ast.Expr(
+        value=ast.Call(
+            func=ast.Attribute(value=state.context_ref(), attr="call_plain", ctx=ast.Load()),
+            args=[slot_name, copy.deepcopy(call.func), *[copy.deepcopy(arg) for arg in call.args]],
+            keywords=[copy.deepcopy(keyword) for keyword in call.keywords],
+        )
+    )
+    return [*slot_setup, copy_reason_location(lowered, statement)]
 
 
 def _lower_component_expr_call(
@@ -1400,12 +1419,19 @@ def _collect_imported_annotated_symbols(
                 continue
 
             local_name = alias.asname or alias.name
-            if getattr(imported_value, "_pyrolyze_slotted", False):
+            resolved_hints = _resolve_runtime_type_hints(imported_value)
+            if getattr(imported_value, "_pyrolyze_slotted", False) or _is_slot_backed_imported_helper(
+                imported_value,
+                resolved_hints=resolved_hints,
+            ):
                 slotted_names.add(local_name)
 
             if getattr(imported_value, "_pyrolyze_meta", None) is None:
                 callable_kind = _callable_kind_from_runtime_annotation(
-                    getattr(imported_value, "__annotations__", {}).get("return", inspect.Signature.empty)
+                    resolved_hints.get(
+                        "return",
+                        getattr(imported_value, "__annotations__", {}).get("return", inspect.Signature.empty),
+                    )
                 )
                 if callable_kind is not None:
                     return_kinds[local_name] = callable_kind
@@ -1429,6 +1455,78 @@ def _collect_imported_annotated_symbols(
             )
 
     return slotted_names, component_names, component_param_names, return_kinds
+
+
+def _resolve_runtime_type_hints(value: Any) -> dict[str, Any]:
+    module = inspect.getmodule(value)
+    globalns: dict[str, Any] = {}
+    if module is not None:
+        globalns.update(vars(module))
+    for module_name in ("pyrolyze.runtime", "pyrolyze.api"):
+        try:
+            globalns.update(vars(importlib.import_module(module_name)))
+        except Exception:
+            continue
+    try:
+        return get_type_hints(value, globalns=globalns, include_extras=True)
+    except Exception:
+        return {}
+
+
+def _is_slot_backed_imported_helper(
+    imported_value: Any,
+    *,
+    resolved_hints: dict[str, Any],
+) -> bool:
+    try:
+        signature = inspect.signature(imported_value)
+    except (TypeError, ValueError):
+        signature = None
+
+    if signature is not None:
+        for parameter in signature.parameters.values():
+            annotation = resolved_hints.get(parameter.name, parameter.annotation)
+            if _is_plain_call_runtime_context_annotation(annotation):
+                return True
+
+    return _is_plain_call_carrier_annotation(
+        resolved_hints.get(
+            "return",
+            getattr(imported_value, "__annotations__", {}).get("return", inspect.Signature.empty),
+        )
+    )
+
+
+def _is_plain_call_runtime_context_annotation(annotation: Any) -> bool:
+    return _runtime_annotation_matches(annotation, {"PlainCallRuntimeContext"})
+
+
+def _is_plain_call_carrier_annotation(annotation: Any) -> bool:
+    return _runtime_annotation_matches(
+        annotation,
+        {
+            "ExternalStoreRef",
+            "UseEffectRequest",
+            "UseEffectAsyncRequest",
+        },
+    )
+
+
+def _runtime_annotation_matches(annotation: Any, type_names: set[str]) -> bool:
+    if annotation in {None, inspect.Signature.empty}:
+        return False
+    if isinstance(annotation, str):
+        return any(name in annotation for name in type_names)
+    if getattr(annotation, "__name__", None) in type_names:
+        return True
+    origin = get_origin(annotation)
+    if origin is not None:
+        if getattr(origin, "__name__", None) in type_names:
+            return True
+        if origin is Annotated:
+            args = get_args(annotation)
+            return bool(args) and _runtime_annotation_matches(args[0], type_names)
+    return any(name in repr(annotation) for name in type_names)
 
 
 def _callable_kind_for_name(name: str, *, state: _LoweringState) -> str | None:
@@ -1496,6 +1594,17 @@ def _callable_kind_from_annotation(annotation: ast.AST | None) -> str | None:
 def _callable_kind_from_runtime_annotation(annotation: Any) -> str | None:
     if annotation in {None, inspect.Signature.empty}:
         return None
+    if isinstance(annotation, str):
+        compact = annotation.replace(" ", "")
+        if "SlotCallable[" in compact or "PyrolyzeSlottedParam" in compact:
+            return _CALLABLE_KIND_SLOT_CALLABLE
+        if "ComponentRef[" in compact or compact.endswith(".ComponentRef"):
+            return _CALLABLE_KIND_COMPONENT_REF
+        if compact in {"Callable", "typing.Callable", "collections.abc.Callable"} or compact.startswith(
+            ("Callable[", "typing.Callable[", "collections.abc.Callable[")
+        ):
+            return _CALLABLE_KIND_PLAIN_CALLABLE
+        return None
 
     origin = get_origin(annotation)
     if origin is not None:
@@ -1513,14 +1622,13 @@ def _callable_kind_from_runtime_annotation(annotation: Any) -> str | None:
                 if any(type(extra).__name__ == "PyrolyzeSlottedParam" for extra in extras):
                     return _CALLABLE_KIND_SLOT_CALLABLE
                 return _callable_kind_from_runtime_annotation(args[0])
-
     text = repr(annotation)
+    if text.startswith("typing.Callable") or text.startswith("collections.abc.Callable"):
+        return _CALLABLE_KIND_PLAIN_CALLABLE
     if "SlotCallable" in text or "PyrolyzeSlottedParam" in text:
         return _CALLABLE_KIND_SLOT_CALLABLE
-    if "ComponentRef" in text:
+    if text.startswith("ComponentRef") or ".ComponentRef" in text:
         return _CALLABLE_KIND_COMPONENT_REF
-    if "Callable" in text:
-        return _CALLABLE_KIND_PLAIN_CALLABLE
     return None
 
 
