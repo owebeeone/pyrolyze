@@ -102,7 +102,9 @@ def Label(*, text: str) -> UIElement:
     return UIElement(kind="Label", props={"text": text})
 
 
-type PyrolyteHandler[**P, T] = Annotated[Callable[P, T], PyrolyzeEventParam()]
+type PyrolyzeHandler[**P, T] = Annotated[Callable[P, T], PyrolyzeEventParam()]
+# Temporary compatibility alias for the pre-release typo.
+PyrolyteHandler = PyrolyzeHandler
 type SlotCallable[**P, T] = Annotated[Callable[P, T], PyrolyzeSlottedParam()]
 
 
@@ -116,7 +118,7 @@ __all__ = [
     "ComponentRef",
     "KeyedIterable",
     "Label",
-    "PyrolyteHandler",
+    "PyrolyzeHandler",
     "PyrolyzeEventParam",
     "PyrolyzeSlottedParam",
     "SlotCallable",

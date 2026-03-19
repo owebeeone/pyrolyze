@@ -1,0 +1,35 @@
+# PyRolyze Docs
+
+This docs tree describes the `py-rolyze` package as it exists today.
+
+It is organized by reader and task:
+
+- [overview/What_Is_PyRolyze.md](overview/What_Is_PyRolyze.md)
+  - quick orientation
+  - what the package does now
+  - where to start
+- [overview/System_Map.md](overview/System_Map.md)
+  - one-page system map
+  - component relationships
+- [design/Architecture.md](design/Architecture.md)
+  - implementation-facing architecture
+  - compiler, runtime, backends, tests
+- [user/README.md](user/README.md)
+  - authoring guide entry point
+  - decorators, annotations, hooks, native UI, testing
+- [contributor/README.md](contributor/README.md)
+  - maintainer workflows
+  - goldens, versioned test runs, AST kernels, tracing
+- [reference/Glossary.md](reference/Glossary.md)
+  - stable terms and quick lookup
+
+Recommended reading order:
+
+1. [overview/What_Is_PyRolyze.md](overview/What_Is_PyRolyze.md)
+2. [overview/System_Map.md](overview/System_Map.md)
+3. [user/Authoring_Overview.md](user/Authoring_Overview.md) for source authors
+4. [design/Architecture.md](design/Architecture.md) for maintainers
+5. [contributor/Versioned_Test_Runs.md](contributor/Versioned_Test_Runs.md) for AST and version work
+
+For the plan that created this tree, see
+[DocumentationPlan.md](DocumentationPlan.md).

@@ -55,6 +55,128 @@ def panel():
     ]
 
 
+def test_phase5_lowers_aliased_use_state_by_runtime_context_signature() -> None:
+    source = """
+from pyrolyze.api import pyrolyse, pyrolyze_slotted, use_state as my_us_state
+
+log = []
+setters = []
+
+@pyrolyze_slotted
+def record(value):
+    log.append(("record", value))
+
+@pyrolyse
+def panel():
+    count, set_count = my_us_state(0)
+    setters[:] = [set_count]
+    record(count)
+"""
+
+    transformed = emit_transformed_source(
+        source,
+        module_name="example.phase5.aliased_use_state",
+        filename="/virtual/example/phase5/aliased_use_state.py",
+    )
+
+    assert "my_us_state" in transformed
+    assert "(__pyr_count_dirty, __pyr_set_count_dirty), (count, set_count) = __pyr_ctx.call_plain(" in transformed
+    assert "result_shape=('tuple', 2)" in transformed
+
+    namespace = load_transformed_namespace(
+        source,
+        module_name="example.phase5.aliased_use_state",
+        filename="/virtual/example/phase5/aliased_use_state.py",
+    )
+    panel = namespace["panel"]
+    ctx = RenderContext()
+
+    panel._pyrolyze_meta._func(ctx, dirtyof())
+    panel._pyrolyze_meta._func(ctx, dirtyof())
+    setter = namespace["setters"][0]
+    setter(9)
+    panel._pyrolyze_meta._func(ctx, dirtyof())
+    panel._pyrolyze_meta._func(ctx, dirtyof())
+
+    assert namespace["log"] == [
+        ("record", 0),
+        ("record", 9),
+    ]
+
+
+def test_phase5_lowers_custom_named_state_helper_with_three_value_destructure() -> None:
+    source = """
+from typing import Any, Callable, cast
+
+from pyrolyze.api import pyrolyse, pyrolyze_slotted, use_state
+from pyrolyze.runtime import PlainCallRuntimeContext
+
+log = []
+setters = []
+
+@pyrolyze_slotted
+def record(left: int, right: int):
+    log.append((left, right))
+
+@pyrolyze_slotted
+def my_us_state(
+    left_initial: int,
+    right_initial: int,
+    *,
+    __pyrolyze_ctx: PlainCallRuntimeContext = cast(Any, None),
+) -> tuple[int, int, Callable[[int, int], None]]:
+    pair, set_pair = use_state(
+        (left_initial, right_initial),
+        __pyrolyze_ctx=__pyrolyze_ctx,
+    )
+    left, right = pair
+
+    def set_both(next_left: int, next_right: int) -> None:
+        set_pair((next_left, next_right))
+
+    return left, right, set_both
+
+@pyrolyse
+def panel():
+    left, right, set_both = my_us_state(1, 2)
+    setters[:] = [set_both]
+    record(left, right)
+"""
+
+    transformed = emit_transformed_source(
+        source,
+        module_name="example.phase5.custom_named_use_state",
+        filename="/virtual/example/phase5/custom_named_use_state.py",
+    )
+
+    assert "my_us_state" in transformed
+    assert (
+        "(__pyr_left_dirty, __pyr_right_dirty, __pyr_set_both_dirty), "
+        "(left, right, set_both) = __pyr_ctx.call_plain("
+    ) in transformed
+    assert "result_shape=('tuple', 3)" in transformed
+
+    namespace = load_transformed_namespace(
+        source,
+        module_name="example.phase5.custom_named_use_state",
+        filename="/virtual/example/phase5/custom_named_use_state.py",
+    )
+    panel = namespace["panel"]
+    ctx = RenderContext()
+
+    panel._pyrolyze_meta._func(ctx, dirtyof())
+    panel._pyrolyze_meta._func(ctx, dirtyof())
+    setter = namespace["setters"][0]
+    setter(7, 8)
+    panel._pyrolyze_meta._func(ctx, dirtyof())
+    panel._pyrolyze_meta._func(ctx, dirtyof())
+
+    assert namespace["log"] == [
+        (1, 2),
+        (7, 8),
+    ]
+
+
 def test_phase5_lowers_imported_use_grip_by_return_contract() -> None:
     source = """
 from pyrolyze.api import pyrolyse, use_grip

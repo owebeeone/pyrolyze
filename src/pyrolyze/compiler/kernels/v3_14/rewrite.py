@@ -14,6 +14,7 @@ from .builders import copy_reason_location
 
 _REACTIVE_DECORATORS = {"pyrolyse", "reactive_component"}
 _SLOTTED_DECORATORS = {"pyrolyze_slotted"}
+_EVENT_HANDLER_TYPES = {"PyrolyzeHandler", "PyrolyteHandler"}
 _CALLABLE_KIND_COMPONENT_REF = "component_ref"
 _CALLABLE_KIND_SLOT_CALLABLE = "slot_callable"
 _CALLABLE_KIND_PLAIN_CALLABLE = "plain_callable"
@@ -33,9 +34,11 @@ class _LoweringState:
     slotted_helper_names: set[str]
     top_level_component_names: set[str]
     component_param_names: dict[str, tuple[str, ...]]
+    component_event_params: dict[str, frozenset[str]]
     callable_kinds: dict[str, str]
     callable_return_kinds: dict[str, str]
     legacy_container_names: set[str]
+    event_handler_type_names: set[str]
     dirty_by_name: dict[str, ast.expr]
     in_class_scope: bool
     context_name: str
@@ -85,9 +88,11 @@ class _LoweringState:
             slotted_helper_names=self.slotted_helper_names,
             top_level_component_names=self.top_level_component_names,
             component_param_names=self.component_param_names,
+            component_event_params=self.component_event_params,
             callable_kinds=dict(self.callable_kinds),
             callable_return_kinds=self.callable_return_kinds,
             legacy_container_names=self.legacy_container_names,
+            event_handler_type_names=self.event_handler_type_names,
             dirty_by_name=self.dirty_by_name if dirty_by_name is None else dirty_by_name,
             in_class_scope=self.in_class_scope,
             context_name=self.context_name if context_name is None else context_name,
@@ -101,12 +106,18 @@ def lower_module_plan(plan: ModuleTransformPlan) -> ast.Module:
         ast.fix_missing_locations(module_ast)
         return module_ast
 
-    reactive_decorator_names, slotted_decorator_names = _collect_source_api_aliases(plan.module_ast)
+    reactive_decorator_names, slotted_decorator_names, event_handler_type_names = _collect_source_api_aliases(
+        plan.module_ast
+    )
     shared = _LoweringShared(hoist_slots=True)
     component_plans = {component.public_name: component for component in plan.component_plans}
-    imported_slotted_names, imported_component_names, imported_component_param_names, imported_return_kinds = (
-        _collect_imported_annotated_symbols(plan.module_ast)
-    )
+    (
+        imported_slotted_names,
+        imported_component_names,
+        imported_component_param_names,
+        imported_component_event_params,
+        imported_return_kinds,
+    ) = _collect_imported_annotated_symbols(plan.module_ast)
     slotted_helper_names = _collect_slotted_helper_names(
         plan.module_ast,
         slotted_decorator_names=slotted_decorator_names,
@@ -117,6 +128,14 @@ def lower_module_plan(plan: ModuleTransformPlan) -> ast.Module:
         for component in plan.component_plans
     }
     component_param_names.update(imported_component_param_names)
+    component_event_params = {
+        component.public_name: _parameter_event_names(
+            component.node,
+            event_handler_type_names=event_handler_type_names,
+        )
+        for component in plan.component_plans
+    }
+    component_event_params.update(imported_component_event_params)
     callable_return_kinds = _collect_local_callable_return_kinds(plan.module_ast)
     callable_return_kinds.update(imported_return_kinds)
     top_level_component_names = {
@@ -134,8 +153,10 @@ def lower_module_plan(plan: ModuleTransformPlan) -> ast.Module:
         slotted_helper_names=slotted_helper_names,
         top_level_component_names=top_level_component_names,
         component_param_names=component_param_names,
+        component_event_params=component_event_params,
         callable_return_kinds=callable_return_kinds,
         legacy_container_names=legacy_container_names,
+        event_handler_type_names=event_handler_type_names,
         module_name=plan.module_name,
         qual_prefix="",
         in_class_scope=False,
@@ -166,8 +187,15 @@ def lower_component(plan: ComponentTransformPlan) -> ast.FunctionDef | ast.Async
         slotted_helper_names=set(),
         top_level_component_names=set(),
         component_param_names={plan.public_name: _component_parameter_names(plan)},
+        component_event_params={
+            plan.public_name: _parameter_event_names(
+                plan.node,
+                event_handler_type_names=set(_EVENT_HANDLER_TYPES),
+            )
+        },
         callable_return_kinds={},
         legacy_container_names=set(),
+        event_handler_type_names=set(_EVENT_HANDLER_TYPES),
         module_name=plan.public_name,
         qual_prefix="",
         in_class_scope=False,
@@ -192,8 +220,10 @@ def _rewrite_body(
     slotted_helper_names: set[str],
     top_level_component_names: set[str],
     component_param_names: dict[str, tuple[str, ...]],
+    component_event_params: dict[str, frozenset[str]],
     callable_return_kinds: dict[str, str],
     legacy_container_names: set[str],
+    event_handler_type_names: set[str],
     module_name: str,
     qual_prefix: str,
     in_class_scope: bool,
@@ -211,8 +241,10 @@ def _rewrite_body(
                 slotted_helper_names=slotted_helper_names,
                 top_level_component_names=top_level_component_names,
                 component_param_names=component_param_names,
+                component_event_params=component_event_params,
                 callable_return_kinds=callable_return_kinds,
                 legacy_container_names=legacy_container_names,
+                event_handler_type_names=event_handler_type_names,
                 module_name=module_name,
                 qual_prefix=class_prefix,
                 in_class_scope=True,
@@ -233,8 +265,10 @@ def _rewrite_body(
                     slotted_helper_names=slotted_helper_names,
                     top_level_component_names=top_level_component_names,
                     component_param_names=component_param_names,
+                    component_event_params=component_event_params,
                     callable_return_kinds=callable_return_kinds,
                     legacy_container_names=legacy_container_names,
+                    event_handler_type_names=event_handler_type_names,
                     module_name=module_name,
                     qual_prefix=f"{qualified_name}.<locals>",
                     in_class_scope=in_class_scope,
@@ -248,8 +282,10 @@ def _rewrite_body(
                 slotted_helper_names=slotted_helper_names,
                 top_level_component_names=top_level_component_names,
                 component_param_names=component_param_names,
+                component_event_params=component_event_params,
                 callable_return_kinds=callable_return_kinds,
                 legacy_container_names=legacy_container_names,
+                event_handler_type_names=event_handler_type_names,
                 module_name=module_name,
                 qual_prefix=qual_prefix,
                 in_class_scope=in_class_scope,
@@ -270,8 +306,10 @@ def _lower_component_definition(
     slotted_helper_names: set[str],
     top_level_component_names: set[str],
     component_param_names: dict[str, tuple[str, ...]],
+    component_event_params: dict[str, frozenset[str]],
     callable_return_kinds: dict[str, str],
     legacy_container_names: set[str],
+    event_handler_type_names: set[str],
     module_name: str,
     qual_prefix: str,
     in_class_scope: bool,
@@ -300,8 +338,10 @@ def _lower_component_definition(
                     slotted_helper_names=slotted_helper_names,
                     top_level_component_names=top_level_component_names,
                     component_param_names=component_param_names,
+                    component_event_params=component_event_params,
                     callable_return_kinds=callable_return_kinds,
                     legacy_container_names=legacy_container_names,
+                    event_handler_type_names=event_handler_type_names,
                     module_name=module_name,
                     qual_prefix=qual_prefix,
                     in_class_scope=in_class_scope,
@@ -349,8 +389,10 @@ def _lower_component_body(
     slotted_helper_names: set[str],
     top_level_component_names: set[str],
     component_param_names: dict[str, tuple[str, ...]],
+    component_event_params: dict[str, frozenset[str]],
     callable_return_kinds: dict[str, str],
     legacy_container_names: set[str],
+    event_handler_type_names: set[str],
     module_name: str,
     qual_prefix: str,
     in_class_scope: bool,
@@ -362,9 +404,11 @@ def _lower_component_body(
         slotted_helper_names=slotted_helper_names,
         top_level_component_names=top_level_component_names,
         component_param_names=component_param_names,
+        component_event_params=component_event_params,
         callable_kinds=_parameter_callable_kinds(component),
         callable_return_kinds=callable_return_kinds,
         legacy_container_names=legacy_container_names,
+        event_handler_type_names=event_handler_type_names,
         dirty_by_name=_initial_dirty_map(component, qual_prefix=qual_prefix),
         in_class_scope=in_class_scope,
         context_name="__pyr_ctx",
@@ -485,6 +529,7 @@ def _lower_container_with(statement: ast.With, *, state: _LoweringState) -> list
     lowered_body = _lower_block(statement.body, state=child_state)
     call_name = _call_name(context_expr)
     param_names = state.component_param_names.get(call_name) if call_name is not None else None
+    event_param_names = state.component_event_params.get(call_name, frozenset()) if call_name is not None else frozenset()
     dirty_keywords: list[ast.keyword] = []
     if param_names is not None:
         for param_name, arg in zip(param_names, context_expr.args):
@@ -504,6 +549,14 @@ def _lower_container_with(statement: ast.With, *, state: _LoweringState) -> list
                 )
             )
 
+    event_slot_setup, lowered_args, lowered_keywords = _lower_eventful_call_arguments(
+        args=list(context_expr.args),
+        keywords=list(context_expr.keywords),
+        param_names=param_names,
+        event_param_names=event_param_names,
+        state=state,
+        reason=statement,
+    )
     container_with = ast.With(
         items=[
             ast.withitem(
@@ -516,10 +569,10 @@ def _lower_container_with(statement: ast.With, *, state: _LoweringState) -> list
                     args=[
                         slot_name,
                         copy.deepcopy(context_expr.func),
-                        *[copy.deepcopy(arg) for arg in context_expr.args],
+                        *lowered_args,
                     ],
                     keywords=[
-                        *[copy.deepcopy(keyword) for keyword in context_expr.keywords],
+                        *lowered_keywords,
                         ast.keyword(
                             arg="dirty_state",
                             value=ast.Call(
@@ -551,7 +604,7 @@ def _lower_container_with(statement: ast.With, *, state: _LoweringState) -> list
         ]
     )
     lowered = ast.If(test=guard, body=[container_with], orelse=[])
-    return [*slot_setup, copy_reason_location(lowered, statement)]
+    return [*slot_setup, *event_slot_setup, copy_reason_location(lowered, statement)]
 
 
 def _lower_keyed_for(statement: ast.For, *, state: _LoweringState) -> list[ast.stmt]:
@@ -883,6 +936,15 @@ def _lower_component_expr_call(
             )
         )
 
+    event_param_names = state.component_event_params.get(call_name, frozenset())
+    event_slot_setup, lowered_args, lowered_keywords = _lower_eventful_call_arguments(
+        args=list(call.args),
+        keywords=list(call.keywords),
+        param_names=param_names,
+        event_param_names=event_param_names,
+        state=state,
+        reason=statement,
+    )
     component_call = ast.Expr(
         value=ast.Call(
             func=ast.Attribute(
@@ -890,9 +952,9 @@ def _lower_component_expr_call(
                 attr="component_call",
                 ctx=ast.Load(),
             ),
-            args=[slot_name, copy.deepcopy(call.func), *[copy.deepcopy(arg) for arg in call.args]],
+            args=[slot_name, copy.deepcopy(call.func), *lowered_args],
             keywords=[
-                *[copy.deepcopy(keyword) for keyword in call.keywords],
+                *lowered_keywords,
                 ast.keyword(
                     arg="dirty_state",
                     value=ast.Call(
@@ -921,7 +983,7 @@ def _lower_component_expr_call(
         ]
     )
     lowered = ast.If(test=guard, body=[component_call], orelse=[])
-    return [*slot_setup, copy_reason_location(lowered, statement)]
+    return [*slot_setup, *event_slot_setup, copy_reason_location(lowered, statement)]
 
 
 def _lower_call_native_expr(
@@ -1099,6 +1161,21 @@ def _parameter_callable_kinds(component: ast.FunctionDef) -> dict[str, str]:
     }
 
 
+def _parameter_event_names(
+    component: ast.FunctionDef | ast.AsyncFunctionDef,
+    *,
+    event_handler_type_names: set[str],
+) -> frozenset[str]:
+    return frozenset(
+        argument.arg
+        for argument in [*component.args.posonlyargs, *component.args.args, *component.args.kwonlyargs]
+        if _annotation_contains_event_handler(
+            argument.annotation,
+            event_handler_type_names=event_handler_type_names,
+        )
+    )
+
+
 def _collect_local_callable_return_kinds(module_ast: ast.Module) -> dict[str, str]:
     kinds: dict[str, str] = {}
     for node in ast.walk(module_ast):
@@ -1150,6 +1227,77 @@ def _dirty_expr_for_statements(
             seen_names.add(node.id)
             dirty_parts.append(copy.deepcopy(dirty_expr))
     return _or_expression(dirty_parts)
+
+
+def _event_handler_expression(
+    callback: ast.expr,
+    *,
+    slot_ref: ast.expr,
+    state: _LoweringState,
+) -> ast.expr:
+    return ast.Call(
+        func=ast.Attribute(
+            value=state.context_ref(),
+            attr="event_handler",
+            ctx=ast.Load(),
+        ),
+        args=[slot_ref],
+        keywords=[
+            ast.keyword(
+                arg="dirty",
+                value=_dirty_expr_for_value(callback, state.dirty_by_name),
+            ),
+            ast.keyword(arg="callback", value=copy.deepcopy(callback)),
+        ],
+    )
+
+
+def _lower_eventful_call_arguments(
+    *,
+    args: list[ast.expr],
+    keywords: list[ast.keyword],
+    param_names: tuple[str, ...] | None,
+    event_param_names: frozenset[str],
+    state: _LoweringState,
+    reason: ast.AST,
+) -> tuple[list[ast.stmt], list[ast.expr], list[ast.keyword]]:
+    if not event_param_names or param_names is None:
+        return [], [copy.deepcopy(arg) for arg in args], [copy.deepcopy(keyword) for keyword in keywords]
+
+    slot_setup: list[ast.stmt] = []
+    lowered_args: list[ast.expr] = []
+    for index, arg in enumerate(args):
+        param_name = param_names[index] if index < len(param_names) else None
+        if param_name is not None and param_name in event_param_names and not _is_none_literal(arg):
+            _event_slot_index, event_slot_ref, event_slot_setup = state.next_slot_id(reason=reason)
+            slot_setup.extend(event_slot_setup)
+            lowered_args.append(
+                copy_reason_location(
+                    _event_handler_expression(arg, slot_ref=event_slot_ref, state=state),
+                    arg,
+                )
+            )
+        else:
+            lowered_args.append(copy.deepcopy(arg))
+
+    lowered_keywords: list[ast.keyword] = []
+    for keyword in keywords:
+        if keyword.arg is not None and keyword.arg in event_param_names and not _is_none_literal(keyword.value):
+            _event_slot_index, event_slot_ref, event_slot_setup = state.next_slot_id(reason=reason)
+            slot_setup.extend(event_slot_setup)
+            lowered_keywords.append(
+                ast.keyword(
+                    arg=keyword.arg,
+                    value=copy_reason_location(
+                        _event_handler_expression(keyword.value, slot_ref=event_slot_ref, state=state),
+                        keyword.value,
+                    ),
+                )
+            )
+            continue
+        lowered_keywords.append(copy.deepcopy(keyword))
+
+    return slot_setup, lowered_args, lowered_keywords
 
 
 def _or_expression(expressions: list[ast.expr]) -> ast.expr:
@@ -1304,6 +1452,10 @@ def _is_false_expr(expression: ast.expr) -> bool:
     return isinstance(expression, ast.Constant) and expression.value is False
 
 
+def _is_none_literal(expression: ast.AST) -> bool:
+    return isinstance(expression, ast.Constant) and expression.value is None
+
+
 def _collect_slotted_helper_names(
     module_ast: ast.Module,
     *,
@@ -1382,9 +1534,10 @@ def _in_class_scope(qual_prefix: str) -> bool:
     return bool(qual_prefix) and "<locals>" not in qual_prefix.split(".")
 
 
-def _collect_source_api_aliases(module_ast: ast.Module) -> tuple[set[str], set[str]]:
+def _collect_source_api_aliases(module_ast: ast.Module) -> tuple[set[str], set[str], set[str]]:
     reactive = set(_REACTIVE_DECORATORS)
     slotted = set(_SLOTTED_DECORATORS)
+    event_handlers = set(_EVENT_HANDLER_TYPES)
     for statement in module_ast.body:
         if not isinstance(statement, ast.ImportFrom) or statement.module != "pyrolyze.api":
             continue
@@ -1394,15 +1547,18 @@ def _collect_source_api_aliases(module_ast: ast.Module) -> tuple[set[str], set[s
                 reactive.add(local_name)
             if alias.name in _SLOTTED_DECORATORS:
                 slotted.add(local_name)
-    return reactive, slotted
+            if alias.name in _EVENT_HANDLER_TYPES:
+                event_handlers.add(local_name)
+    return reactive, slotted, event_handlers
 
 
 def _collect_imported_annotated_symbols(
     module_ast: ast.Module,
-) -> tuple[set[str], set[str], dict[str, tuple[str, ...]], dict[str, str]]:
+) -> tuple[set[str], set[str], dict[str, tuple[str, ...]], dict[str, frozenset[str]], dict[str, str]]:
     slotted_names: set[str] = set()
     component_names: set[str] = set()
     component_param_names: dict[str, tuple[str, ...]] = {}
+    component_event_params: dict[str, frozenset[str]] = {}
     return_kinds: dict[str, str] = {}
 
     for statement in module_ast.body:
@@ -1457,8 +1613,21 @@ def _collect_imported_annotated_symbols(
                     inspect.Parameter.KEYWORD_ONLY,
                 }
             )
+            component_event_params[local_name] = frozenset(
+                parameter.name
+                for parameter in signature.parameters.values()
+                if parameter.kind
+                in {
+                    inspect.Parameter.POSITIONAL_ONLY,
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    inspect.Parameter.KEYWORD_ONLY,
+                }
+                and _runtime_annotation_is_event_handler(
+                    resolved_hints.get(parameter.name, parameter.annotation)
+                )
+            )
 
-    return slotted_names, component_names, component_param_names, return_kinds
+    return slotted_names, component_names, component_param_names, component_event_params, return_kinds
 
 
 def _resolve_runtime_type_hints(value: Any) -> dict[str, Any]:
@@ -1517,7 +1686,7 @@ def _is_plain_call_carrier_annotation(annotation: Any) -> bool:
 
 
 def _runtime_annotation_matches(annotation: Any, type_names: set[str]) -> bool:
-    if annotation in {None, inspect.Signature.empty}:
+    if annotation is None or annotation is inspect.Signature.empty:
         return False
     if isinstance(annotation, str):
         return any(name in annotation for name in type_names)
@@ -1531,6 +1700,32 @@ def _runtime_annotation_matches(annotation: Any, type_names: set[str]) -> bool:
             args = get_args(annotation)
             return bool(args) and _runtime_annotation_matches(args[0], type_names)
     return any(name in repr(annotation) for name in type_names)
+
+
+def _runtime_annotation_is_event_handler(annotation: Any) -> bool:
+    return _runtime_annotation_matches(
+        annotation,
+        {
+            "PyrolyzeHandler",
+            "PyrolyteHandler",
+            "PyrolyzeEventParam",
+        },
+    )
+
+
+def _annotation_contains_event_handler(
+    annotation: ast.AST | None,
+    *,
+    event_handler_type_names: set[str],
+) -> bool:
+    if annotation is None:
+        return False
+    for node in ast.walk(annotation):
+        if isinstance(node, ast.Name) and node.id in event_handler_type_names:
+            return True
+        if isinstance(node, ast.Attribute) and node.attr in _EVENT_HANDLER_TYPES:
+            return True
+    return False
 
 
 def _callable_kind_for_name(name: str, *, state: _LoweringState) -> str | None:

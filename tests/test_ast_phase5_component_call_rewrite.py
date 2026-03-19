@@ -107,3 +107,152 @@ def imported_panel(text):
         ("upper", "World"),
         ("badge", "WORLD", "info"),
     ]
+
+
+def test_phase5_lowers_pyrolyze_handler_event_params_and_keeps_plain_callables_plain() -> None:
+    source = """
+from typing import Callable
+
+from pyrolyze.api import PyrolyzeHandler as ClickHandler, UIElement, call_native, pyrolyse
+
+log = []
+
+@pyrolyse
+def button(
+    label: str,
+    *,
+    on_press: ClickHandler[[], None] | None = None,
+    formatter: Callable[[str], str] | None = None,
+) -> None:
+    display = formatter(label) if formatter is not None else label
+    call_native(UIElement)(
+        kind="button",
+        props={"label": display, "on_press": on_press},
+    )
+
+@pyrolyse
+def panel(name: str) -> None:
+    button(
+        "Save",
+        on_press=lambda: log.append(name),
+        formatter=lambda value: f"[{value}]",
+    )
+"""
+
+    transformed = emit_transformed_source(
+        source,
+        module_name="example.phase5.event_handler_local",
+        filename="/virtual/example/phase5/event_handler_local.py",
+    )
+
+    assert ".event_handler(" in transformed
+    assert "on_press=__pyr_ctx.event_handler(" in transformed
+    assert "callback=lambda: log.append(name)" in transformed
+    assert "formatter=lambda value: f'[{value}]'" in transformed
+    assert "formatter=__pyr_ctx.event_handler(" not in transformed
+
+    namespace = load_transformed_namespace(
+        source,
+        module_name="example.phase5.event_handler_local",
+        filename="/virtual/example/phase5/event_handler_local.py",
+    )
+    panel = namespace["panel"]
+    ctx = RenderContext()
+
+    panel._pyrolyze_meta._func(ctx, dirtyof(name=True), "Ada")
+    (button_node,) = ctx.committed_ui()
+    dispatch = button_node.props["on_press"]
+    assert button_node.props["label"] == "[Save]"
+    assert callable(dispatch)
+
+    dispatch()
+    assert namespace["log"] == ["Ada"]
+
+    panel._pyrolyze_meta._func(ctx, dirtyof(name=True), "Bea")
+    (updated_button_node,) = ctx.committed_ui()
+    updated_dispatch = updated_button_node.props["on_press"]
+
+    assert updated_button_node.props["label"] == "[Save]"
+    assert updated_dispatch is dispatch
+
+    updated_dispatch()
+    assert namespace["log"] == ["Ada", "Bea"]
+
+
+def test_phase5_lowers_qualified_pyrolyze_handler_annotations() -> None:
+    source = """
+import pyrolyze.api as pyr
+
+@pyr.pyrolyse
+def button(
+    label: str,
+    *,
+    on_press: pyr.PyrolyzeHandler[[], None] | None = None,
+) -> None:
+    pyr.call_native(pyr.UIElement)(
+        kind="button",
+        props={"label": label, "on_press": on_press},
+    )
+
+@pyr.pyrolyse
+def panel(name: str) -> None:
+    button("Save", on_press=lambda: print(name))
+"""
+
+    transformed = emit_transformed_source(
+        source,
+        module_name="example.phase5.event_handler_qualified",
+        filename="/virtual/example/phase5/event_handler_qualified.py",
+    )
+
+    assert "on_press=__pyr_ctx.event_handler(" in transformed
+    assert "callback=lambda: print(name)" in transformed
+
+
+def test_phase5_lowers_imported_component_event_params_from_runtime_annotations() -> None:
+    source = """
+from pyrolyze.api import pyrolyse
+from pyrolyze_testsupport.imported_annotations import imported_button
+
+log = []
+
+@pyrolyse
+def panel(name: str) -> None:
+    imported_button("Save", on_press=lambda: log.append(name))
+"""
+
+    transformed = emit_transformed_source(
+        source,
+        module_name="example.phase5.event_handler_imported",
+        filename="/virtual/example/phase5/event_handler_imported.py",
+    )
+
+    assert "imported_button" in transformed
+    assert "on_press=__pyr_ctx.event_handler(" in transformed
+
+    imported_support.reset_logs()
+    namespace = load_transformed_namespace(
+        source,
+        module_name="example.phase5.event_handler_imported",
+        filename="/virtual/example/phase5/event_handler_imported.py",
+    )
+    panel = namespace["panel"]
+    ctx = RenderContext()
+
+    panel._pyrolyze_meta._func(ctx, dirtyof(name=True), "Ada")
+    (button_node,) = ctx.committed_ui()
+    dispatch = button_node.props["on_press"]
+    assert button_node.props["label"] == "Save"
+    assert callable(dispatch)
+
+    dispatch()
+    assert namespace["log"] == ["Ada"]
+    assert imported_support.LOG == []
+
+    panel._pyrolyze_meta._func(ctx, dirtyof(name=True), "Bea")
+    (updated_button_node,) = ctx.committed_ui()
+    updated_dispatch = updated_button_node.props["on_press"]
+    assert updated_dispatch is dispatch
+
+    updated_dispatch()
+    assert namespace["log"] == ["Ada", "Bea"]

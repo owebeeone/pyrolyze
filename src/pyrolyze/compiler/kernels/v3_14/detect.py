@@ -9,7 +9,6 @@ from ...artifacts import (
     ComponentDetection,
     DetectionResult,
     EventBoundaryInfo,
-    HookRecord,
     SlottedHelperInfo,
 )
 from ...diagnostics import error_from_node
@@ -17,17 +16,8 @@ from ...diagnostics import error_from_node
 
 _REACTIVE_DECORATORS = {"pyrolyse", "reactive_component"}
 _SLOTTED_DECORATORS = {"pyrolyze_slotted"}
+_EVENT_HANDLER_TYPES = {"PyrolyzeHandler", "PyrolyteHandler"}
 
-
-_HOOK_NAMES = {
-    "use_state",
-    "use_effect",
-    "use_mount",
-    "use_unmount",
-    "use_external_store",
-    "use_store",
-    "use_grip",
-}
 
 _UNSUPPORTED_CALLS = {"exec", "eval"}
 
@@ -64,30 +54,17 @@ class _ComponentAnalyzer(ast.NodeVisitor):
     def __init__(
         self,
         module_name: str,
-        component_name: str,
-        *,
-        reactive_decorator_names: set[str],
-        slotted_decorator_names: set[str],
     ) -> None:
         self.module_name = module_name
-        self.component_name = component_name
-        self.reactive_decorator_names = reactive_decorator_names
-        self.slotted_decorator_names = slotted_decorator_names
-        self.hooks: list[HookRecord] = []
         self.has_if = False
         self.has_for = False
-        self._if_depth = 0
-        self._loop_depth = 0
-        self._nested_fn_depth = 0
 
     def visit_If(self, node: ast.If) -> Any:
         self.has_if = True
-        self._if_depth += 1
         for stmt in node.body:
             self.visit(stmt)
         for stmt in node.orelse:
             self.visit(stmt)
-        self._if_depth -= 1
 
     def visit_For(self, node: ast.For) -> Any:
         self.has_for = True
@@ -100,59 +77,10 @@ class _ComponentAnalyzer(ast.NodeVisitor):
                 suggested_fix="use_keyed_loop",
             )
 
-        self._loop_depth += 1
         for stmt in node.body:
             self.visit(stmt)
         for stmt in node.orelse:
             self.visit(stmt)
-        self._loop_depth -= 1
-
-    def visit_FunctionDef(self, node: ast.FunctionDef) -> Any:
-        if _is_transformed_function(
-            node,
-            reactive_decorator_names=self.reactive_decorator_names,
-            slotted_decorator_names=self.slotted_decorator_names,
-        ):
-            return None
-        self._nested_fn_depth += 1
-        for stmt in node.body:
-            self.visit(stmt)
-        self._nested_fn_depth -= 1
-
-    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> Any:
-        if _is_transformed_function(
-            node,
-            reactive_decorator_names=self.reactive_decorator_names,
-            slotted_decorator_names=self.slotted_decorator_names,
-        ):
-            return None
-        self._nested_fn_depth += 1
-        for stmt in node.body:
-            self.visit(stmt)
-        self._nested_fn_depth -= 1
-
-    def visit_Call(self, node: ast.Call) -> Any:
-        call_name = _call_name(node)
-        if call_name in _HOOK_NAMES:
-            if self._if_depth > 0 or self._loop_depth > 0 or self._nested_fn_depth > 0:
-                raise error_from_node(
-                    node,
-                    code="PYR-E-HOOK-PLACEMENT",
-                    message=f"Hook '{call_name}' must be top-level in component scope",
-                    module_name=self.module_name,
-                    suggested_fix="move_hook_top_level",
-                )
-
-            self.hooks.append(
-                HookRecord(
-                    name=call_name,
-                    line=getattr(node, "lineno", -1),
-                    column=getattr(node, "col_offset", -1),
-                    component=self.component_name,
-                )
-            )
-
-        self.generic_visit(node)
 
 
 def detect_module(
@@ -162,7 +90,9 @@ def detect_module(
     filename: str | None = None,
 ) -> DetectionResult:
     _validate_import_prelude(module_ast, module_name=filename or module_name)
-    reactive_decorator_names, slotted_decorator_names = _collect_source_api_aliases(module_ast)
+    reactive_decorator_names, slotted_decorator_names, event_handler_type_names = _collect_source_api_aliases(
+        module_ast
+    )
     reactive_components = _extract_reactive_components(
         module_ast,
         reactive_decorator_names=reactive_decorator_names,
@@ -196,7 +126,11 @@ def detect_module(
     event_boundaries = tuple(
         boundary
         for component in components
-        for boundary in detect_event_boundaries(component.node, component_name=component.name)
+        for boundary in detect_event_boundaries(
+            component.node,
+            component_name=component.name,
+            event_handler_type_names=event_handler_type_names,
+        )
     )
     diagnostics = tuple(
         _collect_component_return_type_warnings(
@@ -243,15 +177,17 @@ def detect_event_boundaries(
     component: ast.FunctionDef | ast.AsyncFunctionDef,
     *,
     component_name: str,
+    event_handler_type_names: set[str] | None = None,
 ) -> list[EventBoundaryInfo]:
     boundaries: list[EventBoundaryInfo] = []
+    handler_names = event_handler_type_names or set(_EVENT_HANDLER_TYPES)
     all_arguments = [
         *component.args.posonlyargs,
         *component.args.args,
         *component.args.kwonlyargs,
     ]
     for argument in all_arguments:
-        if _annotation_contains_event_handler(argument.annotation):
+        if _annotation_contains_event_handler(argument.annotation, event_handler_type_names=handler_names):
             boundaries.append(
                 EventBoundaryInfo(
                     component_name=component_name,
@@ -402,16 +338,13 @@ def _analyze_component(
     component_name, component_node = component
     analyzer = _ComponentAnalyzer(
         module_name=module_name,
-        component_name=component_name,
-        reactive_decorator_names=reactive_decorator_names,
-        slotted_decorator_names=slotted_decorator_names,
     )
     for statement in component_node.body:
         analyzer.visit(statement)
     return ComponentDetection(
         name=component_name,
         node=component_node,
-        hooks=tuple(analyzer.hooks),
+        hooks=(),
         has_if=analyzer.has_if,
         has_for=analyzer.has_for,
     )
@@ -462,33 +395,21 @@ def _is_pyrolyze_slotted(
 ) -> bool:
     return any(_decorator_name(decorator) in slotted_decorator_names for decorator in node.decorator_list)
 
-
-def _is_transformed_function(
-    node: ast.FunctionDef | ast.AsyncFunctionDef,
-    *,
-    reactive_decorator_names: set[str],
-    slotted_decorator_names: set[str],
-) -> bool:
-    return _is_reactive_component(
-        node,
-        reactive_decorator_names=reactive_decorator_names,
-    ) or _is_pyrolyze_slotted(
-        node,
-        slotted_decorator_names=slotted_decorator_names,
-    )
-
-
 def _is_keyed_call(node: ast.AST) -> bool:
     return isinstance(node, ast.Call) and _call_name(node) == "keyed"
 
 
-def _annotation_contains_event_handler(annotation: ast.AST | None) -> bool:
+def _annotation_contains_event_handler(
+    annotation: ast.AST | None,
+    *,
+    event_handler_type_names: set[str],
+) -> bool:
     if annotation is None:
         return False
     for node in ast.walk(annotation):
-        if isinstance(node, ast.Name) and node.id == "PyrolyteHandler":
+        if isinstance(node, ast.Name) and node.id in event_handler_type_names:
             return True
-        if isinstance(node, ast.Attribute) and node.attr == "PyrolyteHandler":
+        if isinstance(node, ast.Attribute) and node.attr in _EVENT_HANDLER_TYPES:
             return True
     return False
 
@@ -507,9 +428,10 @@ def _decorator_name(node: ast.AST) -> str | None:
     return None
 
 
-def _collect_source_api_aliases(module_ast: ast.Module) -> tuple[set[str], set[str]]:
+def _collect_source_api_aliases(module_ast: ast.Module) -> tuple[set[str], set[str], set[str]]:
     reactive = set(_REACTIVE_DECORATORS)
     slotted = set(_SLOTTED_DECORATORS)
+    event_handlers = set(_EVENT_HANDLER_TYPES)
     for statement in module_ast.body:
         if not isinstance(statement, ast.ImportFrom) or statement.module != "pyrolyze.api":
             continue
@@ -519,7 +441,9 @@ def _collect_source_api_aliases(module_ast: ast.Module) -> tuple[set[str], set[s
                 reactive.add(local_name)
             if alias.name in _SLOTTED_DECORATORS:
                 slotted.add(local_name)
-    return reactive, slotted
+            if alias.name in _EVENT_HANDLER_TYPES:
+                event_handlers.add(local_name)
+    return reactive, slotted, event_handlers
 
 
 def _validate_import_prelude(module_ast: ast.Module, *, module_name: str) -> None:

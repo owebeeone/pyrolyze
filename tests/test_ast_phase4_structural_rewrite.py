@@ -388,7 +388,7 @@ def bad_panel(name):
         )
 
 
-def test_phase4_rejects_hook_inside_keyed_loop() -> None:
+def test_phase4_allows_use_state_inside_keyed_loop() -> None:
     source = """
 from pyrolyze.api import keyed, pyrolyse, use_state
 
@@ -396,18 +396,18 @@ def button(label, *, on):
     return (label, on)
 
 @pyrolyse
-def bad_panel(items):
+def panel(items):
     for item in keyed(items, key=lambda x: x):
         on, set_on = use_state(False)
         button(item, on=on)
 """
 
-    with pytest.raises(
-        PyRolyzeCompileError,
-        match="Hook 'use_state' must be top-level in component scope",
-    ):
-        emit_transformed_source(
-            source,
-            module_name="example.phase4.bad_hook_loop",
-            filename="/virtual/example/phase4/bad_hook_loop.py",
-        )
+    transformed = emit_transformed_source(
+        source,
+        module_name="example.phase4.loop_use_state",
+        filename="/virtual/example/phase4/loop_use_state.py",
+    )
+
+    assert "call_plain(" in transformed
+    assert "use_state" in transformed
+    assert "result_shape=('tuple', 2)" in transformed

@@ -58,7 +58,7 @@ def profile_form():
     artifact = compile_source(source, module_name="profile_form")
 
     assert "profile_form" in artifact.components
-    assert [hook.name for hook in artifact.metadata.hooks] == ["use_state"]
+    assert artifact.metadata.hooks == []
 
 
 def test_compile_source_discovers_class_members_and_explicit_nested_pyrolyze_functions() -> None:
@@ -95,9 +95,7 @@ class Panel:
     assert "Panel.show" in artifact.components
     assert "Panel.render.<locals>.inner" in artifact.components
     assert "Panel.helper" not in artifact.components
-    assert [(hook.name, hook.component) for hook in artifact.metadata.hooks] == [
-        ("use_state", "Panel.render.<locals>.inner")
-    ]
+    assert artifact.metadata.hooks == []
 
 
 def test_pyrolyze_module_rejects_late_imports_after_executable_code() -> None:
