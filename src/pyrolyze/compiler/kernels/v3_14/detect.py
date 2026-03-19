@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ...artifacts import (
+    CompileWarning,
     ComponentDetection,
     DetectionResult,
     EventBoundaryInfo,
@@ -12,6 +13,10 @@ from ...artifacts import (
     SlottedHelperInfo,
 )
 from ...diagnostics import error_from_node
+
+
+_REACTIVE_DECORATORS = {"pyrolyse", "reactive_component"}
+_SLOTTED_DECORATORS = {"pyrolyze_slotted"}
 
 
 _HOOK_NAMES = {
@@ -56,9 +61,18 @@ class _UnsupportedSyntaxFinder(ast.NodeVisitor):
 
 
 class _ComponentAnalyzer(ast.NodeVisitor):
-    def __init__(self, module_name: str, component_name: str) -> None:
+    def __init__(
+        self,
+        module_name: str,
+        component_name: str,
+        *,
+        reactive_decorator_names: set[str],
+        slotted_decorator_names: set[str],
+    ) -> None:
         self.module_name = module_name
         self.component_name = component_name
+        self.reactive_decorator_names = reactive_decorator_names
+        self.slotted_decorator_names = slotted_decorator_names
         self.hooks: list[HookRecord] = []
         self.has_if = False
         self.has_for = False
@@ -94,7 +108,11 @@ class _ComponentAnalyzer(ast.NodeVisitor):
         self._loop_depth -= 1
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> Any:
-        if _is_transformed_function(node):
+        if _is_transformed_function(
+            node,
+            reactive_decorator_names=self.reactive_decorator_names,
+            slotted_decorator_names=self.slotted_decorator_names,
+        ):
             return None
         self._nested_fn_depth += 1
         for stmt in node.body:
@@ -102,7 +120,11 @@ class _ComponentAnalyzer(ast.NodeVisitor):
         self._nested_fn_depth -= 1
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> Any:
-        if _is_transformed_function(node):
+        if _is_transformed_function(
+            node,
+            reactive_decorator_names=self.reactive_decorator_names,
+            slotted_decorator_names=self.slotted_decorator_names,
+        ):
             return None
         self._nested_fn_depth += 1
         for stmt in node.body:
@@ -139,7 +161,12 @@ def detect_module(
     module_name: str,
     filename: str | None = None,
 ) -> DetectionResult:
-    reactive_components = _extract_reactive_components(module_ast)
+    _validate_import_prelude(module_ast, module_name=filename or module_name)
+    reactive_decorator_names, slotted_decorator_names = _collect_source_api_aliases(module_ast)
+    reactive_components = _extract_reactive_components(
+        module_ast,
+        reactive_decorator_names=reactive_decorator_names,
+    )
     for component_name, component_node in reactive_components:
         unsupported = _find_unsupported_syntax(component_node)
         if unsupported is not None:
@@ -152,14 +179,31 @@ def detect_module(
             )
 
     components = tuple(
-        _analyze_component(module_name, component)
+        _analyze_component(
+            module_name,
+            component,
+            reactive_decorator_names=reactive_decorator_names,
+            slotted_decorator_names=slotted_decorator_names,
+        )
         for component in reactive_components
     )
-    slotted_helpers = tuple(detect_slotted_helpers(module_ast))
+    slotted_helpers = tuple(
+        detect_slotted_helpers(
+            module_ast,
+            slotted_decorator_names=slotted_decorator_names,
+        )
+    )
     event_boundaries = tuple(
         boundary
         for component in components
         for boundary in detect_event_boundaries(component.node, component_name=component.name)
+    )
+    diagnostics = tuple(
+        _collect_component_return_type_warnings(
+            module_ast,
+            module_name=filename or module_name,
+            reactive_decorator_names=reactive_decorator_names,
+        )
     )
 
     return DetectionResult(
@@ -169,14 +213,22 @@ def detect_module(
         components=components,
         slotted_helpers=slotted_helpers,
         event_boundaries=event_boundaries,
-        diagnostics=(),
+        diagnostics=diagnostics,
     )
 
 
-def detect_slotted_helpers(module_ast: ast.Module) -> list[SlottedHelperInfo]:
+def detect_slotted_helpers(
+    module_ast: ast.Module,
+    *,
+    slotted_decorator_names: set[str] | None = None,
+) -> list[SlottedHelperInfo]:
+    slotted_names = slotted_decorator_names or set(_SLOTTED_DECORATORS)
     helpers: list[SlottedHelperInfo] = []
     for node in ast.walk(module_ast):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and _is_pyrolyze_slotted(node):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and _is_pyrolyze_slotted(
+            node,
+            slotted_decorator_names=slotted_names,
+        ):
             helpers.append(
                 SlottedHelperInfo(
                     name=node.name,
@@ -211,6 +263,129 @@ def detect_event_boundaries(
     return boundaries
 
 
+def _collect_component_return_type_warnings(
+    module_ast: ast.Module,
+    *,
+    module_name: str,
+    reactive_decorator_names: set[str],
+) -> list[CompileWarning]:
+    warnings: list[CompileWarning] = []
+
+    def walk_body(body: list[ast.stmt], *, qual_prefix: str) -> None:
+        for statement in body:
+            if isinstance(statement, ast.ClassDef):
+                class_prefix = _qualified_name(qual_prefix, statement.name)
+                walk_body(statement.body, qual_prefix=class_prefix)
+                continue
+            if not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+
+            function_name = _qualified_name(qual_prefix, statement.name)
+            warnings.extend(
+                _component_return_type_warnings_for_function(
+                    statement,
+                    function_name=function_name,
+                    module_name=module_name,
+                    reactive_decorator_names=reactive_decorator_names,
+                )
+            )
+
+            if not _is_reactive_component(statement, reactive_decorator_names=reactive_decorator_names):
+                walk_body(statement.body, qual_prefix=f"{function_name}.<locals>")
+
+    walk_body(module_ast.body, qual_prefix="")
+    return warnings
+
+
+def _component_return_type_warnings_for_function(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    *,
+    function_name: str,
+    module_name: str,
+    reactive_decorator_names: set[str],
+) -> list[CompileWarning]:
+    nested_components = {
+        statement.name: statement
+        for statement in function.body
+        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and _is_reactive_component(statement, reactive_decorator_names=reactive_decorator_names)
+    }
+    if not nested_components:
+        return []
+
+    warnings: list[CompileWarning] = []
+    seen_names: set[str] = set()
+    for return_node in _find_returns_excluding_nested_defs(function):
+        value = return_node.value
+        if not isinstance(value, ast.Name) or value.id not in nested_components or value.id in seen_names:
+            continue
+        seen_names.add(value.id)
+        if _annotation_contains_component_ref(function.returns):
+            continue
+
+        nested_component = nested_components[value.id]
+        expected = _expected_component_ref_annotation(nested_component)
+        warnings.append(
+            CompileWarning(
+                code="PYR-W-COMPONENT-RETURN-TYPE",
+                message=(
+                    f"Function '{function_name}' returns nested @pyrolyse component "
+                    f"'{value.id}'; annotate its return type as {expected}"
+                ),
+                path=module_name,
+                line=getattr(return_node, "lineno", getattr(function, "lineno", None)),
+                column=getattr(return_node, "col_offset", getattr(function, "col_offset", None)),
+                node_class=return_node.__class__.__name__,
+            )
+        )
+    return warnings
+
+
+def _find_returns_excluding_nested_defs(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> list[ast.Return]:
+    returns: list[ast.Return] = []
+
+    class _ReturnFinder(ast.NodeVisitor):
+        def visit_Return(self, node: ast.Return) -> Any:
+            returns.append(node)
+
+        def visit_FunctionDef(self, node: ast.FunctionDef) -> Any:
+            return None
+
+        def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> Any:
+            return None
+
+        def visit_ClassDef(self, node: ast.ClassDef) -> Any:
+            return None
+
+    finder = _ReturnFinder()
+    for statement in function.body:
+        finder.visit(statement)
+    return returns
+
+
+def _annotation_contains_component_ref(annotation: ast.AST | None) -> bool:
+    if annotation is None:
+        return False
+    for node in ast.walk(annotation):
+        if isinstance(node, ast.Name) and node.id == "ComponentRef":
+            return True
+        if isinstance(node, ast.Attribute) and node.attr == "ComponentRef":
+            return True
+    return False
+
+
+def _expected_component_ref_annotation(component: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
+    arg_types: list[str] = []
+    for argument in [*component.args.posonlyargs, *component.args.args, *component.args.kwonlyargs]:
+        if argument.annotation is None:
+            arg_types.append("Any")
+        else:
+            arg_types.append(ast.unparse(argument.annotation))
+    return f"ComponentRef[[{', '.join(arg_types)}]]"
+
+
 def _find_unsupported_syntax(module_ast: ast.Module) -> _UnsupportedSyntax | None:
     finder = _UnsupportedSyntaxFinder()
     finder.visit(module_ast)
@@ -220,9 +395,17 @@ def _find_unsupported_syntax(module_ast: ast.Module) -> _UnsupportedSyntax | Non
 def _analyze_component(
     module_name: str,
     component: tuple[str, ast.FunctionDef | ast.AsyncFunctionDef],
+    *,
+    reactive_decorator_names: set[str],
+    slotted_decorator_names: set[str],
 ) -> ComponentDetection:
     component_name, component_node = component
-    analyzer = _ComponentAnalyzer(module_name=module_name, component_name=component_name)
+    analyzer = _ComponentAnalyzer(
+        module_name=module_name,
+        component_name=component_name,
+        reactive_decorator_names=reactive_decorator_names,
+        slotted_decorator_names=slotted_decorator_names,
+    )
     for statement in component_node.body:
         analyzer.visit(statement)
     return ComponentDetection(
@@ -236,6 +419,8 @@ def _analyze_component(
 
 def _extract_reactive_components(
     module_ast: ast.Module,
+    *,
+    reactive_decorator_names: set[str],
 ) -> list[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef]]:
     components: list[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef]] = []
 
@@ -250,7 +435,7 @@ def _extract_reactive_components(
                 continue
 
             qualified_name = f"{prefix}.{node.name}" if prefix else node.name
-            if _is_reactive_component(node):
+            if _is_reactive_component(node, reactive_decorator_names=reactive_decorator_names):
                 components.append((qualified_name, node))
 
             walk_body(node.body, f"{qualified_name}.<locals>")
@@ -259,19 +444,38 @@ def _extract_reactive_components(
     return components
 
 
-def _is_reactive_component(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+def _is_reactive_component(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    *,
+    reactive_decorator_names: set[str],
+) -> bool:
     return any(
-        _decorator_name(decorator) in {"pyrolyse", "reactive_component"}
+        _decorator_name(decorator) in reactive_decorator_names
         for decorator in node.decorator_list
     )
 
 
-def _is_pyrolyze_slotted(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    return any(_decorator_name(decorator) == "pyrolyze_slotted" for decorator in node.decorator_list)
+def _is_pyrolyze_slotted(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    *,
+    slotted_decorator_names: set[str],
+) -> bool:
+    return any(_decorator_name(decorator) in slotted_decorator_names for decorator in node.decorator_list)
 
 
-def _is_transformed_function(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    return _is_reactive_component(node) or _is_pyrolyze_slotted(node)
+def _is_transformed_function(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    *,
+    reactive_decorator_names: set[str],
+    slotted_decorator_names: set[str],
+) -> bool:
+    return _is_reactive_component(
+        node,
+        reactive_decorator_names=reactive_decorator_names,
+    ) or _is_pyrolyze_slotted(
+        node,
+        slotted_decorator_names=slotted_decorator_names,
+    )
 
 
 def _is_keyed_call(node: ast.AST) -> bool:
@@ -289,12 +493,79 @@ def _annotation_contains_event_handler(annotation: ast.AST | None) -> bool:
     return False
 
 
+def _qualified_name(prefix: str, name: str) -> str:
+    if not prefix:
+        return name
+    return f"{prefix}.{name}"
+
+
 def _decorator_name(node: ast.AST) -> str | None:
     if isinstance(node, ast.Name):
         return node.id
     if isinstance(node, ast.Attribute):
         return node.attr
     return None
+
+
+def _collect_source_api_aliases(module_ast: ast.Module) -> tuple[set[str], set[str]]:
+    reactive = set(_REACTIVE_DECORATORS)
+    slotted = set(_SLOTTED_DECORATORS)
+    for statement in module_ast.body:
+        if not isinstance(statement, ast.ImportFrom) or statement.module != "pyrolyze.api":
+            continue
+        for alias in statement.names:
+            local_name = alias.asname or alias.name
+            if alias.name in _REACTIVE_DECORATORS:
+                reactive.add(local_name)
+            if alias.name in _SLOTTED_DECORATORS:
+                slotted.add(local_name)
+    return reactive, slotted
+
+
+def _validate_import_prelude(module_ast: ast.Module, *, module_name: str) -> None:
+    seen_non_prelude = False
+    for statement in module_ast.body:
+        if _is_import_prelude_statement(statement):
+            if seen_non_prelude and _contains_import_statement(statement):
+                raise error_from_node(
+                    statement,
+                    code="PYR-E-IMPORT-PRELUDE",
+                    message="Reactive modules require a top-of-file import prelude before executable code",
+                    module_name=module_name,
+                    suggested_fix="move_imports_to_module_prelude",
+                )
+            continue
+        seen_non_prelude = True
+
+
+def _is_import_prelude_statement(statement: ast.stmt) -> bool:
+    if isinstance(statement, (ast.Import, ast.ImportFrom)):
+        return True
+    if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Constant) and isinstance(statement.value.value, str):
+        return True
+    if isinstance(statement, ast.If):
+        return all(_is_import_prelude_statement(child) for child in [*statement.body, *statement.orelse])
+    if isinstance(statement, ast.Try):
+        handlers_ok = all(
+            all(_is_import_prelude_statement(child) for child in handler.body)
+            for handler in statement.handlers
+        )
+        return (
+            all(_is_import_prelude_statement(child) for child in statement.body)
+            and handlers_ok
+            and all(_is_import_prelude_statement(child) for child in statement.orelse)
+            and all(_is_import_prelude_statement(child) for child in statement.finalbody)
+        )
+    return False
+
+
+def _contains_import_statement(statement: ast.stmt) -> bool:
+    if isinstance(statement, (ast.Import, ast.ImportFrom)):
+        return True
+    for node in ast.walk(statement):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            return True
+    return False
 
 
 def _call_name(node: ast.AST) -> str | None:

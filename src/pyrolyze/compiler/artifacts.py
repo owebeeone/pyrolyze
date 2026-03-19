@@ -22,6 +22,15 @@ class CompileMetadata:
 class CompileWarning:
     code: str
     message: str
+    path: str | None = None
+    line: int | None = None
+    column: int | None = None
+    node_class: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TransformFlags:
+    warnings_as_errors: bool = False
 
 
 @dataclass(frozen=True, slots=True)

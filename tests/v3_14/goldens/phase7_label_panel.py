@@ -3,10 +3,10 @@ from pyrolyze.runtime import SlotId as __pyr_SlotId, dirtyof as __pyr_dirtyof, m
 __pyr_module_id = __pyr_module_registry.module_id(__name__)
 from pyrolyze.api import Label, call_native, pyrolyse
 
-def __pyr_label_panel(ctx, __pyr_dirty_state, text):
-    with ctx.pass_scope():
-        ctx.call_native(Label, text=text)
+def __pyr_label_panel(__pyr_ctx, __pyr_dirty_state, text: str):
+    with __pyr_ctx.pass_scope():
+        __pyr_ctx.call_native(Label, text=text)
 
 @__pyr_component_ref(__pyr_ComponentMetadata('label_panel', __pyr_label_panel))
-def label_panel(text):
+def label_panel(text: str) -> None:
     raise __pyr_CallFromNonPyrolyzeContext('label_panel')

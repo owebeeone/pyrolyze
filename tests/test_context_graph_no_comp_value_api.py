@@ -331,6 +331,18 @@ def test_component_call_supports_bound_instance_class_and_static_component_refs(
                 label,
                 dirty_state=dirtyof(label=__pyr_dirty_state.label),
             )
+            ctx.component_call(
+                SlotId(_MODULE_ID, 11, line_no=53),
+                panel.class_panel,
+                f"{label}-via-instance",
+                dirty_state=dirtyof(label=__pyr_dirty_state.label),
+            )
+            ctx.component_call(
+                SlotId(_MODULE_ID, 12, line_no=54),
+                panel.static_panel,
+                f"{label}-via-instance",
+                dirty_state=dirtyof(label=__pyr_dirty_state.label),
+            )
 
     render("alpha", dirtyof(label=True))
     render("alpha", dirtyof(label=False))
@@ -340,10 +352,16 @@ def test_component_call_supports_bound_instance_class_and_static_component_refs(
         ("instance", "P", "alpha", True),
         ("class", "Panel", "alpha", True),
         ("static", "alpha", True),
+        ("class", "Panel", "alpha-via-instance", True),
+        ("static", "alpha-via-instance", True),
         ("instance", "P", "alpha", False),
         ("class", "Panel", "alpha", False),
         ("static", "alpha", False),
+        ("class", "Panel", "alpha-via-instance", False),
+        ("static", "alpha-via-instance", False),
         ("instance", "P", "beta", True),
         ("class", "Panel", "beta", True),
         ("static", "beta", True),
+        ("class", "Panel", "beta-via-instance", True),
+        ("static", "beta-via-instance", True),
     ]

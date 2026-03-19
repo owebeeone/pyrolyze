@@ -20,7 +20,7 @@ def label_panel(text):
         filename="/virtual/example/phase7/label_panel.py",
     )
 
-    assert "ctx.call_native(Label, text=text)" in transformed
+    assert "__pyr_ctx.call_native(Label, text=text)" in transformed
 
     namespace = load_transformed_namespace(
         source,

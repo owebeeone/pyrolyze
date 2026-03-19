@@ -10,8 +10,14 @@ from typing import Any
 
 
 
-def compute_source_fingerprint(source: str, *, mtime: int | float, python_magic: str) -> str:
-    payload = f"{python_magic}|{mtime}|{source}".encode("utf-8")
+def compute_source_fingerprint(
+    source: str,
+    *,
+    mtime: int | float,
+    python_magic: str,
+    transformer_fingerprint: str,
+) -> str:
+    payload = f"{python_magic}|{mtime}|{transformer_fingerprint}|{source}".encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
 
 

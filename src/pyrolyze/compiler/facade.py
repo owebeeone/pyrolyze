@@ -11,6 +11,7 @@ from .artifacts import (
     ComponentFactory,
     DebugArtifacts,
     ModuleTransformPlan,
+    TransformFlags,
 )
 from .debug import build_debug_artifacts, dump_dir, write_debug_artifacts
 from .diagnostics import PyRolyzeCompileError
@@ -22,12 +23,15 @@ def analyze_source(
     *,
     module_name: str,
     filename: str | None = None,
+    flags: TransformFlags | None = None,
 ) -> ModuleTransformPlan:
+    flags = flags or TransformFlags()
     kernel = load_ast_kernel()
     module_ast = kernel.parse_module(source, module_name=module_name, filename=filename)
     detection = kernel.detect_module(module_ast, module_name=module_name, filename=filename)
     plan = kernel.build_transform_plan(detection, module_name=module_name)
     kernel.validate_plan(plan)
+    _raise_warnings_as_errors(plan.diagnostics, path=filename or module_name, flags=flags)
     return plan
 
 
@@ -49,8 +53,9 @@ def emit_transformed_source(
     *,
     module_name: str,
     filename: str | None = None,
+    flags: TransformFlags | None = None,
 ) -> str:
-    plan = analyze_source(source, module_name=module_name, filename=filename)
+    plan = analyze_source(source, module_name=module_name, filename=filename, flags=flags)
     module_ast = lower_plan_to_ast(plan, filename=filename)
     return load_ast_kernel().emit_source(module_ast)
 
@@ -60,9 +65,10 @@ def build_debug_artifacts_for_source(
     *,
     module_name: str,
     filename: str | None = None,
+    flags: TransformFlags | None = None,
 ) -> Any:
-    plan = analyze_source(source, module_name=module_name, filename=filename)
-    transformed_source = emit_transformed_source(source, module_name=module_name, filename=filename)
+    plan = analyze_source(source, module_name=module_name, filename=filename, flags=flags)
+    transformed_source = emit_transformed_source(source, module_name=module_name, filename=filename, flags=flags)
     return build_debug_artifacts(plan, transformed_source)
 
 
@@ -72,8 +78,9 @@ def load_transformed_namespace(
     module_name: str,
     filename: str | None = None,
     globals_dict: dict[str, object] | None = None,
+    flags: TransformFlags | None = None,
 ) -> dict[str, object]:
-    plan = analyze_source(source, module_name=module_name, filename=filename)
+    plan = analyze_source(source, module_name=module_name, filename=filename, flags=flags)
     module_ast = lower_plan_to_ast(plan, filename=filename)
     namespace: dict[str, object] = {} if globals_dict is None else dict(globals_dict)
     namespace.setdefault("__name__", module_name)
@@ -94,7 +101,9 @@ def compile_source(
     filename: str | None = None,
     env: str = "dev",
     enable_raw_fallback: bool = False,
+    flags: TransformFlags | None = None,
 ) -> CompileArtifact:
+    flags = flags or TransformFlags()
     if env == "prod" and enable_raw_fallback:
         raise PyRolyzeCompileError(
             "Raw fallback is forbidden in production mode",
@@ -104,7 +113,7 @@ def compile_source(
         )
 
     try:
-        plan = analyze_source(source, module_name=module_name, filename=filename)
+        plan = analyze_source(source, module_name=module_name, filename=filename, flags=flags)
     except PyRolyzeCompileError as exc:
         if exc.code == "PYR-E-UNSUPPORTED-SYNTAX" and enable_raw_fallback and env != "prod":
             fallback = _build_fallback_artifact(module_name=module_name, filename=filename)
@@ -123,7 +132,7 @@ def compile_source(
 
     artifact = _compile_artifact_from_plan(plan)
     try:
-        transformed_source = emit_transformed_source(source, module_name=module_name, filename=filename)
+        transformed_source = emit_transformed_source(source, module_name=module_name, filename=filename, flags=flags)
     except PyRolyzeCompileError as exc:
         if not _is_deferred_phase_error(exc.code):
             raise
@@ -141,6 +150,7 @@ def compile_source_with_env(
     *,
     module_name: str,
     filename: str | None = None,
+    flags: TransformFlags | None = None,
 ) -> CompileArtifact:
     env_name = str(os.getenv("PYROLYZE_ENV", "dev")).strip().lower() or "dev"
     raw_flag = str(os.getenv("PYROLYZE_ENABLE_RAW_FALLBACK", "")).strip().lower()
@@ -151,6 +161,7 @@ def compile_source_with_env(
         filename=filename,
         env=env_name,
         enable_raw_fallback=enable_raw_fallback,
+        flags=flags,
     )
 
 
@@ -205,7 +216,7 @@ def _compile_artifact_from_plan(
             ],
         },
         component_factory=ComponentFactory(module_name=plan.module_name),
-        warnings=[],
+        warnings=list(plan.diagnostics),
         non_reactive=False,
     )
 
@@ -311,3 +322,24 @@ def source_placeholder(*, module_name: str) -> str:
 
 def _is_deferred_phase_error(code: str) -> bool:
     return code.startswith("PYR-E-PHASE") or code == "PYR-E-ASYNC-UNSUPPORTED"
+
+
+def _raise_warnings_as_errors(
+    warnings: tuple[CompileWarning, ...],
+    *,
+    path: str,
+    flags: TransformFlags,
+) -> None:
+    if not flags.warnings_as_errors or not warnings:
+        return
+
+    warning = warnings[0]
+    raise PyRolyzeCompileError(
+        f"Warning treated as error: {warning.message}",
+        code=warning.code.replace("PYR-W", "PYR-E", 1),
+        path=warning.path or path,
+        line=warning.line,
+        column=warning.column,
+        node_class=warning.node_class,
+        suggested_fix="fix_warning_or_disable_warnings_as_errors",
+    )

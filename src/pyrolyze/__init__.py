@@ -8,6 +8,7 @@ from .compiler import (
     CompileWarning,
     HookRecord,
     PyRolyzeCompileError,
+    TransformFlags,
     compile_source,
     compile_source_with_env,
 )
@@ -19,6 +20,7 @@ __all__ = [
     "CompileWarning",
     "HookRecord",
     "PyRolyzeCompileError",
+    "TransformFlags",
     "compile_source",
     "compile_source_with_env",
     "pyrolyse",

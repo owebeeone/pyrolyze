@@ -10,7 +10,7 @@ import os
 import sys
 from typing import Any, Callable
 
-from .compiler import compile_source_with_env
+from .compiler import compile_source_with_env, kernel_loader
 from .importer import BytecodeCache, PersistentArtifactCache, compute_source_fingerprint, should_transform
 
 
@@ -52,7 +52,13 @@ class _PyRolyzeLoader(importlib.abc.Loader):
         ):
             mtime = _safe_mtime(self._path)
             python_magic = importlib.util.MAGIC_NUMBER.hex()
-            cache_key = compute_source_fingerprint(source, mtime=mtime, python_magic=python_magic)
+            transformer_fingerprint = kernel_loader.active_transformer_fingerprint()
+            cache_key = compute_source_fingerprint(
+                source,
+                mtime=mtime,
+                python_magic=python_magic,
+                transformer_fingerprint=transformer_fingerprint,
+            )
             artifact = self._cache.get(module_name=self._fullname, cache_key=cache_key)
             if artifact is None:
                 artifact = _invoke_compiler(
@@ -210,7 +216,6 @@ def _invoke_compiler(
 
 
 __all__ = ["PyRolyzeFinder", "install_import_hook", "uninstall_import_hook"]
-
 
 
 

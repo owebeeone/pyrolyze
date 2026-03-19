@@ -2,43 +2,54 @@ from __future__ import annotations
 
 import ast
 import copy
-import re
+import importlib
+import inspect
 from dataclasses import dataclass, field
-from typing import cast
+from typing import Any, cast, get_args, get_origin
 
 from ...artifacts import ComponentTransformPlan, ModuleTransformPlan
 from ...diagnostics import error_from_node
 from .builders import copy_reason_location
 
 
-_PYROLYSE_DECORATORS = {"pyrolyse", "reactive_component"}
+_REACTIVE_DECORATORS = {"pyrolyse", "reactive_component"}
+_SLOTTED_DECORATORS = {"pyrolyze_slotted"}
+_CALLABLE_KIND_COMPONENT_REF = "component_ref"
+_CALLABLE_KIND_SLOT_CALLABLE = "slot_callable"
+_CALLABLE_KIND_PLAIN_CALLABLE = "plain_callable"
 
 
 @dataclass(slots=True)
 class _LoweringShared:
     slot_index: int = 1
-    generated_name_counts: dict[str, int] = field(default_factory=dict)
+    hoist_slots: bool = True
+    slot_declarations: list[ast.Assign] = field(default_factory=list)
 
 
 @dataclass(slots=True)
 class _LoweringState:
     module_name: str
+    reactive_decorator_names: set[str]
     slotted_helper_names: set[str]
     top_level_component_names: set[str]
     component_param_names: dict[str, tuple[str, ...]]
+    callable_kinds: dict[str, str]
+    callable_return_kinds: dict[str, str]
+    legacy_container_names: set[str]
     dirty_by_name: dict[str, ast.expr]
     in_class_scope: bool
     context_name: str
     shared: _LoweringShared
 
-    def next_slot_id(self, *, reason: ast.AST) -> tuple[int, ast.Assign]:
+    def next_slot_id(self, *, reason: ast.AST) -> tuple[int, ast.expr, list[ast.stmt]]:
         slot_index = self.shared.slot_index
         self.shared.slot_index += 1
-        target = ast.Name(id=f"__pyr_slot_{slot_index}", ctx=ast.Store())
+        slot_name = f"__pyr_slot_{slot_index}"
+        target = ast.Name(id=slot_name, ctx=ast.Store())
         value = ast.Call(
-            func=_support_reference("__pyr_SlotId", in_class_scope=self.in_class_scope),
+            func=ast.Name(id="__pyr_SlotId", ctx=ast.Load()),
             args=[
-                _support_reference("__pyr_module_id", in_class_scope=self.in_class_scope),
+                ast.Name(id="__pyr_module_id", ctx=ast.Load()),
                 ast.Constant(slot_index),
             ],
             keywords=[
@@ -48,16 +59,12 @@ class _LoweringState:
                 )
             ],
         )
-        assign = ast.Assign(targets=[target], value=value)
-        return slot_index, copy_reason_location(assign, reason)
-
-    def next_generated_name(self, stem: str) -> str:
-        normalized = re.sub(r"[^0-9a-zA-Z_]", "_", stem).strip("_") or "tmp"
-        count = self.shared.generated_name_counts.get(normalized, 0) + 1
-        self.shared.generated_name_counts[normalized] = count
-        if count == 1:
-            return f"__pyr_{normalized}"
-        return f"__pyr_{normalized}_{count}"
+        assign = copy_reason_location(ast.Assign(targets=[target], value=value), reason)
+        slot_ref = _support_reference(slot_name, in_class_scope=self.in_class_scope)
+        if self.shared.hoist_slots:
+            self.shared.slot_declarations.append(assign)
+            return slot_index, slot_ref, []
+        return slot_index, ast.Name(id=slot_name, ctx=ast.Load()), [assign]
 
     def context_ref(self) -> ast.Name:
         return ast.Name(id=self.context_name, ctx=ast.Load())
@@ -70,9 +77,13 @@ class _LoweringState:
     ) -> _LoweringState:
         return _LoweringState(
             module_name=self.module_name,
+            reactive_decorator_names=self.reactive_decorator_names,
             slotted_helper_names=self.slotted_helper_names,
             top_level_component_names=self.top_level_component_names,
             component_param_names=self.component_param_names,
+            callable_kinds=dict(self.callable_kinds),
+            callable_return_kinds=self.callable_return_kinds,
+            legacy_container_names=self.legacy_container_names,
             dirty_by_name=self.dirty_by_name if dirty_by_name is None else dirty_by_name,
             in_class_scope=self.in_class_scope,
             context_name=self.context_name if context_name is None else context_name,
@@ -86,28 +97,47 @@ def lower_module_plan(plan: ModuleTransformPlan) -> ast.Module:
         ast.fix_missing_locations(module_ast)
         return module_ast
 
+    reactive_decorator_names, slotted_decorator_names = _collect_source_api_aliases(plan.module_ast)
+    shared = _LoweringShared(hoist_slots=True)
     component_plans = {component.public_name: component for component in plan.component_plans}
-    slotted_helper_names = _collect_slotted_helper_names(plan.module_ast)
+    imported_slotted_names, imported_component_names, imported_component_param_names, imported_return_kinds = (
+        _collect_imported_annotated_symbols(plan.module_ast)
+    )
+    slotted_helper_names = _collect_slotted_helper_names(
+        plan.module_ast,
+        slotted_decorator_names=slotted_decorator_names,
+    )
+    slotted_helper_names.update(imported_slotted_names)
     component_param_names = {
         component.public_name: _component_parameter_names(component)
         for component in plan.component_plans
     }
+    component_param_names.update(imported_component_param_names)
+    callable_return_kinds = _collect_local_callable_return_kinds(plan.module_ast)
+    callable_return_kinds.update(imported_return_kinds)
     top_level_component_names = {
         component.public_name
         for component in plan.component_plans
         if "." not in component.public_name
     }
+    top_level_component_names.update(imported_component_names)
+    legacy_container_names = _collect_legacy_container_names(plan.module_ast)
 
     new_body = _rewrite_body(
         plan.module_ast.body,
         component_plans=component_plans,
+        reactive_decorator_names=reactive_decorator_names,
         slotted_helper_names=slotted_helper_names,
         top_level_component_names=top_level_component_names,
         component_param_names=component_param_names,
+        callable_return_kinds=callable_return_kinds,
+        legacy_container_names=legacy_container_names,
         module_name=plan.module_name,
         qual_prefix="",
+        in_class_scope=False,
+        shared=shared,
     )
-    new_body = _inject_module_scaffold(new_body)
+    new_body = _inject_module_scaffold(new_body, slot_declarations=shared.slot_declarations)
     module_ast = ast.Module(
         body=new_body,
         type_ignores=copy.deepcopy(plan.module_ast.type_ignores),
@@ -128,11 +158,16 @@ def lower_component(plan: ComponentTransformPlan) -> ast.FunctionDef | ast.Async
 
     private_function, _wrapper = _lower_component_definition(
         plan,
+        reactive_decorator_names=set(_REACTIVE_DECORATORS),
         slotted_helper_names=set(),
         top_level_component_names=set(),
         component_param_names={plan.public_name: _component_parameter_names(plan)},
+        callable_return_kinds={},
+        legacy_container_names=set(),
         module_name=plan.public_name,
         qual_prefix="",
+        in_class_scope=False,
+        shared=_LoweringShared(hoist_slots=False),
     )
     ast.fix_missing_locations(private_function)
     return private_function
@@ -149,11 +184,16 @@ def _rewrite_body(
     body: list[ast.stmt],
     *,
     component_plans: dict[str, ComponentTransformPlan],
+    reactive_decorator_names: set[str],
     slotted_helper_names: set[str],
     top_level_component_names: set[str],
     component_param_names: dict[str, tuple[str, ...]],
+    callable_return_kinds: dict[str, str],
+    legacy_container_names: set[str],
     module_name: str,
     qual_prefix: str,
+    in_class_scope: bool,
+    shared: _LoweringShared,
 ) -> list[ast.stmt]:
     rewritten: list[ast.stmt] = []
     for statement in body:
@@ -163,11 +203,16 @@ def _rewrite_body(
             class_copy.body = _rewrite_body(
                 statement.body,
                 component_plans=component_plans,
+                reactive_decorator_names=reactive_decorator_names,
                 slotted_helper_names=slotted_helper_names,
                 top_level_component_names=top_level_component_names,
                 component_param_names=component_param_names,
+                callable_return_kinds=callable_return_kinds,
+                legacy_container_names=legacy_container_names,
                 module_name=module_name,
                 qual_prefix=class_prefix,
+                in_class_scope=True,
+                shared=shared,
             )
             rewritten.append(class_copy)
             continue
@@ -176,15 +221,35 @@ def _rewrite_body(
             qualified_name = _qualified_name(qual_prefix, statement.name)
             component_plan = component_plans.get(qualified_name)
             if component_plan is None:
-                rewritten.append(copy.deepcopy(statement))
+                function_copy = copy.deepcopy(statement)
+                function_copy.body = _rewrite_body(
+                    statement.body,
+                    component_plans=component_plans,
+                    reactive_decorator_names=reactive_decorator_names,
+                    slotted_helper_names=slotted_helper_names,
+                    top_level_component_names=top_level_component_names,
+                    component_param_names=component_param_names,
+                    callable_return_kinds=callable_return_kinds,
+                    legacy_container_names=legacy_container_names,
+                    module_name=module_name,
+                    qual_prefix=f"{qualified_name}.<locals>",
+                    in_class_scope=in_class_scope,
+                    shared=shared,
+                )
+                rewritten.append(function_copy)
                 continue
             private_function, wrapper = _lower_component_definition(
                 component_plan,
+                reactive_decorator_names=reactive_decorator_names,
                 slotted_helper_names=slotted_helper_names,
                 top_level_component_names=top_level_component_names,
                 component_param_names=component_param_names,
+                callable_return_kinds=callable_return_kinds,
+                legacy_container_names=legacy_container_names,
                 module_name=module_name,
                 qual_prefix=qual_prefix,
+                in_class_scope=in_class_scope,
+                shared=shared,
             )
             rewritten.extend([private_function, wrapper])
             continue
@@ -197,11 +262,16 @@ def _rewrite_body(
 def _lower_component_definition(
     plan: ComponentTransformPlan,
     *,
+    reactive_decorator_names: set[str],
     slotted_helper_names: set[str],
     top_level_component_names: set[str],
     component_param_names: dict[str, tuple[str, ...]],
+    callable_return_kinds: dict[str, str],
+    legacy_container_names: set[str],
     module_name: str,
     qual_prefix: str,
+    in_class_scope: bool,
+    shared: _LoweringShared,
 ) -> tuple[ast.FunctionDef, ast.FunctionDef]:
     original = plan.node
     if isinstance(original, ast.AsyncFunctionDef):
@@ -222,11 +292,16 @@ def _lower_component_definition(
             _build_pass_scope(
                 _lower_component_body(
                     original,
+                    reactive_decorator_names=reactive_decorator_names,
                     slotted_helper_names=slotted_helper_names,
                     top_level_component_names=top_level_component_names,
                     component_param_names=component_param_names,
+                    callable_return_kinds=callable_return_kinds,
+                    legacy_container_names=legacy_container_names,
                     module_name=module_name,
                     qual_prefix=qual_prefix,
+                    in_class_scope=in_class_scope,
+                    shared=shared,
                 )
             ),
             original,
@@ -235,7 +310,12 @@ def _lower_component_definition(
     private_function.returns = None
 
     wrapper = copy.deepcopy(original)
-    wrapper.decorator_list = _wrapper_decorators_for_component(original, plan)
+    wrapper.decorator_list = _wrapper_decorators_for_component(
+        original,
+        plan,
+        reactive_decorator_names=reactive_decorator_names,
+        in_class_scope=in_class_scope,
+    )
     wrapper.body = [
         copy_reason_location(
             ast.Raise(
@@ -261,21 +341,30 @@ def _lower_component_definition(
 def _lower_component_body(
     component: ast.FunctionDef,
     *,
+    reactive_decorator_names: set[str],
     slotted_helper_names: set[str],
     top_level_component_names: set[str],
     component_param_names: dict[str, tuple[str, ...]],
+    callable_return_kinds: dict[str, str],
+    legacy_container_names: set[str],
     module_name: str,
     qual_prefix: str,
+    in_class_scope: bool,
+    shared: _LoweringShared,
 ) -> list[ast.stmt]:
     state = _LoweringState(
         module_name=module_name,
+        reactive_decorator_names=reactive_decorator_names,
         slotted_helper_names=slotted_helper_names,
         top_level_component_names=top_level_component_names,
         component_param_names=component_param_names,
+        callable_kinds=_parameter_callable_kinds(component),
+        callable_return_kinds=callable_return_kinds,
+        legacy_container_names=legacy_container_names,
         dirty_by_name=_initial_dirty_map(component, qual_prefix=qual_prefix),
-        in_class_scope=bool(qual_prefix),
-        context_name="ctx",
-        shared=_LoweringShared(),
+        in_class_scope=in_class_scope,
+        context_name="__pyr_ctx",
+        shared=shared,
     )
     lowered = _lower_block(component.body, state=state)
     if not lowered:
@@ -313,7 +402,10 @@ def _lower_statement(statement: ast.stmt, *, state: _LoweringState) -> list[ast.
             module_name=state.module_name,
             suggested_fix="defer_to_later_phase",
         )
-    if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)) and _is_reactive_component(statement):
+    if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)) and _is_reactive_component(
+        statement,
+        reactive_decorator_names=state.reactive_decorator_names,
+    ):
         raise error_from_node(
             statement,
             code="PYR-E-PHASE4-NESTED-COMPONENT",
@@ -323,6 +415,8 @@ def _lower_statement(statement: ast.stmt, *, state: _LoweringState) -> list[ast.
         )
     if isinstance(statement, ast.Assign):
         return _lower_assign(statement, state=state)
+    if isinstance(statement, ast.AnnAssign):
+        return _lower_ann_assign(statement, state=state)
     if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call):
         return _lower_expr_call(statement, state=state)
 
@@ -351,23 +445,60 @@ def _lower_container_with(statement: ast.With, *, state: _LoweringState) -> list
         )
 
     item = statement.items[0]
-    if item.optional_vars is not None or not isinstance(item.context_expr, ast.Call):
+    if item.optional_vars is not None:
+        if isinstance(item.context_expr, ast.Call) and _is_pyrolyze_sensitive_call(item.context_expr, state=state):
+            raise error_from_node(
+                statement,
+                code="PYR-E-PHASE4-WITH-AS",
+                message="'with ... as ...' is ordinary Python context-manager syntax and cannot target PyRolyze helpers",
+                module_name=state.module_name,
+                suggested_fix="remove_as_or_use_plain_context_manager",
+            )
+        lowered = copy.deepcopy(statement)
+        lowered.body = _lower_block(statement.body, state=state)
+        return [copy_reason_location(lowered, statement)]
+    if not isinstance(item.context_expr, ast.Call):
         raise error_from_node(
             statement,
             code="PYR-E-PHASE4-WITH-SHAPE",
-            message="Phase 04 container lowering requires 'with helper(...):' without 'as'",
+            message="'with expr:' without 'as' is reserved for PyRolyze container syntax",
             module_name=state.module_name,
             suggested_fix="use_container_helper_without_as",
         )
 
-    _slot_index, slot_assign = state.next_slot_id(reason=statement)
-    slot_name = ast.Name(id=slot_assign.targets[0].id, ctx=ast.Load())
+    slot_index, slot_name, slot_setup = state.next_slot_id(reason=statement)
     context_expr = cast(ast.Call, item.context_expr)
-    container_ctx_name = state.next_generated_name(
-        f"{_call_name(context_expr) or 'container'}_ctx"
-    )
+    if not _is_container_candidate_call(context_expr, state=state):
+        raise error_from_node(
+            statement,
+            code="PYR-E-PHASE4-WITH-CONTAINER",
+            message="'with expr:' without 'as' is reserved for PyRolyze container syntax",
+            module_name=state.module_name,
+            suggested_fix="use_plain_context_manager_with_as",
+        )
+    container_ctx_name = _context_name_for_slot(slot_index)
     child_state = state.child(context_name=container_ctx_name)
     lowered_body = _lower_block(statement.body, state=child_state)
+    call_name = _call_name(context_expr)
+    param_names = state.component_param_names.get(call_name) if call_name is not None else None
+    dirty_keywords: list[ast.keyword] = []
+    if param_names is not None:
+        for param_name, arg in zip(param_names, context_expr.args):
+            dirty_keywords.append(
+                ast.keyword(
+                    arg=param_name,
+                    value=_dirty_expr_for_value(arg, state.dirty_by_name),
+                )
+            )
+        for keyword in context_expr.keywords:
+            if keyword.arg is None:
+                continue
+            dirty_keywords.append(
+                ast.keyword(
+                    arg=keyword.arg,
+                    value=_dirty_expr_for_value(keyword.value, state.dirty_by_name),
+                )
+            )
 
     container_with = ast.With(
         items=[
@@ -383,7 +514,17 @@ def _lower_container_with(statement: ast.With, *, state: _LoweringState) -> list
                         copy.deepcopy(context_expr.func),
                         *[copy.deepcopy(arg) for arg in context_expr.args],
                     ],
-                    keywords=[copy.deepcopy(keyword) for keyword in context_expr.keywords],
+                    keywords=[
+                        *[copy.deepcopy(keyword) for keyword in context_expr.keywords],
+                        ast.keyword(
+                            arg="dirty_state",
+                            value=ast.Call(
+                                func=_support_reference("__pyr_dirtyof", in_class_scope=state.in_class_scope),
+                                args=[],
+                                keywords=dirty_keywords,
+                            ),
+                        ),
+                    ],
                 ),
                 optional_vars=ast.Name(id=container_ctx_name, ctx=ast.Store()),
             )
@@ -406,7 +547,7 @@ def _lower_container_with(statement: ast.With, *, state: _LoweringState) -> list
         ]
     )
     lowered = ast.If(test=guard, body=[container_with], orelse=[])
-    return [slot_assign, copy_reason_location(lowered, statement)]
+    return [*slot_setup, copy_reason_location(lowered, statement)]
 
 
 def _lower_keyed_for(statement: ast.For, *, state: _LoweringState) -> list[ast.stmt]:
@@ -417,14 +558,6 @@ def _lower_keyed_for(statement: ast.For, *, state: _LoweringState) -> list[ast.s
             message="Phase 04 does not yet lower for-else in render scope",
             module_name=state.module_name,
             suggested_fix="remove_for_else",
-        )
-    if not isinstance(statement.target, ast.Name):
-        raise error_from_node(
-            statement,
-            code="PYR-E-PHASE4-FOR-TARGET",
-            message="Phase 04 only supports simple name targets in keyed loops",
-            module_name=state.module_name,
-            suggested_fix="use_simple_loop_target",
         )
     if not _is_keyed_call(statement.iter):
         raise error_from_node(
@@ -454,38 +587,39 @@ def _lower_keyed_for(statement: ast.For, *, state: _LoweringState) -> list[ast.s
             suggested_fix="use_keyed_loop",
         )
 
-    _slot_index, slot_assign = state.next_slot_id(reason=statement)
-    slot_name = ast.Name(id=slot_assign.targets[0].id, ctx=ast.Load())
-    item_ctx_name = state.next_generated_name(f"{statement.target.id}_item")
-    item_dirty_name = _dirty_name_for(statement.target.id)
+    slot_index, slot_name, slot_setup = state.next_slot_id(reason=statement)
+    item_ctx_name = _keyed_context_name_for_slot(slot_index)
+    loop_dirty_by_name = {
+        **state.dirty_by_name,
+        **_dirty_state_bindings(statement.target, module_name=state.module_name, reason=statement),
+    }
     loop_state = state.child(
         context_name=item_ctx_name,
-        dirty_by_name={**state.dirty_by_name, statement.target.id: ast.Name(id=item_dirty_name, ctx=ast.Load())},
+        dirty_by_name=dict(loop_dirty_by_name),
     )
-    item_assign = copy_reason_location(
-        ast.Assign(
-            targets=[
-                ast.Tuple(
-                    elts=[
-                        ast.Name(id=item_dirty_name, ctx=ast.Store()),
-                        ast.Name(id=statement.target.id, ctx=ast.Store()),
-                    ],
-                    ctx=ast.Store(),
-                )
-            ],
-            value=ast.Call(
+    lowered_body = _lower_block(statement.body, state=loop_state)
+    current_assignments = _build_loop_current_assignments(
+        statement.target,
+        item_ctx_name=item_ctx_name,
+        module_name=state.module_name,
+        reason=statement,
+    )
+    item_guard = _or_expression(
+        [
+            _dirty_expr_for_value(iter_call.args[0], state.dirty_by_name),
+            _dirty_expr_for_value(key_arg, state.dirty_by_name),
+            _dirty_expr_for_statements(statement.body, loop_dirty_by_name),
+            ast.Call(
                 func=ast.Attribute(
                     value=ast.Name(id=item_ctx_name, ctx=ast.Load()),
-                    attr="current_value",
+                    attr="visit_self_and_dirty",
                     ctx=ast.Load(),
                 ),
                 args=[],
                 keywords=[],
             ),
-        ),
-        statement,
+        ]
     )
-    lowered_body = _lower_block(statement.body, state=loop_state)
     loop_for = ast.For(
         target=ast.Name(id=item_ctx_name, ctx=ast.Store()),
         iter=ast.Call(
@@ -497,7 +631,33 @@ def _lower_keyed_for(statement: ast.For, *, state: _LoweringState) -> list[ast.s
             args=[slot_name, copy.deepcopy(iter_call.args[0])],
             keywords=[ast.keyword(arg="key_fn", value=copy.deepcopy(key_arg))],
         ),
-        body=[item_assign, *lowered_body],
+        body=[
+            ast.With(
+                items=[
+                    ast.withitem(
+                        context_expr=ast.Call(
+                            func=ast.Attribute(
+                                value=ast.Name(id=item_ctx_name, ctx=ast.Load()),
+                                attr="pass_scope",
+                                ctx=ast.Load(),
+                            ),
+                            args=[],
+                            keywords=[],
+                        ),
+                        optional_vars=None,
+                    )
+                ],
+                body=[
+                    *current_assignments,
+                    ast.If(
+                        test=ast.UnaryOp(op=ast.Not(), operand=item_guard),
+                        body=[ast.Continue()],
+                        orelse=[],
+                    ),
+                    *lowered_body,
+                ],
+            )
+        ],
         orelse=[],
     )
     guard = _or_expression(
@@ -517,7 +677,7 @@ def _lower_keyed_for(statement: ast.For, *, state: _LoweringState) -> list[ast.s
         ]
     )
     lowered = ast.If(test=guard, body=[loop_for], orelse=[])
-    return [slot_assign, copy_reason_location(lowered, statement)]
+    return [*slot_setup, copy_reason_location(lowered, statement)]
 
 
 def _lower_assign(statement: ast.Assign, *, state: _LoweringState) -> list[ast.stmt]:
@@ -525,7 +685,7 @@ def _lower_assign(statement: ast.Assign, *, state: _LoweringState) -> list[ast.s
         return [copy.deepcopy(statement)]
 
     target = statement.targets[0]
-    if isinstance(statement.value, ast.Call) and _is_slotted_helper_call(statement.value, state.slotted_helper_names):
+    if isinstance(statement.value, ast.Call) and _is_slotted_helper_call(statement.value, state=state):
         return _lower_slotted_assign(statement, target=target, call=statement.value, state=state)
 
     lowered = [copy.deepcopy(statement)]
@@ -545,9 +705,27 @@ def _lower_assign(statement: ast.Assign, *, state: _LoweringState) -> list[ast.s
                 )
             )
             state.dirty_by_name[target.id] = ast.Name(id=dirty_name, ctx=ast.Load())
+        _update_callable_kind_from_assignment(target, statement.value, state=state)
 
     ast.copy_location(lowered[0], statement)
     return lowered
+
+
+def _lower_ann_assign(statement: ast.AnnAssign, *, state: _LoweringState) -> list[ast.stmt]:
+    if isinstance(statement.target, ast.Name):
+        callable_kind = _callable_kind_from_annotation(statement.annotation)
+        if callable_kind is not None:
+            state.callable_kinds[statement.target.id] = callable_kind
+
+    if statement.value is None:
+        return [copy.deepcopy(statement)]
+
+    synthetic_assign = ast.Assign(
+        targets=[copy.deepcopy(statement.target)],
+        value=copy.deepcopy(statement.value),
+    )
+    ast.copy_location(synthetic_assign, statement)
+    return _lower_assign(synthetic_assign, state=state)
 
 
 def _lower_slotted_assign(
@@ -557,8 +735,7 @@ def _lower_slotted_assign(
     call: ast.Call,
     state: _LoweringState,
 ) -> list[ast.stmt]:
-    _slot_index, slot_assign = state.next_slot_id(reason=statement)
-    slot_name = ast.Name(id=slot_assign.targets[0].id, ctx=ast.Load())
+    _slot_index, slot_name, slot_setup = state.next_slot_id(reason=statement)
     call_expr = ast.Call(
         func=ast.Attribute(value=state.context_ref(), attr="call_plain", ctx=ast.Load()),
         args=[slot_name, copy.deepcopy(call.func), *[copy.deepcopy(arg) for arg in call.args]],
@@ -614,7 +791,7 @@ def _lower_slotted_assign(
             suggested_fix="simplify_assignment_shape",
         )
 
-    return [slot_assign, copy_reason_location(lowered_assign, statement)]
+    return [*slot_setup, copy_reason_location(lowered_assign, statement)]
 
 
 def _lower_expr_call(statement: ast.Expr, *, state: _LoweringState) -> list[ast.stmt]:
@@ -623,37 +800,10 @@ def _lower_expr_call(statement: ast.Expr, *, state: _LoweringState) -> list[ast.
         return _lower_call_native_expr(statement, call=call, state=state)
 
     call_name = _call_name(call)
-    if call_name in state.top_level_component_names:
+    if call_name is not None and _callable_kind_for_name(call_name, state=state) == _CALLABLE_KIND_COMPONENT_REF:
         return _lower_component_expr_call(statement, call=call, state=state)
 
-    _slot_index, slot_assign = state.next_slot_id(reason=statement)
-    slot_name = ast.Name(id=slot_assign.targets[0].id, ctx=ast.Load())
-    dirty_parts = [
-        _dirty_expr_for_value(call.func, state.dirty_by_name),
-        *[_dirty_expr_for_value(arg, state.dirty_by_name) for arg in call.args],
-        *[_dirty_expr_for_value(keyword.value, state.dirty_by_name) for keyword in call.keywords],
-    ]
-    guard_parts = [expr for expr in dirty_parts if not _is_false_expr(expr)]
-    guard_parts.append(
-        ast.Call(
-            func=ast.Attribute(value=state.context_ref(), attr="visit_slot_and_dirty", ctx=ast.Load()),
-            args=[slot_name],
-            keywords=[],
-        )
-    )
-    leaf_call = ast.Expr(
-        value=ast.Call(
-            func=ast.Attribute(value=state.context_ref(), attr="leaf_call", ctx=ast.Load()),
-            args=[slot_name, copy.deepcopy(call.func), *[copy.deepcopy(arg) for arg in call.args]],
-            keywords=[copy.deepcopy(keyword) for keyword in call.keywords],
-        )
-    )
-    if_statement = ast.If(
-        test=_or_expression(guard_parts),
-        body=[leaf_call],
-        orelse=[],
-    )
-    return [slot_assign, copy_reason_location(if_statement, statement)]
+    return [copy_reason_location(ast.Expr(value=copy.deepcopy(call)), statement)]
 
 
 def _lower_component_expr_call(
@@ -691,8 +841,7 @@ def _lower_component_expr_call(
             suggested_fix="use_explicit_component_arguments",
         )
 
-    _slot_index, slot_assign = state.next_slot_id(reason=statement)
-    slot_name = ast.Name(id=slot_assign.targets[0].id, ctx=ast.Load())
+    _slot_index, slot_name, slot_setup = state.next_slot_id(reason=statement)
     dirty_keywords: list[ast.keyword] = []
     for param_name, arg in zip(param_names, call.args):
         dirty_keywords.append(
@@ -749,7 +898,7 @@ def _lower_component_expr_call(
         ]
     )
     lowered = ast.If(test=guard, body=[component_call], orelse=[])
-    return [slot_assign, copy_reason_location(lowered, statement)]
+    return [*slot_setup, copy_reason_location(lowered, statement)]
 
 
 def _lower_call_native_expr(
@@ -782,7 +931,11 @@ def _lower_call_native_expr(
     return [copy_reason_location(lowered, statement)]
 
 
-def _inject_module_scaffold(body: list[ast.stmt]) -> list[ast.stmt]:
+def _inject_module_scaffold(
+    body: list[ast.stmt],
+    *,
+    slot_declarations: list[ast.Assign],
+) -> list[ast.stmt]:
     if not body:
         return body
 
@@ -819,7 +972,7 @@ def _inject_module_scaffold(body: list[ast.stmt]) -> list[ast.stmt]:
             ),
         ),
     ]
-    return [*body[:insert_at], *scaffold, *body[insert_at:]]
+    return [*body[:insert_at], *scaffold, *slot_declarations, *body[insert_at:]]
 
 
 def _private_args_for_component(
@@ -828,7 +981,7 @@ def _private_args_for_component(
     qual_prefix: str,
 ) -> ast.arguments:
     args = copy.deepcopy(original.args)
-    ctx_arg = ast.arg(arg="ctx")
+    ctx_arg = ast.arg(arg="__pyr_ctx")
     dirty_arg = ast.arg(arg="__pyr_dirty_state")
     method_kind = _method_kind(original, qual_prefix=qual_prefix)
     if method_kind in {"instance", "class"} and args.args:
@@ -841,12 +994,14 @@ def _private_args_for_component(
 def _wrapper_decorators_for_component(
     original: ast.FunctionDef,
     plan: ComponentTransformPlan,
+    *,
+    reactive_decorator_names: set[str],
+    in_class_scope: bool,
 ) -> list[ast.expr]:
-    in_class_scope = "." in plan.public_name
     remaining = [
         copy.deepcopy(decorator)
         for decorator in original.decorator_list
-        if _decorator_name(decorator) not in _PYROLYSE_DECORATORS
+        if _decorator_name(decorator) not in reactive_decorator_names
     ]
     remaining.append(
         ast.Call(
@@ -872,7 +1027,7 @@ def _build_pass_scope(body: list[ast.stmt]) -> ast.With:
         items=[
             ast.withitem(
                 context_expr=ast.Call(
-                    func=ast.Attribute(value=ast.Name(id="ctx", ctx=ast.Load()), attr="pass_scope", ctx=ast.Load()),
+                    func=ast.Attribute(value=ast.Name(id="__pyr_ctx", ctx=ast.Load()), attr="pass_scope", ctx=ast.Load()),
                     args=[],
                     keywords=[],
                 ),
@@ -911,6 +1066,35 @@ def _component_parameter_names(component: ComponentTransformPlan) -> tuple[str, 
         args = args[1:]
     source_args = [*node.args.posonlyargs, *args, *node.args.kwonlyargs]
     return tuple(argument.arg for argument in source_args)
+
+
+def _parameter_callable_kinds(component: ast.FunctionDef) -> dict[str, str]:
+    return {
+        argument.arg: callable_kind
+        for argument in [*component.args.posonlyargs, *component.args.args, *component.args.kwonlyargs]
+        if (callable_kind := _callable_kind_from_annotation(argument.annotation)) is not None
+    }
+
+
+def _collect_local_callable_return_kinds(module_ast: ast.Module) -> dict[str, str]:
+    kinds: dict[str, str] = {}
+    for node in ast.walk(module_ast):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        callable_kind = _callable_kind_from_annotation(node.returns)
+        if callable_kind is not None:
+            kinds[node.name] = callable_kind
+    return kinds
+
+
+def _collect_legacy_container_names(module_ast: ast.Module) -> set[str]:
+    names: set[str] = set()
+    for node in ast.walk(module_ast):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if any(_decorator_name(decorator) == "contextmanager" for decorator in node.decorator_list):
+            names.add(node.name)
+    return names
 
 
 def _dirty_expr_for_value(value: ast.AST, dirty_by_name: dict[str, ast.expr]) -> ast.expr:
@@ -960,32 +1144,161 @@ def _bound_names(target: ast.expr) -> list[str]:
     if isinstance(target, ast.Tuple):
         names: list[str] = []
         for element in target.elts:
-            if not isinstance(element, ast.Name):
-                raise TypeError("only simple tuple-name destructuring is supported")
-            names.append(element.id)
+            names.extend(_bound_names(element))
         return names
     raise TypeError("unsupported assignment target")
+
+
+def _bound_target_store(target: ast.expr, *, module_name: str, reason: ast.AST) -> ast.expr:
+    if isinstance(target, ast.Name):
+        return ast.Name(id=target.id, ctx=ast.Store())
+    if isinstance(target, ast.Tuple):
+        return ast.Tuple(
+            elts=[_bound_target_store(element, module_name=module_name, reason=reason) for element in target.elts],
+            ctx=ast.Store(),
+        )
+    raise error_from_node(
+        reason,
+        code="PYR-E-PHASE4-FOR-TARGET",
+        message="Phase 04 only supports name and tuple destructuring targets in keyed loops",
+        module_name=module_name,
+        suggested_fix="simplify_loop_target",
+    )
+
+
+def _dirty_target_store(target: ast.expr, *, module_name: str, reason: ast.AST) -> ast.expr:
+    if isinstance(target, ast.Name):
+        return ast.Name(id=_dirty_name_for(target.id), ctx=ast.Store())
+    if isinstance(target, ast.Tuple):
+        return ast.Tuple(
+            elts=[_dirty_target_store(element, module_name=module_name, reason=reason) for element in target.elts],
+            ctx=ast.Store(),
+        )
+    raise error_from_node(
+        reason,
+        code="PYR-E-PHASE4-FOR-TARGET",
+        message="Phase 04 only supports name and tuple destructuring targets in keyed loops",
+        module_name=module_name,
+        suggested_fix="simplify_loop_target",
+    )
+
+
+def _dirty_state_bindings(target: ast.expr, *, module_name: str, reason: ast.AST) -> dict[str, ast.expr]:
+    try:
+        names = _bound_names(target)
+    except TypeError:
+        raise error_from_node(
+            reason,
+            code="PYR-E-PHASE4-FOR-TARGET",
+            message="Phase 04 only supports name and tuple destructuring targets in keyed loops",
+            module_name=module_name,
+            suggested_fix="simplify_loop_target",
+        ) from None
+    return {name: ast.Name(id=_dirty_name_for(name), ctx=ast.Load()) for name in names}
+
+
+def _build_loop_current_assignments(
+    target: ast.expr,
+    *,
+    item_ctx_name: str,
+    module_name: str,
+    reason: ast.AST,
+) -> list[ast.stmt]:
+    current_value = ast.Call(
+        func=ast.Attribute(
+            value=ast.Name(id=item_ctx_name, ctx=ast.Load()),
+            attr="current_value",
+            ctx=ast.Load(),
+        ),
+        args=[],
+        keywords=[],
+    )
+    if isinstance(target, ast.Name):
+        return [
+            copy_reason_location(
+                ast.Assign(
+                    targets=[
+                        ast.Tuple(
+                            elts=[
+                                ast.Name(id=_dirty_name_for(target.id), ctx=ast.Store()),
+                                ast.Name(id=target.id, ctx=ast.Store()),
+                            ],
+                            ctx=ast.Store(),
+                        )
+                    ],
+                    value=current_value,
+                ),
+                reason,
+            )
+        ]
+
+    return [
+        copy_reason_location(
+            ast.Assign(
+                targets=[
+                    ast.Tuple(
+                        elts=[
+                            ast.Name(id="__pyr_item_dirty", ctx=ast.Store()),
+                            ast.Name(id="__pyr_item_value", ctx=ast.Store()),
+                        ],
+                        ctx=ast.Store(),
+                    )
+                ],
+                value=current_value,
+            ),
+            reason,
+        ),
+        copy_reason_location(
+            ast.Assign(
+                targets=[_dirty_target_store(target, module_name=module_name, reason=reason)],
+                value=ast.Name(id="__pyr_item_dirty", ctx=ast.Load()),
+            ),
+            reason,
+        ),
+        copy_reason_location(
+            ast.Assign(
+                targets=[_bound_target_store(target, module_name=module_name, reason=reason)],
+                value=ast.Name(id="__pyr_item_value", ctx=ast.Load()),
+            ),
+            reason,
+        ),
+    ]
 
 
 def _dirty_name_for(name: str) -> str:
     return f"__pyr_{name}_dirty"
 
 
+def _context_name_for_slot(slot_index: int) -> str:
+    return f"__pyr_ctx_slot_{slot_index}"
+
+
+def _keyed_context_name_for_slot(slot_index: int) -> str:
+    return f"__pyr_ctx_slot_{slot_index}_k"
+
+
 def _is_false_expr(expression: ast.expr) -> bool:
     return isinstance(expression, ast.Constant) and expression.value is False
 
 
-def _collect_slotted_helper_names(module_ast: ast.Module) -> set[str]:
+def _collect_slotted_helper_names(
+    module_ast: ast.Module,
+    *,
+    slotted_decorator_names: set[str],
+) -> set[str]:
     names: set[str] = set()
     for node in ast.walk(module_ast):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and _is_pyrolyze_slotted(node):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and _is_pyrolyze_slotted(
+            node,
+            slotted_decorator_names=slotted_decorator_names,
+        ):
             names.add(node.name)
     return names
 
 
-def _is_slotted_helper_call(call: ast.Call, slotted_helper_names: set[str]) -> bool:
+def _is_slotted_helper_call(call: ast.Call, *, state: _LoweringState) -> bool:
     call_name = _call_name(call)
-    return call_name is not None and call_name in slotted_helper_names
+    return call_name is not None and _callable_kind_for_name(call_name, state=state) == _CALLABLE_KIND_SLOT_CALLABLE
 
 
 def _is_call_native_expr(call: ast.Call) -> bool:
@@ -1006,7 +1319,7 @@ def _keyed_key_arg(node: ast.Call) -> ast.expr | None:
 
 
 def _method_kind(node: ast.FunctionDef, *, qual_prefix: str) -> str:
-    if not qual_prefix:
+    if not _in_class_scope(qual_prefix):
         return "top_level"
     decorator_names = {_decorator_name(decorator) for decorator in node.decorator_list}
     if "staticmethod" in decorator_names:
@@ -1026,12 +1339,189 @@ def _is_module_docstring(statement: ast.stmt) -> bool:
     return isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Constant) and isinstance(statement.value.value, str)
 
 
-def _is_reactive_component(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    return any(_decorator_name(decorator) in _PYROLYSE_DECORATORS for decorator in node.decorator_list)
+def _is_reactive_component(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    *,
+    reactive_decorator_names: set[str],
+) -> bool:
+    return any(_decorator_name(decorator) in reactive_decorator_names for decorator in node.decorator_list)
 
 
-def _is_pyrolyze_slotted(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    return any(_decorator_name(decorator) == "pyrolyze_slotted" for decorator in node.decorator_list)
+def _is_pyrolyze_slotted(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    *,
+    slotted_decorator_names: set[str],
+) -> bool:
+    return any(_decorator_name(decorator) in slotted_decorator_names for decorator in node.decorator_list)
+
+
+def _in_class_scope(qual_prefix: str) -> bool:
+    return bool(qual_prefix) and "<locals>" not in qual_prefix.split(".")
+
+
+def _collect_source_api_aliases(module_ast: ast.Module) -> tuple[set[str], set[str]]:
+    reactive = set(_REACTIVE_DECORATORS)
+    slotted = set(_SLOTTED_DECORATORS)
+    for statement in module_ast.body:
+        if not isinstance(statement, ast.ImportFrom) or statement.module != "pyrolyze.api":
+            continue
+        for alias in statement.names:
+            local_name = alias.asname or alias.name
+            if alias.name in _REACTIVE_DECORATORS:
+                reactive.add(local_name)
+            if alias.name in _SLOTTED_DECORATORS:
+                slotted.add(local_name)
+    return reactive, slotted
+
+
+def _collect_imported_annotated_symbols(
+    module_ast: ast.Module,
+) -> tuple[set[str], set[str], dict[str, tuple[str, ...]], dict[str, str]]:
+    slotted_names: set[str] = set()
+    component_names: set[str] = set()
+    component_param_names: dict[str, tuple[str, ...]] = {}
+    return_kinds: dict[str, str] = {}
+
+    for statement in module_ast.body:
+        if not isinstance(statement, ast.ImportFrom):
+            continue
+        if statement.level != 0 or statement.module is None:
+            continue
+        try:
+            imported_module = importlib.import_module(statement.module)
+        except Exception:
+            continue
+
+        for alias in statement.names:
+            if alias.name == "*":
+                continue
+            imported_value = getattr(imported_module, alias.name, None)
+            if imported_value is None:
+                continue
+
+            local_name = alias.asname or alias.name
+            if getattr(imported_value, "_pyrolyze_slotted", False):
+                slotted_names.add(local_name)
+
+            if getattr(imported_value, "_pyrolyze_meta", None) is None:
+                callable_kind = _callable_kind_from_runtime_annotation(
+                    getattr(imported_value, "__annotations__", {}).get("return", inspect.Signature.empty)
+                )
+                if callable_kind is not None:
+                    return_kinds[local_name] = callable_kind
+                continue
+
+            component_names.add(local_name)
+            try:
+                signature = inspect.signature(imported_value)
+            except (TypeError, ValueError):
+                continue
+
+            component_param_names[local_name] = tuple(
+                parameter.name
+                for parameter in signature.parameters.values()
+                if parameter.kind
+                in {
+                    inspect.Parameter.POSITIONAL_ONLY,
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    inspect.Parameter.KEYWORD_ONLY,
+                }
+            )
+
+    return slotted_names, component_names, component_param_names, return_kinds
+
+
+def _callable_kind_for_name(name: str, *, state: _LoweringState) -> str | None:
+    if name in state.top_level_component_names:
+        return _CALLABLE_KIND_COMPONENT_REF
+    if name in state.slotted_helper_names:
+        return _CALLABLE_KIND_SLOT_CALLABLE
+    return state.callable_kinds.get(name)
+
+
+def _is_pyrolyze_sensitive_call(call: ast.Call, *, state: _LoweringState) -> bool:
+    call_name = _call_name(call)
+    if call_name is None:
+        return False
+    callable_kind = _callable_kind_for_name(call_name, state=state)
+    return callable_kind in {_CALLABLE_KIND_COMPONENT_REF, _CALLABLE_KIND_SLOT_CALLABLE}
+
+
+def _is_container_candidate_call(call: ast.Call, *, state: _LoweringState) -> bool:
+    call_name = _call_name(call)
+    return call_name is not None and _callable_kind_for_name(call_name, state=state) == _CALLABLE_KIND_COMPONENT_REF
+
+
+def _update_callable_kind_from_assignment(target: ast.expr, value: ast.AST, *, state: _LoweringState) -> None:
+    if not isinstance(target, ast.Name):
+        return
+    if isinstance(value, ast.Name):
+        callable_kind = state.callable_kinds.get(value.id)
+        if callable_kind is not None:
+            state.callable_kinds[target.id] = callable_kind
+        return
+    if isinstance(value, ast.Call):
+        call_name = _call_name(value)
+        if call_name is None:
+            return
+        callable_kind = state.callable_return_kinds.get(call_name)
+        if callable_kind is not None:
+            state.callable_kinds[target.id] = callable_kind
+
+
+def _callable_kind_from_annotation(annotation: ast.AST | None) -> str | None:
+    if annotation is None:
+        return None
+    saw_callable = False
+    for node in ast.walk(annotation):
+        if isinstance(node, ast.Name):
+            if node.id == "SlotCallable":
+                return _CALLABLE_KIND_SLOT_CALLABLE
+            if node.id == "ComponentRef":
+                return _CALLABLE_KIND_COMPONENT_REF
+            if node.id == "Callable":
+                saw_callable = True
+        if isinstance(node, ast.Attribute):
+            if node.attr == "SlotCallable":
+                return _CALLABLE_KIND_SLOT_CALLABLE
+            if node.attr == "ComponentRef":
+                return _CALLABLE_KIND_COMPONENT_REF
+            if node.attr == "Callable":
+                saw_callable = True
+    if saw_callable:
+        return _CALLABLE_KIND_PLAIN_CALLABLE
+    return None
+
+
+def _callable_kind_from_runtime_annotation(annotation: Any) -> str | None:
+    if annotation in {None, inspect.Signature.empty}:
+        return None
+
+    origin = get_origin(annotation)
+    if origin is not None:
+        origin_name = getattr(origin, "__name__", None)
+        if origin_name == "ComponentRef":
+            return _CALLABLE_KIND_COMPONENT_REF
+        if origin_name == "Callable":
+            return _CALLABLE_KIND_PLAIN_CALLABLE
+        if str(origin) in {"typing.Callable", "collections.abc.Callable"}:
+            return _CALLABLE_KIND_PLAIN_CALLABLE
+        if str(origin) == "typing.Annotated":
+            args = get_args(annotation)
+            if args:
+                extras = args[1:]
+                if any(type(extra).__name__ == "PyrolyzeSlottedParam" for extra in extras):
+                    return _CALLABLE_KIND_SLOT_CALLABLE
+                return _callable_kind_from_runtime_annotation(args[0])
+
+    text = repr(annotation)
+    if "SlotCallable" in text or "PyrolyzeSlottedParam" in text:
+        return _CALLABLE_KIND_SLOT_CALLABLE
+    if "ComponentRef" in text:
+        return _CALLABLE_KIND_COMPONENT_REF
+    if "Callable" in text:
+        return _CALLABLE_KIND_PLAIN_CALLABLE
+    return None
 
 
 def _decorator_name(node: ast.AST) -> str | None:

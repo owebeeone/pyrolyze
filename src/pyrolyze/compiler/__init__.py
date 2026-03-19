@@ -9,6 +9,7 @@ from .artifacts import (
     DebugArtifacts,
     HookRecord,
     ModuleTransformPlan,
+    TransformFlags,
 )
 from .debug import write_debug_artifacts
 from .diagnostics import PyRolyzeCompileError
@@ -33,6 +34,7 @@ __all__ = [
     "HookRecord",
     "ModuleTransformPlan",
     "PyRolyzeCompileError",
+    "TransformFlags",
     "analyze_source",
     "build_debug_artifacts_for_source",
     "compile_source",

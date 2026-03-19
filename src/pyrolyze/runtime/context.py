@@ -639,6 +639,18 @@ class ContextBase:
     def root_context(self) -> RenderContext:
         return self._render_context
 
+    def pass_scope(self) -> _PassScopeHandle:
+        return _PassScopeHandle(context=self, activate=not self._scope_active)
+
+    def begin_pass(self) -> None:
+        self._begin_scope_pass()
+
+    def end_pass(self) -> None:
+        self._commit_scope_pass()
+
+    def rollback_pass(self) -> None:
+        self._rollback_scope_pass()
+
     def literal(self, value: T) -> CompValue[T]:
         self._require_active_scope()
 
@@ -689,11 +701,25 @@ class ContextBase:
         slot_id: SlotId,
         container_fn: CompValue[Callable[..., Any]] | Callable[..., Any],
         *args: CompValue[Any] | Any,
+        dirty_state: DirtyStateContext | None = None,
         **kwargs: CompValue[Any] | Any,
     ) -> _ContainerCallHandle:
         self._require_active_scope()
         slot = self._ensure_slot(slot_id, ContainerSlotContext)
         raw_container_fn, _ = _unwrap(container_fn)
+        metadata, bound_receiver = _component_call_key(raw_container_fn)
+        runtime_func = _resolve_runtime_component_func(getattr(metadata, "_func", None))
+        if metadata is not None and runtime_func is not None:
+            raw_args = tuple(_unwrap(arg)[0] for arg in args)
+            raw_kwargs = {key: _unwrap(value)[0] for key, value in kwargs.items()}
+            return _PyrolyzeContainerCallHandle(
+                slot=slot,
+                runtime_func=runtime_func,
+                bound_receiver=bound_receiver,
+                args=raw_args,
+                kwargs=raw_kwargs,
+                dirty_state=dirty_state or dirtyof(),
+            )
         native_context_param = _native_context_param_name(cast(Callable[..., Any], raw_container_fn))
         if native_context_param is not None:
             raw_args = tuple(_unwrap(arg)[0] for arg in args)
@@ -996,6 +1022,12 @@ class SlotContext:
     slot_id: SlotId
     invoke_dirty: bool = True
     seen_in_pass: bool = False
+
+    def visit_self_and_dirty(self) -> bool:
+        if not isinstance(self, ContextBase):
+            raise RuntimeError("slot is not a structural context")
+        self._require_active_scope()
+        return self.invoke_dirty
 
     def deactivate(self) -> None:
         if isinstance(self, ContextBase):
@@ -1312,7 +1344,7 @@ class KeyedLoopSlotContext(RerunnableSlotContext):
 @dataclass(slots=True)
 class LoopItemSlotContext(RerunnableSlotContext):
     current: Any = None
-    current_dirty: bool = True
+    current_dirty: Any = True
     current_initialized: bool = False
 
     def current_value(self) -> PlainCallResult[Any]:
@@ -1320,7 +1352,11 @@ class LoopItemSlotContext(RerunnableSlotContext):
         return PlainCallResult(dirty=self.current_dirty, value=self.current)
 
     def update_current(self, value: Any) -> None:
-        self.current_dirty = (not self.current_initialized) or (value != self.current)
+        self.current_dirty = _structured_dirty_projection(
+            previous=self.current,
+            current=value,
+            initialized=self.current_initialized,
+        )
         self.current = value
         self.current_initialized = True
 
@@ -1425,19 +1461,88 @@ class _NativeContainerCallHandle(AbstractContextManager[ContainerSlotContext]):
 
 
 @dataclass(slots=True)
+class _PyrolyzeContainerCallHandle(AbstractContextManager[ContainerSlotContext]):
+    slot: ContainerSlotContext
+    runtime_func: Callable[..., Any]
+    bound_receiver: object
+    args: tuple[Any, ...]
+    kwargs: dict[str, Any]
+    dirty_state: DirtyStateContext
+
+    def __enter__(self) -> ContainerSlotContext:
+        self.slot.expects_native_root = True
+        self.slot._begin_scope_pass()
+        try:
+            if self.bound_receiver is _BOUND_METHOD_SELF_MISSING:
+                result = self.runtime_func(self.slot, self.dirty_state, *self.args, **self.kwargs)
+            else:
+                result = self.runtime_func(
+                    self.bound_receiver,
+                    self.slot,
+                    self.dirty_state,
+                    *self.args,
+                    **self.kwargs,
+                )
+            if result is not None:
+                raise TypeError("@pyrolyse functions must return None")
+            if len(self.slot._staged_ui) != 1:
+                raise RuntimeError("native container helpers must emit exactly one root UIElement")
+        except BaseException:
+            self.slot._rollback_scope_pass()
+            self.slot.expects_native_root = False
+            raise
+        return self.slot
+
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
+        try:
+            if exc_type is None:
+                self.slot._commit_scope_pass()
+            else:
+                self.slot._rollback_scope_pass()
+        finally:
+            self.slot.expects_native_root = False
+        return False
+
+
+@dataclass(slots=True)
 class _PassScopeHandle(AbstractContextManager[None]):
-    context: RenderContext
+    context: ContextBase
+    activate: bool = True
 
     def __enter__(self) -> None:
-        self.context.begin_pass()
+        if self.activate:
+            self.context.begin_pass()
         return None
 
     def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
-        if exc_type is None:
-            self.context.end_pass()
-        else:
-            self.context.rollback_pass()
+        if self.activate:
+            if exc_type is None:
+                self.context.end_pass()
+            else:
+                self.context.rollback_pass()
         return False
+
+
+def _structured_dirty_projection(
+    *,
+    previous: Any,
+    current: Any,
+    initialized: bool,
+) -> Any:
+    if not initialized:
+        return _all_dirty_projection(current)
+    if isinstance(current, tuple) and isinstance(previous, tuple) and len(current) == len(previous):
+        return tuple(
+            _structured_dirty_projection(previous=prev_item, current=current_item, initialized=True)
+            for prev_item, current_item in zip(previous, current, strict=False)
+        )
+    return current != previous
+
+
+def _all_dirty_projection(value: Any) -> Any:
+    if isinstance(value, tuple):
+        return tuple(_all_dirty_projection(item) for item in value)
+    return True
 
 
 @dataclass(slots=True)
@@ -1465,14 +1570,7 @@ class _KeyedLoopIterable(Generic[T]):
                 )
                 item = self.owner._ensure_slot(item_slot, LoopItemSlotContext)
                 item.update_current(value)
-                item._begin_scope_pass()
-                try:
-                    yield item
-                except BaseException:
-                    item._rollback_scope_pass()
-                    raise
-                else:
-                    item._commit_scope_pass()
+                yield item
         except BaseException:
             self.owner._rollback_scope_pass()
             raise
@@ -1503,7 +1601,7 @@ class RenderContext(ContextBase):
         super().__init__(self)
 
     def pass_scope(self) -> _PassScopeHandle:
-        return _PassScopeHandle(context=self)
+        return _PassScopeHandle(context=self, activate=not self._scope_active)
 
     def mount(self, callback: Callable[[], None]) -> None:
         self._mounted_callback = callback

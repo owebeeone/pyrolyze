@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from pyrolyze.compiler import compile_source
+from pyrolyze.compiler import PyRolyzeCompileError, emit_transformed_source
 from pyrolyze.importer import should_transform
 
 
@@ -95,3 +98,18 @@ class Panel:
     assert [(hook.name, hook.component) for hook in artifact.metadata.hooks] == [
         ("use_state", "Panel.render.<locals>.inner")
     ]
+
+
+def test_pyrolyze_module_rejects_late_imports_after_executable_code() -> None:
+    source = """
+#@pyrolyze
+value = 1
+from demo.widgets import badge
+"""
+
+    with pytest.raises(PyRolyzeCompileError, match="top-of-file import prelude"):
+        emit_transformed_source(
+            source,
+            module_name="late_import_example",
+            filename="/virtual/late_import_example.py",
+        )

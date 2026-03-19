@@ -156,21 +156,37 @@ def _make_nested_keyed_program(
                 ) as section_ctx:
                     if __pyr_dirty_state.xs or __pyr_dirty_state.ys or section_ctx.visit_slot_and_dirty(_FOO_LOOP_SLOT):
                         for foo_item in section_ctx.keyed_loop(_FOO_LOOP_SLOT, xs, key_fn=identity_key):
-                            __pyr_foo_dirty, foo = foo_item.current_value()
+                            with foo_item.pass_scope():
+                                __pyr_foo_dirty, foo = foo_item.current_value()
+                                if not (
+                                    __pyr_dirty_state.xs
+                                    or __pyr_dirty_state.ys
+                                    or foo_item.visit_self_and_dirty()
+                                ):
+                                    continue
 
-                            if __pyr_foo_dirty or __pyr_dirty_state.ys or foo_item.visit_slot_and_dirty(_BAR_LOOP_SLOT):
-                                for bar_item in foo_item.keyed_loop(_BAR_LOOP_SLOT, ys, key_fn=identity_key):
-                                    __pyr_bar_dirty, bar = bar_item.current_value()
-                                    __pyr_grip_dirty, grip = bar_item.call_plain(_GRIP_SLOT, make_grip, foo, bar)
-                                    __pyr_value_dirty, value = bar_item.call_plain(_VALUE_SLOT, use_grip, grip)
+                                if __pyr_foo_dirty or __pyr_dirty_state.ys or foo_item.visit_slot_and_dirty(_BAR_LOOP_SLOT):
+                                    for bar_item in foo_item.keyed_loop(_BAR_LOOP_SLOT, ys, key_fn=identity_key):
+                                        with bar_item.pass_scope():
+                                            __pyr_bar_dirty, bar = bar_item.current_value()
+                                            if not (
+                                                __pyr_dirty_state.ys
+                                                or __pyr_foo_dirty
+                                                or __pyr_bar_dirty
+                                                or bar_item.visit_self_and_dirty()
+                                            ):
+                                                continue
 
-                                    if __pyr_value_dirty or bar_item.visit_slot_and_dirty(_BADGE_SLOT):
-                                        bar_item.leaf_call(
-                                            _BADGE_SLOT,
-                                            _badge,
-                                            value,
-                                            tone="neutral",
-                                        )
+                                            __pyr_grip_dirty, grip = bar_item.call_plain(_GRIP_SLOT, make_grip, foo, bar)
+                                            __pyr_value_dirty, value = bar_item.call_plain(_VALUE_SLOT, use_grip, grip)
+
+                                            if __pyr_value_dirty or bar_item.visit_slot_and_dirty(_BADGE_SLOT):
+                                                bar_item.leaf_call(
+                                                    _BADGE_SLOT,
+                                                    _badge,
+                                                    value,
+                                                    tone="neutral",
+                                                )
 
     return _pyr_nested_values
 

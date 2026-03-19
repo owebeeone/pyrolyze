@@ -54,6 +54,11 @@ class PyrolyzeEventParam:
     """Marker attached to event-boundary callback parameters."""
 
 
+@dataclass(frozen=True, slots=True)
+class PyrolyzeSlottedParam:
+    """Marker attached to slotted-helper callable annotations."""
+
+
 
 def keyed(items: Iterable[T], key: Callable[[T], Any]) -> KeyedIterable[T]:
     return KeyedIterable(items=items, key=key)
@@ -98,6 +103,10 @@ def Label(*, text: str) -> UIElement:
 
 
 type PyrolyteHandler[**P, T] = Annotated[Callable[P, T], PyrolyzeEventParam()]
+type SlotCallable[**P, T] = Annotated[Callable[P, T], PyrolyzeSlottedParam()]
+
+
+from .hooks import use_effect, use_grip, use_mount, use_state, use_unmount
 
 
 __all__ = [
@@ -109,10 +118,17 @@ __all__ = [
     "Label",
     "PyrolyteHandler",
     "PyrolyzeEventParam",
+    "PyrolyzeSlottedParam",
+    "SlotCallable",
     "UIElement",
     "keyed",
     "pyrolyze_component_ref",
     "pyrolyze_slotted",
     "pyrolyse",
     "reactive_component",
+    "use_effect",
+    "use_grip",
+    "use_mount",
+    "use_state",
+    "use_unmount",
 ]
