@@ -28,6 +28,7 @@ def panel():
         filename="/virtual/example/phase5/imported_use_state.py",
     )
 
+    assert "__pyr_SlotId(__pyr_module_id, 1, line_no=13, is_top_level=True)" in transformed
     assert "(__pyr_count_dirty, __pyr_set_count_dirty), (count, set_count) = __pyr_ctx.call_plain(" in transformed
     assert "use_state" in transformed
     assert "result_shape=('tuple', 2)" in transformed

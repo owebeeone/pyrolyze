@@ -12,6 +12,7 @@ from typing import Any, Callable, Generic, Iterator, Protocol, TypeVar, cast
 from pyrolyze.api import UIElement
 
 from .app_context import AppContextKey, AppContextStore, GENERATION_TRACKER_KEY
+from .trace import TraceChannel, emit_trace, trace_enabled
 
 
 T = TypeVar("T")
@@ -88,6 +89,7 @@ class SlotId:
     slot_index: int
     key_path: tuple[Any, ...] = ()
     line_no: int | None = field(default=None, compare=False, hash=False)
+    is_top_level: bool = field(default=False, compare=False, hash=False)
 
 
 class SlotOwnershipError(RuntimeError):
@@ -843,6 +845,8 @@ class ContextBase:
         self._pass_committed_ui = self._committed_ui
         self._pass_own_committed_ui = self._own_committed_ui
         self._pass_own_committed_ui_entries = self._own_committed_ui_entries
+        if isinstance(self, ContainerSlotContext):
+            self._pass_committed_native_root = self.committed_native_root
         self._staged_ui = []
         self._staged_ui_entries = []
         for child in self._children.values():
@@ -867,6 +871,8 @@ class ContextBase:
         self._own_committed_ui_entries = tuple(self._staged_ui_entries)
         self._own_committed_ui = tuple(entry.element for entry in self._own_committed_ui_entries)
         self._committed_ui = self._build_committed_ui()
+        if isinstance(self, ContainerSlotContext):
+            self.committed_native_root = self.expects_native_root
 
         for child in self._children.values():
             child.invoke_dirty = False
@@ -906,6 +912,8 @@ class ContextBase:
         self._committed_ui = self._pass_committed_ui
         self._own_committed_ui = self._pass_own_committed_ui
         self._own_committed_ui_entries = self._pass_own_committed_ui_entries
+        if isinstance(self, ContainerSlotContext):
+            self.committed_native_root = self._pass_committed_native_root
 
         self._scope_active = False
         self._pass_child_order = ()
@@ -975,14 +983,16 @@ class ContextBase:
         raise TypeError("call_native factory must return UIElement or None")
 
     def _build_committed_ui(self) -> tuple[UIElement, ...]:
-        own_elements = tuple(self._staged_ui)
+        own_elements = self._own_committed_ui
         child_elements = tuple(
             element
             for child in self._children.values()
             if isinstance(child, ContextBase)
             for element in child._committed_ui
         )
-        if isinstance(self, ContainerSlotContext) and self.expects_native_root:
+        if isinstance(self, ContainerSlotContext) and (
+            self.expects_native_root or self.committed_native_root
+        ):
             if len(own_elements) != 1:
                 raise RuntimeError("native container helpers must emit exactly one root UIElement")
             root = own_elements[0]
@@ -1000,6 +1010,7 @@ class ContextBase:
             slot_index=slot_id.slot_index,
             key_path=runtime_key_path + slot_id.key_path,
             line_no=slot_id.line_no,
+            is_top_level=slot_id.is_top_level,
         )
 
     def _runtime_key_path(self) -> tuple[Any, ...]:
@@ -1280,6 +1291,8 @@ class PlainCallSlotContext(RerunnableSlotContext):
 @dataclass(slots=True)
 class ContainerSlotContext(RerunnableSlotContext):
     expects_native_root: bool = False
+    committed_native_root: bool = False
+    _pass_committed_native_root: bool = False
 
 
 @dataclass(slots=True)
@@ -1703,6 +1716,12 @@ class RenderContext(ContextBase):
         scheduler = scheduler_root._scheduler
         if scheduler_root._flush_running:
             return
+        if trace_enabled(TraceChannel.FLUSH):
+            emit_trace(
+                TraceChannel.FLUSH,
+                "start",
+                queued=tuple(boundary._debug_boundary_id() for boundary in scheduler.queue),
+            )
         scheduler_root._flush_posted = False
         scheduler_root._flush_running = True
         try:
@@ -1715,6 +1734,12 @@ class RenderContext(ContextBase):
             scheduler_root._flush_running = False
         if scheduler_root._scheduler.has_pending_work():
             scheduler_root._post_flush_if_needed(was_pending=False)
+        if trace_enabled(TraceChannel.FLUSH):
+            emit_trace(
+                TraceChannel.FLUSH,
+                "end",
+                queued=tuple(boundary._debug_boundary_id() for boundary in scheduler_root._scheduler.queue),
+            )
 
     def begin_pass(self) -> None:
         self._begin_scope_pass()
@@ -1784,41 +1809,70 @@ class RenderContext(ContextBase):
         if is_outermost_boundary:
             scheduler_root._app_context_store.get(GENERATION_TRACKER_KEY).begin()
         scheduler.enter_active(self)
+        if trace_enabled(TraceChannel.BOUNDARY):
+            emit_trace(
+                TraceChannel.BOUNDARY,
+                "start",
+                boundary=self._debug_boundary_id(),
+                queued=tuple(boundary._debug_boundary_id() for boundary in scheduler.queue),
+            )
         try:
             callback()
-            self._clear_ancestor_dirty_path()
             if is_outermost_boundary:
                 scheduler_root._app_context_store.get(GENERATION_TRACKER_KEY).commit()
         except BaseException:
+            if trace_enabled(TraceChannel.BOUNDARY):
+                emit_trace(
+                    TraceChannel.BOUNDARY,
+                    "error",
+                    boundary=self._debug_boundary_id(),
+                )
             if is_outermost_boundary:
                 scheduler_root._app_context_store.get(GENERATION_TRACKER_KEY).rollback()
             raise
         finally:
             scheduler.exit_active(self)
+            if trace_enabled(TraceChannel.BOUNDARY):
+                emit_trace(
+                    TraceChannel.BOUNDARY,
+                    "end",
+                    boundary=self._debug_boundary_id(),
+                )
 
     def _queue_invalidation_from(self, slot: SlotContext, *, include_source: bool = True) -> None:
         boundary = slot.render_context
         scheduler_root = boundary._scheduler_root
         was_pending = scheduler_root._scheduler.has_pending_work()
-        current: ContextBase | None = slot if include_source else slot.parent
-        while True:
-            if isinstance(current, SlotContext):
-                current.invoke_dirty = True
-                current = current.parent
-                continue
+        if include_source:
+            slot.invoke_dirty = True
 
+        current: ContextBase | None = slot.parent
+        dirty_contexts = 0
+        while isinstance(current, ContextBase):
+            dirty_contexts += 1
+            for child in current._children.values():
+                child.invoke_dirty = True
             if isinstance(current, RenderContext):
-                owner_slot = current._owner_slot
-                if owner_slot is None:
-                    break
-                owner_slot.invoke_dirty = True
-                current = owner_slot.parent
-                continue
+                break
+            current = current.parent
 
-            break
+        owner_slot = boundary._owner_slot
+        if owner_slot is not None:
+            owner_slot.invoke_dirty = True
 
         boundary._scheduler.request(boundary)
         scheduler_root._post_flush_if_needed(was_pending=was_pending)
+        if trace_enabled(TraceChannel.INVALIDATION):
+            emit_trace(
+                TraceChannel.INVALIDATION,
+                "queued",
+                source_slot=slot.slot_id,
+                boundary=boundary._debug_boundary_id(),
+                owner_slot=owner_slot.slot_id if owner_slot is not None else None,
+                include_source=include_source,
+                dirty_contexts=dirty_contexts,
+                queued=tuple(item._debug_boundary_id() for item in boundary._scheduler.queue),
+            )
 
     def _debug_boundary_id(self) -> SlotId | None:
         owner_slot = self._owner_slot
@@ -1837,23 +1891,6 @@ class RenderContext(ContextBase):
 
     def _remove_from_scheduler(self) -> None:
         self._scheduler.remove(self)
-
-    def _clear_ancestor_dirty_path(self) -> None:
-        current: ContextBase | None = self._owner_slot
-        while current is not None:
-            if isinstance(current, SlotContext):
-                current.invoke_dirty = False
-                current = current.parent
-                continue
-
-            if isinstance(current, RenderContext):
-                owner_slot = current._owner_slot
-                if owner_slot is None:
-                    return
-                current = owner_slot
-                continue
-
-            return
 
     def _enqueue_post_commit(self, callback: Callable[[], None]) -> None:
         self._post_commit_callbacks.append(callback)

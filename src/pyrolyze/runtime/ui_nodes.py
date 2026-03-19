@@ -5,6 +5,7 @@ from typing import Any, Callable, Literal, Mapping, Protocol, Sequence
 
 from pyrolyze.api import UIElement
 from pyrolyze.runtime.context import SlotId
+from pyrolyze.runtime.trace import TraceChannel, emit_trace, trace_enabled
 
 
 NodeRole = Literal["leaf", "container", "input", "root"]
@@ -496,6 +497,11 @@ def reconcile_owner(
     next_nodes: list[UiNode] = []
     seen_ids: set[UiNodeId] = set()
     replaced_nodes: list[UiNode] = []
+    trace_reconcile = trace_enabled(TraceChannel.RECONCILE)
+    created_count = 0
+    reused_count = 0
+    updated_count = 0
+    replaced_count = 0
 
     for spec in next_specs:
         if spec.node_id in seen_ids:
@@ -510,6 +516,7 @@ def reconcile_owner(
                 parent_binding=parent_binding,
                 registry=normalized_registry,
             )
+            created_count += 1
         elif _can_reuse_node(current, spec, descriptor=descriptor, backend=backend, registry=normalized_registry):
             prop_delta = changed_props(current.spec, spec, descriptor=descriptor)
             event_delta = changed_events(current.spec, spec, descriptor=descriptor)
@@ -519,6 +526,7 @@ def reconcile_owner(
                     changed_props=prop_delta,
                     changed_events=event_delta,
                 )
+                updated_count += 1
             reconcile_children(
                 current,
                 spec.children,
@@ -527,6 +535,7 @@ def reconcile_owner(
             )
             current.spec = spec
             node = current
+            reused_count += 1
         else:
             node = mount_subtree(
                 spec,
@@ -535,6 +544,7 @@ def reconcile_owner(
                 registry=normalized_registry,
             )
             replaced_nodes.append(current)
+            replaced_count += 1
 
         next_nodes.append(node)
         seen_ids.add(spec.node_id)
@@ -559,6 +569,19 @@ def reconcile_owner(
         owner.mounted_nodes = next_nodes
         owner.nodes_by_id = {node.spec.node_id: node for node in next_nodes}
         owner.last_specs = next_specs
+        if trace_reconcile:
+            emit_trace(
+                TraceChannel.RECONCILE,
+                "owner_commit",
+                owner_id=owner.owner_id,
+                previous_count=len(previous_specs),
+                next_count=len(next_specs),
+                created=created_count,
+                reused=reused_count,
+                updated=updated_count,
+                replaced=replaced_count,
+                removed=len(to_detach),
+            )
     except Exception:
         recovery_nodes = _unique_nodes((*next_nodes, *to_detach))
         owner.mounted_nodes = list(recovery_nodes)
@@ -571,6 +594,14 @@ def reconcile_owner(
             parent_binding=parent_binding,
             registry=normalized_registry,
         )
+        if trace_reconcile:
+            emit_trace(
+                TraceChannel.RECONCILE,
+                "owner_recover",
+                owner_id=owner.owner_id,
+                previous_count=len(previous_specs),
+                next_count=len(next_specs),
+            )
         raise
 
 

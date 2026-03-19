@@ -56,7 +56,11 @@ class _LoweringState:
                 ast.keyword(
                     arg="line_no",
                     value=ast.Constant(getattr(reason, "lineno", None)),
-                )
+                ),
+                ast.keyword(
+                    arg="is_top_level",
+                    value=ast.Constant(True),
+                ),
             ],
         )
         assign = copy_reason_location(ast.Assign(targets=[target], value=value), reason)

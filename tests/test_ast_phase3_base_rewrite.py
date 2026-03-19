@@ -474,7 +474,7 @@ class PanelFactory:
 
     assert "def __pyr_PanelFactory__make___locals___panel(__pyr_ctx, __pyr_dirty_state, label):" in transformed
     assert "PanelFactory.make.<locals>.panel" in transformed
-    assert "__pyr_slot_1 = __pyr_SlotId(__pyr_module_id, 1, line_no=21)" in transformed
+    assert "__pyr_slot_1 = __pyr_SlotId(__pyr_module_id, 1, line_no=21, is_top_level=True)" in transformed
     assert "globals()['__pyr_slot_1']" in transformed
 
     namespace = load_transformed_namespace(

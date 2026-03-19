@@ -177,6 +177,7 @@ def test_external_store_notification_refreshes_via_get_without_helper_rerun() ->
         ("helper", "weather"),
         ("subscribe", "weather"),
         ("get", "weather", "sunny"),
+        ("helper", "weather"),
         ("get", "weather", "rain"),
     ]
 
@@ -192,6 +193,8 @@ def test_external_store_notification_refreshes_via_get_without_helper_rerun() ->
         ("helper", "weather"),
         ("subscribe", "weather"),
         ("get", "weather", "sunny"),
+        ("helper", "weather"),
+        ("get", "weather", "rain"),
         ("get", "weather", "rain"),
     ]
 

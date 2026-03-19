@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from io import StringIO
 from pathlib import Path
 from runpy import run_path
 
@@ -8,7 +9,7 @@ import pytest
 
 from pyrolyze.api import UIElement
 from pyrolyze.compiler import load_transformed_namespace
-from pyrolyze.runtime import RenderContext, dirtyof
+from pyrolyze.runtime import RenderContext, TraceChannel, TraceRecord, dirtyof
 from pyrolyze.pyrolyze_tkinter import tkinter_available
 
 
@@ -46,6 +47,28 @@ def _find_section(children: tuple[UIElement, ...], title: str) -> UIElement:
     )
 
 
+def _find_text_field(node: UIElement, field_id: str) -> UIElement:
+    if node.kind == "text_field" and node.props.get("field_id") == field_id:
+        return node
+    for child in node.children:
+        try:
+            return _find_text_field(child, field_id)
+        except StopIteration:
+            continue
+    raise StopIteration(field_id)
+
+
+def _find_button(node: UIElement, label: str) -> UIElement:
+    if node.kind == "button" and node.props.get("label") == label:
+        return node
+    for child in node.children:
+        try:
+            return _find_button(child, label)
+        except StopIteration:
+            continue
+    raise StopIteration(label)
+
+
 def _grid_shape(root: UIElement) -> tuple[int, int]:
     grid_section = _find_section(root.children, "Grid")
     rows = tuple(child for child in grid_section.children if child.kind == "row")
@@ -67,6 +90,16 @@ def _counter_controls(counter_section: UIElement) -> tuple[UIElement, UIElement,
     assert len(controls_row.children) == 3
     minus_button, count_field, plus_button = controls_row.children
     return minus_button, count_field, plus_button
+
+
+def _grid_cell(root: UIElement, row_index: int, col_index: int) -> UIElement:
+    grid_section = _find_section(root.children, "Grid")
+    row = next(
+        child
+        for child in grid_section.children
+        if child.kind == "row" and child.props.get("row_id") == f"grid:row:{row_index}"
+    )
+    return _find_section(row.children, f"R{row_index + 1} C{col_index + 1}")
 
 
 def test_grid_app_example_renders_header_and_initial_grid() -> None:
@@ -105,12 +138,66 @@ def test_grid_app_example_header_events_resize_grid() -> None:
     assert _counter_controls(_header_counters(root)[1])[1].props["value"] == "1"
 
 
+def test_grid_app_example_cell_increment_updates_immediately_in_pyside_host() -> None:
+    from PySide6.QtWidgets import QGroupBox, QLineEdit, QPushButton
+
+    namespace = run_path(str(RUNNER_PATH))
+    build_app_host = namespace["build_app_host"]
+    host, ctx = build_app_host("pyside6")
+
+    def _pump_events() -> None:
+        for _ in range(10):
+            host.app.processEvents()
+
+    try:
+        first_cell = next(
+            widget
+            for widget in host.content_widget.findChildren(QGroupBox)
+            if widget.title() == "R1 C1"
+        )
+        first_cell_field = host.content_widget.findChild(QLineEdit, "cell:0:0:value")
+        assert first_cell_field is not None
+        first_cell_plus = next(
+            button for button in first_cell.findChildren(QPushButton) if button.text() == "+"
+        )
+
+        first_cell_plus.click()
+        _pump_events()
+
+        assert first_cell_field.text() == "1"
+    finally:
+        ctx.close_app_contexts()
+        host.close()
+
+
+def test_grid_app_example_cell_increment_preserves_committed_grid_structure() -> None:
+    ctx = _mount_grid_app()
+    root = ctx.committed_ui()[0]
+    first_cell = _grid_cell(root, 0, 0)
+    first_cell_plus = _find_button(first_cell, "+")
+
+    first_cell_plus.props["on_press"]()
+    ctx.run_pending_invalidations()
+
+    committed = ctx.committed_ui()
+    assert len(committed) == 1
+    root = committed[0]
+    assert root.kind == "section"
+    assert root.props["title"] == "Grid App"
+    assert _grid_shape(root) == (2, 2)
+    assert _find_text_field(_grid_cell(root, 0, 0), "cell:0:0:value").props["value"] == "1"
+    assert _find_text_field(_grid_cell(root, 0, 1), "cell:0:1:value").props["value"] == "0"
+
+
 def test_run_grid_app_parser_selects_backend_and_builds_pyside_host() -> None:
     namespace = run_path(str(RUNNER_PATH))
     parser = namespace["build_parser"]()
 
     assert parser.parse_args([]).backend == "pyside6"
     assert parser.parse_args(["--backend", "tkinter"]).backend == "tkinter"
+    assert parser.parse_args(["--trace", "invalidation,boundary"]).trace == ["invalidation,boundary"]
+    assert parser.parse_args(["--trace", "reconcile", "--trace", "flush"]).trace == ["reconcile", "flush"]
+    assert parser.parse_args(["--trace-stdout"]).trace_stdout is True
 
     build_app_host = namespace["build_app_host"]
     host, ctx = build_app_host("pyside6")
@@ -119,6 +206,76 @@ def test_run_grid_app_parser_selects_backend_and_builds_pyside_host() -> None:
     finally:
         ctx.close_app_contexts()
         host.close()
+
+
+def test_run_grid_app_resolves_trace_channels_from_cli_tokens() -> None:
+    namespace = run_path(str(RUNNER_PATH))
+    resolve_trace_channels = namespace["resolve_trace_channels"]
+
+    assert resolve_trace_channels(None) == ()
+    assert resolve_trace_channels(["invalidation,boundary", "reconcile"]) == (
+        TraceChannel.INVALIDATION,
+        TraceChannel.BOUNDARY,
+        TraceChannel.RECONCILE,
+    )
+    assert resolve_trace_channels(["all"]) == tuple(TraceChannel)
+
+
+def test_run_grid_app_main_configures_trace_from_cli(monkeypatch: pytest.MonkeyPatch) -> None:
+    namespace = run_path(str(RUNNER_PATH))
+    calls: list[tuple[tuple[TraceChannel, ...], object | None]] = []
+
+    class _FakeContext:
+        def close_app_contexts(self) -> None:
+            return None
+
+    class _FakeHost:
+        def exec(self) -> int:
+            return 17
+
+    def _fake_build_app_host(_backend: str) -> tuple[object, object]:
+        return _FakeHost(), _FakeContext()
+
+    def _fake_configure_trace(*, enabled: object, sink: object | None = None) -> None:
+        calls.append((tuple(enabled), sink))
+
+    main = namespace["main"]
+    main.__globals__["build_app_host"] = _fake_build_app_host
+    main.__globals__["configure_trace"] = _fake_configure_trace
+
+    assert main(["--backend", "pyside6", "--trace", "invalidation,reconcile"]) == 17
+    assert calls == [((TraceChannel.INVALIDATION, TraceChannel.RECONCILE), None)]
+
+
+def test_run_grid_app_main_configures_stdout_trace_sink() -> None:
+    namespace = run_path(str(RUNNER_PATH))
+    calls: list[tuple[tuple[TraceChannel, ...], object | None]] = []
+
+    class _FakeContext:
+        def close_app_contexts(self) -> None:
+            return None
+
+    class _FakeHost:
+        def exec(self) -> int:
+            return 23
+
+    def _fake_build_app_host(_backend: str) -> tuple[object, object]:
+        return _FakeHost(), _FakeContext()
+
+    def _fake_configure_trace(*, enabled: object, sink: object | None = None) -> None:
+        calls.append((tuple(enabled), sink))
+
+    buffer = StringIO()
+    main = namespace["main"]
+    main.__globals__["build_app_host"] = _fake_build_app_host
+    main.__globals__["configure_trace"] = _fake_configure_trace
+    main.__globals__["sys"] = type("_FakeSys", (), {"stdout": buffer})()
+
+    assert main(["--backend", "pyside6", "--trace", "flush", "--trace-stdout"]) == 23
+    assert calls[0][0] == (TraceChannel.FLUSH,)
+    assert calls[0][1] is not None
+    calls[0][1](TraceRecord(channel=TraceChannel.FLUSH, event="start", fields={"queued": ()}))
+    assert buffer.getvalue() == "flush.start queued=()\n"
 
 
 @pytest.mark.skipif(not tkinter_available(), reason="Tk root unavailable in this environment")

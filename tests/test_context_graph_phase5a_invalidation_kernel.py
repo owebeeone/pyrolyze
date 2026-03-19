@@ -313,6 +313,7 @@ def test_external_store_notification_queues_mounted_root_once_and_reruns_on_drai
     ctx.run_pending_invalidations()
 
     assert log == [
+        ("helper", "weather"),
         ("get", "weather", "wind"),
         ("section.enter", "Weather", "blue"),
         ("badge", "wind", "info"),
@@ -344,6 +345,7 @@ def test_invalidation_during_active_pass_coalesces_to_one_follow_up_rerun() -> N
     ctx.run_pending_invalidations()
 
     assert log == [
+        ("helper", "weather"),
         ("get", "weather", "rain"),
         ("section.enter", "Weather", "blue"),
         ("badge", "rain", "info"),
@@ -373,6 +375,7 @@ def test_child_component_invalidation_reruns_only_child_component_boundary() -> 
     ctx.run_pending_invalidations()
 
     assert log == [
+        ("child.helper", "child"),
         ("get", "child", "C2"),
         ("badge", "C2", "child"),
     ]
@@ -398,9 +401,11 @@ def test_queued_ancestor_root_elides_queued_child_component_boundary() -> None:
     ctx.run_pending_invalidations()
 
     assert log == [
+        ("parent.helper", "parent"),
         ("get", "parent", "P2"),
         ("section.enter", "Parent", "green"),
         ("badge", "P2", "parent"),
+        ("child.helper", "child"),
         ("get", "child", "C2"),
         ("badge", "C2", "child"),
         ("section.exit", "Parent", "green"),
@@ -427,8 +432,10 @@ def test_sibling_component_invalidations_are_deduplicated_fifo() -> None:
     ctx.run_pending_invalidations()
 
     assert log == [
+        ("right.helper", "right"),
         ("get", "right", "R3"),
         ("badge", "R3", "right"),
+        ("left.helper", "left"),
         ("get", "left", "L2"),
         ("badge", "L2", "left"),
     ]

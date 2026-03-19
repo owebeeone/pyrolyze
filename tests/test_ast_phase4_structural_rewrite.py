@@ -40,7 +40,7 @@ def stats_panel(show_extra, count):
         filename="/virtual/example/phase4/stats_panel.py",
     )
 
-    assert "__pyr_slot_1 = __pyr_SlotId(__pyr_module_id, 1, line_no=16)" in transformed
+    assert "__pyr_slot_1 = __pyr_SlotId(__pyr_module_id, 1, line_no=16, is_top_level=True)" in transformed
     assert "with __pyr_ctx.container_call(" in transformed
     assert "dirty_state=__pyr_dirtyof(title=False, accent=False)" in transformed
     assert "if show_extra:" in transformed

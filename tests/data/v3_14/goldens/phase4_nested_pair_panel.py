@@ -1,8 +1,8 @@
 from pyrolyze.api import CallFromNonPyrolyzeContext as __pyr_CallFromNonPyrolyzeContext, ComponentMetadata as __pyr_ComponentMetadata, pyrolyze_component_ref as __pyr_component_ref
 from pyrolyze.runtime import SlotId as __pyr_SlotId, dirtyof as __pyr_dirtyof, module_registry as __pyr_module_registry
 __pyr_module_id = __pyr_module_registry.module_id(__name__)
-__pyr_slot_1 = __pyr_SlotId(__pyr_module_id, 1, line_no=21)
-__pyr_slot_2 = __pyr_SlotId(__pyr_module_id, 2, line_no=23)
+__pyr_slot_1 = __pyr_SlotId(__pyr_module_id, 1, line_no=21, is_top_level=True)
+__pyr_slot_2 = __pyr_SlotId(__pyr_module_id, 2, line_no=23, is_top_level=True)
 from pyrolyze.api import UIElement, call_native, pyrolyse
 log: list[tuple[object, ...]] = []
 

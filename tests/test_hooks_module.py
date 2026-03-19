@@ -17,9 +17,11 @@ from pyrolyze.runtime import (
 module_registry = ModuleRegistry()
 _MODULE_ID = module_registry.module_id("tests.hooks_module")
 
-_STATE_SLOT = SlotId(_MODULE_ID, 1, line_no=10)
-_EFFECT_SLOT = SlotId(_MODULE_ID, 2, line_no=11)
-_GRIP_SLOT = SlotId(_MODULE_ID, 3, line_no=12)
+_STATE_SLOT = SlotId(_MODULE_ID, 1, line_no=10, is_top_level=True)
+_EFFECT_SLOT = SlotId(_MODULE_ID, 2, line_no=11, is_top_level=True)
+_GRIP_SLOT = SlotId(_MODULE_ID, 3, line_no=12, is_top_level=True)
+_DERIVED_SLOT = SlotId(_MODULE_ID, 4, line_no=13, is_top_level=True)
+_LEAF_SLOT = SlotId(_MODULE_ID, 5, line_no=14, is_top_level=True)
 
 
 def test_api_reexports_primary_hooks() -> None:
@@ -55,6 +57,40 @@ def test_use_state_provides_plain_tuple_and_stable_setter() -> None:
     assert observed[2][0] == (True, True)
     assert observed[2][1][0] == 7
     assert after_update is setter
+
+
+def test_use_state_invalidation_reruns_sibling_top_level_slots_in_same_context() -> None:
+    ctx = RenderContext()
+    observed: list[str] = []
+    state_holder = {"count": 0}
+    setters: list[Callable[[int], None]] = []
+
+    def derive_label() -> str:
+        return f"value:{state_holder['count']}"
+
+    def render() -> None:
+        with ctx.pass_scope():
+            _, pair = ctx.call_plain(
+                _STATE_SLOT,
+                use_state,
+                0,
+                result_shape=("tuple", 2),
+            )
+            count, setter = pair
+            setters[:] = [setter]
+            state_holder["count"] = count
+            label_dirty, label = ctx.call_plain(_DERIVED_SLOT, derive_label)
+            if label_dirty or ctx.visit_slot_and_dirty(_LEAF_SLOT):
+                observed.append(label)
+
+    ctx.mount(render)
+    assert observed == ["value:0"]
+
+    observed.clear()
+    setters[0](3)
+    ctx.run_pending_invalidations()
+
+    assert observed == ["value:3"]
 
 
 def test_use_effect_helpers_return_runtime_requests() -> None:

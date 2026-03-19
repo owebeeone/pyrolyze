@@ -1,12 +1,12 @@
 from pyrolyze.api import CallFromNonPyrolyzeContext as __pyr_CallFromNonPyrolyzeContext, ComponentMetadata as __pyr_ComponentMetadata, pyrolyze_component_ref as __pyr_component_ref
 from pyrolyze.runtime import SlotId as __pyr_SlotId, dirtyof as __pyr_dirtyof, module_registry as __pyr_module_registry
 __pyr_module_id = __pyr_module_registry.module_id(__name__)
-__pyr_slot_1 = __pyr_SlotId(__pyr_module_id, 1, line_no=26)
-__pyr_slot_2 = __pyr_SlotId(__pyr_module_id, 2, line_no=27)
-__pyr_slot_3 = __pyr_SlotId(__pyr_module_id, 3, line_no=33)
-__pyr_slot_4 = __pyr_SlotId(__pyr_module_id, 4, line_no=34)
-__pyr_slot_5 = __pyr_SlotId(__pyr_module_id, 5, line_no=40)
-__pyr_slot_6 = __pyr_SlotId(__pyr_module_id, 6, line_no=41)
+__pyr_slot_1 = __pyr_SlotId(__pyr_module_id, 1, line_no=26, is_top_level=True)
+__pyr_slot_2 = __pyr_SlotId(__pyr_module_id, 2, line_no=27, is_top_level=True)
+__pyr_slot_3 = __pyr_SlotId(__pyr_module_id, 3, line_no=33, is_top_level=True)
+__pyr_slot_4 = __pyr_SlotId(__pyr_module_id, 4, line_no=34, is_top_level=True)
+__pyr_slot_5 = __pyr_SlotId(__pyr_module_id, 5, line_no=40, is_top_level=True)
+__pyr_slot_6 = __pyr_SlotId(__pyr_module_id, 6, line_no=41, is_top_level=True)
 from pyrolyze.api import UIElement, call_native, keyed, pyrolyse
 log: list[tuple[object, ...]] = []
 
