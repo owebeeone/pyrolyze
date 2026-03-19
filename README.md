@@ -48,3 +48,33 @@ Run focused tests:
 ```bash
 uv run --with pytest --with pytest-cov pytest tests/test_compiler_markers.py -q
 ```
+
+## Versioned AST Testing
+
+AST transforms are more version-sensitive than most Python APIs because parser
+and AST node details can shift between interpreter releases. This repo keeps the
+compiler split into versioned kernels and provides a uv-based harness for
+running the suite across Python versions.
+
+The detailed workflow lives in
+  [tests/README.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/tests/README.md).
+
+Quick examples:
+
+```bash
+uv run python tests/versioned_test_harness.py list-versions
+uv run python tests/versioned_test_harness.py regen-goldens
+uv run python tests/versioned_test_harness.py run-tests --python 3.12 --pytest-args -q
+uv run python tests/versioned_test_harness.py run-tests --python 3.13 --pytest-args -q
+uv run python tests/versioned_test_harness.py run-tests --python 3.14 --pytest-args -q
+uv run python tests/versioned_test_harness.py run-tests --python 3.15 --pytest-args -q
+uv run python tests/versioned_test_harness.py run-tests-all --pytest-args -q
+uv run python tests/versioned_test_harness.py run-tests-all --show-output --pytest-args -q
+```
+
+Current state:
+
+- minimum supported runtime is Python `3.12`
+- only kernel `v3_14` is checked in today
+- Python `3.12`, `3.13`, `3.14`, and `3.15.0a5` have all been run successfully
+  against that same `v3_14` kernel

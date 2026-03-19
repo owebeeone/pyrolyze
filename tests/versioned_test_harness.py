@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import sys
+from typing import TextIO
 import tomllib
 from typing import Sequence
 
@@ -65,6 +66,46 @@ def actual_results_dir(
     return project_root / "tests" / "actual_test_results" / runtime_tag(runtime_version) / normalize_kernel_tag(kernel_tag)
 
 
+def data_gold_src_dir(project_root: Path) -> Path:
+    return project_root / "tests" / "data" / "gold_src"
+
+
+def data_golden_dir(project_root: Path, *, kernel_tag: str) -> Path:
+    return project_root / "tests" / "data" / normalize_kernel_tag(kernel_tag) / "goldens"
+
+
+def golden_case_manifest_path(project_root: Path) -> Path:
+    return project_root / "tests" / "data" / "gold_cases.toml"
+
+
+def load_golden_cases(project_root: Path) -> dict[str, str]:
+    manifest_path = golden_case_manifest_path(project_root)
+    payload = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
+    cases = payload.get("cases", {})
+    return {str(name): str(module_name) for name, module_name in cases.items()}
+
+
+def load_supported_runtime_specs(pyproject_path: Path) -> tuple[str, ...]:
+    payload = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+    runtimes = payload.get("tool", {}).get("pyrolyze", {}).get("test-matrix", {}).get("python", [])
+    return tuple(str(runtime) for runtime in runtimes)
+
+
+def resolve_requested_runtime_specs(
+    pyproject_path: Path,
+    *,
+    requested: Sequence[str] | None,
+) -> tuple[str, ...]:
+    raw_specs = load_supported_runtime_specs(pyproject_path) if requested is None else tuple(requested)
+    normalized: list[str] = []
+    for spec in raw_specs:
+        major, minor = _version_tuple_from_python_spec(spec)
+        normalized_spec = f"{major}.{minor}"
+        if normalized_spec not in normalized:
+            normalized.append(normalized_spec)
+    return tuple(normalized)
+
+
 def load_install_requirements(pyproject_path: Path) -> list[str]:
     payload = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
     build_requires = list(payload.get("build-system", {}).get("requires", []))
@@ -87,19 +128,19 @@ def write_golden_outputs(
 ) -> None:
     from pyrolyze.compiler import emit_transformed_source
 
-    source_dir = project_root / "tests" / normalize_kernel_tag(kernel_tag) / "gold_src"
+    source_dir = data_gold_src_dir(project_root)
     if not source_dir.exists():
         raise FileNotFoundError(f"Golden source directory does not exist: {source_dir}")
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    for source_path in sorted(source_dir.glob("*.py")):
-        module_name = _golden_module_name(kernel_tag=normalize_kernel_tag(kernel_tag), file_name=source_path.name)
+    for file_name, module_name in load_golden_cases(project_root).items():
+        source_path = source_dir / file_name
         transformed = emit_transformed_source(
             source_path.read_text(encoding="utf-8"),
             module_name=module_name,
             filename=str(source_path),
         )
-        (output_dir / source_path.name).write_text(transformed + "\n", encoding="utf-8")
+        (output_dir / file_name).write_text(transformed + "\n", encoding="utf-8")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -158,6 +199,39 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Arguments forwarded to pytest after '--pytest-args'.",
     )
     run_tests.set_defaults(func=_cmd_run_tests)
+
+    run_tests_all = subparsers.add_parser(
+        "run-tests-all",
+        help="Run the test suite for multiple selected Python versions in parallel.",
+    )
+    run_tests_all.add_argument(
+        "--python",
+        nargs="*",
+        default=None,
+        help="Python versions to run, for example 3.12 3.13 3.14. Defaults to the supported matrix in pyproject.toml.",
+    )
+    run_tests_all.add_argument(
+        "--venv-root",
+        default="tests/.uv-venvs",
+        help="Directory for uv-managed versioned virtual environments.",
+    )
+    run_tests_all.add_argument(
+        "--recreate",
+        action="store_true",
+        help="Delete and recreate each target uv environment before installing.",
+    )
+    run_tests_all.add_argument(
+        "--show-output",
+        action="store_true",
+        help="Print per-version run output even for passing runs. With one version selected, stream directly to stdout/stderr.",
+    )
+    run_tests_all.add_argument(
+        "--pytest-args",
+        nargs=argparse.REMAINDER,
+        default=[],
+        help="Arguments forwarded to pytest after '--pytest-args'.",
+    )
+    run_tests_all.set_defaults(func=_cmd_run_tests_all)
 
     internal = subparsers.add_parser(
         "_internal_regen_goldens",
@@ -255,6 +329,78 @@ def _cmd_run_tests(args: argparse.Namespace) -> int:
     return completed.returncode
 
 
+def _cmd_run_tests_all(args: argparse.Namespace) -> int:
+    project_root = Path(__file__).resolve().parents[1]
+    runtime_specs = resolve_requested_runtime_specs(
+        project_root / "pyproject.toml",
+        requested=args.python,
+    )
+    if not runtime_specs:
+        raise SystemExit("No runtime versions were selected for run-tests-all.")
+
+    pytest_args = list(args.pytest_args)
+    if pytest_args and pytest_args[0] == "--":
+        pytest_args = pytest_args[1:]
+
+    script_path = Path(__file__).resolve()
+    env = os.environ.copy()
+    env.setdefault("PYTHONUNBUFFERED", "1")
+
+    if should_passthrough_run_tests_all_output(show_output=args.show_output, runtime_specs=runtime_specs):
+        python_spec = runtime_specs[0]
+        command = build_run_tests_invocation(
+            script_path=script_path,
+            python_executable=sys.executable,
+            python_spec=python_spec,
+            venv_root=args.venv_root,
+            recreate=args.recreate,
+            pytest_args=pytest_args,
+        )
+        completed = subprocess.run(
+            command,
+            cwd=str(project_root),
+            env=env,
+            check=False,
+            text=True,
+        )
+        status = "PASS" if completed.returncode == 0 else f"FAIL ({completed.returncode})"
+        print(f"{python_spec}: {status}")
+        return completed.returncode
+
+    processes: list[tuple[str, subprocess.Popen[str]]] = []
+
+    for python_spec in runtime_specs:
+        command = build_run_tests_invocation(
+            script_path=script_path,
+            python_executable=sys.executable,
+            python_spec=python_spec,
+            venv_root=args.venv_root,
+            recreate=args.recreate,
+            pytest_args=pytest_args,
+        )
+        process = subprocess.Popen(
+            command,
+            cwd=str(project_root),
+            env=env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        processes.append((python_spec, process))
+
+    overall = 0
+    results: list[tuple[str, int, str, str]] = []
+    for python_spec, process in processes:
+        stdout, stderr = process.communicate()
+        returncode = process.returncode or 0
+        if returncode != 0:
+            overall = 1
+        results.append((python_spec, returncode, stdout or "", stderr or ""))
+
+    report_run_tests_all_results(results, show_output=args.show_output)
+    return overall
+
+
 def _cmd_internal_regen_goldens(args: argparse.Namespace) -> int:
     project_root = Path(__file__).resolve().parents[1]
     kernel_tag = normalize_kernel_tag(args.kernel_tag)
@@ -266,7 +412,7 @@ def _cmd_internal_regen_goldens(args: argparse.Namespace) -> int:
             f"use Python {expected_runtime[0]}.{expected_runtime[1]}."
         )
 
-    output_dir = project_root / "tests" / kernel_tag / "goldens"
+    output_dir = data_golden_dir(project_root, kernel_tag=kernel_tag)
     write_golden_outputs(project_root, kernel_tag=kernel_tag, output_dir=output_dir)
     return 0
 
@@ -283,7 +429,8 @@ def _ensure_uv_environment(
         shutil.rmtree(venv_dir)
 
     venv_dir.parent.mkdir(parents=True, exist_ok=True)
-    _run(["uv", "venv", "--python", python_spec, str(venv_dir)], cwd=project_root)
+    if not venv_dir.exists():
+        _run(["uv", "venv", "--python", python_spec, str(venv_dir)], cwd=project_root)
     venv_python = _venv_python(venv_dir)
 
     requirements = load_install_requirements(project_root / "pyproject.toml")
@@ -331,19 +478,61 @@ def _run(
     )
 
 
+def build_run_tests_invocation(
+    *,
+    script_path: Path,
+    python_executable: str,
+    python_spec: str,
+    venv_root: str,
+    recreate: bool,
+    pytest_args: Sequence[str],
+) -> list[str]:
+    command = [
+        python_executable,
+        str(script_path),
+        "run-tests",
+        "--python",
+        python_spec,
+        "--venv-root",
+        venv_root,
+    ]
+    if recreate:
+        command.append("--recreate")
+    command.append("--pytest-args")
+    command.extend(pytest_args)
+    return command
+
+
+def should_passthrough_run_tests_all_output(
+    *,
+    show_output: bool,
+    runtime_specs: Sequence[str],
+) -> bool:
+    return show_output and len(runtime_specs) == 1
+
+
+def report_run_tests_all_results(
+    results: Sequence[tuple[str, int, str, str]],
+    *,
+    show_output: bool,
+    stdout: TextIO = sys.stdout,
+    stderr: TextIO = sys.stderr,
+) -> None:
+    for python_spec, returncode, captured_stdout, captured_stderr in results:
+        status = "PASS" if returncode == 0 else f"FAIL ({returncode})"
+        print(f"{python_spec}: {status}", file=stdout)
+        if show_output or returncode != 0:
+            if captured_stdout:
+                print(f"--- {python_spec} stdout ---", file=stdout)
+                print(captured_stdout, end="" if captured_stdout.endswith("\n") else "\n", file=stdout)
+            if captured_stderr:
+                print(f"--- {python_spec} stderr ---", file=stderr)
+                print(captured_stderr, end="" if captured_stderr.endswith("\n") else "\n", file=stderr)
+
+
 def _python_spec_for_kernel(kernel_tag: str) -> str:
     major, minor = _parse_kernel_tag(kernel_tag)
     return f"{major}.{minor}"
-
-
-def _golden_module_name(*, kernel_tag: str, file_name: str) -> str:
-    version_bits = kernel_tag[1:].replace("_", ".")
-    stem = Path(file_name).stem
-    parts = stem.split("_", 1)
-    if len(parts) == 1:
-        return f"golden.{version_bits}.{parts[0]}"
-    phase, rest = parts
-    return f"golden.{version_bits}.{phase}.{rest}"
 
 
 def _parse_kernel_tag(tag: str) -> tuple[int, int]:

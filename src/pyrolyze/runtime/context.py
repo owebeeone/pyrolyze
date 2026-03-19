@@ -1077,7 +1077,7 @@ class EventHandlerSlotContext(SlotContext):
         self.staged_key = None
         self.committed_callback = None
         self.committed_key = None
-        super().deactivate()
+        super(EventHandlerSlotContext, self).deactivate()
 
     def _dispatch_callable(self) -> Callable[..., None]:
         if self.dispatch is None:
@@ -1197,7 +1197,7 @@ class PlainCallSlotContext(RerunnableSlotContext):
         self.binding = None
         if binding is not None:
             binding.deactivate()
-        super().deactivate()
+        super(PlainCallSlotContext, self).deactivate()
 
 
 @dataclass(slots=True)
@@ -1333,7 +1333,7 @@ class ComponentCallSlotContext(RerunnableSlotContext):
 
     def deactivate(self) -> None:
         self._dispose_child_context()
-        super().deactivate()
+        super(ComponentCallSlotContext, self).deactivate()
 
 
 @dataclass(slots=True)

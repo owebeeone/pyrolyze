@@ -1,0 +1,13 @@
+[cases]
+"phase3_greeting.py" = "golden.phase3.greeting"
+"phase3_panel_methods.py" = "golden.phase3.panel_methods"
+"phase3_nested_factory.py" = "golden.phase3.nested_factory"
+"phase3_nested_method_factory.py" = "golden.phase3.nested_method_factory"
+"phase3_imported_aliases.py" = "golden.phase3.imported_aliases"
+"phase4_stats_panel.py" = "golden.phase4.stats_panel"
+"phase4_nested_grid.py" = "golden.phase4.nested_grid"
+"phase4_nested_pair_panel.py" = "golden.phase4.nested_pair_panel"
+"phase5_parent_panel.py" = "golden.phase5.parent_panel"
+"phase5_method_structures.py" = "golden.phase5.method_structures"
+"phase5_imported_annotations.py" = "golden.phase5.imported_annotations"
+"phase7_label_panel.py" = "golden.phase7.label_panel"

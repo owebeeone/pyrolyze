@@ -7,33 +7,32 @@ import sys
 import pytest
 
 from pyrolyze.compiler import emit_transformed_source
-from tests.versioned_test_harness import actual_results_dir
+from tests.versioned_test_harness import (
+    actual_results_dir,
+    data_golden_dir,
+    data_gold_src_dir,
+    discover_supported_kernel_tags,
+    kernel_tag_for_runtime,
+    load_golden_cases,
+)
 
 
-_GOLDENS_DIR = Path(__file__).parent / "v3_14" / "goldens"
-_GOLD_SRC_DIR = Path(__file__).parent / "v3_14" / "gold_src"
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
+_SUPPORTED_KERNELS = discover_supported_kernel_tags(_PROJECT_ROOT)
+_ACTIVE_KERNEL = kernel_tag_for_runtime(
+    (sys.version_info.major, sys.version_info.minor),
+    _SUPPORTED_KERNELS,
+)
+_GOLDENS_DIR = data_golden_dir(_PROJECT_ROOT, kernel_tag=_ACTIVE_KERNEL)
+_GOLD_SRC_DIR = data_gold_src_dir(_PROJECT_ROOT)
 _ACTUAL_GOLDENS_DIR = actual_results_dir(
     _PROJECT_ROOT,
     runtime_version=(sys.version_info.major, sys.version_info.minor),
-    kernel_tag="v3_14",
+    kernel_tag=_ACTIVE_KERNEL,
 ) / "goldens"
 
 
-_CASES: dict[str, str] = {
-    "phase3_greeting.py": "golden.phase3.greeting",
-    "phase3_panel_methods.py": "golden.phase3.panel_methods",
-    "phase3_nested_factory.py": "golden.phase3.nested_factory",
-    "phase3_nested_method_factory.py": "golden.phase3.nested_method_factory",
-    "phase3_imported_aliases.py": "golden.phase3.imported_aliases",
-    "phase4_stats_panel.py": "golden.phase4.stats_panel",
-    "phase4_nested_grid.py": "golden.phase4.nested_grid",
-    "phase4_nested_pair_panel.py": "golden.phase4.nested_pair_panel",
-    "phase5_parent_panel.py": "golden.phase5.parent_panel",
-    "phase5_method_structures.py": "golden.phase5.method_structures",
-    "phase5_imported_annotations.py": "golden.phase5.imported_annotations",
-    "phase7_label_panel.py": "golden.phase7.label_panel",
-}
+_CASES = load_golden_cases(_PROJECT_ROOT)
 
 
 def test_golden_fixture_sets_match() -> None:
@@ -77,7 +76,7 @@ def test_golden_sources_are_fully_type_annotated() -> None:
     ("golden_name", "module_name"),
     list(_CASES.items()),
 )
-def test_transformed_source_matches_v3_14_golden(
+def test_transformed_source_matches_active_kernel_golden(
     golden_name: str,
     module_name: str,
 ) -> None:
