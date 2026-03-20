@@ -1,7 +1,7 @@
 # Studio System Requirements Specification
 
 Document ID: `SRS-STUDIO-001`  
-Version: `1.0`  
+Version: `1.1`  
 Date: `2026-03-20`  
 Project Root: `Studio/`  
 Primary Target Stack: `PyRolyze (@pyrolyse) + PySide6`
@@ -50,6 +50,17 @@ The requirements in this document are the implementation contract for Studio wor
 
 Current behavior reference implementation:  
 [`examples/studio_app.py`](C:/Users/adria/Documents/Projects/py-rolyze-wip/examples/studio_app.py)
+
+Source-truth baseline analysis:  
+[`Studio App Spec Baseline.md`](C:/Users/adria/Documents/Projects/py-rolyze-wip/Studio/Studio%20App%20Spec%20Baseline.md)
+
+### 4.1 Baseline Intent Rules
+
+- Migration SHALL treat the baseline document as behavior truth for current app semantics.
+- Delivery SHALL distinguish:
+  - `baseline parity` (match current behavior, including placeholders where they exist),
+  - `intentional improvements` (explicitly tracked as deltas).
+- Work items SHALL not silently convert baseline placeholders into assumed completed features.
 
 ## 5. System Context and Architecture Boundaries
 
@@ -129,6 +140,19 @@ Current behavior reference implementation:
 - `FR-ASYNC-001`: The system SHALL support scheduling asynchronous operations from UI actions.
 - `FR-ASYNC-002`: Async completion SHALL update UI through approved UI-thread-safe invalidation/reconciliation flow.
 
+### 6.9 Baseline Conformance and Gap Closure
+
+- `FR-BASE-001`: The implementation SHALL maintain a traceable mapping from baseline interaction IDs (`I-*`) to Studio implementation status.
+- `FR-BASE-002`: Placeholder behavior in the baseline (for example File/Edit command stubs) SHALL be explicitly marked as either:
+  - parity-preserved placeholder, or
+  - upgraded behavior with acceptance criteria.
+- `FR-BASE-003`: The implementation SHALL resolve baseline-known correctness defects before milestone freeze, including:
+  - invalid sync entrypoint use via `asyncio.run(...)` pattern in source baseline,
+  - non-portable title-bar size behavior without fallback,
+  - persistence stub methods identified in baseline analysis.
+- `FR-BASE-004`: Keyboard shortcut decisions SHALL be explicit (for example plain `Ctrl+=/-` vs `Ctrl+Shift+=/-`) and test-covered.
+- `FR-BASE-005`: Border/chrome behavior SHALL specify whether runtime border-toggle is in scope; if out of scope, this SHALL be documented as a deferred delta.
+
 ## 7. PyRolyze Enablement Requirements (Framework Prerequisites)
 
 These requirements are blockers for implementing Studio content declaratively.
@@ -184,6 +208,10 @@ These requirements are blockers for implementing Studio content declaratively.
 - `NFR-PERF-002`: Reconciliation for reorder/replace-heavy updates SHALL avoid known O(n^2) hotspots where practical.
 - `NFR-PERF-003`: Inspector hover/highlight operations SHALL avoid UI freezes in large widget trees.
 - `NFR-PERF-004`: Performance regression tests for Studio-shaped trees SHALL be added before Studio feature lock.
+- `NFR-PERF-005`: Performance acceptance SHALL include measurable guardrails:
+  - tab reorder on 100 tabs: p95 reconcile commit under 25 ms,
+  - inspector hover transitions on 2,000-node tree: p95 update under 40 ms,
+  - explorer refresh on 2,000 entries (model update path): no UI stall over 100 ms on test baseline hardware.
 
 ### 8.2 Reliability
 
@@ -201,6 +229,7 @@ These requirements are blockers for implementing Studio content declaratively.
 - `NFR-TST-001`: Every new Studio-required node or bridge behavior SHALL have unit/integration test coverage.
 - `NFR-TST-002`: Reconciliation identity behavior SHALL be validated by reuse/reorder/removal tests.
 - `NFR-TST-003`: Focused tests SHALL pass before full-suite execution.
+- `NFR-TST-004`: Baseline parity tests SHALL exist for key interactions (window shell, explorer activation intent, menu/status actions, inspector hover/screenshot/save flow, persistence restore).
 
 ## 9. Data and Configuration Requirements
 
@@ -218,25 +247,54 @@ Minimum expected structure:
 ```text
 Studio/
   Studio_System_Requirements.md
+  Studio App Spec Baseline.md
   architecture/
     Studio_Architecture.md
   host/
-    studio_host.py
+    app_host.py
     window_chrome.py
+    menu_bridge.py
+    status_bar_bridge.py
   app/
-    studio_state.py
-    studio_actions.py
-    studio_services.py
+    models.py
+    state.py
+    actions.py
+    reducers.py
+    selectors.py
+    commands.py
+  services/
+    settings_service.py
+    filesystem_service.py
+    hierarchy_service.py
+    screenshot_service.py
+    async_service.py
   ui/
-    studio_app.py
+    studio_root.py
+    node_contracts.py
+    theme.py
     components/
       workspace.py
-      explorer.py
+      explorer_panel.py
       editor_tabs.py
       bottom_panel.py
-      inspector.py
+      inspector_panel.py
+      status_widgets.py
+  bridges/
+    host_widget_bridge.py
+    qtree_bridge.py
+    tabs_bridge.py
+    splitter_bridge.py
+  runtime_ext/
+    pyside6_bindings.py
+    ui_descriptors.py
+    reconcile_helpers.py
+    event_threading.py
+  docs/
+    baseline_parity_map.md
   tests/
-    test_studio_*.py
+    unit/test_*.py
+    integration/test_*.py
+    perf/test_*.py
 ```
 
 Notes:
@@ -259,6 +317,7 @@ Notes:
 - `AC-PROD-003`: Explorer and command surfaces satisfy `FR-EXPLORER-*` and `FR-CMD-*`.
 - `AC-PROD-004`: Inspector and screenshot behaviors satisfy `FR-INSP-*`.
 - `AC-PROD-005`: Persistence behavior satisfies `FR-PERSIST-*`.
+- `AC-PROD-006`: Baseline conformance requirements satisfy `FR-BASE-*`.
 
 ### 11.3 Framework Enablement Acceptance
 

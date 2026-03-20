@@ -1,7 +1,7 @@
 # Studio System Design Document
 
 Document ID: `SDD-STUDIO-001`  
-Version: `1.0`  
+Version: `1.1`  
 Date: `2026-03-20`  
 Status: `Draft (Implementation Baseline)`  
 Project Root: `Studio/`
@@ -17,6 +17,7 @@ It converts requirements from:
 
 - `SRS-STUDIO-001` ([Studio_System_Requirements.md](C:/Users/adria/Documents/Projects/py-rolyze-wip/Studio/Studio_System_Requirements.md))
 - `Studio_Directory_Structure.md` ([Studio_Directory_Structure.md](C:/Users/adria/Documents/Projects/py-rolyze-wip/Studio/Studio_Directory_Structure.md))
+- `Studio App Spec Baseline.md` ([Studio App Spec Baseline.md](C:/Users/adria/Documents/Projects/py-rolyze-wip/Studio/Studio%20App%20Spec%20Baseline.md))
 
 into an implementation-ready architecture, module decomposition, runtime flows,
 and verification strategy.
@@ -43,11 +44,20 @@ Out of scope for initial design delivery:
 - Cloud sync
 - Full IDE/debugger subsystems
 
+### 1.4 Baseline Alignment Constraints
+
+- The baseline document is the source of truth for current behavior, including placeholders and dead/unused paths.
+- Feature migration is sequenced as:
+  1. parity capture,
+  2. baseline defect closure,
+  3. intentional behavior upgrades.
+- Baseline-known issues SHALL be tracked as first-class design work, not implicit assumptions.
+
 ## 2. Architecture Drivers
 
 ### 2.1 Functional Drivers
 
-- `FR-SHELL-*`, `FR-LAYOUT-*`, `FR-EXPLORER-*`, `FR-TABS-*`, `FR-INSP-*`, `FR-PERSIST-*`
+- `FR-SHELL-*`, `FR-LAYOUT-*`, `FR-EXPLORER-*`, `FR-TABS-*`, `FR-INSP-*`, `FR-PERSIST-*`, `FR-BASE-*`
 - PyRolyze prerequisites: `PR-NODE-*`, `PR-TREE-*`, `PR-HOST-*`, `PR-BRIDGE-*`, `PR-ASYNC-*`
 
 ### 2.2 Quality Attribute Drivers
@@ -289,6 +299,7 @@ StudioState
 4. Service executes side effect if needed.
 5. Completion posts invalidation on UI-safe path.
 6. PyRolyze reconciliation updates affected subtree.
+7. If command is baseline-placeholder parity, explicit placeholder response is emitted and trace-tagged.
 
 ### 7.3 Explorer Open Flow
 
@@ -318,6 +329,14 @@ StudioState
 3. `settings_service` writes state atomically.
 4. Async tasks are drained/cancelled safely.
 5. Application exits.
+
+### 7.7 Baseline Gap Closure Flow
+
+1. Baseline interaction ID is selected from parity map.
+2. Existing Studio behavior is classified: `parity`, `defect`, `upgrade`.
+3. For `defect` and `upgrade`, failing test is added first.
+4. Minimal fix is implemented.
+5. Traceability map is updated with requirement ID and interaction ID.
 
 ## 8. PyRolyze Extension Design
 
@@ -380,6 +399,10 @@ Bridge obligations:
 - Avoid repeated linear scans in placement paths by caching positions where possible.
 - Throttle or coalesce high-frequency inspector hover updates.
 - Keep expensive hierarchy/screenshot operations off hot render path.
+- Enforce measurable guardrails from SRS:
+  - 100-tab reorder p95 under 25 ms.
+  - 2,000-node inspector hover p95 under 40 ms.
+  - 2,000-entry explorer refresh with no UI stall over 100 ms.
 
 ### 9.2 Reliability
 
@@ -430,6 +453,20 @@ Development SHALL follow red/green/refactor per `AGENTS.md`:
 5. Run full suite before milestone closure.
 
 ## 11. Phased Implementation Plan
+
+### Phase 0: Baseline Parity and Defect Closure
+
+- Produce `docs/baseline_parity_map.md` with interaction ID mapping.
+- Preserve documented placeholders as explicit parity behavior.
+- Close baseline-known defects:
+  - sync entrypoint misuse via `asyncio.run(...)`,
+  - non-Windows size fallback path,
+  - persistence stubs and restore inconsistencies.
+
+Exit criteria:
+
+- Baseline interaction map exists and is test-linked.
+- Defect-fix tests pass and placeholder parity is explicit.
 
 ### Phase 1: Foundation and Contracts
 
@@ -499,6 +536,7 @@ Exit criteria:
 | Inspector | `ui/components/inspector_panel.py`, `services/hierarchy_service.py`, `services/screenshot_service.py` | `FR-INSP-*`, `PR-BRIDGE-*` |
 | Persistence | `services/settings_service.py`, `app/state.py` | `FR-PERSIST-*`, `CFG-*` |
 | Async boundary | `services/async_service.py`, `runtime_ext/event_threading.py` | `FR-ASYNC-*`, `PR-ASYNC-*` |
+| Baseline parity + defects | `docs/baseline_parity_map.md`, `tests/integration`, `tests/perf` | `FR-BASE-*`, `AC-PROD-006` |
 | Quality gates | `tests/unit`, `tests/integration`, `tests/perf` | `NFR-*`, `AC-*` |
 
 ## 14. Next Artifacts

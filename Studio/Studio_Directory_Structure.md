@@ -11,7 +11,9 @@ separation.
 ```text
 Studio/
   README.md
+  Studio App Spec Baseline.md
   Studio_System_Requirements.md
+  Studio_System_Design_Document.md
   Studio_Directory_Structure.md
 
   architecture/
@@ -74,6 +76,14 @@ Studio/
     reconcile_helpers.py
     event_threading.py
 
+  docs/
+    baseline_parity_map.md
+    known_gaps.md
+    interaction_ids.md
+    fixtures/
+      graph_dump_samples/
+      screenshots/
+
   tests/
     unit/
       test_state_reducers.py
@@ -82,6 +92,7 @@ Studio/
       test_services_filesystem.py
     integration/
       test_host_mount_points.py
+      test_baseline_parity_map.py
       test_explorer_flow.py
       test_tabs_flow.py
       test_inspector_flow.py
@@ -93,6 +104,7 @@ Studio/
 
   scripts/
     run_studio.py
+    run_studio_poc.py
     run_studio_tests.py
 ```
 
@@ -105,6 +117,7 @@ Studio/
 - `bridges/`: Integration points between host widgets and declarative state.
 - `runtime_ext/`: PyRolyze node/binding extensions required by Studio.
 - `tests/`: Split by unit/integration/performance for clear execution scope.
+- `docs/`: Baseline traceability artifacts and known-gap tracking tied to `FR-BASE-*`.
 
 ## Implementation Notes
 
@@ -112,3 +125,4 @@ Studio/
 - Keep all platform-specific code (`ctypes`, Win32 calls) under `host/`.
 - Add new semantic node contracts in `runtime_ext/ui_descriptors.py`.
 - Add bridge lifecycle tests before enabling bridge-backed components in UI.
+- Keep placeholder-parity behavior explicitly documented until intentionally upgraded.
