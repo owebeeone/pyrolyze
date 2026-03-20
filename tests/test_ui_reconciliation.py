@@ -227,6 +227,51 @@ def test_reconcile_owner_reorders_reused_nodes_without_recreating_them() -> None
     assert [node.spec.node_id for node in parent.attached] == [_node_id(2), _node_id(1)]
 
 
+def test_reconcile_owner_skips_placement_when_order_is_unchanged() -> None:
+    backend = _FakeBackend()
+    parent = _FakeBinding(spec=_badge_spec(node_id=_node_id(99)), label="parent")
+    owner = UiOwnerCommitState(owner_id=_OWNER_SLOT)
+    specs = (
+        _button_spec(node_id=_node_id(1), label="One"),
+        _button_spec(node_id=_node_id(2), label="Two"),
+        _button_spec(node_id=_node_id(3), label="Three"),
+    )
+
+    reconcile_owner(owner, specs, backend=backend, parent_binding=parent)
+    parent.place_calls.clear()
+
+    reconcile_owner(owner, specs, backend=backend, parent_binding=parent)
+
+    assert parent.place_calls == []
+    assert owner.mounted_nodes[0].spec.node_id == _node_id(1)
+    assert owner.mounted_nodes[1].spec.node_id == _node_id(2)
+    assert owner.mounted_nodes[2].spec.node_id == _node_id(3)
+
+
+def test_reconcile_owner_places_only_moved_nodes_for_reorder() -> None:
+    backend = _FakeBackend()
+    parent = _FakeBinding(spec=_badge_spec(node_id=_node_id(99)), label="parent")
+    owner = UiOwnerCommitState(owner_id=_OWNER_SLOT)
+    first = (
+        _button_spec(node_id=_node_id(1), label="One"),
+        _button_spec(node_id=_node_id(2), label="Two"),
+        _button_spec(node_id=_node_id(3), label="Three"),
+    )
+    reconcile_owner(owner, first, backend=backend, parent_binding=parent)
+    created = tuple(owner.mounted_nodes)
+    parent.place_calls.clear()
+
+    second = (
+        _button_spec(node_id=_node_id(3), label="Three"),
+        _button_spec(node_id=_node_id(1), label="One"),
+        _button_spec(node_id=_node_id(2), label="Two"),
+    )
+    reconcile_owner(owner, second, backend=backend, parent_binding=parent)
+
+    assert owner.mounted_nodes == [created[2], created[0], created[1]]
+    assert parent.place_calls == [("button", 0)]
+
+
 def test_reconcile_owner_backend_swap_forces_full_remount() -> None:
     owner = UiOwnerCommitState(owner_id=_OWNER_SLOT)
     parent = _FakeBinding(spec=_badge_spec(node_id=_node_id(99)), label="parent")
