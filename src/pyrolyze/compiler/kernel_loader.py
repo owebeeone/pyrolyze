@@ -22,7 +22,8 @@ def load_ast_kernel(version_info: tuple[int, int] | None = None):
 def active_transformer_fingerprint(version_info: tuple[int, int] | None = None) -> str:
     major_minor = version_info or (sys.version_info.major, sys.version_info.minor)
     selected = select_kernel_version(major_minor)
-    transform_hash = _transform_hash_for_selected_kernel(selected)
+    source_state_token = _transformer_source_state_token(selected)
+    transform_hash = _transform_hash_for_selected_kernel(selected, source_state_token)
     return (
         f"cache_schema={TRANSFORMER_CACHE_SCHEMA};"
         f"kernel=v{selected[0]}_{selected[1]};"
@@ -60,9 +61,13 @@ def _available_kernel_versions() -> list[tuple[int, int]]:
 
 
 @lru_cache(maxsize=None)
-def _transform_hash_for_selected_kernel(version: tuple[int, int]) -> str:
-    compiler_dir = Path(__file__).resolve().parent
-    kernel_dir = compiler_dir / "kernels" / f"v{version[0]}_{version[1]}"
+def _transform_hash_for_selected_kernel(
+    version: tuple[int, int],
+    source_state_token: str,
+) -> str:
+    del source_state_token
+    compiler_dir = _compiler_dir()
+    kernel_dir = _kernel_dir_for_version(version, compiler_dir=compiler_dir)
 
     digest = hashlib.sha256()
     digest.update(f"schema:{TRANSFORMER_CACHE_SCHEMA}".encode("utf-8"))
@@ -79,6 +84,44 @@ def _transform_hash_for_selected_kernel(version: tuple[int, int]) -> str:
         digest.update(b"\0")
 
     return digest.hexdigest()[:16]
+
+
+def _transformer_source_state_token(version: tuple[int, int]) -> str:
+    compiler_dir = _compiler_dir()
+    kernel_dir = _kernel_dir_for_version(version, compiler_dir=compiler_dir)
+    digest = hashlib.sha256()
+    digest.update(f"schema:{TRANSFORMER_CACHE_SCHEMA}".encode("utf-8"))
+    digest.update(f"kernel:v{version[0]}_{version[1]}".encode("utf-8"))
+    for path in _fingerprint_files(compiler_dir=compiler_dir, kernel_dir=kernel_dir):
+        relative = str(path.relative_to(compiler_dir))
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        try:
+            stat = path.stat()
+        except OSError:
+            digest.update(b"<missing>\0")
+            continue
+        digest.update(str(stat.st_mtime_ns).encode("utf-8"))
+        digest.update(b":")
+        digest.update(str(stat.st_size).encode("utf-8"))
+        digest.update(b"\0")
+    return digest.hexdigest()[:16]
+
+
+def invalidate_transformer_fingerprint_cache() -> None:
+    _transform_hash_for_selected_kernel.cache_clear()
+
+
+def _compiler_dir() -> Path:
+    return Path(__file__).resolve().parent
+
+
+def _kernel_dir_for_version(
+    version: tuple[int, int],
+    *,
+    compiler_dir: Path,
+) -> Path:
+    return compiler_dir / "kernels" / f"v{version[0]}_{version[1]}"
 
 
 def _fingerprint_files(*, compiler_dir: Path, kernel_dir: Path) -> list[Path]:
