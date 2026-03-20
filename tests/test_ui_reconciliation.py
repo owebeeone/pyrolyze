@@ -5,6 +5,7 @@ from typing import Any, Callable
 
 import pytest
 
+from pyrolyze.api import UIElement
 from pyrolyze.runtime.context import ModuleRegistry, SlotId
 from pyrolyze.runtime.ui_nodes import (
     FROZEN_V1_REGISTRY,
@@ -16,6 +17,7 @@ from pyrolyze.runtime.ui_nodes import (
     UiOwnerCommitState,
     changed_events,
     changed_props,
+    normalize_ui_elements,
     reconcile_owner,
 )
 
@@ -223,6 +225,33 @@ def test_reconcile_owner_reorders_reused_nodes_without_recreating_them() -> None
     assert backend.create_calls == ["button", "button"]
     assert owner.mounted_nodes == [created[1], created[0]]
     assert [node.spec.node_id for node in parent.attached] == [_node_id(2), _node_id(1)]
+
+
+def test_reconcile_owner_reuses_normalized_ui_elements_by_call_site_identity() -> None:
+    backend = _FakeBackend()
+    parent = _FakeBinding(spec=_badge_spec(node_id=_node_id(99)), label="parent")
+    owner = UiOwnerCommitState(owner_id=_OWNER_SLOT)
+    first_specs = normalize_ui_elements(
+        _OWNER_SLOT,
+        (
+            UIElement(kind="badge", props={"text": "One", "visible": True}, call_site_id=1),
+            UIElement(kind="badge", props={"text": "Two", "visible": True}, call_site_id=2),
+        ),
+    )
+    reconcile_owner(owner, first_specs, backend=backend, parent_binding=parent)
+    created = tuple(owner.mounted_nodes)
+
+    second_specs = normalize_ui_elements(
+        _OWNER_SLOT,
+        (
+            UIElement(kind="badge", props={"text": "Two", "visible": True}, call_site_id=2),
+            UIElement(kind="badge", props={"text": "One", "visible": True}, call_site_id=1),
+        ),
+    )
+    reconcile_owner(owner, second_specs, backend=backend, parent_binding=parent)
+
+    assert backend.create_calls == ["badge", "badge"]
+    assert owner.mounted_nodes == [created[1], created[0]]
 
 
 def test_reconcile_owner_replaces_incompatible_node_and_disposes_old_subtree() -> None:

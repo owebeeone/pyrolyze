@@ -246,7 +246,11 @@ def normalize_ui_inputs(
             kind = element.kind
             raw_props = dict(element.props)
             raw_children: Sequence[UIElement | Mapping[str, Any]] = element.children
-            node_id = UiNodeId(owner_slot_id=owner_slot_id, region_index=next_region_index)
+            node_id = _ui_element_node_id(
+                owner_slot_id=owner_slot_id,
+                element=element,
+                fallback_region_index=next_region_index,
+            )
             next_region_index += 1
         elif isinstance(element, Mapping):
             kind = str(element.get("kind", ""))
@@ -343,6 +347,67 @@ def _mapping_node_id(
         region_index=region_index,
         key_path=tuple(key_parts),
     )
+
+
+def _ui_element_node_id(
+    *,
+    owner_slot_id: SlotId,
+    element: UIElement,
+    fallback_region_index: int,
+) -> UiNodeId:
+    region_index = fallback_region_index
+    key_parts: list[Any] = []
+
+    call_site_id = element.call_site_id
+    if call_site_id is not None:
+        region_index = _coerce_call_site_region_index(call_site_id, fallback=fallback_region_index)
+        key_parts.extend(("call_site", str(call_site_id)))
+
+    raw_slot_id = element.slot_id
+    if raw_slot_id is not None:
+        key_parts.extend(_slot_identity_key_parts(raw_slot_id))
+
+    return UiNodeId(
+        owner_slot_id=owner_slot_id,
+        region_index=region_index,
+        key_path=tuple(key_parts),
+    )
+
+
+def _slot_identity_key_parts(slot_identity: object) -> tuple[Any, ...]:
+    if isinstance(slot_identity, SlotId):
+        return (
+            "slot",
+            slot_identity.module_id.canonical_name,
+            slot_identity.slot_index,
+            slot_identity.key_path,
+        )
+    if isinstance(slot_identity, tuple):
+        normalized_path: list[Any] = []
+        for item in slot_identity:
+            if isinstance(item, SlotId):
+                normalized_path.append(
+                    (
+                        item.module_id.canonical_name,
+                        item.slot_index,
+                        item.key_path,
+                    )
+                )
+            else:
+                normalized_path.append(str(item))
+        return ("slot_path", tuple(normalized_path))
+    return ("slot", str(slot_identity))
+
+
+def _coerce_call_site_region_index(value: int | str, *, fallback: int) -> int:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return fallback
+    return fallback
 
 
 def prop_values_equal(spec: UiPropSpec, previous: Any, current: Any) -> bool:

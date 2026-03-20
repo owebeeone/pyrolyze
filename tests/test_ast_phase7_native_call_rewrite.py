@@ -20,7 +20,7 @@ def label_panel(text):
         filename="/virtual/example/phase7/label_panel.py",
     )
 
-    assert "__pyr_ctx.call_native(Label, text=text)" in transformed
+    assert "__pyr_ctx.call_native(Label, text=text, __pyr_call_site_id=1)" in transformed
 
     namespace = load_transformed_namespace(
         source,
@@ -34,8 +34,10 @@ def label_panel(text):
     assert ctx.debug_ui() == (
         UIElement(kind="Label", props={"text": "Hello"}),
     )
+    assert ctx.debug_ui()[0].call_site_id == 1
 
     panel._pyrolyze_meta._func(ctx, dirtyof(text=False), "Hello")
     assert ctx.debug_ui() == (
         UIElement(kind="Label", props={"text": "Hello"}),
     )
+    assert ctx.debug_ui()[0].call_site_id == 1

@@ -8,7 +8,7 @@ log: list[str] = []
 
 def __pyr_button(__pyr_ctx, __pyr_dirty_state, label: str, *, on_press: PyrolyzeHandler[[], None] | None=None):
     with __pyr_ctx.pass_scope():
-        __pyr_ctx.call_native(UIElement, kind='button', props={'label': label, 'on_press': on_press})
+        __pyr_ctx.call_native(UIElement, kind='button', props={'label': label, 'on_press': on_press}, __pyr_call_site_id=1)
 
 @__pyr_component_ref(__pyr_ComponentMetadata('button', __pyr_button))
 def button(label: str, *, on_press: PyrolyzeHandler[[], None] | None=None) -> None:

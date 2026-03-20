@@ -5,7 +5,7 @@ from pyrolyze.api import Label, call_native, pyrolyse
 
 def __pyr_label_panel(__pyr_ctx, __pyr_dirty_state, text: str):
     with __pyr_ctx.pass_scope():
-        __pyr_ctx.call_native(Label, text=text)
+        __pyr_ctx.call_native(Label, text=text, __pyr_call_site_id=1)
 
 @__pyr_component_ref(__pyr_ComponentMetadata('label_panel', __pyr_label_panel))
 def label_panel(text: str) -> None:

@@ -109,3 +109,72 @@ def test_normalize_ui_elements_rejects_unknown_props_and_non_v1_kinds() -> None:
                 UIElement(kind="column", props={"visible": True}),
             ),
         )
+
+
+def test_normalize_ui_elements_uses_call_site_identity_for_stable_reorder_ids() -> None:
+    first = normalize_ui_elements(
+        _OWNER_SLOT,
+        (
+            UIElement(kind="badge", props={"text": "One", "visible": True}, call_site_id=1),
+            UIElement(kind="badge", props={"text": "Two", "visible": True}, call_site_id=2),
+        ),
+    )
+    second = normalize_ui_elements(
+        _OWNER_SLOT,
+        (
+            UIElement(kind="badge", props={"text": "Two", "visible": True}, call_site_id=2),
+            UIElement(kind="badge", props={"text": "One", "visible": True}, call_site_id=1),
+        ),
+    )
+
+    assert first[0].node_id == second[1].node_id
+    assert first[1].node_id == second[0].node_id
+
+
+def test_normalize_ui_elements_distinguishes_duplicate_call_sites_by_runtime_slot() -> None:
+    loop_slot_a = SlotId(_MODULE_ID, 7, key_path=("row-1",), line_no=20)
+    loop_slot_b = SlotId(_MODULE_ID, 7, key_path=("row-2",), line_no=20)
+    specs = normalize_ui_elements(
+        _OWNER_SLOT,
+        (
+            UIElement(
+                kind="badge",
+                props={"text": "A", "visible": True},
+                call_site_id=11,
+                slot_id=loop_slot_a,
+            ),
+            UIElement(
+                kind="badge",
+                props={"text": "B", "visible": True},
+                call_site_id=11,
+                slot_id=loop_slot_b,
+            ),
+        ),
+    )
+
+    assert specs[0].node_id != specs[1].node_id
+
+
+def test_normalize_ui_elements_distinguishes_duplicate_call_sites_by_slot_path() -> None:
+    boundary_slot_a = SlotId(_MODULE_ID, 8, key_path=("counter-a",), line_no=30)
+    boundary_slot_b = SlotId(_MODULE_ID, 8, key_path=("counter-b",), line_no=30)
+    local_emit_slot = SlotId(_MODULE_ID, 1, key_path=(), line_no=31)
+    specs = normalize_ui_elements(
+        _OWNER_SLOT,
+        (
+            UIElement(
+                kind="badge",
+                props={"text": "A", "visible": True},
+                call_site_id=3,
+                slot_id=(boundary_slot_a, local_emit_slot),
+            ),
+            UIElement(
+                kind="badge",
+                props={"text": "B", "visible": True},
+                call_site_id=3,
+                slot_id=(boundary_slot_b, local_emit_slot),
+            ),
+        ),
+    )
+
+    assert specs[0].node_id != specs[1].node_id

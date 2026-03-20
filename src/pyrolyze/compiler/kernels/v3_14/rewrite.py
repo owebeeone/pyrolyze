@@ -23,6 +23,7 @@ _CALLABLE_KIND_PLAIN_CALLABLE = "plain_callable"
 @dataclass(slots=True)
 class _LoweringShared:
     slot_index: int = 1
+    call_site_index: int = 1
     hoist_slots: bool = True
     slot_declarations: list[ast.Assign] = field(default_factory=list)
 
@@ -75,6 +76,12 @@ class _LoweringState:
 
     def context_ref(self) -> ast.Name:
         return ast.Name(id=self.context_name, ctx=ast.Load())
+
+    def next_call_site_id(self, *, reason: ast.AST) -> int:
+        _ = reason
+        call_site_id = self.shared.call_site_index
+        self.shared.call_site_index += 1
+        return call_site_id
 
     def child(
         self,
@@ -1001,6 +1008,7 @@ def _lower_call_native_expr(
             suggested_fix="use_call_native_factory_call",
         )
 
+    call_site_id = state.next_call_site_id(reason=statement)
     factory = call.func.args[0]
     lowered = ast.Expr(
         value=ast.Call(
@@ -1010,7 +1018,10 @@ def _lower_call_native_expr(
                 ctx=ast.Load(),
             ),
             args=[copy.deepcopy(factory), *[copy.deepcopy(arg) for arg in call.args]],
-            keywords=[copy.deepcopy(keyword) for keyword in call.keywords],
+            keywords=[
+                *[copy.deepcopy(keyword) for keyword in call.keywords],
+                ast.keyword(arg="__pyr_call_site_id", value=ast.Constant(call_site_id)),
+            ],
         )
     )
     return [copy_reason_location(lowered, statement)]

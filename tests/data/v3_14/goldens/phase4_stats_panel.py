@@ -8,7 +8,7 @@ log: list[tuple[object, ...]] = []
 def __pyr_section(__pyr_ctx, __pyr_dirty_state, title: str, *, accent: str):
     with __pyr_ctx.pass_scope():
         log.append(('section', title, accent))
-        __pyr_ctx.call_native(UIElement, kind='section', props={'title': title, 'accent': accent})
+        __pyr_ctx.call_native(UIElement, kind='section', props={'title': title, 'accent': accent}, __pyr_call_site_id=1)
 
 @__pyr_component_ref(__pyr_ComponentMetadata('section', __pyr_section))
 def section(title: str, *, accent: str) -> None:

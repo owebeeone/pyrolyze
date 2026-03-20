@@ -986,10 +986,31 @@ class ContextBase:
 
         raw_args = tuple(_unwrap_native_value(arg) for arg in args)
         raw_kwargs = {key: _unwrap_native_value(value) for key, value in kwargs.items()}
+        call_site_id = raw_kwargs.pop("__pyr_call_site_id", None)
         result = factory(*raw_args, **raw_kwargs)
         if result is None:
             return
         if isinstance(result, UIElement):
+            source_slot_id = _native_emission_slot_identity(self)
+            normalized_call_site_id = (
+                result.call_site_id if call_site_id is None else cast(int | str, call_site_id)
+            )
+            normalized_slot_id = (
+                result.slot_id
+                if result.slot_id is not None
+                else source_slot_id
+            )
+            if (
+                result.call_site_id != normalized_call_site_id
+                or result.slot_id != normalized_slot_id
+            ):
+                result = UIElement(
+                    kind=result.kind,
+                    props=result.props,
+                    children=result.children,
+                    call_site_id=normalized_call_site_id,
+                    slot_id=normalized_slot_id,
+                )
             self._staged_ui.append(result)
             self._staged_ui_entries.append(
                 _CommittedUiEntry(
@@ -1021,7 +1042,13 @@ class ContextBase:
                 raise RuntimeError("native container helpers must emit exactly one root UIElement")
             root = own_elements[0]
             if child_elements:
-                root = UIElement(kind=root.kind, props=root.props, children=child_elements)
+                root = UIElement(
+                    kind=root.kind,
+                    props=root.props,
+                    children=child_elements,
+                    call_site_id=root.call_site_id,
+                    slot_id=root.slot_id,
+                )
             return (root,)
         if own_elements:
             return own_elements + child_elements
@@ -1120,6 +1147,32 @@ def _resolve_runtime_component_func(runtime_func: object) -> Callable[..., Any] 
         candidate = runtime_func.__func__
         return candidate if callable(candidate) else None
     return cast(Callable[..., Any] | None, runtime_func if callable(runtime_func) else None)
+
+
+def _native_emission_slot_identity(context: ContextBase) -> object | None:
+    current_slot_id = context.current_slot_id()
+    # Emissions from nested component boundaries can share the same local slot
+    # identity (for example repeated helper trees), so include owner boundaries.
+    owner_slot_path: list[SlotId] = []
+    current: object | None = getattr(context, "render_context", None)
+    if current is None:
+        current = context
+    while current is not None:
+        owner_slot = getattr(current, "_owner_slot", None)
+        if owner_slot is None:
+            break
+        slot_id = getattr(owner_slot, "slot_id", None)
+        if isinstance(slot_id, SlotId):
+            owner_slot_path.append(slot_id)
+        current = getattr(owner_slot, "render_context", None)
+    if owner_slot_path:
+        owner_slot_path.reverse()
+        if isinstance(current_slot_id, SlotId):
+            owner_slot_path.append(current_slot_id)
+        return tuple(owner_slot_path)
+    if isinstance(current_slot_id, SlotId):
+        return current_slot_id
+    return None
 
 
 @dataclass(slots=True)

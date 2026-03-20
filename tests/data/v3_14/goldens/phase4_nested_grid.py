@@ -11,7 +11,7 @@ log: list[tuple[object, ...]] = []
 def __pyr_row(__pyr_ctx, __pyr_dirty_state, title: str):
     with __pyr_ctx.pass_scope():
         log.append(('row', title))
-        __pyr_ctx.call_native(UIElement, kind='row', props={'title': title})
+        __pyr_ctx.call_native(UIElement, kind='row', props={'title': title}, __pyr_call_site_id=1)
 
 @__pyr_component_ref(__pyr_ComponentMetadata('row', __pyr_row))
 def row(title: str) -> None:

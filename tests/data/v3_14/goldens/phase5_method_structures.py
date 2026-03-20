@@ -13,7 +13,7 @@ log: list[tuple[object, ...]] = []
 def __pyr_group(__pyr_ctx, __pyr_dirty_state, name: str):
     with __pyr_ctx.pass_scope():
         log.append(('group', name))
-        __pyr_ctx.call_native(UIElement, kind='group', props={'name': name})
+        __pyr_ctx.call_native(UIElement, kind='group', props={'name': name}, __pyr_call_site_id=1)
 
 @__pyr_component_ref(__pyr_ComponentMetadata('group', __pyr_group))
 def group(name: str) -> None:

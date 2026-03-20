@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Annotated, Any, Callable, Generic, Iterable, ParamSpec, Protocol, TypeVar, cast
 
 
@@ -27,6 +27,8 @@ class UIElement:
     kind: str
     props: dict[str, Any]
     children: tuple["UIElement", ...] = ()
+    call_site_id: int | str | None = field(default=None, compare=False)
+    slot_id: Any | None = field(default=None, compare=False)
 
 
 class CallFromNonPyrolyzeContext(RuntimeError):
