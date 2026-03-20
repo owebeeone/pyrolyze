@@ -158,9 +158,10 @@ grouped by milestone priority.
   - Implement end-to-end in descriptor registry normalization, reconciliation, and PySide6 bindings.
   - Without these, the Studio explorer/editor/panel shell cannot be expressed in PyRolyze source.
 
-- [P1] Define and adopt a standard `UIElement` component helper surface for app code.
-  - Provide canonical helper functions in the library (instead of duplicating custom helper wrappers in each example/app).
-  - Refactor Studio/examples to consume that shared helper surface so behavior and props stay consistent across implementations.
+- [P1] ~~Define and adopt a standard `UIElement` component helper surface for app code.~~ Resolved on 2026-03-20.
+  - Added canonical helper component refs in `src/pyrolyze/ui/elements.py` and re-exported via `pyrolyze.ui`.
+  - Refactored `examples/grid_app.py` and `Studio/ui/studio_root.py` to consume the shared helper surface.
+  - Replaced duplicated Studio helper definitions with a compatibility re-export module and added focused helper-surface regression tests.
 
 - [P1] Add a model-backed tree node contract for explorer/hierarchy views.
   - Introduce a semantic node/binding path for `QTreeView` + `QFileSystemModel` style usage with root-path updates.

@@ -1,7 +1,8 @@
 #@pyrolyze
 from typing import Callable
 
-from pyrolyze.api import UIElement, call_native, keyed, pyrolyse, use_state
+from pyrolyze.api import keyed, pyrolyse, use_state
+from pyrolyze.ui.elements import button, row, section, text_field
 
 
 def _coerce_count(raw_value: str) -> int:
@@ -9,73 +10,6 @@ def _coerce_count(raw_value: str) -> int:
         return max(0, int(raw_value))
     except ValueError:
         return 0
-
-
-@pyrolyse
-def section(title: str, *, accent: str) -> None:
-    call_native(UIElement)(
-        kind="section",
-        props={
-            "title": title,
-            "accent": accent,
-            "visible": True,
-        },
-    )
-
-
-@pyrolyse
-def row(row_id: str, *, headline: str) -> None:
-    call_native(UIElement)(
-        kind="row",
-        props={
-            "row_id": row_id,
-            "headline": headline,
-            "visible": True,
-        },
-    )
-
-
-@pyrolyse
-def button(
-    label: str,
-    *,
-    on_press: Callable[[], None],
-    enabled: bool = True,
-    tone: str = "default",
-) -> None:
-    call_native(UIElement)(
-        kind="button",
-        props={
-            "label": label,
-            "enabled": enabled,
-            "tone": tone,
-            "visible": True,
-            "on_press": on_press,
-        },
-    )
-
-
-@pyrolyse
-def text_field(
-    field_id: str,
-    label: str,
-    value: str,
-    *,
-    on_change: Callable[[str], None],
-    enabled: bool = True,
-) -> None:
-    call_native(UIElement)(
-        kind="text_field",
-        props={
-            "field_id": field_id,
-            "label": label,
-            "value": value,
-            "enabled": enabled,
-            "placeholder": None,
-            "visible": True,
-            "on_change": on_change,
-        },
-    )
 
 
 @pyrolyse
