@@ -5,26 +5,33 @@ from pyrolyze.runtime import RenderContext, dirtyof
 
 
 def test_ui_element_helpers_export_component_refs_for_core_kinds() -> None:
-    from pyrolyze.ui import elements as ui_elements
+    from pyrolyze import ui
 
-    names = (
-        "section",
-        "row",
-        "badge",
-        "button",
-        "text_field",
-        "toggle",
-        "select_field",
+    helpers = (
+        ui.section,
+        ui.row,
+        ui.badge,
+        ui.button,
+        ui.text_field,
+        ui.toggle,
+        ui.select_field,
     )
-    for name in names:
-        helper = getattr(ui_elements, name)
-        assert hasattr(helper, "_pyrolyze_meta"), name
+    for helper in helpers:
+        assert hasattr(helper, "_pyrolyze_meta"), helper.__name__
+        assert helper.__module__ == "pyrolyze.ui.elements_pyr"
+
+
+def test_ui_element_source_mirror_is_regular_pyrolyze_syntax() -> None:
+    from pyrolyze.ui import elements as source_elements
+
+    assert not hasattr(source_elements.section, "_pyrolyze_meta")
+    assert source_elements.section.__module__ == "pyrolyze.ui.elements"
 
 
 def test_compiler_lowers_imported_ui_helpers_and_runtime_emits_expected_tree() -> None:
     source = """
 from pyrolyze.api import pyrolyse
-from pyrolyze.ui.elements import badge, section
+from pyrolyze.ui import badge, section
 
 @pyrolyse
 def panel(text):

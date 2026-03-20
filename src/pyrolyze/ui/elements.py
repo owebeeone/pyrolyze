@@ -1,133 +1,73 @@
+#@pyrolyze
 from __future__ import annotations
 
-from pyrolyze.api import (
-    CallFromNonPyrolyzeContext,
-    ComponentMetadata,
-    PyrolyzeHandler,
-    UIElement,
-    pyrolyze_component_ref,
-)
+#
+# NOTE:
+# This module is the regular author-style PyRolyze source-form mirror of the
+# standard helper surface.
+#
+# The runtime/canonical implementation currently lives in `elements_pyr.py`
+# because that file provides pre-lowered component refs that are import-safe
+# even when the import hook is disabled.
+#
+# Use `from pyrolyze.ui import ...` in application code.
+#
+
+from pyrolyze.api import PyrolyzeHandler, UIElement, call_native, pyrolyse
 
 
-def __pyr_section(
-    __pyr_ctx: object,
-    __pyr_dirty_state: object,
-    title: str,
-    *,
-    accent: str = "blue",
-    visible: bool = True,
-) -> None:
-    del __pyr_dirty_state
-    with __pyr_ctx.pass_scope():
-        __pyr_ctx.call_native(
-            UIElement,
-            kind="section",
-            props={
-                "title": title,
-                "accent": accent,
-                "visible": bool(visible),
-            },
-        )
-
-
-@pyrolyze_component_ref(ComponentMetadata("section", __pyr_section))
+@pyrolyse
 def section(
     title: str,
     *,
     accent: str = "blue",
     visible: bool = True,
 ) -> None:
-    raise CallFromNonPyrolyzeContext("section")
+    call_native(UIElement)(
+        kind="section",
+        props={
+            "title": title,
+            "accent": accent,
+            "visible": bool(visible),
+        },
+    )
 
 
-def __pyr_row(
-    __pyr_ctx: object,
-    __pyr_dirty_state: object,
-    row_id: str,
-    *,
-    headline: str,
-    visible: bool = True,
-) -> None:
-    del __pyr_dirty_state
-    with __pyr_ctx.pass_scope():
-        __pyr_ctx.call_native(
-            UIElement,
-            kind="row",
-            props={
-                "row_id": row_id,
-                "headline": headline,
-                "visible": bool(visible),
-            },
-        )
-
-
-@pyrolyze_component_ref(ComponentMetadata("row", __pyr_row))
+@pyrolyse
 def row(
     row_id: str,
     *,
     headline: str,
     visible: bool = True,
 ) -> None:
-    raise CallFromNonPyrolyzeContext("row")
+    call_native(UIElement)(
+        kind="row",
+        props={
+            "row_id": row_id,
+            "headline": headline,
+            "visible": bool(visible),
+        },
+    )
 
 
-def __pyr_badge(
-    __pyr_ctx: object,
-    __pyr_dirty_state: object,
-    text: str,
-    *,
-    tone: str = "info",
-    visible: bool = True,
-) -> None:
-    del __pyr_dirty_state
-    with __pyr_ctx.pass_scope():
-        __pyr_ctx.call_native(
-            UIElement,
-            kind="badge",
-            props={
-                "text": text,
-                "tone": tone,
-                "visible": bool(visible),
-            },
-        )
-
-
-@pyrolyze_component_ref(ComponentMetadata("badge", __pyr_badge))
+@pyrolyse
 def badge(
     text: str,
     *,
     tone: str = "info",
     visible: bool = True,
 ) -> None:
-    raise CallFromNonPyrolyzeContext("badge")
+    call_native(UIElement)(
+        kind="badge",
+        props={
+            "text": text,
+            "tone": tone,
+            "visible": bool(visible),
+        },
+    )
 
 
-def __pyr_button(
-    __pyr_ctx: object,
-    __pyr_dirty_state: object,
-    label: str,
-    *,
-    on_press: PyrolyzeHandler[[], None],
-    enabled: bool = True,
-    tone: str = "default",
-    visible: bool = True,
-) -> None:
-    del __pyr_dirty_state
-    with __pyr_ctx.pass_scope():
-        __pyr_ctx.call_native(
-            UIElement,
-            kind="button",
-            props={
-                "label": label,
-                "enabled": bool(enabled),
-                "tone": tone,
-                "visible": bool(visible),
-                "on_press": on_press,
-            },
-        )
-
-
-@pyrolyze_component_ref(ComponentMetadata("button", __pyr_button))
+@pyrolyse
 def button(
     label: str,
     *,
@@ -136,41 +76,19 @@ def button(
     tone: str = "default",
     visible: bool = True,
 ) -> None:
-    raise CallFromNonPyrolyzeContext("button")
+    call_native(UIElement)(
+        kind="button",
+        props={
+            "label": label,
+            "enabled": bool(enabled),
+            "tone": tone,
+            "visible": bool(visible),
+            "on_press": on_press,
+        },
+    )
 
 
-def __pyr_text_field(
-    __pyr_ctx: object,
-    __pyr_dirty_state: object,
-    field_id: str,
-    label: str,
-    value: str,
-    *,
-    on_change: PyrolyzeHandler[[str], None],
-    on_submit: PyrolyzeHandler[[], None] | None = None,
-    enabled: bool = True,
-    placeholder: str | None = None,
-    visible: bool = True,
-) -> None:
-    del __pyr_dirty_state
-    with __pyr_ctx.pass_scope():
-        __pyr_ctx.call_native(
-            UIElement,
-            kind="text_field",
-            props={
-                "field_id": field_id,
-                "label": label,
-                "value": value,
-                "enabled": bool(enabled),
-                "placeholder": placeholder,
-                "visible": bool(visible),
-                "on_change": on_change,
-                "on_submit": on_submit,
-            },
-        )
-
-
-@pyrolyze_component_ref(ComponentMetadata("text_field", __pyr_text_field))
+@pyrolyse
 def text_field(
     field_id: str,
     label: str,
@@ -182,37 +100,22 @@ def text_field(
     placeholder: str | None = None,
     visible: bool = True,
 ) -> None:
-    raise CallFromNonPyrolyzeContext("text_field")
+    call_native(UIElement)(
+        kind="text_field",
+        props={
+            "field_id": field_id,
+            "label": label,
+            "value": value,
+            "enabled": bool(enabled),
+            "placeholder": placeholder,
+            "visible": bool(visible),
+            "on_change": on_change,
+            "on_submit": on_submit,
+        },
+    )
 
 
-def __pyr_toggle(
-    __pyr_ctx: object,
-    __pyr_dirty_state: object,
-    field_id: str,
-    label: str,
-    checked: bool,
-    *,
-    on_toggle: PyrolyzeHandler[[bool], None],
-    enabled: bool = True,
-    visible: bool = True,
-) -> None:
-    del __pyr_dirty_state
-    with __pyr_ctx.pass_scope():
-        __pyr_ctx.call_native(
-            UIElement,
-            kind="toggle",
-            props={
-                "field_id": field_id,
-                "label": label,
-                "checked": bool(checked),
-                "enabled": bool(enabled),
-                "visible": bool(visible),
-                "on_toggle": on_toggle,
-            },
-        )
-
-
-@pyrolyze_component_ref(ComponentMetadata("toggle", __pyr_toggle))
+@pyrolyse
 def toggle(
     field_id: str,
     label: str,
@@ -222,39 +125,20 @@ def toggle(
     enabled: bool = True,
     visible: bool = True,
 ) -> None:
-    raise CallFromNonPyrolyzeContext("toggle")
+    call_native(UIElement)(
+        kind="toggle",
+        props={
+            "field_id": field_id,
+            "label": label,
+            "checked": bool(checked),
+            "enabled": bool(enabled),
+            "visible": bool(visible),
+            "on_toggle": on_toggle,
+        },
+    )
 
 
-def __pyr_select_field(
-    __pyr_ctx: object,
-    __pyr_dirty_state: object,
-    field_id: str,
-    label: str,
-    value: str,
-    *,
-    options: tuple[str, ...],
-    on_change: PyrolyzeHandler[[str], None],
-    enabled: bool = True,
-    visible: bool = True,
-) -> None:
-    del __pyr_dirty_state
-    with __pyr_ctx.pass_scope():
-        __pyr_ctx.call_native(
-            UIElement,
-            kind="select_field",
-            props={
-                "field_id": field_id,
-                "label": label,
-                "value": value,
-                "options": tuple(options),
-                "enabled": bool(enabled),
-                "visible": bool(visible),
-                "on_change": on_change,
-            },
-        )
-
-
-@pyrolyze_component_ref(ComponentMetadata("select_field", __pyr_select_field))
+@pyrolyse
 def select_field(
     field_id: str,
     label: str,
@@ -265,7 +149,18 @@ def select_field(
     enabled: bool = True,
     visible: bool = True,
 ) -> None:
-    raise CallFromNonPyrolyzeContext("select_field")
+    call_native(UIElement)(
+        kind="select_field",
+        props={
+            "field_id": field_id,
+            "label": label,
+            "value": value,
+            "options": tuple(options),
+            "enabled": bool(enabled),
+            "visible": bool(visible),
+            "on_change": on_change,
+        },
+    )
 
 
 __all__ = [
