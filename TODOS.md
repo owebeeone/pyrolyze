@@ -17,11 +17,10 @@ grouped by milestone priority.
   - Factories returning `None` are no longer re-run on repeated access.
   - Close-callback order entries no longer duplicate when cached values are `None`.
 
-- Implement compiler-generated `call_site_id` emission for every lexical UI emission site.
-  - The authoring guide specifies compiler-generated `call_site_id` identity for reconciliation.
-  - The runtime UI normalization can consume `call_site_id`.
-  - The current compiler does not stamp emitted sites with `call_site_id`.
-  - This is core correctness work for deterministic reconciliation and stable identity.
+- ~~Implement compiler-generated `call_site_id` emission for every lexical UI emission site.~~ Resolved on 2026-03-20.
+  - The v3.14 compiler now stamps lowered `call_native(...)` emissions with `__pyr_call_site_id`.
+  - Runtime native emission metadata now carries both `call_site_id` and slot identity/slot-path lineage for instance disambiguation.
+  - UI normalization/reconciliation now consumes this metadata for deterministic, stable node identity.
 
 - Implement explicit `emit_component(...)` source-form lowering.
   - The authoring guide and design docs describe `emit_component(...)` as the explicit dynamic component emission form.
