@@ -7,6 +7,16 @@ grouped by milestone priority.
 
 ### Release Blockers
 
+- Fix callable-annotation cache writes for non-attribute callables (for example builtins).
+  - `_plain_call_runtime_context_param_name(...)` and `_native_context_param_name(...)` currently cache by calling `setattr(...)` on the callable.
+  - Builtins and some C-backed callables do not allow attribute assignment, which raises `AttributeError` during evaluation.
+  - Use a safe fallback cache path (or no cache) when direct attribute writes are not supported.
+
+- Fix `AppContextStore` cache miss detection for `None` values.
+  - `AppContextStore.get(...)` currently uses `dict.get(...)` and treats `None` as missing.
+  - Factories returning `None` are re-run on every access and can duplicate close-callback execution order entries.
+  - Use an explicit sentinel for cache misses so `None` can be a valid cached value.
+
 - Implement compiler-generated `call_site_id` emission for every lexical UI emission site.
   - The authoring guide specifies compiler-generated `call_site_id` identity for reconciliation.
   - The runtime UI normalization can consume `call_site_id`.
@@ -31,6 +41,16 @@ grouped by milestone priority.
 
 ### Strongly Recommended Before Release
 
+- Enforce UI-thread checks for the Tkinter backend.
+  - `reconcile_owner(...)` expects backend thread assertions.
+  - `_TkBackend.assert_ui_thread(...)` is currently a no-op.
+  - Add an explicit thread-identity guard so off-thread UI reconciliation fails fast.
+
+- Replace or harden persistent cache `pickle` deserialization.
+  - `PersistentArtifactCache` currently uses `pickle.load(...)` on files from a configurable cache directory.
+  - This creates a code-execution risk if cache files are tampered with.
+  - Prefer a safe serialization format or enforce strict trust-boundary protections.
+
 - Lower `use_effect_async(...)` and its async task lifecycle.
   - The authoring guide documents `use_effect_async(...)`.
   - The design docs describe async completion posting invalidation through the scheduler.
@@ -51,6 +71,11 @@ grouped by milestone priority.
   - Keep small integrated-test helpers such as `assert_only_ui_changed(...)`, `assert_no_unexpected_context_churn(...)`, and `assert_ui_elements_present(...)` in the integrated graph test module so scenario expectations stay readable and deterministic.
 
 ### Can Defer Until After Initial Release
+
+- Split oversized mixed-responsibility modules into smaller units.
+  - `runtime/context.py` currently combines slot lifecycle, scheduling, binding semantics, event dispatch behavior, and committed-UI propagation.
+  - Backend modules (especially PySide6) also mix reconciler bindings with legacy widget-rendering helpers.
+  - Extract focused submodules to improve separation of concerns, testability, and maintenance cost.
 
 - Support multiple independently keyed `use_state()` calls inside a single custom plain-call helper runtime context.
   - `use_state()` currently stores under fixed local keys inside one `PlainCallRuntimeContext`.

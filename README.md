@@ -1,94 +1,62 @@
 # PyRolyze
 
-PyRolyze is a compile-time reactive Python package.
+PyRolyze is a compile-time reactive Python framework.
 
-It lets you write declarative Python functions, compile them into explicit
-reactive runtime code, and reconcile committed UI into native backends without
-hand-writing the update machinery yourself.
+Write declarative Python components, compile them into inspectable runtime code,
+and reconcile committed UI into native backends without hand-written update
+machinery.
 
-The project is built around a simple idea:
+> [!WARNING]
+> Pre-release status: this repository is active and usable, but the package
+> version is currently `0.0.0` and APIs may change.
 
-- author straightforward Python
-- compile it into inspectable transformed code
-- rerun only the boundaries that became dirty
-- keep the runtime model explicit and testable
+## Why PyRolyze
 
-That makes PyRolyze useful both as an application framework and as a platform
-for experimenting with reactive Python compilation, backend adapters, and
-versioned AST support.
+- Declarative source authoring with explicit opt-in (`#@pyrolyze`, `@pyrolyse`)
+- Compiler output that is inspectable and testable
+- Runtime model based on explicit context-graph ownership and invalidation
+- Version-aware AST kernel strategy for Python interpreter changes
 
-## Why It Is Interesting
+## Quick Start
 
-PyRolyze is trying to make reactive Python feel direct rather than ceremonial.
+### Prerequisites
 
-Instead of forcing authors to manually thread state updates through an
-imperative widget tree, PyRolyze lets authors describe components, helpers,
-containers, loops, hooks, and native UI emission in source form, then lowers
-that source into a context-graph runtime with explicit slot ownership and
-committed UI.
+- Python `3.12+`
+- [uv](https://docs.astral.sh/uv/)
 
-The result is a package that aims to stay:
+### Install
 
-- author-friendly at the source level
-- explicit at the runtime level
-- inspectable at the compiler level
-- practical to test across Python versions
+```bash
+git clone https://github.com/owebeeone/py-rolyze-wip.git
+cd py-rolyze-wip
+uv pip install -e .
+```
 
-## What Works Today
+### Run the Example App
 
-Implemented in the current package:
+```bash
+uv run python examples/run_grid_app.py
+```
 
-- source opt-in with `#@pyrolyze`
-- component lowering with `@pyrolyse`
-- slotted helper lowering with `@pyrolyze_slotted`
-- versioned AST compiler kernels
-- helper-source emission and checked-in golden tests
-- runtime context graph with:
-  - plain-call slots
-  - container slots
-  - keyed loop slots
-  - component-call slots
-  - effect and external-store bindings
-  - invalidation scheduling
-  - committed UI tracking
-- backend adapters for:
-  - PySide6
-  - Tkinter
-- graph capture and diff tooling for integrated tests
-- versioned Python test runs through a uv-based harness
+Optional backend:
 
-Current packaged example:
+```bash
+uv run python examples/run_grid_app.py --backend tkinter
+```
 
-- [`examples/grid_app.py`](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/examples/grid_app.py)
+### Run Tests
 
-## Start Here
+```bash
+uv run --with pytest --with pytest-cov pytest -q
+```
 
-Package-local documentation:
+Focused example test:
 
-- [`docs/README.md`](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/docs/README.md)
+```bash
+uv run --with pytest --with pytest-cov pytest tests/test_examples_grid_app.py -q
+```
 
-Recommended reading order:
-
-1. [`docs/overview/What_Is_PyRolyze.md`](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/docs/overview/What_Is_PyRolyze.md)
-2. [`docs/overview/System_Map.md`](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/docs/overview/System_Map.md)
-3. [`docs/user/Authoring_Overview.md`](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/docs/user/Authoring_Overview.md)
-4. [`docs/design/Architecture.md`](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/docs/design/Architecture.md)
-5. [`docs/contributor/Versioned_Test_Runs.md`](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/docs/contributor/Versioned_Test_Runs.md)
-
-The nested docs tree is split into:
-
-- `overview/` for orientation and motivation
-- `design/` for implementation details
-- `user/` for authoring guidance
-- `contributor/` for maintainer workflows
-- `reference/` for quick lookup
-
-There is also parent-repo design material in
-[`../docs/`](/Users/owebeeone/limbo/py-rolyze-dev2/docs/README.md), but the
-package-local docs above are the best starting point for the current
-implementation.
-
-## Quick Example
+## Minimal Example
 
 ```python
 #@pyrolyze
@@ -110,40 +78,56 @@ def counter() -> None:
     )
 ```
 
-The source stays small. The compiler lowers it into explicit runtime calls, and
-the runtime decides what reruns and what committed UI changes.
+The compiler lowers this source into explicit runtime calls, and the runtime
+decides what reruns and what committed UI changes.
 
-## Local Development
+## What Works Today
 
-Install the package in editable mode:
+- Source opt-in with `#@pyrolyze`
+- Component lowering with `@pyrolyse`
+- Slotted helper lowering with `@pyrolyze_slotted`
+- Versioned AST compiler kernels
+- Helper-source emission and checked-in golden tests
+- Runtime context graph with:
+  - plain-call slots
+  - container slots
+  - keyed loop slots
+  - component-call slots
+  - effect and external-store bindings
+  - invalidation scheduling
+  - committed UI tracking
+- Backend adapters for PySide6 and Tkinter
+- Graph capture and diff tooling for integrated tests
+- Versioned Python test runs through a uv-based harness
 
-```bash
-uv pip install -e .
-```
+Packaged example:
 
-Run the full suite:
+- [`examples/grid_app.py`](examples/grid_app.py)
 
-```bash
-uv run --with pytest --with pytest-cov pytest -q
-```
+## Documentation
 
-Run a focused test:
+Primary docs index:
 
-```bash
-uv run --with pytest --with pytest-cov pytest tests/test_examples_grid_app.py -q
-```
+- [`docs/README.md`](docs/README.md)
 
-## Versioned AST Testing
+Suggested reading order:
 
-AST transforms are more version-sensitive than most Python APIs because parser
-and AST node details shift across interpreter releases. PyRolyze keeps the
-compiler split into versioned kernels and provides a uv-based harness for
-running the suite across Python versions.
+1. [`docs/overview/What_Is_PyRolyze.md`](docs/overview/What_Is_PyRolyze.md)
+2. [`docs/overview/System_Map.md`](docs/overview/System_Map.md)
+3. [`docs/user/Authoring_Overview.md`](docs/user/Authoring_Overview.md)
+4. [`docs/design/Architecture.md`](docs/design/Architecture.md)
+5. [`docs/contributor/Versioned_Test_Runs.md`](docs/contributor/Versioned_Test_Runs.md)
 
-Detailed workflow:
+## Maintainer and Contributor Workflow
 
-- [`tests/README.md`](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/tests/README.md)
-- [`docs/contributor/Versioned_Test_Runs.md`](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/docs/contributor/Versioned_Test_Runs.md)
+Contributor entry point:
+
+- [`docs/contributor/README.md`](docs/contributor/README.md)
+
+Versioned AST testing workflow:
+
+- [`tests/README.md`](tests/README.md)
+- [`docs/contributor/Versioned_Test_Runs.md`](docs/contributor/Versioned_Test_Runs.md)
 
 Quick commands:
 
@@ -157,22 +141,19 @@ uv run python tests/versioned_test_harness.py run-tests-all --show-output --pyte
 
 Current state:
 
-- minimum supported runtime is Python `3.12`
-- only kernel `v3_14` is checked in today
+- Minimum supported runtime is Python `3.12`
+- Only kernel `v3_14` is checked in today
 - Python `3.12`, `3.13`, `3.14`, and `3.15.0a5` have all been verified against
   that same `v3_14` kernel
 
-## Current Boundaries
+## Current Scope
 
-PyRolyze is already useful, but it is still a focused package rather than a
-finished everything-framework.
+PyRolyze is intentionally focused.
 
-Important current boundaries:
+- The source contract is explicit and opt-in
+- The reconciler ships with a narrow v1 UI node model
+- Versioned AST support is treated as an explicit maintenance concern
+- Higher-level compiler features are still expanding
 
-- the source contract is intentionally explicit
-- the reconciler ships with a narrow frozen v1 UI node model
-- versioned AST support is designed for change, not assumed away
-- some higher-level compiler features are still being expanded
-
-That is deliberate. The package prefers inspectable mechanics, strong tests, and
-clear maintenance boundaries over pretending the hard parts are solved by magic.
+The project prioritizes inspectable mechanics, strong testing, and clear
+maintenance boundaries.
