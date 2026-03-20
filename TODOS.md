@@ -40,16 +40,15 @@ grouped by milestone priority.
 
 ### Strongly Recommended Before Release
 
-- Invalidate transformer-fingerprint hash cache when compiler files change in-process.
-  - `active_transformer_fingerprint(...)` depends on `_transform_hash_for_selected_kernel(...)`, which is currently `lru_cache`d by version only.
-  - In a long-lived process, editing compiler/kernel source can leave the cached transformer hash stale, so persistent artifact cache keys do not change.
-  - Verified behavior: after a compiler source edit, import-hook compile count stayed unchanged until manually calling `_transform_hash_for_selected_kernel.cache_clear()`.
-  - Add change detection or explicit cache-bust mechanics so compiler edits reliably invalidate artifact cache keys.
+- ~~Invalidate transformer-fingerprint hash cache when compiler files change in-process.~~ Resolved on 2026-03-20.
+  - `active_transformer_fingerprint(...)` now derives a source-state token from fingerprint-file metadata and keys transform-hash caching by `(version, source_state_token)`.
+  - In-process compiler/kernel edits and file add/remove now force transform-hash recomputation without manual cache clears.
+  - Added explicit `invalidate_transformer_fingerprint_cache()` and regression tests for edit detection, file-set changes, and unchanged-state cache hits.
 
-- Remove quadratic replacement-path work in `reconcile_owner(...)`.
-  - The detach pass currently checks replacement membership with a nested `any(...)` over `replaced_nodes`.
-  - Large replacement-heavy updates can degrade toward O(n^2) and cause visible UI stalls.
-  - Replace linear membership checks with set-based tracking.
+- ~~Remove quadratic replacement-path work in `reconcile_owner(...)`.~~ Resolved on 2026-03-20.
+  - Replaced replacement tracking list scans with set-based membership (`id(old) in replaced_node_ids`) in the detach pass.
+  - This removes the replacement-heavy O(n^2) detach predicate path.
+  - Added reconciliation regression coverage for replacement-heavy updates and detach/dispose behavior.
 
 - Reduce quadratic child placement work in reconciliation/backends.
   - `reconcile_owner(...)` currently calls `place_child(...)` for every node every pass.
@@ -137,13 +136,55 @@ grouped by milestone priority.
   - The current runtime still uses the handwritten `FROZEN_V1_REGISTRY`.
   - This is a design-cleanliness issue more than a release blocker if the documented node set stays narrow.
 
-- Add explicit backend-swap handling in owner reconciliation.
-  - The reconciliation design calls for a full owner remount when the backend adapter changes.
-  - The current reconciler does not track backend identity or force a remount on backend swap.
-  - This is not critical if backend selection happens only at application startup.
+- ~~Add explicit backend-swap handling in owner reconciliation.~~ Resolved on 2026-03-20.
+  - `UiOwnerCommitState` now tracks `last_backend_identity` and `reconcile_owner(...)` computes semantic backend identity (`type + backend_id`).
+  - On backend identity change, reconciliation now performs a full owner clear/remount rather than attempting incremental reuse.
+  - Added tests covering swap-remount behavior and non-remount behavior for same-identity backend instances.
 
 - Add the remaining lower-priority integrated graph test scenarios from [AdvancedTestingPlan.md](../docs/AdvancedTestingPlan.md).
   - `integrated_conditional_branch_swap`
   - `integrated_component_method_dispatch`
   - `integrated_call_native_mixed_tree`
   - `integrated_large_composite_dashboard`
+
+## Milestone: Studio App Enablement (PyRolyze + PySide6)
+
+### Development Prerequisites (Must-Have)
+
+- Add semantic node support for Studio layout primitives.
+  - Required kinds: `splitter` (horizontal/vertical), `tabs`, `tab_page`, `toolbar_row`, `text_area`, and a generic `container` node.
+  - Implement end-to-end in descriptor registry normalization, reconciliation, and PySide6 bindings.
+  - Without these, the Studio explorer/editor/panel shell cannot be expressed in PyRolyze source.
+
+- Add a model-backed tree node contract for explorer/hierarchy views.
+  - Introduce a semantic node/binding path for `QTreeView` + `QFileSystemModel` style usage with root-path updates.
+  - Support selection and activation events with stable row identity.
+  - The existing node set cannot represent file explorer or inspector hierarchy views.
+
+- Add explicit host-shell interop for `QMainWindow` surfaces.
+  - Define a stable mount-point contract so a native shell can host one or more PyRolyze-rendered subtrees.
+  - Add a narrow action bridge for menu/status/title-bar commands to dispatch into component state/actions.
+  - Studio requires frameless window/native chrome behavior that should stay host-managed while content is declarative.
+
+- Add a reusable custom-widget bridge for advanced native controls.
+  - Provide a supported pattern for host-owned/custom widgets (for example screenshot canvas and highlight overlay helpers) to participate in PyRolyze-driven flows.
+  - Define lifecycle ownership rules (create/update/dispose) so custom widgets do not leak or remount unexpectedly.
+
+- Add tab lifecycle semantics with stable keyed identity.
+  - Ensure add/remove/reorder/select tab operations preserve backing widgets when identity is unchanged.
+  - Add explicit tests for reorder-heavy tab updates to avoid accidental remounts.
+  - Studio editor/panel UX depends on preserving tab-local state.
+
+- Add async-to-UI event boundary guidance and helper API for PySide6 apps.
+  - Provide a first-class pattern for posting async completion into invalidation/reconciliation without off-thread UI access.
+  - Studio flow includes async operations and needs a supported runtime path that avoids ad-hoc loop pumping in app code.
+
+### Required Verification Before Building Studio Features
+
+- Add TDD coverage for each new Studio-required semantic node.
+  - Red/green tests in normalization, reconciliation, and PySide6 wrapper suites must land before feature usage.
+  - Include behavior tests for visibility toggles, property updates, and event callback wiring.
+
+- Add focused reconciliation performance guards for Studio-shaped trees.
+  - Add large-tree tests for explorer/hierarchy updates and reorder-heavy tab/splitter updates.
+  - Use these as a regression gate against UI-stall patterns during Studio migration.
