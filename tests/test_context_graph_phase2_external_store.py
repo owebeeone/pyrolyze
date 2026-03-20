@@ -332,3 +332,50 @@ def test_deactivating_an_external_plain_call_unsubscribes_the_store() -> None:
     assert store.active_listener_count == 0
     assert ctx.debug_is_active(_STORE_SLOT) is False
     assert log[-1] == ("unsubscribe", "weather")
+
+
+def test_plain_call_accepts_builtin_function_without_attribute_cache_support() -> None:
+    ctx = RenderContext()
+    observed: list[tuple[int, bool]] = []
+
+    def _pyr_reader(ctx: RenderContext, __pyr_dirty_state) -> None:
+        _ = __pyr_dirty_state
+        with ctx.pass_scope():
+            __pyr_value_dirty, value = ctx.call_plain(_STORE_SLOT, len, [1, 2, 3])
+            observed.append((value, __pyr_value_dirty))
+
+    _pyr_reader(ctx, dirtyof())
+    _pyr_reader(ctx, dirtyof())
+
+    assert observed == [
+        (3, True),
+        (3, False),
+    ]
+
+
+def test_plain_call_tolerates_callable_with_invalid_signature_metadata() -> None:
+    ctx = RenderContext()
+    observed: list[tuple[int, bool]] = []
+
+    class _NoAttrBadSignaturePlain:
+        __slots__ = ()
+        __signature__ = "invalid"
+
+        def __call__(self, values: list[int]) -> int:
+            return len(values)
+
+    helper = _NoAttrBadSignaturePlain()
+
+    def _pyr_reader(ctx: RenderContext, __pyr_dirty_state) -> None:
+        _ = __pyr_dirty_state
+        with ctx.pass_scope():
+            __pyr_value_dirty, value = ctx.call_plain(_STORE_SLOT, helper, [1, 2, 3])
+            observed.append((value, __pyr_value_dirty))
+
+    _pyr_reader(ctx, dirtyof())
+    _pyr_reader(ctx, dirtyof())
+
+    assert observed == [
+        (3, True),
+        (3, False),
+    ]

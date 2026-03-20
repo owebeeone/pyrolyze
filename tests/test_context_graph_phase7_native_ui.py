@@ -21,6 +21,8 @@ _BUTTON_SLOT = SlotId(_MODULE_ID, 3, line_no=12)
 _NONE_SLOT = SlotId(_MODULE_ID, 4, line_no=13)
 _BAD_SLOT = SlotId(_MODULE_ID, 5, line_no=14)
 _DOUBLE_SECTION_SLOT = SlotId(_MODULE_ID, 6, line_no=15)
+_BUILTIN_LEAF_SLOT = SlotId(_MODULE_ID, 7, line_no=16)
+_BUILTIN_CONTAINER_SLOT = SlotId(_MODULE_ID, 8, line_no=17)
 
 
 def _pyr_badge(ctx: ContextBase, text: str, *, tone: str) -> None:
@@ -215,3 +217,49 @@ def test_failed_native_rerun_rolls_back_to_last_committed_ui() -> None:
     assert ctx.debug_ui() == (
         UIElement(kind="badge", props={"text": "Ready", "tone": "info"}),
     )
+
+
+def test_leaf_call_accepts_builtin_function_without_attribute_cache_support() -> None:
+    ctx = RenderContext()
+
+    with ctx.pass_scope():
+        assert ctx.visit_slot_and_dirty(_BUILTIN_LEAF_SLOT) is True
+        result = ctx.leaf_call(_BUILTIN_LEAF_SLOT, len, [1, 2, 3])
+
+    assert result == 3
+    assert ctx.debug_ui() == ()
+
+
+def test_container_call_accepts_builtin_function_without_attribute_cache_support() -> None:
+    ctx = RenderContext()
+
+    with ctx.pass_scope():
+        assert ctx.visit_slot_and_dirty(_BUILTIN_CONTAINER_SLOT) is True
+        with ctx.container_call(_BUILTIN_CONTAINER_SLOT, len, [1, 2, 3]) as slot:
+            slot.call_native(
+                UIElement,
+                kind="badge",
+                props={"text": "Builtins supported", "tone": "info"},
+            )
+
+    assert ctx.debug_ui() == (
+        UIElement(kind="badge", props={"text": "Builtins supported", "tone": "info"}),
+    )
+
+
+def test_leaf_call_tolerates_callable_with_invalid_signature_metadata() -> None:
+    ctx = RenderContext()
+
+    class _NoAttrBadSignatureLeaf:
+        __slots__ = ()
+        __signature__ = "invalid"
+
+        def __call__(self, values: list[int]) -> int:
+            return len(values)
+
+    with ctx.pass_scope():
+        assert ctx.visit_slot_and_dirty(_BUILTIN_LEAF_SLOT) is True
+        result = ctx.leaf_call(_BUILTIN_LEAF_SLOT, _NoAttrBadSignatureLeaf(), [1, 2, 3])
+
+    assert result == 3
+    assert ctx.debug_ui() == ()

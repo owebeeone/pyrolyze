@@ -554,24 +554,48 @@ _PLAIN_CALL_HANDLERS: tuple[PlainCallSemanticsHandler, ...] = (
 )
 
 _PLAIN_CALL_RUNTIME_CONTEXT_ATTR = "_pyrolyze_plain_call_runtime_ctx_param"
+_CALLABLE_CACHE_MISSING = object()
+
+
+def _read_callable_annotation_cache(func: Callable[..., Any], attr_name: str) -> object:
+    try:
+        return getattr(func, attr_name)
+    except AttributeError:
+        return _CALLABLE_CACHE_MISSING
+
+
+def _write_callable_annotation_cache(
+    func: Callable[..., Any],
+    attr_name: str,
+    value: str | None,
+) -> None:
+    try:
+        setattr(func, attr_name, value)
+    except (AttributeError, TypeError):
+        # Builtins/C-backed callables can reject attribute writes.
+        return
 
 
 def _plain_call_runtime_context_param_name(func: Callable[..., Any]) -> str | None:
-    cached = getattr(func, _PLAIN_CALL_RUNTIME_CONTEXT_ATTR, None)
-    if cached is not None or hasattr(func, _PLAIN_CALL_RUNTIME_CONTEXT_ATTR):
+    cached = _read_callable_annotation_cache(func, _PLAIN_CALL_RUNTIME_CONTEXT_ATTR)
+    if cached is not _CALLABLE_CACHE_MISSING:
         return cast(str | None, cached)
 
-    signature = inspect.signature(func)
     found_name: str | None = None
-    for parameter in signature.parameters.values():
-        annotation = parameter.annotation
-        annotation_name = getattr(annotation, "__forward_arg__", annotation)
-        if annotation is PlainCallRuntimeContext or annotation_name == "PlainCallRuntimeContext":
-            if found_name is not None:
-                raise TypeError("plain-call runtime context injection supports only one annotated parameter")
-            found_name = parameter.name
+    try:
+        signature = inspect.signature(func)
+    except (TypeError, ValueError):
+        found_name = None
+    else:
+        for parameter in signature.parameters.values():
+            annotation = parameter.annotation
+            annotation_name = getattr(annotation, "__forward_arg__", annotation)
+            if annotation is PlainCallRuntimeContext or annotation_name == "PlainCallRuntimeContext":
+                if found_name is not None:
+                    raise TypeError("plain-call runtime context injection supports only one annotated parameter")
+                found_name = parameter.name
 
-    setattr(func, _PLAIN_CALL_RUNTIME_CONTEXT_ATTR, found_name)
+    _write_callable_annotation_cache(func, _PLAIN_CALL_RUNTIME_CONTEXT_ATTR, found_name)
     return found_name
 
 
@@ -1038,23 +1062,27 @@ _BOUND_METHOD_SELF_MISSING = object()
 
 
 def _native_context_param_name(func: Callable[..., Any]) -> str | None:
-    cached = getattr(func, _NATIVE_CONTEXT_PARAM_ATTR, None)
-    if cached is not None or hasattr(func, _NATIVE_CONTEXT_PARAM_ATTR):
+    cached = _read_callable_annotation_cache(func, _NATIVE_CONTEXT_PARAM_ATTR)
+    if cached is not _CALLABLE_CACHE_MISSING:
         return cast(str | None, cached)
 
-    signature = inspect.signature(func)
-    parameters = tuple(signature.parameters.values())
     found_name: str | None = None
-    if parameters:
-        first = parameters[0]
-        annotation = first.annotation
-        annotation_name = getattr(annotation, "__forward_arg__", annotation)
-        if annotation_name in _NATIVE_CONTEXT_ANNOTATIONS:
-            found_name = first.name
-        elif isinstance(annotation, type) and issubclass(annotation, ContextBase):
-            found_name = first.name
+    try:
+        signature = inspect.signature(func)
+    except (TypeError, ValueError):
+        found_name = None
+    else:
+        parameters = tuple(signature.parameters.values())
+        if parameters:
+            first = parameters[0]
+            annotation = first.annotation
+            annotation_name = getattr(annotation, "__forward_arg__", annotation)
+            if annotation_name in _NATIVE_CONTEXT_ANNOTATIONS:
+                found_name = first.name
+            elif isinstance(annotation, type) and issubclass(annotation, ContextBase):
+                found_name = first.name
 
-    setattr(func, _NATIVE_CONTEXT_PARAM_ATTR, found_name)
+    _write_callable_annotation_cache(func, _NATIVE_CONTEXT_PARAM_ATTR, found_name)
     return found_name
 
 

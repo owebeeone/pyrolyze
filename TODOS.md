@@ -7,10 +7,10 @@ grouped by milestone priority.
 
 ### Release Blockers
 
-- Fix callable-annotation cache writes for non-attribute callables (for example builtins).
-  - `_plain_call_runtime_context_param_name(...)` and `_native_context_param_name(...)` currently cache by calling `setattr(...)` on the callable.
-  - Builtins and some C-backed callables do not allow attribute assignment, which raises `AttributeError` during evaluation.
-  - Use a safe fallback cache path (or no cache) when direct attribute writes are not supported.
+- ~~Fix callable-annotation cache writes for non-attribute callables (for example builtins).~~ Resolved on 2026-03-20.
+  - Implemented safe callable cache read/write fallback when direct `setattr(...)` is unsupported.
+  - Added signature-introspection fallback for `inspect.signature(...)` `TypeError`/`ValueError` paths.
+  - Covered by regression tests for `call_plain(...)`, `leaf_call(...)`, and `container_call(...)`.
 
 - Fix `AppContextStore` cache miss detection for `None` values.
   - `AppContextStore.get(...)` currently uses `dict.get(...)` and treats `None` as missing.
@@ -40,6 +40,12 @@ grouped by milestone priority.
   - The compiler should reject invalid authoring forms instead of silently accepting them.
 
 ### Strongly Recommended Before Release
+
+- Invalidate transformer-fingerprint hash cache when compiler files change in-process.
+  - `active_transformer_fingerprint(...)` depends on `_transform_hash_for_selected_kernel(...)`, which is currently `lru_cache`d by version only.
+  - In a long-lived process, editing compiler/kernel source can leave the cached transformer hash stale, so persistent artifact cache keys do not change.
+  - Verified behavior: after a compiler source edit, import-hook compile count stayed unchanged until manually calling `_transform_hash_for_selected_kernel.cache_clear()`.
+  - Add change detection or explicit cache-bust mechanics so compiler edits reliably invalidate artifact cache keys.
 
 - Remove quadratic replacement-path work in `reconcile_owner(...)`.
   - The detach pass currently checks replacement membership with a nested `any(...)` over `replaced_nodes`.
