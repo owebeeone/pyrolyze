@@ -23,7 +23,7 @@ Optional:
 - [run_studio_poc.py](C:/Users/adria/Documents/Projects/py-rolyze-wip/Studio/run_studio_poc.py): compatibility runner entrypoint.
 - [host/app_host.py](C:/Users/adria/Documents/Projects/py-rolyze-wip/Studio/host/app_host.py): primary host bootstrap and component loader.
 - [ui/studio_root.py](C:/Users/adria/Documents/Projects/py-rolyze-wip/Studio/ui/studio_root.py): declarative Studio UI root.
-- [ui/elements.py](C:/Users/adria/Documents/Projects/py-rolyze-wip/Studio/ui/elements.py): shared standard UIElement wrappers.
 - [studio_logic.py](C:/Users/adria/Documents/Projects/py-rolyze-wip/Studio/studio_logic.py): compatibility exports for filesystem/snapshot helpers.
+- Standard declarative components are imported directly from [src/pyrolyze/ui/elements.py](C:/Users/adria/Documents/Projects/py-rolyze-wip/src/pyrolyze/ui/elements.py).
 - [Pyrolyze_As_Is_Findings.md](C:/Users/adria/Documents/Projects/py-rolyze-wip/Studio/Pyrolyze_As_Is_Findings.md): capability/gap summary.
 
