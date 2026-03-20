@@ -22,17 +22,6 @@ grouped by milestone priority.
   - Runtime native emission metadata now carries both `call_site_id` and slot identity/slot-path lineage for instance disambiguation.
   - UI normalization/reconciliation now consumes this metadata for deterministic, stable node identity.
 
-- [P1] Implement explicit `emit_component(...)` source-form lowering.
-  - The authoring guide and design docs describe `emit_component(...)` as the explicit dynamic component emission form.
-  - The current compiler/runtime source surface supports direct `ComponentRef[...]` local calls but does not provide the documented `emit_component(...)` path.
-  - This should either be implemented or removed from the documented public source model before release.
-
-- [P1] Decide and align the `use_external_store(...)` surface.
-  - The authoring guide still presents `use_external_store(...)` as the primary third-party subscription hook.
-  - `PyrolyzeContextManagement_V2.md` says to remove `use_external_store(...)` from the primary design.
-  - The runtime has external-store machinery, but there is no corresponding public helper in `py-rolyze`.
-  - This needs either implementation or a docs/API cleanup before release.
-
 ### Strongly Recommended Before Release
 
 - [P2] ~~Invalidate transformer-fingerprint hash cache when compiler files change in-process.~~ Resolved on 2026-03-20.
@@ -149,9 +138,33 @@ grouped by milestone priority.
   - The current rewrite still leaves unknown expression calls as plain Python expression statements.
   - The compiler should reject invalid authoring forms instead of silently accepting them.
 
+- [P5] Leave explicit `emit_component(...)` source-form lowering out of the initial release.
+  - Direct `ComponentRef[...]` local calls are the active supported dynamic component form.
+  - `emit_component(...)` is no longer a release goal for the current shipped source model.
+  - If it returns later, it should be introduced as a deliberate new source feature rather than treated as unfinished required work.
+
+- [P5] Leave `use_external_store(...)` out of the initial public API.
+  - The runtime still has external-store machinery, but there is no corresponding public helper in `py-rolyze`.
+  - The current public third-party subscription path is not being expanded to a named `use_external_store(...)` helper before release.
+  - If external-store authoring becomes a release goal later, it should come back as a new API proposal with matching docs and tests.
+
 ## Milestone: Studio App Enablement (PyRolyze + PySide6)
 
 ### Development Prerequisites (Must-Have)
+
+- [P1] Define a comprehensive reactive UI-provider API surface for Studio-class applications.
+  - Use [Studio App Spec Baseline.md](./Studio/Studio%20App%20Spec%20Baseline.md) as the current feature baseline for what a serious host/UI provider must support.
+  - The goal is not only to expose more widgets, but to expose them in a way that fits PyRolyze's reactive execution model: stable identity, event dispatch, partial rerender, reconciliation, and host-shell interop.
+  - This should produce a documented capability surface for underlying UI providers (PySide6, tkinter, or future backends), including at least:
+    - shell/window hosting boundaries
+    - layout/container primitives
+    - model-backed tree/list/table views
+    - menus, toolbars, actions, and shortcuts
+    - tabs, splitters, and dock/panel composition
+    - custom/native widget bridges
+    - inspector/screenshot/overlay-style advanced controls
+    - settings persistence and platform integration touchpoints
+  - The output should make it possible to build a polished, full-featured reactive app in PyRolyze without dropping back to large ad hoc host-managed imperative code.
 
 - [P1] Add semantic node support for Studio layout primitives.
   - Required kinds: `splitter` (horizontal/vertical), `tabs`, `tab_page`, `toolbar_row`, `text_area`, and a generic `container` node.
