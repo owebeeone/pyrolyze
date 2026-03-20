@@ -669,13 +669,17 @@ def reconcile_owner(
             to_detach.append(old)
 
     try:
+        to_detach_ids = {id(node) for node in to_detach}
         for old in reversed(to_detach):
             if parent_binding is not None:
                 parent_binding.detach_child(old)
 
-        for index, node in enumerate(next_nodes):
-            if parent_binding is not None:
-                parent_binding.place_child(node, index)
+        _place_children_minimally(
+            previous_nodes=owner.mounted_nodes,
+            next_nodes=next_nodes,
+            detached_node_ids=to_detach_ids,
+            parent_binding=parent_binding,
+        )
 
         for old in to_detach:
             dispose_subtree(old)
@@ -719,6 +723,39 @@ def reconcile_owner(
                 next_count=len(next_specs),
             )
         raise
+
+
+def _place_children_minimally(
+    *,
+    previous_nodes: Sequence[UiNode],
+    next_nodes: Sequence[UiNode],
+    detached_node_ids: set[int],
+    parent_binding: UiNodeBinding | None,
+) -> None:
+    attached_nodes = [node for node in previous_nodes if id(node) not in detached_node_ids]
+    positions = {id(node): index for index, node in enumerate(attached_nodes)}
+
+    for desired_index, node in enumerate(next_nodes):
+        marker = id(node)
+        current_index = positions.get(marker)
+        if current_index == desired_index:
+            continue
+
+        if parent_binding is not None:
+            parent_binding.place_child(node, desired_index)
+
+        if current_index is None:
+            attached_nodes.insert(desired_index, node)
+            for index in range(desired_index, len(attached_nodes)):
+                positions[id(attached_nodes[index])] = index
+            continue
+
+        attached_nodes.pop(current_index)
+        attached_nodes.insert(desired_index, node)
+        start = desired_index if desired_index < current_index else current_index
+        end = current_index if desired_index < current_index else desired_index
+        for index in range(start, end + 1):
+            positions[id(attached_nodes[index])] = index
 
 
 def _can_reuse_node(

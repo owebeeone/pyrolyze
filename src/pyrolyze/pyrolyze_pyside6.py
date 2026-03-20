@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import weakref
 from typing import Any, Callable, Mapping, Sequence, cast
 
 from pyrolyze.api import UIElement
@@ -41,6 +42,16 @@ _NO_EVENT_PAYLOAD = object()
 _module_registry = ModuleRegistry()
 _UI_MODULE_ID = _module_registry.module_id("pyrolyze.pyrolyze_pyside6")
 _UI_OWNER_SLOT = SlotId(_UI_MODULE_ID, 1)
+
+
+@dataclass(slots=True)
+class _QtLayoutState:
+    layout_ref: Callable[[], QVBoxLayout | QHBoxLayout | None]
+    ordered_widgets: list[QWidget] = field(default_factory=list)
+    index_by_widget_id: dict[int, int] = field(default_factory=dict)
+
+
+_QT_LAYOUT_STATES: dict[int, _QtLayoutState] = {}
 
 
 @dataclass(slots=True)
@@ -98,6 +109,7 @@ def run_window(host: PyrolyzeWindow) -> int:
 
 
 def clear_layout(layout: QVBoxLayout) -> None:
+    _forget_layout_state(layout)
     while layout.count():
         item = layout.takeAt(0)
         widget = item.widget()
@@ -917,28 +929,105 @@ def _layout_place_widget(
     widget: QWidget,
     index: int,
 ) -> None:
-    current_index = _layout_index(layout, widget)
+    state = _layout_state(layout)
+    widget_id = id(widget)
+    current_index = state.index_by_widget_id.get(widget_id)
+    if current_index is None:
+        fallback_index = _layout_index(layout, widget)
+        if fallback_index >= 0:
+            state = _rebuild_layout_state(layout)
+            _QT_LAYOUT_STATES[id(layout)] = state
+            current_index = state.index_by_widget_id.get(widget_id)
     if current_index == index:
         return
-    if current_index >= 0:
+    if current_index is not None:
         layout.removeWidget(widget)
-    layout.insertWidget(index, widget)
+        state.ordered_widgets.pop(current_index)
+        state.index_by_widget_id.pop(widget_id, None)
+        _reindex_layout_state(state, start=current_index)
+    bounded_index = max(0, min(index, len(state.ordered_widgets)))
+    layout.insertWidget(bounded_index, widget)
+    state.ordered_widgets.insert(bounded_index, widget)
+    _reindex_layout_state(state, start=bounded_index)
 
 
 def _layout_detach_widget(layout: QVBoxLayout | QHBoxLayout, widget: QWidget) -> None:
-    if _layout_index(layout, widget) < 0:
-        return
+    state = _layout_state(layout)
+    widget_id = id(widget)
+    current_index = state.index_by_widget_id.get(widget_id)
+    if current_index is None:
+        fallback_index = _layout_index(layout, widget)
+        if fallback_index < 0:
+            return
+        state = _rebuild_layout_state(layout)
+        _QT_LAYOUT_STATES[id(layout)] = state
+        current_index = state.index_by_widget_id.get(widget_id)
+        if current_index is None:
+            return
+    if current_index >= len(state.ordered_widgets) or state.ordered_widgets[current_index] is not widget:
+        state = _rebuild_layout_state(layout)
+        _QT_LAYOUT_STATES[id(layout)] = state
+        current_index = state.index_by_widget_id.get(widget_id)
+        if current_index is None:
+            return
     layout.removeWidget(widget)
+    state.ordered_widgets.pop(current_index)
+    state.index_by_widget_id.pop(widget_id, None)
+    _reindex_layout_state(state, start=current_index)
     widget.hide()
     widget.setParent(None)
 
 
 def _layout_index(layout: QVBoxLayout | QHBoxLayout, widget: QWidget) -> int:
-    for index in range(layout.count()):
-        item = layout.itemAt(index)
+    index = layout.indexOf(widget)
+    if index >= 0:
+        return index
+    for idx in range(layout.count()):
+        item = layout.itemAt(idx)
         if item is not None and item.widget() is widget:
-            return index
+            return idx
     return -1
+
+
+def _layout_state(layout: QVBoxLayout | QHBoxLayout) -> _QtLayoutState:
+    key = id(layout)
+    state = _QT_LAYOUT_STATES.get(key)
+    if state is None or state.layout_ref() is not layout:
+        state = _rebuild_layout_state(layout)
+        _QT_LAYOUT_STATES[key] = state
+    return state
+
+
+def _rebuild_layout_state(layout: QVBoxLayout | QHBoxLayout) -> _QtLayoutState:
+    ordered_widgets = [
+        widget
+        for idx in range(layout.count())
+        for item in [layout.itemAt(idx)]
+        if item is not None
+        for widget in [item.widget()]
+        if isinstance(widget, QWidget)
+    ]
+    return _QtLayoutState(
+        layout_ref=_layout_ref(layout),
+        ordered_widgets=ordered_widgets,
+        index_by_widget_id={id(widget): index for index, widget in enumerate(ordered_widgets)},
+    )
+
+
+def _reindex_layout_state(state: _QtLayoutState, *, start: int = 0) -> None:
+    for index in range(max(0, start), len(state.ordered_widgets)):
+        state.index_by_widget_id[id(state.ordered_widgets[index])] = index
+
+
+def _forget_layout_state(layout: QVBoxLayout | QHBoxLayout) -> None:
+    _QT_LAYOUT_STATES.pop(id(layout), None)
+
+
+def _layout_ref(layout: QVBoxLayout | QHBoxLayout) -> Callable[[], QVBoxLayout | QHBoxLayout | None]:
+    try:
+        return weakref.ref(layout)
+    except TypeError:
+        return lambda: layout
 
 
 def _replace_combo_items(combo_box: QComboBox, options: Any) -> None:
