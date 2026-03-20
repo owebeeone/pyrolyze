@@ -50,10 +50,10 @@ grouped by milestone priority.
   - This removes the replacement-heavy O(n^2) detach predicate path.
   - Added reconciliation regression coverage for replacement-heavy updates and detach/dispose behavior.
 
-- Reduce quadratic child placement work in reconciliation/backends.
-  - `reconcile_owner(...)` currently calls `place_child(...)` for every node every pass.
-  - Backend placement helpers perform linear index scans (`_layout_index(...)`, repeated `pack_slaves()` scans), which compounds into O(n^2) behavior on large trees.
-  - Skip unchanged placement where possible and use position tracking to avoid repeated linear scans.
+- ~~Reduce quadratic child placement work in reconciliation/backends.~~ Resolved on 2026-03-20.
+  - Reconciliation now uses minimal placement planning and skips unchanged `place_child(...)` operations.
+  - PySide6 layout placement now tracks widget order/index with cached state plus resync fallback, reducing repeated `_layout_index(...)` scans.
+  - Tkinter pack placement now tracks packed order/index and avoids repeated `pack_slaves()` scans in hot placement paths.
 
 - Improve invalidation scheduler data structures for bursty updates.
   - `_InvalidationScheduler` currently relies on list operations such as `pop(0)` and repeated full-list scans/filtering in `_merge_boundary(...)`.
