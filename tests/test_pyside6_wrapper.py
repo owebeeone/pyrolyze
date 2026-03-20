@@ -100,6 +100,23 @@ def test_render_ui_element_builds_widgets_from_frozen_v1_schema() -> None:
     assert buttons[0].isEnabled() is False
 
 
+def test_render_ui_element_leaves_unmounted_visible_widgets_hidden() -> None:
+    widget = render_ui_element(
+        UIElement(
+            kind="button",
+            props={
+                "label": "Run",
+                "enabled": True,
+                "tone": "default",
+                "visible": True,
+            },
+        )
+    )
+
+    assert widget.parentWidget() is None
+    assert widget.isVisible() is False
+
+
 def test_render_ui_element_wires_text_field_change_events() -> None:
     calls: list[object] = []
 

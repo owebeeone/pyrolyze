@@ -103,6 +103,7 @@ def clear_layout(layout: QVBoxLayout) -> None:
         widget = item.widget()
         child_layout = item.layout()
         if widget is not None:
+            widget.hide()
             widget.setParent(None)
             widget.deleteLater()
         elif isinstance(child_layout, QVBoxLayout):
@@ -184,6 +185,7 @@ class _QtBindingBase(UiNodeBinding):
         _layout_detach_widget(self.layout, _binding_widget(child.binding))
 
     def dispose(self) -> None:
+        self.widget.hide()
         self.widget.setParent(None)
         self.widget.deleteLater()
 
@@ -440,7 +442,7 @@ class _PySideBackend(UiBackendAdapter):
         if spec.kind == "section":
             section = QGroupBox(str(spec.props["title"]))
             section.setProperty("accent", _optional_str(spec.props.get("accent")))
-            section.setVisible(bool(spec.props["visible"]))
+            _set_initial_visibility(section, bool(spec.props["visible"]))
             layout = QVBoxLayout(section)
             layout.setContentsMargins(14, 14, 14, 14)
             layout.setSpacing(10)
@@ -448,7 +450,7 @@ class _PySideBackend(UiBackendAdapter):
 
         if spec.kind == "row":
             container = QWidget()
-            container.setVisible(bool(spec.props["visible"]))
+            _set_initial_visibility(container, bool(spec.props["visible"]))
             container.setProperty("row_id", spec.props["row_id"])
             container.setProperty("headline", spec.props["headline"])
             layout = QHBoxLayout(container)
@@ -461,14 +463,14 @@ class _PySideBackend(UiBackendAdapter):
         if spec.kind == "badge":
             label = QLabel(str(spec.props["text"]))
             label.setWordWrap(True)
-            label.setVisible(bool(spec.props["visible"]))
+            _set_initial_visibility(label, bool(spec.props["visible"]))
             label.setProperty("tone", spec.props.get("tone"))
             return _QtBadgeBinding(widget=label)
 
         if spec.kind == "button":
             button = QPushButton(str(spec.props["label"]))
             button.setEnabled(bool(spec.props["enabled"]))
-            button.setVisible(bool(spec.props["visible"]))
+            _set_initial_visibility(button, bool(spec.props["visible"]))
             button.setProperty("tone", spec.props.get("tone"))
             return _QtButtonBinding(
                 widget=button,
@@ -478,7 +480,7 @@ class _PySideBackend(UiBackendAdapter):
 
         if spec.kind == "text_field":
             container = QWidget()
-            container.setVisible(bool(spec.props["visible"]))
+            _set_initial_visibility(container, bool(spec.props["visible"]))
             layout = QVBoxLayout(container)
             layout.setContentsMargins(0, 0, 0, 0)
             layout.setSpacing(4)
@@ -505,7 +507,7 @@ class _PySideBackend(UiBackendAdapter):
             checkbox = QCheckBox(str(spec.props["label"]))
             checkbox.setChecked(bool(spec.props["checked"]))
             checkbox.setEnabled(bool(spec.props["enabled"]))
-            checkbox.setVisible(bool(spec.props["visible"]))
+            _set_initial_visibility(checkbox, bool(spec.props["visible"]))
             return _QtToggleBinding(
                 widget=checkbox,
                 on_after_event=self.on_after_event,
@@ -514,7 +516,7 @@ class _PySideBackend(UiBackendAdapter):
 
         if spec.kind == "select_field":
             container = QWidget()
-            container.setVisible(bool(spec.props["visible"]))
+            _set_initial_visibility(container, bool(spec.props["visible"]))
             layout = QVBoxLayout(container)
             layout.setContentsMargins(0, 0, 0, 0)
             layout.setSpacing(4)
@@ -739,7 +741,7 @@ def _build_button(
 ) -> QPushButton:
     button = QPushButton(label_text)
     button.setEnabled(enabled)
-    button.setVisible(visible)
+    _set_initial_visibility(button, visible)
     if callable(on_press):
         button.clicked.connect(
             lambda checked=False: _dispatch_widget_event(
@@ -757,7 +759,7 @@ def _build_ui_text_field(
     on_after_event: Callable[[], None] | None,
 ) -> QWidget:
     container = QWidget()
-    container.setVisible(bool(spec.props["visible"]))
+    _set_initial_visibility(container, bool(spec.props["visible"]))
     layout = QVBoxLayout(container)
     layout.setContentsMargins(0, 0, 0, 0)
     layout.setSpacing(4)
@@ -804,7 +806,7 @@ def _build_ui_toggle(
     checkbox = QCheckBox(str(spec.props["label"]))
     checkbox.setChecked(bool(spec.props["checked"]))
     checkbox.setEnabled(bool(spec.props["enabled"]))
-    checkbox.setVisible(bool(spec.props["visible"]))
+    _set_initial_visibility(checkbox, bool(spec.props["visible"]))
 
     on_toggle = spec.event_props.get("on_toggle")
     if callable(on_toggle):
@@ -824,7 +826,7 @@ def _build_row_widget(
     on_after_event: Callable[[], None] | None,
 ) -> QWidget:
     container = QWidget()
-    container.setVisible(bool(spec.props["visible"]))
+    _set_initial_visibility(container, bool(spec.props["visible"]))
     container.setProperty("row_id", spec.props["row_id"])
     container.setProperty("headline", spec.props["headline"])
     layout = QHBoxLayout(container)
@@ -851,7 +853,7 @@ def _render_ui_spec(
             ],
             accent=_optional_str(spec.props.get("accent")),
         )
-        section.setVisible(bool(spec.props["visible"]))
+        _set_initial_visibility(section, bool(spec.props["visible"]))
         return section
 
     if spec.kind == "row":
@@ -860,7 +862,7 @@ def _render_ui_spec(
     if spec.kind == "badge":
         label = QLabel(str(spec.props["text"]))
         label.setWordWrap(True)
-        label.setVisible(bool(spec.props["visible"]))
+        _set_initial_visibility(label, bool(spec.props["visible"]))
         tone = spec.props.get("tone")
         if tone is not None:
             label.setProperty("tone", tone)
@@ -905,6 +907,11 @@ def _binding_widget(binding: UiNodeBinding) -> QWidget:
     return widget
 
 
+def _set_initial_visibility(widget: QWidget, visible: bool) -> None:
+    if not visible:
+        widget.setVisible(False)
+
+
 def _layout_place_widget(
     layout: QVBoxLayout | QHBoxLayout,
     widget: QWidget,
@@ -922,6 +929,7 @@ def _layout_detach_widget(layout: QVBoxLayout | QHBoxLayout, widget: QWidget) ->
     if _layout_index(layout, widget) < 0:
         return
     layout.removeWidget(widget)
+    widget.hide()
     widget.setParent(None)
 
 
