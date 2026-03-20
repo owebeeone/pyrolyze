@@ -156,6 +156,10 @@ grouped by milestone priority.
   - Implement end-to-end in descriptor registry normalization, reconciliation, and PySide6 bindings.
   - Without these, the Studio explorer/editor/panel shell cannot be expressed in PyRolyze source.
 
+- Define and adopt a standard `UIElement` component helper surface for app code.
+  - Provide canonical helper functions in the library (instead of duplicating custom helper wrappers in each example/app).
+  - Refactor Studio/examples to consume that shared helper surface so behavior and props stay consistent across implementations.
+
 - Add a model-backed tree node contract for explorer/hierarchy views.
   - Introduce a semantic node/binding path for `QTreeView` + `QFileSystemModel` style usage with root-path updates.
   - Support selection and activation events with stable row identity.
