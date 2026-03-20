@@ -41,6 +41,30 @@ grouped by milestone priority.
 
 ### Strongly Recommended Before Release
 
+- Remove quadratic replacement-path work in `reconcile_owner(...)`.
+  - The detach pass currently checks replacement membership with a nested `any(...)` over `replaced_nodes`.
+  - Large replacement-heavy updates can degrade toward O(n^2) and cause visible UI stalls.
+  - Replace linear membership checks with set-based tracking.
+
+- Reduce quadratic child placement work in reconciliation/backends.
+  - `reconcile_owner(...)` currently calls `place_child(...)` for every node every pass.
+  - Backend placement helpers perform linear index scans (`_layout_index(...)`, repeated `pack_slaves()` scans), which compounds into O(n^2) behavior on large trees.
+  - Skip unchanged placement where possible and use position tracking to avoid repeated linear scans.
+
+- Improve invalidation scheduler data structures for bursty updates.
+  - `_InvalidationScheduler` currently relies on list operations such as `pop(0)` and repeated full-list scans/filtering in `_merge_boundary(...)`.
+  - Under heavy invalidation bursts this can add avoidable quadratic overhead.
+  - Use queue/set-oriented structures to keep enqueue/dequeue and membership checks near O(1).
+
+- Reduce invalidation fan-out cost in wide trees.
+  - `_queue_invalidation_from(...)` walks ancestors and eagerly marks all children dirty at each level.
+  - Repeated event-driven invalidations can become expensive and amplify render latency.
+  - Introduce more targeted dirtiness propagation (for example generation/version marks) instead of broad sibling marking.
+
+- Add focused performance regression tests for large-tree reconciliation.
+  - Current tests validate correctness but do not enforce scaling expectations for reorder/replace-heavy updates.
+  - Add benchmark-style guard tests for large owner regions and event-driven update storms to catch UX-freeze regressions early.
+
 - Enforce UI-thread checks for the Tkinter backend.
   - `reconcile_owner(...)` expects backend thread assertions.
   - `_TkBackend.assert_ui_thread(...)` is currently a no-op.
