@@ -6,10 +6,12 @@ from dataclasses import dataclass
 from functools import lru_cache
 import subprocess
 import sys
+import time
 from typing import Any, Callable, Mapping, Sequence
 
 from pyrolyze.api import UIElement
 from pyrolyze.runtime.context import ModuleRegistry, SlotId
+from pyrolyze.runtime.trace import TraceChannel, emit_trace, trace_enabled
 from pyrolyze.runtime.ui_nodes import (
     UiBackendAdapter,
     UiNode,
@@ -26,6 +28,14 @@ _module_registry = ModuleRegistry()
 _UI_MODULE_ID = _module_registry.module_id("pyrolyze.pyrolyze_tkinter")
 _UI_OWNER_SLOT = SlotId(_UI_MODULE_ID, 1)
 _TK_ROOT: Any | None = None
+_TK_LAYOUT_METRICS: dict[str, int] = {
+    "pack_requests": 0,
+    "pack_apply": 0,
+    "pack_forget": 0,
+    "repack": 0,
+    "hidden_skip": 0,
+    "detach_unpacked": 0,
+}
 
 
 @dataclass(slots=True)
@@ -96,9 +106,10 @@ class _TkRootBinding(UiNodeBinding):
         return None
 
     def place_child(self, child: UiNode, index: int) -> None:
-        del index
         _pack_child(
+            self.container,
             _binding_widget(child.binding),
+            index=index,
             side=self.child_side,
             fill=self.child_fill,
         )
@@ -106,7 +117,7 @@ class _TkRootBinding(UiNodeBinding):
     def detach_child(self, child: UiNode) -> None:
         widget = _binding_widget(child.binding)
         if widget.winfo_manager() == "pack":
-            widget.pack_forget()
+            _pack_forget(widget, reason="detach")
 
     def dispose(self) -> None:
         return None
@@ -129,11 +140,12 @@ class _TkBindingBase(UiNodeBinding):
         return None
 
     def place_child(self, child: UiNode, index: int) -> None:
-        del index
         if not self.accepts_children:
             raise ValueError(f"{type(self).__name__} does not accept children")
         _pack_child(
+            self.widget,
             _binding_widget(child.binding),
+            index=index,
             side=self.child_side,
             fill=self.child_fill,
         )
@@ -143,7 +155,7 @@ class _TkBindingBase(UiNodeBinding):
             return
         widget = _binding_widget(child.binding)
         if widget.winfo_manager() == "pack":
-            widget.pack_forget()
+            _pack_forget(widget, reason="detach")
 
     def dispose(self) -> None:
         self.widget.destroy()
@@ -495,6 +507,9 @@ def reconcile_window_content(
     on_after_event: Callable[[], None] | None = None,
 ) -> None:
     specs = normalize_ui_inputs(_UI_OWNER_SLOT, tuple(elements))
+    trace_reconcile = trace_enabled(TraceChannel.RECONCILE)
+    metrics_before = _layout_metrics_snapshot() if trace_reconcile else None
+    started_at = time.perf_counter() if trace_reconcile else 0.0
     if host.owner_state is None:
         for child in tuple(host.content_frame.winfo_children()):
             child.destroy()
@@ -506,6 +521,16 @@ def reconcile_window_content(
         backend=_TkBackend(tk=tk, ttk=ttk, on_after_event=on_after_event),
         parent_binding=_TkRootBinding(container=host.content_frame),
     )
+    if trace_reconcile and metrics_before is not None and host.owner_state is not None:
+        metrics_after = _layout_metrics_snapshot()
+        emit_trace(
+            TraceChannel.RECONCILE,
+            "tk_layout",
+            specs=len(specs),
+            root_nodes=len(host.owner_state.mounted_nodes),
+            duration_ms=round((time.perf_counter() - started_at) * 1000.0, 3),
+            **_layout_metrics_delta(metrics_before, metrics_after),
+        )
 
 
 def render_ui_element(
@@ -572,17 +597,97 @@ def _parent_widget(parent_binding: UiNodeBinding | None) -> Any:
     return _binding_widget(parent_binding)
 
 
-def _pack_child(widget: Any, *, side: str, fill: str) -> None:
+def _pack_child(container: Any, widget: Any, *, index: int, side: str, fill: str) -> None:
+    _layout_metric_inc("pack_requests")
     if not bool(getattr(widget, "_pyrolyze_visible", True)):
         if widget.winfo_manager() == "pack":
-            widget.pack_forget()
+            _pack_forget(widget, reason="hidden")
+        _layout_metric_inc("hidden_skip")
         return
-    if widget.winfo_manager() == "pack":
-        widget.pack_forget()
+
+    desired_before = _packed_before_widget(container, widget, index)
     pack_kwargs: dict[str, Any] = {"side": side}
     if fill != "none":
         pack_kwargs["fill"] = fill
-    widget.pack(**pack_kwargs)
+
+    if widget.winfo_manager() == "pack":
+        if _pack_state_matches(container, widget, desired_before=desired_before, side=side, fill=fill):
+            return
+        if desired_before is not None:
+            widget.pack_configure(before=desired_before, **pack_kwargs)
+        else:
+            desired_after = _packed_after_widget(container, widget, index)
+            if desired_after is not None:
+                widget.pack_configure(after=desired_after, **pack_kwargs)
+            else:
+                widget.pack_configure(**pack_kwargs)
+        _layout_metric_inc("repack")
+        _layout_metric_inc("pack_apply")
+        return
+
+    if desired_before is not None:
+        widget.pack(before=desired_before, **pack_kwargs)
+    else:
+        widget.pack(**pack_kwargs)
+    _layout_metric_inc("pack_apply")
+
+
+def _pack_forget(widget: Any, *, reason: str) -> None:
+    widget.pack_forget()
+    _layout_metric_inc("pack_forget")
+    if reason == "detach":
+        _layout_metric_inc("detach_unpacked")
+
+
+def _layout_metric_inc(name: str, amount: int = 1) -> None:
+    _TK_LAYOUT_METRICS[name] = _TK_LAYOUT_METRICS.get(name, 0) + amount
+
+
+def _packed_before_widget(container: Any, widget: Any, index: int) -> Any | None:
+    packed = [child for child in container.pack_slaves() if child is not widget]
+    if 0 <= index < len(packed):
+        return packed[index]
+    return None
+
+
+def _packed_after_widget(container: Any, widget: Any, index: int) -> Any | None:
+    packed = [child for child in container.pack_slaves() if child is not widget]
+    if index <= 0 or not packed:
+        return None
+    if index - 1 >= len(packed):
+        return packed[-1]
+    return packed[index - 1]
+
+
+def _pack_state_matches(
+    container: Any,
+    widget: Any,
+    *,
+    desired_before: Any | None,
+    side: str,
+    fill: str,
+) -> bool:
+    packed = list(container.pack_slaves())
+    if widget not in packed:
+        return False
+    position = packed.index(widget)
+    current_next = packed[position + 1] if position + 1 < len(packed) else None
+    if current_next is not desired_before:
+        return False
+
+    info = widget.pack_info()
+    current_side = str(info.get("side", "top"))
+    current_fill = str(info.get("fill", "none") or "none")
+    return current_side == side and current_fill == fill
+
+
+def _layout_metrics_snapshot() -> dict[str, int]:
+    return dict(_TK_LAYOUT_METRICS)
+
+
+def _layout_metrics_delta(before: Mapping[str, int], after: Mapping[str, int]) -> dict[str, int]:
+    keys = set(before.keys()) | set(after.keys())
+    return {key: int(after.get(key, 0)) - int(before.get(key, 0)) for key in sorted(keys)}
 
 
 def _set_widget_enabled(widget: Any, enabled: bool) -> None:
