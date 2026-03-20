@@ -7,22 +7,30 @@ from Studio.host import app_host
 
 
 def test_ensure_repo_root_on_syspath_inserts_root_once(monkeypatch) -> None:
-    root_str = str(app_host.SOURCE_PATH.parent.parent.parent.resolve())
-    monkeypatch.setattr(sys, "path", [root_str, "C:\\tmp", "C:\\tmp2"])
+    root_path = app_host.SOURCE_PATH.parent.parent.parent.resolve()
+    root_str = str(root_path)
+    src_str = str(root_path / "src")
+    monkeypatch.setattr(sys, "path", [root_str, src_str, "C:\\tmp", "C:\\tmp2"])
 
     app_host._ensure_repo_root_on_syspath()
 
     assert sys.path.count(root_str) == 1
+    assert sys.path.count(src_str) == 1
+    assert sys.path[0] == root_str
+    assert sys.path[1] == src_str
 
 
 def test_ensure_repo_root_on_syspath_inserts_when_missing(monkeypatch) -> None:
-    root_str = str(app_host.SOURCE_PATH.parent.parent.parent.resolve())
+    root_path = app_host.SOURCE_PATH.parent.parent.parent.resolve()
+    root_str = str(root_path)
+    src_str = str(root_path / "src")
     monkeypatch.setattr(sys, "path", ["C:\\tmp", "C:\\tmp2"])
 
     returned = app_host._ensure_repo_root_on_syspath()
 
     assert returned == Path(root_str)
     assert sys.path[0] == root_str
+    assert sys.path[1] == src_str
 
 
 def test_source_path_points_to_ui_studio_root() -> None:

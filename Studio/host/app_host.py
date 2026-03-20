@@ -5,20 +5,37 @@ import sys
 from pathlib import Path
 from typing import Any
 
+
+SOURCE_PATH = Path(__file__).resolve().parent.parent / "ui" / "studio_root.py"
+_REPO_ROOT = SOURCE_PATH.parent.parent.parent.resolve()
+_SRC_ROOT = _REPO_ROOT / "src"
+
+
+def _bootstrap_local_import_paths() -> Path:
+    repo_str = str(_REPO_ROOT)
+    src_str = str(_SRC_ROOT)
+
+    while src_str in sys.path:
+        sys.path.remove(src_str)
+    while repo_str in sys.path:
+        sys.path.remove(repo_str)
+
+    # Keep repo root first for local absolute imports; keep src immediately after
+    # so local pyrolyze package resolution wins over globally installed copies.
+    sys.path.insert(0, src_str)
+    sys.path.insert(0, repo_str)
+    return _REPO_ROOT
+
+
+_bootstrap_local_import_paths()
+
 from pyrolyze.compiler import load_transformed_namespace
 from pyrolyze.pyrolyze_pyside6 import create_window, reconcile_window_content
 from pyrolyze.runtime import RenderContext, dirtyof
 
 
-SOURCE_PATH = Path(__file__).resolve().parent.parent / "ui" / "studio_root.py"
-
-
 def _ensure_repo_root_on_syspath() -> Path:
-    repo_root = SOURCE_PATH.parent.parent.parent.resolve()
-    root_str = str(repo_root)
-    if root_str not in sys.path:
-        sys.path.insert(0, root_str)
-    return repo_root
+    return _bootstrap_local_import_paths()
 
 
 def build_parser() -> argparse.ArgumentParser:
