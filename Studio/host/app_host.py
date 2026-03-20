@@ -30,9 +30,10 @@ def _bootstrap_local_import_paths() -> Path:
 _bootstrap_local_import_paths()
 
 from pyrolyze.compiler import load_transformed_namespace
-from pyrolyze.pyrolyze_pyside6 import create_window, reconcile_window_content
+from pyrolyze.pyrolyze_pyside6 import reconcile_window_content
 from pyrolyze.runtime import RenderContext, dirtyof
 
+from Studio.host.studio_shell import create_studio_window
 
 def _ensure_repo_root_on_syspath() -> Path:
     return _bootstrap_local_import_paths()
@@ -69,7 +70,7 @@ def _load_component() -> Any:
 
 def build_host(root_path: str) -> tuple[Any, RenderContext]:
     component = _load_component()
-    host = create_window("PyRolyze Studio Prototype", width=1200, height=820)
+    host = create_studio_window("PyRolyze Studio Prototype", width=1200, height=820)
     ctx = RenderContext()
 
     def reconcile_host() -> None:

@@ -15,7 +15,7 @@ Source baseline:
 | Phase | Scope | Status |
 |---|---|---|
 | Phase 0 | Parity map + contracts + custom-node scaffolding | In progress |
-| Phase 1 | Window shell/chrome parity | Not started |
+| Phase 1 | Window shell/chrome parity | In progress |
 | Phase 2 | Workspace layout (splitters/tabs/panels) parity | Not started |
 | Phase 3 | Explorer + menu/status command parity | Not started |
 | Phase 4 | Inspector parity (hierarchy/highlight/screenshot/draw/save) | Not started |
