@@ -99,6 +99,7 @@ class UiOwnerCommitState:
     mounted_nodes: list[UiNode] = field(default_factory=list)
     nodes_by_id: dict[UiNodeId, UiNode] = field(default_factory=dict)
     last_specs: tuple[UiNodeSpec, ...] = ()
+    last_backend_identity: object | None = None
 
 
 @dataclass(slots=True)
@@ -523,6 +524,10 @@ def remount_owner_region(
     owner.last_specs = specs
 
 
+def _backend_identity(backend: UiBackendAdapter) -> tuple[type[Any], str]:
+    return (type(backend), str(getattr(backend, "backend_id", type(backend).__name__)))
+
+
 def reconcile_children(
     node: UiNode,
     next_children: tuple[UiNodeSpec, ...],
@@ -556,8 +561,52 @@ def reconcile_owner(
 ) -> None:
     normalized_registry = registry or FROZEN_V1_REGISTRY
     backend.assert_ui_thread()
+    backend_identity = _backend_identity(backend)
 
     previous_specs = owner.last_specs
+    previous_backend_identity = owner.last_backend_identity
+    if previous_backend_identity is not None and previous_backend_identity != backend_identity:
+        clear_owner_region(owner, parent_binding=parent_binding)
+        try:
+            remount_owner_region(
+                owner,
+                next_specs,
+                backend=backend,
+                parent_binding=parent_binding,
+                registry=normalized_registry,
+            )
+        except Exception:
+            clear_owner_region(owner, parent_binding=parent_binding)
+            remount_owner_region(
+                owner,
+                previous_specs,
+                backend=backend,
+                parent_binding=parent_binding,
+                registry=normalized_registry,
+            )
+            owner.last_backend_identity = backend_identity
+            if trace_enabled(TraceChannel.RECONCILE):
+                emit_trace(
+                    TraceChannel.RECONCILE,
+                    "owner_recover",
+                    owner_id=owner.owner_id,
+                    previous_count=len(previous_specs),
+                    next_count=len(next_specs),
+                )
+            raise
+        owner.last_backend_identity = backend_identity
+        if trace_enabled(TraceChannel.RECONCILE):
+            emit_trace(
+                TraceChannel.RECONCILE,
+                "owner_backend_swap",
+                owner_id=owner.owner_id,
+                previous_backend=previous_backend_identity,
+                next_backend=backend_identity,
+                previous_count=len(previous_specs),
+                next_count=len(next_specs),
+            )
+        return
+
     previous_by_id = owner.nodes_by_id
     next_nodes: list[UiNode] = []
     seen_ids: set[UiNodeId] = set()
@@ -634,6 +683,7 @@ def reconcile_owner(
         owner.mounted_nodes = next_nodes
         owner.nodes_by_id = {node.spec.node_id: node for node in next_nodes}
         owner.last_specs = next_specs
+        owner.last_backend_identity = backend_identity
         if trace_reconcile:
             emit_trace(
                 TraceChannel.RECONCILE,
@@ -659,6 +709,7 @@ def reconcile_owner(
             parent_binding=parent_binding,
             registry=normalized_registry,
         )
+        owner.last_backend_identity = backend_identity
         if trace_reconcile:
             emit_trace(
                 TraceChannel.RECONCILE,

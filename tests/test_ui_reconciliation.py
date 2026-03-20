@@ -227,6 +227,47 @@ def test_reconcile_owner_reorders_reused_nodes_without_recreating_them() -> None
     assert [node.spec.node_id for node in parent.attached] == [_node_id(2), _node_id(1)]
 
 
+def test_reconcile_owner_backend_swap_forces_full_remount() -> None:
+    owner = UiOwnerCommitState(owner_id=_OWNER_SLOT)
+    parent = _FakeBinding(spec=_badge_spec(node_id=_node_id(99)), label="parent")
+    first_backend = _FakeBackend(backend_id="fake-a")
+    specs = (
+        _button_spec(node_id=_node_id(1), label="One"),
+        _badge_spec(node_id=_node_id(2), text="Two"),
+    )
+    reconcile_owner(owner, specs, backend=first_backend, parent_binding=parent)
+    original_nodes = tuple(owner.mounted_nodes)
+    parent.detach_calls.clear()
+
+    second_backend = _FakeBackend(backend_id="fake-b")
+    reconcile_owner(owner, specs, backend=second_backend, parent_binding=parent)
+
+    assert second_backend.create_calls == ["button", "badge"]
+    assert {id(node) for node in parent.detach_calls} == {id(node) for node in original_nodes}
+    assert all(node.binding.disposed for node in original_nodes)
+    assert all(current is not previous for current, previous in zip(owner.mounted_nodes, original_nodes, strict=True))
+
+
+def test_reconcile_owner_same_backend_identity_does_not_force_remount() -> None:
+    owner = UiOwnerCommitState(owner_id=_OWNER_SLOT)
+    parent = _FakeBinding(spec=_badge_spec(node_id=_node_id(99)), label="parent")
+    first_backend = _FakeBackend(backend_id="fake-stable")
+    specs = (
+        _button_spec(node_id=_node_id(1), label="One"),
+        _badge_spec(node_id=_node_id(2), text="Two"),
+    )
+    reconcile_owner(owner, specs, backend=first_backend, parent_binding=parent)
+    original_nodes = tuple(owner.mounted_nodes)
+    parent.detach_calls.clear()
+
+    second_backend = _FakeBackend(backend_id="fake-stable")
+    reconcile_owner(owner, specs, backend=second_backend, parent_binding=parent)
+
+    assert second_backend.create_calls == []
+    assert parent.detach_calls == []
+    assert all(current is previous for current, previous in zip(owner.mounted_nodes, original_nodes, strict=True))
+
+
 def test_reconcile_owner_reuses_normalized_ui_elements_by_call_site_identity() -> None:
     backend = _FakeBackend()
     parent = _FakeBinding(spec=_badge_spec(node_id=_node_id(99)), label="parent")
