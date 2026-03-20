@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 from typing import Any, Literal, TextIO
@@ -99,7 +100,9 @@ def format_trace_record(record: TraceRecord) -> str:
 
 def build_stdout_trace_sink(stream: TextIO) -> Any:
     def _sink(record: TraceRecord) -> None:
-        stream.write(f"{format_trace_record(record)}\n")
+        stream.write(
+            f"pid={os.getpid()} ppid={os.getppid()} {format_trace_record(record)}\n"
+        )
         stream.flush()
 
     return _sink
@@ -148,6 +151,13 @@ def build_app_host(backend: BackendName) -> tuple[Any, RenderContext]:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.trace_stdout:
+        stream_argv = argv if argv is not None else sys.argv[1:]
+        sys.stdout.write(
+            f"process.start pid={os.getpid()} ppid={os.getppid()} "
+            f"backend={args.backend} argv={stream_argv!r}\n"
+        )
+        sys.stdout.flush()
     channels = resolve_trace_channels(args.trace)
     sink = build_stdout_trace_sink(sys.stdout) if args.trace_stdout else None
     if channels:

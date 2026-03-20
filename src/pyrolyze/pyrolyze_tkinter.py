@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
+import os
 import subprocess
 import sys
 import time
@@ -63,12 +64,29 @@ def tkinter_available() -> bool:
         "root.withdraw();"
         "root.destroy()"
     )
+    trace_reconcile = trace_enabled(TraceChannel.RECONCILE)
+    if trace_reconcile:
+        emit_trace(
+            TraceChannel.RECONCILE,
+            "tk_probe_start",
+            pid=os.getpid(),
+            ppid=os.getppid(),
+            executable=sys.executable,
+        )
     completed = subprocess.run(
         [sys.executable, "-c", probe],
         capture_output=True,
         text=True,
         check=False,
     )
+    if trace_reconcile:
+        emit_trace(
+            TraceChannel.RECONCILE,
+            "tk_probe_end",
+            pid=os.getpid(),
+            returncode=completed.returncode,
+            stderr=(completed.stderr or "").strip()[:240],
+        )
     return completed.returncode == 0
 
 

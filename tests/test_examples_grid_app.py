@@ -275,7 +275,12 @@ def test_run_grid_app_main_configures_stdout_trace_sink() -> None:
     assert calls[0][0] == (TraceChannel.FLUSH,)
     assert calls[0][1] is not None
     calls[0][1](TraceRecord(channel=TraceChannel.FLUSH, event="start", fields={"queued": ()}))
-    assert buffer.getvalue() == "flush.start queued=()\n"
+    output_lines = buffer.getvalue().splitlines()
+    assert len(output_lines) == 2
+    assert output_lines[0].startswith("process.start pid=")
+    assert "backend=pyside6" in output_lines[0]
+    assert "argv=['--backend', 'pyside6', '--trace', 'flush', '--trace-stdout']" in output_lines[0]
+    assert output_lines[1].endswith("flush.start queued=()")
 
 
 @pytest.mark.skipif(not tkinter_available(), reason="Tk root unavailable in this environment")
