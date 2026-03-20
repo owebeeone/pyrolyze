@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 import os
 import subprocess
 import sys
 import time
+import weakref
 from typing import Any, Callable, Mapping, Sequence
 
 from pyrolyze.api import UIElement
@@ -37,6 +38,15 @@ _TK_LAYOUT_METRICS: dict[str, int] = {
     "hidden_skip": 0,
     "detach_unpacked": 0,
 }
+
+
+@dataclass(slots=True)
+class _TkPackState:
+    packed_widgets: list[Any] = field(default_factory=list)
+    index_by_widget_id: dict[int, int] = field(default_factory=dict)
+
+
+_TK_PACK_STATES: weakref.WeakKeyDictionary[Any, _TkPackState] = weakref.WeakKeyDictionary()
 
 
 @dataclass(slots=True)
@@ -102,6 +112,7 @@ def create_window(title: str) -> PyrolyzeTkWindow:
 
 def set_window_content(host: PyrolyzeTkWindow, widgets: Sequence[Any]) -> None:
     host.owner_state = None
+    _drop_pack_state(host.content_frame)
     for child in tuple(host.content_frame.winfo_children()):
         child.destroy()
     for widget in widgets:
@@ -176,6 +187,7 @@ class _TkBindingBase(UiNodeBinding):
             _pack_forget(widget, reason="detach")
 
     def dispose(self) -> None:
+        _drop_pack_state(self.widget)
         self.widget.destroy()
 
 
@@ -617,40 +629,69 @@ def _parent_widget(parent_binding: UiNodeBinding | None) -> Any:
 
 def _pack_child(container: Any, widget: Any, *, index: int, side: str, fill: str) -> None:
     _layout_metric_inc("pack_requests")
+    state = _pack_state(container)
     if not bool(getattr(widget, "_pyrolyze_visible", True)):
         if widget.winfo_manager() == "pack":
             _pack_forget(widget, reason="hidden")
         _layout_metric_inc("hidden_skip")
         return
 
-    desired_before = _packed_before_widget(container, widget, index)
+    target_index, desired_before, desired_after = _desired_pack_neighbors(
+        state,
+        widget,
+        index=index,
+    )
     pack_kwargs: dict[str, Any] = {"side": side}
     if fill != "none":
         pack_kwargs["fill"] = fill
 
+    widget_id = id(widget)
+    current_index = state.index_by_widget_id.get(widget_id)
+    if widget.winfo_manager() == "pack" and current_index is None:
+        state = _resync_pack_state(container)
+        current_index = state.index_by_widget_id.get(widget_id)
+
     if widget.winfo_manager() == "pack":
-        if _pack_state_matches(container, widget, desired_before=desired_before, side=side, fill=fill):
+        if _pack_state_matches(state, widget, desired_before=desired_before, side=side, fill=fill):
             return
         if desired_before is not None:
             widget.pack_configure(before=desired_before, **pack_kwargs)
         else:
-            desired_after = _packed_after_widget(container, widget, index)
             if desired_after is not None:
                 widget.pack_configure(after=desired_after, **pack_kwargs)
             else:
                 widget.pack_configure(**pack_kwargs)
+        _pack_state_reposition(
+            state,
+            widget,
+            target_index=target_index,
+            current_index=current_index,
+        )
         _layout_metric_inc("repack")
         _layout_metric_inc("pack_apply")
         return
 
     if desired_before is not None:
         widget.pack(before=desired_before, **pack_kwargs)
+    elif desired_after is not None:
+        widget.pack(after=desired_after, **pack_kwargs)
     else:
         widget.pack(**pack_kwargs)
+    _pack_state_reposition(
+        state,
+        widget,
+        target_index=target_index,
+        current_index=None,
+    )
     _layout_metric_inc("pack_apply")
 
 
 def _pack_forget(widget: Any, *, reason: str) -> None:
+    container = _pack_parent_container(widget)
+    if container is not None:
+        state = _pack_state_or_none(container)
+        if state is not None:
+            _pack_state_remove(state, widget)
     widget.pack_forget()
     _layout_metric_inc("pack_forget")
     if reason == "detach":
@@ -661,35 +702,125 @@ def _layout_metric_inc(name: str, amount: int = 1) -> None:
     _TK_LAYOUT_METRICS[name] = _TK_LAYOUT_METRICS.get(name, 0) + amount
 
 
-def _packed_before_widget(container: Any, widget: Any, index: int) -> Any | None:
-    packed = [child for child in container.pack_slaves() if child is not widget]
-    if 0 <= index < len(packed):
-        return packed[index]
+def _pack_state(container: Any) -> _TkPackState:
+    state = _pack_state_or_none(container)
+    if state is not None:
+        return state
+    return _register_pack_state(container, _build_pack_state(container))
+
+
+def _pack_state_or_none(container: Any) -> _TkPackState | None:
+    try:
+        return _TK_PACK_STATES.get(container)
+    except TypeError:
+        return None
+
+
+def _register_pack_state(container: Any, state: _TkPackState) -> _TkPackState:
+    try:
+        _TK_PACK_STATES[container] = state
+    except TypeError:
+        return state
+    return state
+
+
+def _drop_pack_state(container: Any) -> None:
+    try:
+        _TK_PACK_STATES.pop(container, None)
+    except TypeError:
+        return
+
+
+def _build_pack_state(container: Any) -> _TkPackState:
+    packed_widgets = list(container.pack_slaves())
+    return _TkPackState(
+        packed_widgets=packed_widgets,
+        index_by_widget_id={id(widget): index for index, widget in enumerate(packed_widgets)},
+    )
+
+
+def _resync_pack_state(container: Any) -> _TkPackState:
+    return _register_pack_state(container, _build_pack_state(container))
+
+
+def _pack_parent_container(widget: Any) -> Any | None:
+    container = getattr(widget, "container", None)
+    if container is not None and callable(getattr(container, "pack_slaves", None)):
+        return container
+    container = getattr(widget, "master", None)
+    if container is not None and callable(getattr(container, "pack_slaves", None)):
+        return container
     return None
 
 
-def _packed_after_widget(container: Any, widget: Any, index: int) -> Any | None:
-    packed = [child for child in container.pack_slaves() if child is not widget]
-    if index <= 0 or not packed:
-        return None
-    if index - 1 >= len(packed):
-        return packed[-1]
-    return packed[index - 1]
+def _desired_pack_neighbors(
+    state: _TkPackState,
+    widget: Any,
+    *,
+    index: int,
+) -> tuple[int, Any | None, Any | None]:
+    current_index = state.index_by_widget_id.get(id(widget))
+    if current_index is None:
+        packed_without = list(state.packed_widgets)
+    else:
+        packed_without = [
+            child for idx, child in enumerate(state.packed_widgets) if idx != current_index
+        ]
+
+    target_index = max(0, min(index, len(packed_without)))
+    desired_before = packed_without[target_index] if target_index < len(packed_without) else None
+    desired_after = packed_without[target_index - 1] if target_index > 0 else None
+    return target_index, desired_before, desired_after
+
+
+def _pack_state_reposition(
+    state: _TkPackState,
+    widget: Any,
+    *,
+    target_index: int,
+    current_index: int | None,
+) -> None:
+    widget_id = id(widget)
+    if current_index is None:
+        current_index = state.index_by_widget_id.get(widget_id)
+    if current_index is not None:
+        if current_index < len(state.packed_widgets):
+            state.packed_widgets.pop(current_index)
+        state.index_by_widget_id.pop(widget_id, None)
+        if target_index > len(state.packed_widgets):
+            target_index = len(state.packed_widgets)
+    state.packed_widgets.insert(target_index, widget)
+    start = target_index if current_index is None else min(target_index, current_index)
+    _reindex_pack_state(state, start=start)
+
+
+def _pack_state_remove(state: _TkPackState, widget: Any) -> None:
+    widget_id = id(widget)
+    current_index = state.index_by_widget_id.pop(widget_id, None)
+    if current_index is None:
+        return
+    if current_index < len(state.packed_widgets):
+        state.packed_widgets.pop(current_index)
+        _reindex_pack_state(state, start=current_index)
+
+
+def _reindex_pack_state(state: _TkPackState, *, start: int = 0) -> None:
+    for index in range(max(0, start), len(state.packed_widgets)):
+        state.index_by_widget_id[id(state.packed_widgets[index])] = index
 
 
 def _pack_state_matches(
-    container: Any,
+    state: _TkPackState,
     widget: Any,
     *,
     desired_before: Any | None,
     side: str,
     fill: str,
 ) -> bool:
-    packed = list(container.pack_slaves())
-    if widget not in packed:
+    position = state.index_by_widget_id.get(id(widget))
+    if position is None:
         return False
-    position = packed.index(widget)
-    current_next = packed[position + 1] if position + 1 < len(packed) else None
+    current_next = state.packed_widgets[position + 1] if position + 1 < len(state.packed_widgets) else None
     if current_next is not desired_before:
         return False
 
@@ -718,7 +849,7 @@ def _set_widget_enabled(widget: Any, enabled: bool) -> None:
 def _set_visible_flag(widget: Any, visible: bool) -> None:
     setattr(widget, "_pyrolyze_visible", bool(visible))
     if not visible and widget.winfo_manager() == "pack":
-        widget.pack_forget()
+        _pack_forget(widget, reason="hidden")
 
 
 def _section_style_name(accent: Any) -> str | None:

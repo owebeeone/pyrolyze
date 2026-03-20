@@ -158,6 +158,7 @@ class _FakeWidget:
 @dataclass(slots=True)
 class _FakeContainer:
     packed: list[_FakeWidget]
+    pack_slaves_calls: int = 0
 
     def __post_init__(self) -> None:
         for widget in self.packed:
@@ -165,6 +166,7 @@ class _FakeContainer:
             widget.manager = "pack"
 
     def pack_slaves(self) -> list[_FakeWidget]:
+        self.pack_slaves_calls += 1
         return list(self.packed)
 
     def remove(self, widget: _FakeWidget) -> None:
@@ -207,6 +209,7 @@ def test_pack_child_noops_when_already_packed_in_correct_state() -> None:
     assert delta["pack_apply"] == 0
     assert delta["repack"] == 0
     assert delta["pack_forget"] == 0
+    assert container.pack_slaves_calls == 1
     assert container.pack_slaves() == [first, second]
 
 
@@ -227,6 +230,7 @@ def test_pack_child_reorders_existing_widget_with_pack_configure() -> None:
     assert delta["pack_apply"] == 1
     assert delta["repack"] == 1
     assert delta["pack_forget"] == 0
+    assert container.pack_slaves_calls == 1
     assert container.pack_slaves() == [third, first, second]
 
 
@@ -243,4 +247,5 @@ def test_pack_child_hides_visible_false_widget_by_forgetting_pack() -> None:
     assert first.pack_forget_calls == 1
     assert delta["hidden_skip"] == 1
     assert delta["pack_forget"] == 1
+    assert container.pack_slaves_calls == 1
     assert container.pack_slaves() == []
