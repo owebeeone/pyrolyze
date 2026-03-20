@@ -561,7 +561,7 @@ def reconcile_owner(
     previous_by_id = owner.nodes_by_id
     next_nodes: list[UiNode] = []
     seen_ids: set[UiNodeId] = set()
-    replaced_nodes: list[UiNode] = []
+    replaced_node_ids: set[int] = set()
     trace_reconcile = trace_enabled(TraceChannel.RECONCILE)
     created_count = 0
     reused_count = 0
@@ -608,7 +608,7 @@ def reconcile_owner(
                 parent_binding=parent_binding,
                 registry=normalized_registry,
             )
-            replaced_nodes.append(current)
+            replaced_node_ids.add(id(current))
             replaced_count += 1
 
         next_nodes.append(node)
@@ -616,7 +616,7 @@ def reconcile_owner(
 
     to_detach: list[UiNode] = []
     for old in owner.mounted_nodes:
-        if old.spec.node_id not in seen_ids or any(old is replaced for replaced in replaced_nodes):
+        if old.spec.node_id not in seen_ids or id(old) in replaced_node_ids:
             to_detach.append(old)
 
     try:

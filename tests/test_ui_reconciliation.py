@@ -269,8 +269,34 @@ def test_reconcile_owner_replaces_incompatible_node_and_disposes_old_subtree() -
     reconcile_owner(owner, (_badge_spec(node_id=_node_id(1), text="Now badge"),), backend=backend, parent_binding=parent)
 
     assert backend.create_calls == ["button", "badge"]
+    assert parent.detach_calls == [old_node]
     assert old_node.binding.disposed is True
     assert owner.mounted_nodes[0].spec.kind == "badge"
+
+
+def test_reconcile_owner_replacement_heavy_detaches_each_replaced_node_once() -> None:
+    @dataclass
+    class _ReplacingBackend(_FakeBackend):
+        def can_reuse(self, current: UiNode, next_spec: UiNodeSpec) -> bool:
+            return current.spec.kind == next_spec.kind
+
+    backend = _ReplacingBackend()
+    parent = _FakeBinding(spec=_badge_spec(node_id=_node_id(999)), label="parent")
+    owner = UiOwnerCommitState(owner_id=_OWNER_SLOT)
+    initial = tuple(_button_spec(node_id=_node_id(index), label=f"Button {index}") for index in range(1, 21))
+    reconcile_owner(owner, initial, backend=backend, parent_binding=parent)
+    replaced_nodes = tuple(owner.mounted_nodes)
+    parent.detach_calls.clear()
+
+    replacement_specs = tuple(
+        _badge_spec(node_id=_node_id(index), text=f"Badge {index}") for index in range(1, 21)
+    )
+    reconcile_owner(owner, replacement_specs, backend=backend, parent_binding=parent)
+
+    assert len(parent.detach_calls) == len(replaced_nodes)
+    assert {id(node) for node in parent.detach_calls} == {id(node) for node in replaced_nodes}
+    assert all(node.binding.disposed for node in replaced_nodes)
+    assert all(node.spec.kind == "badge" for node in owner.mounted_nodes)
 
 
 def test_reconcile_owner_removes_missing_nodes_and_disposes_them() -> None:
