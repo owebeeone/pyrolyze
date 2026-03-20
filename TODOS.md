@@ -76,6 +76,11 @@ grouped by milestone priority.
   - `_TkBackend.assert_ui_thread(...)` is currently a no-op.
   - Add an explicit thread-identity guard so off-thread UI reconciliation fails fast.
 
+- Harden Tkinter availability probing and test gating for transient Tcl init failures.
+  - Tk tests currently use `@pytest.mark.skipif(not tkinter_available(), ...)`, which is evaluated at collection time.
+  - `tkinter_available()` can report available, but later `tk.Tk()` calls may still fail with `_tkinter.TclError` (for example intermittent `init.tcl` lookup/read failures), producing flaky test outcomes.
+  - Make availability checks and test skipping resilient at runtime (fixture/helper around actual root creation), and avoid stale availability cache decisions.
+
 - Replace or harden persistent cache `pickle` deserialization.
   - `PersistentArtifactCache` currently uses `pickle.load(...)` on files from a configurable cache directory.
   - This creates a code-execution risk if cache files are tampered with.
