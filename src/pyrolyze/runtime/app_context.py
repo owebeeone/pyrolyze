@@ -7,6 +7,7 @@ from typing import Any, Callable, Generic, TypeVar, cast
 
 
 T = TypeVar("T")
+_APP_CONTEXT_MISSING = object()
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -26,8 +27,8 @@ class AppContextStore:
     def get(self, key: AppContextKey[T]) -> T:
         if self._closed:
             raise RuntimeError("app context store is closed")
-        existing = self._values.get(key)
-        if existing is not None:
+        existing = self._values.get(key, _APP_CONTEXT_MISSING)
+        if existing is not _APP_CONTEXT_MISSING:
             return cast(T, existing)
         created = key.factory(self.host_app)
         self._values[key] = created

@@ -12,10 +12,10 @@ grouped by milestone priority.
   - Added signature-introspection fallback for `inspect.signature(...)` `TypeError`/`ValueError` paths.
   - Covered by regression tests for `call_plain(...)`, `leaf_call(...)`, and `container_call(...)`.
 
-- Fix `AppContextStore` cache miss detection for `None` values.
-  - `AppContextStore.get(...)` currently uses `dict.get(...)` and treats `None` as missing.
-  - Factories returning `None` are re-run on every access and can duplicate close-callback execution order entries.
-  - Use an explicit sentinel for cache misses so `None` can be a valid cached value.
+- ~~Fix `AppContextStore` cache miss detection for `None` values.~~ Resolved on 2026-03-20.
+  - `AppContextStore.get(...)` now uses an explicit sentinel for cache misses, so `None` is a valid cached value.
+  - Factories returning `None` are no longer re-run on repeated access.
+  - Close-callback order entries no longer duplicate when cached values are `None`.
 
 - Implement compiler-generated `call_site_id` emission for every lexical UI emission site.
   - The authoring guide specifies compiler-generated `call_site_id` identity for reconciliation.

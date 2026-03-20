@@ -117,6 +117,30 @@ def test_app_context_store_closes_in_reverse_creation_order() -> None:
         store.get(first)
 
 
+def test_app_context_store_caches_none_values_and_closes_once() -> None:
+    log: list[tuple[str, object | None]] = []
+
+    key = AppContextKey(
+        "none",
+        factory=lambda host: log.append(("factory", host)) or None,
+        close=lambda value: log.append(("close", value)),
+    )
+    store = AppContextStore(host_app="HOST")
+
+    assert store.has(key) is False
+    assert store.get(key) is None
+    assert store.has(key) is True
+    assert store.get(key) is None
+
+    store.close_all()
+    store.close_all()
+
+    assert log == [
+        ("factory", "HOST"),
+        ("close", None),
+    ]
+
+
 def test_plain_native_and_child_component_contexts_share_app_context() -> None:
     key = AppContextKey("shared.state", factory=lambda host_app: SharedState(values=[f"host:{host_app}"]))
 
