@@ -9,6 +9,7 @@ description = "PyRolyze compiler/runtime reboot"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+  "frozendict>=2,<3",
   "PySide6>=6.7,<7",
 ]
 

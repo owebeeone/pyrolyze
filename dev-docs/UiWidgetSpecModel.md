@@ -478,7 +478,8 @@ class LearnedMapping:
 ```
 
 The learnings overlay should not be embedded in generated `UiLibrary` code. It
-belongs with backend extraction and widget-spec generation.
+belongs with backend extraction and widget-spec generation, ideally as a
+backend-local `learnings.py` module containing typed module-level constants.
 
 
 ## Deferred Reset Semantics

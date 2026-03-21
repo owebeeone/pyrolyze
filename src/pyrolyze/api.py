@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Annotated, Any, Callable, Generic, Iterable, ParamSpec, Protocol, TypeVar, cast
 
+from frozendict import frozendict
+
+from .backends.model import UiInterface
 
 T = TypeVar("T")
 P = ParamSpec("P")
@@ -29,6 +32,18 @@ class UIElement:
     children: tuple["UIElement", ...] = ()
     call_site_id: int | str | None = field(default=None, compare=False)
     slot_id: Any | None = field(default=None, compare=False)
+
+
+class MissingType:
+    """Sentinel type used by generated UI libraries to represent omission."""
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "MISSING"
+
+
+MISSING = MissingType()
 
 
 class CallFromNonPyrolyzeContext(RuntimeError):
@@ -78,6 +93,19 @@ def reactive_component(fn: Callable[..., T]) -> Callable[..., T]:
 
 
 def ui_interface(cls: type[T]) -> type[T]:
+    manifest = getattr(cls, "UI_INTERFACE", None)
+    if isinstance(manifest, UiInterface):
+        setattr(cls, "UI_INTERFACE", manifest.bind_owner(cls))
+    else:
+        setattr(
+            cls,
+            "UI_INTERFACE",
+            UiInterface(
+                name=cls.__name__,
+                owner=cls,
+                entries=frozendict(),
+            ),
+        )
     return cls
 
 
@@ -126,6 +154,8 @@ __all__ = [
     "ComponentRef",
     "KeyedIterable",
     "Label",
+    "MISSING",
+    "MissingType",
     "PyrolyzeHandler",
     "PyrolyzeEventParam",
     "PyrolyzeSlottedParam",

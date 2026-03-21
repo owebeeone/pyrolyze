@@ -51,6 +51,8 @@ The compiler also emits helper-source debug artifacts through
   - `src/pyrolyze/compiler/kernels/v3_14/`
 - debug artifact writing
   - `src/pyrolyze/compiler/debug.py`
+- packed UI-interface kwds lowering
+  - [Packed_Kwds_UI_Interface_Optimization.md](Packed_Kwds_UI_Interface_Optimization.md)
 
 ## Primary tests
 

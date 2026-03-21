@@ -192,7 +192,7 @@ Examples:
 
 - built-in core UI library
 - generated `PySide6UiLibrary`
-- generated `TkUiLibrary`
+- generated `TkinterUiLibrary`
 - app-specific custom UI library
 
 Requirement:
@@ -440,7 +440,7 @@ Toolkit-specific libraries for full power.
 Examples:
 
 - `PySide6UiLibrary`
-- `TkUiLibrary`
+- `TkinterUiLibrary`
 - future packages for Toga, Dear PyGui, Flet, or Textual
 
 This is required because the full toolkit surfaces are too different to force

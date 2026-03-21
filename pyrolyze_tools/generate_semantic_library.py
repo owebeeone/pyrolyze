@@ -40,7 +40,7 @@ class DiscoveredSetterMethod:
 class DiscoveredWidgetClass:
     module_name: str
     class_name: str
-    callable_name: str
+    public_name: str
     parameters: tuple[DiscoveredParameter, ...]
     properties: tuple[DiscoveredProperty, ...] = ()
     omitted_variadic_arguments: bool = False
@@ -64,7 +64,7 @@ def discover_widget_classes(
     widget_base_specs: tuple[str, ...] | None = None,
 ) -> list[DiscoveredWidgetClass]:
     base_classes = _resolve_widget_bases(root_module_name, widget_base_specs)
-    discovered: list[DiscoveredWidgetClass] = []
+    discovered: list[tuple[str, str, tuple[DiscoveredParameter, ...], tuple[DiscoveredProperty, ...], bool]] = []
     seen_classes: set[tuple[str, str]] = set()
     for module_name in discover_modules(root_module_name):
         try:
@@ -83,16 +83,31 @@ def discover_widget_classes(
                 continue
             seen_classes.add(dedupe_key)
             discovered.append(
-                DiscoveredWidgetClass(
-                    module_name=candidate.__module__,
-                    class_name=candidate.__name__,
-                    callable_name=_to_snake_case(candidate.__name__),
-                    parameters=_extract_parameters(root_module_name, candidate),
-                    properties=_extract_properties(root_module_name, candidate),
-                    omitted_variadic_arguments=_has_variadic_parameters(root_module_name, candidate),
+                (
+                    candidate.__module__,
+                    candidate.__name__,
+                    _extract_parameters(root_module_name, candidate),
+                    _extract_properties(root_module_name, candidate),
+                    _has_variadic_parameters(root_module_name, candidate),
                 )
             )
-    return sorted(discovered, key=lambda widget: widget.class_name)
+    ordered = sorted(discovered, key=lambda widget: (widget[1], widget[0]))
+    public_names = _assign_public_names(root_module_name, [(module_name, class_name) for module_name, class_name, *_ in ordered])
+    return [
+        DiscoveredWidgetClass(
+            module_name=module_name,
+            class_name=class_name,
+            public_name=public_name,
+            parameters=parameters,
+            properties=properties,
+            omitted_variadic_arguments=omitted_variadic_arguments,
+        )
+        for (module_name, class_name, parameters, properties, omitted_variadic_arguments), public_name in zip(
+            ordered,
+            public_names,
+            strict=True,
+        )
+    ]
 
 
 def generate_library_source(
@@ -100,39 +115,163 @@ def generate_library_source(
     widgets: Sequence[DiscoveredWidgetClass],
 ) -> str:
     package_name = root_module_name.split(".", 1)[0]
-    class_name = f"{package_name.capitalize()}SemanticLibrary"
+    class_name = _library_class_name(package_name)
     lines = [
-        '"""Generated semantic library stubs for discovered widgets."""',
+        '"""Generated UI interface stubs for discovered widgets."""',
         "",
         "from __future__ import annotations",
         "",
         "from typing import Any, ClassVar",
         "",
-        "from pyrolyze.api import UIElement, call_native, pyrolyse",
+        "from frozendict import frozendict",
+        "",
+        "from pyrolyze.api import MISSING, MissingType, UIElement, call_native, pyrolyse, ui_interface",
+        "from pyrolyze.backends.model import (",
+        "    AccessorKind,",
+        "    ChildPolicy,",
+        "    PropMode,",
+        "    TypeRef,",
+        "    UiInterface,",
+        "    UiInterfaceEntry,",
+        "    UiParamSpec,",
+        "    UiPropSpec,",
+        "    UiWidgetSpec,",
+        ")",
         "",
         "",
-        "def semantic_element(*, kind: str, **props: Any) -> UIElement:",
-        '    """Build a UIElement for a generated semantic widget wrapper."""',
-        "    return UIElement(kind=kind, props=dict(props))",
-        "",
-        "",
+        "@ui_interface",
         f"class {class_name}:",
-        f'    LIBRARY_ID: ClassVar[str] = "generated.{package_name}"',
         f'    ROOT_MODULE: ClassVar[str] = "{root_module_name}"',
+        "",
+        "    UI_INTERFACE: ClassVar[UiInterface] = UiInterface(",
+        f'        name="{class_name}",',
+        "        owner=None,",
+        "        entries=frozendict({",
     ]
+    lines.extend(_render_ui_interface_entries(widgets))
+    lines.extend(
+        [
+            "        }),",
+            "    )",
+            "",
+            "    WIDGET_SPECS: ClassVar[frozendict[str, UiWidgetSpec]] = frozendict({",
+        ]
+    )
+    lines.extend(_render_widget_specs(root_module_name, widgets))
+    lines.extend(
+        [
+            "    })",
+        ]
+    )
     if package_name == "PySide6" and any(widget.properties for widget in widgets):
-        lines.extend(_render_qt_property_metadata(widgets))
+        lines.extend(
+            [
+                "",
+                '    QT_PROPERTY_GETTER: ClassVar[str] = "property"',
+                '    QT_PROPERTY_SETTER: ClassVar[str] = "setProperty"',
+            ]
+        )
     lines.extend(
         [
             "",
             "    @classmethod",
-            "    def element(cls, *, kind: str, **props: Any) -> UIElement:",
-            '        return semantic_element(kind=kind, semantic_library=cls.LIBRARY_ID, **props)',
+            "    # NOTE: a trailing `kwds` parameter enables PyRolyze's tail kwds optimization.",
+            "    # The compiler lowers matching wrappers so only actually passed arguments",
+            "    # are forwarded into `UIElement.props`. See",
+            "    # docs/design/Packed_Kwds_UI_Interface_Optimization.md.",
+            "    def __element(cls, *, kind: str, kwds: dict[str, Any]) -> UIElement:",
+            "        return UIElement(kind=kind, props=dict(kwds))",
         ]
     )
     for widget in widgets:
-        lines.extend(_render_widget_method(widget))
+        lines.extend(_render_widget_method(package_name, widget))
     return "\n".join(lines) + "\n"
+
+
+def _render_ui_interface_entries(widgets: Sequence[DiscoveredWidgetClass]) -> list[str]:
+    return [
+        f'            "{widget.public_name}": UiInterfaceEntry(public_name="{widget.public_name}", kind="{widget.class_name}"),'
+        for widget in widgets
+    ]
+
+
+def _render_widget_specs(
+    root_module_name: str,
+    widgets: Sequence[DiscoveredWidgetClass],
+) -> list[str]:
+    package_name = root_module_name.split(".", 1)[0]
+    lines: list[str] = []
+    for widget in widgets:
+        lines.extend(_render_single_widget_spec(package_name, widget))
+    return lines
+
+
+def _render_single_widget_spec(
+    package_name: str,
+    widget: DiscoveredWidgetClass,
+) -> list[str]:
+    lines = [
+        f'        "{widget.class_name}": UiWidgetSpec(',
+        f'            kind="{widget.class_name}",',
+        f'            mounted_type_name="{widget.module_name}.{widget.class_name}",',
+        "            constructor_params=frozendict({",
+    ]
+    lines.extend(_render_constructor_params(widget.parameters))
+    lines.extend(
+        [
+            "            }),",
+            "            props=frozendict({",
+        ]
+    )
+    lines.extend(_render_widget_props(package_name, widget))
+    lines.extend(
+        [
+            "            }),",
+            "            methods=frozendict(),",
+            "            child_policy=ChildPolicy.NONE,",
+            "        ),",
+        ]
+    )
+    return lines
+
+
+def _render_constructor_params(parameters: Sequence[DiscoveredParameter]) -> list[str]:
+    return [
+        (
+            f'                "{parameter.name}": UiParamSpec('
+            f'name="{parameter.name}", annotation={_render_type_ref(parameter.annotation_source)}, '
+            f"default_repr={parameter.default_source!r}),"
+        )
+        for parameter in parameters
+    ]
+
+
+def _render_widget_props(package_name: str, widget: DiscoveredWidgetClass) -> list[str]:
+    constructor_params = {parameter.name: parameter for parameter in widget.parameters}
+    properties = {prop.name: prop for prop in widget.properties}
+    prop_names = tuple(dict.fromkeys([*constructor_params, *properties]))
+    lines: list[str] = []
+    for prop_name in prop_names:
+        parameter = constructor_params.get(prop_name)
+        discovered_property = properties.get(prop_name)
+        annotation_source = (
+            parameter.annotation_source
+            if parameter is not None
+            else discovered_property.type_name if discovered_property is not None else None
+        )
+        lines.append(
+            f'                "{prop_name}": UiPropSpec('
+            f'name="{prop_name}", '
+            f"annotation={_render_type_ref(annotation_source)}, "
+            f"mode={_render_prop_mode(parameter is not None, discovered_property)}, "
+            f"constructor_name={repr(parameter.name) if parameter is not None else 'None'}, "
+            f"setter_kind={_render_setter_kind(package_name, discovered_property)}, "
+            f"setter_name={_render_setter_name(package_name, discovered_property)}, "
+            f"getter_kind={_render_getter_kind(package_name, discovered_property)}, "
+            f"getter_name={_render_getter_name(package_name, discovered_property)}, "
+            f"affects_identity={_render_affects_identity(parameter is not None, discovered_property)}),"
+        )
+    return lines
 
 
 def write_generated_library(
@@ -140,10 +279,11 @@ def write_generated_library(
     widgets: Sequence[DiscoveredWidgetClass],
     *,
     output_dir: Path,
+    output_name: str | None = None,
 ) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     package_name = root_module_name.split(".", 1)[0]
-    output_file = output_dir / f"{package_name.lower()}.py"
+    output_file = output_dir / (output_name or f"{package_name.lower()}.py")
     output_file.write_text(generate_library_source(root_module_name, widgets))
     return output_file
 
@@ -540,9 +680,13 @@ def _coerce_expression(
     return name
 
 
-def _render_widget_method(widget: DiscoveredWidgetClass) -> list[str]:
-    signature_lines = _render_signature_lines(widget.parameters)
-    prop_lines = _render_prop_lines(widget)
+def _render_widget_method(
+    package_name: str,
+    widget: DiscoveredWidgetClass,
+) -> list[str]:
+    public_parameters = _public_parameters_for_widget(package_name, widget)
+    signature_lines = _render_signature_lines(public_parameters)
+    prop_lines = _render_prop_lines(public_parameters)
     lines = [
         "",
         "    @classmethod",
@@ -552,12 +696,12 @@ def _render_widget_method(widget: DiscoveredWidgetClass) -> list[str]:
         lines.append(
             f"    # NOTE: original signature for {widget.class_name} includes omitted variadic arguments"
         )
-    lines.append(f"    def {widget.callable_name}(")
+    lines.append(f"    def {widget.public_name}(")
     lines.extend(signature_lines)
     lines.extend(
         [
             "    ) -> None:",
-            "        call_native(cls.element)(",
+            "        call_native(cls.__element)(",
             f'            kind="{widget.class_name}",',
         ]
     )
@@ -583,31 +727,134 @@ def _render_signature_lines(parameters: Sequence[DiscoveredParameter]) -> list[s
     return lines
 
 
-def _render_prop_lines(widget: DiscoveredWidgetClass) -> list[str]:
+def _render_prop_lines(parameters: Sequence[DiscoveredParameter]) -> list[str]:
     return [
-        f"            {parameter.name}={parameter.coerced_expression},"
-        for parameter in widget.parameters
+        f"            {parameter.name}={parameter.name},"
+        for parameter in parameters
     ]
 
 
-def _render_qt_property_metadata(widgets: Sequence[DiscoveredWidgetClass]) -> list[str]:
-    lines = [
-        "",
-        '    QT_PROPERTY_GETTER: ClassVar[str] = "property"',
-        '    QT_PROPERTY_SETTER: ClassVar[str] = "setProperty"',
-        "    QT_PROPERTIES: ClassVar[dict[str, dict[str, tuple[str, bool, bool]]]] = {",
-    ]
-    for widget in widgets:
-        if not widget.properties:
+def _public_parameters_for_widget(
+    package_name: str,
+    widget: DiscoveredWidgetClass,
+) -> tuple[DiscoveredParameter, ...]:
+    parameters = list(widget.parameters)
+    known_names = {parameter.name for parameter in parameters}
+    for prop in widget.properties:
+        if not prop.writable or prop.name in known_names:
             continue
-        lines.append(f'        "{widget.class_name}": {{')
-        for prop in widget.properties:
-            lines.append(
-                f'            "{prop.name}": ("{prop.type_name}", {prop.readable}, {prop.writable}),'
+        parameters.append(
+            DiscoveredParameter(
+                name=prop.name,
+                kind=inspect.Parameter.KEYWORD_ONLY,
+                annotation_source=_signature_annotation_for_property(package_name, prop),
+                default_source="MISSING",
+                coerced_expression=prop.name,
             )
-        lines.append("        },")
-    lines.append("    }")
-    return lines
+        )
+        known_names.add(prop.name)
+    return tuple(parameters)
+
+
+def _signature_annotation_for_property(
+    package_name: str,
+    prop: DiscoveredProperty,
+) -> str:
+    if package_name == "PySide6":
+        return f"{_qt_property_python_type(prop.type_name)} | MissingType"
+    return "Any | MissingType"
+
+
+def _qt_property_python_type(type_name: str) -> str:
+    mapping = {
+        "bool": "bool",
+        "int": "int",
+        "double": "float",
+        "QString": "str",
+    }
+    return mapping.get(type_name, "Any")
+
+
+def _render_type_ref(annotation_source: str | None) -> str:
+    if annotation_source is None:
+        return "None"
+    return f'TypeRef(expr={annotation_source!r})'
+
+
+def _render_prop_mode(
+    has_constructor_parameter: bool,
+    discovered_property: DiscoveredProperty | None,
+) -> str:
+    if discovered_property is None:
+        return "PropMode.CREATE_ONLY_REMOUNT"
+    if discovered_property.writable:
+        return "PropMode.CREATE_UPDATE"
+    if has_constructor_parameter:
+        return "PropMode.CREATE_ONLY_REMOUNT"
+    return "PropMode.READONLY"
+
+
+def _render_setter_kind(
+    package_name: str,
+    discovered_property: DiscoveredProperty | None,
+) -> str:
+    if discovered_property is None or not discovered_property.writable:
+        return "None"
+    if package_name == "PySide6":
+        return "AccessorKind.QT_PROPERTY"
+    if package_name == "tkinter":
+        return "AccessorKind.TK_CONFIG"
+    return "AccessorKind.METHOD"
+
+
+def _render_setter_name(
+    package_name: str,
+    discovered_property: DiscoveredProperty | None,
+) -> str:
+    if discovered_property is None or not discovered_property.writable:
+        return "None"
+    if package_name == "PySide6":
+        return '"setProperty"'
+    if package_name == "tkinter":
+        return '"configure"'
+    return "None"
+
+
+def _render_getter_kind(
+    package_name: str,
+    discovered_property: DiscoveredProperty | None,
+) -> str:
+    if discovered_property is None or not discovered_property.readable:
+        return "None"
+    if package_name == "PySide6":
+        return "AccessorKind.QT_PROPERTY"
+    if package_name == "tkinter":
+        return "AccessorKind.TK_CONFIG"
+    return "AccessorKind.METHOD"
+
+
+def _render_getter_name(
+    package_name: str,
+    discovered_property: DiscoveredProperty | None,
+) -> str:
+    if discovered_property is None or not discovered_property.readable:
+        return "None"
+    if package_name == "PySide6":
+        return '"property"'
+    if package_name == "tkinter":
+        return '"cget"'
+    return "None"
+
+
+def _render_affects_identity(
+    has_constructor_parameter: bool,
+    discovered_property: DiscoveredProperty | None,
+) -> str:
+    if discovered_property is None:
+        return "True" if has_constructor_parameter else "False"
+    if discovered_property.writable:
+        return "False"
+    return "True" if has_constructor_parameter else "False"
 
 
 def _to_snake_case(name: str) -> str:
@@ -617,6 +864,54 @@ def _to_snake_case(name: str) -> str:
 
 def _should_skip_module(module_name: str) -> bool:
     return module_name.endswith(".__main__")
+
+
+def _library_class_name(package_name: str) -> str:
+    if package_name == "PySide6":
+        return "PySide6UiLibrary"
+    if package_name == "tkinter":
+        return "TkinterUiLibrary"
+    return f"{package_name.capitalize()}UiLibrary"
+
+
+def _assign_public_names(
+    root_module_name: str,
+    widgets: Sequence[tuple[str, str]],
+) -> tuple[str, ...]:
+    package_name = root_module_name.split(".", 1)[0]
+    base_names = [f"C{class_name}" for _, class_name in widgets]
+    counts: dict[str, int] = {}
+    for base_name in base_names:
+        counts[base_name] = counts.get(base_name, 0) + 1
+    resolved: list[str] = []
+    used: set[str] = set()
+    for (module_name, class_name), base_name in zip(widgets, base_names, strict=True):
+        if counts[base_name] == 1 and base_name not in used:
+            resolved_name = base_name
+        else:
+            module_suffix = _module_suffix_name(package_name, module_name)
+            resolved_name = f"C{module_suffix}{class_name}" if module_suffix else base_name
+            collision_index = 2
+            while resolved_name in used:
+                resolved_name = f"C{module_suffix}{class_name}{collision_index}"
+                collision_index += 1
+        used.add(resolved_name)
+        resolved.append(resolved_name)
+    return tuple(resolved)
+
+
+def _module_suffix_name(package_name: str, module_name: str) -> str:
+    segments = module_name.split(".")
+    if segments and segments[0] == package_name:
+        segments = segments[1:]
+    if not segments:
+        return ""
+    return "".join(_capitalize_segment(segment) for segment in segments)
+
+
+def _capitalize_segment(segment: str) -> str:
+    parts = [part for part in re.split(r"[^a-zA-Z0-9]+", segment) if part]
+    return "".join(part[:1].upper() + part[1:] for part in parts)
 
 
 if __name__ == "__main__":

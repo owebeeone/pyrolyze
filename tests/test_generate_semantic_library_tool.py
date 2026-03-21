@@ -76,8 +76,8 @@ def test_discover_widget_classes_filters_by_base_class(
     )
 
     assert [widget.class_name for widget in widgets] == ["AlphaWidget", "VariadicWidget"]
-    assert widgets[0].callable_name == "alpha_widget"
-    assert widgets[1].callable_name == "variadic_widget"
+    assert widgets[0].public_name == "CAlphaWidget"
+    assert widgets[1].public_name == "CVariadicWidget"
 
 
 def test_generate_library_source_renders_explicit_parameters_and_coercions(
@@ -93,14 +93,20 @@ def test_generate_library_source_renders_explicit_parameters_and_coercions(
     )
     source = generate_library_source("fakewidgets", widgets)
 
-    assert "class FakewidgetsSemanticLibrary:" in source
-    assert 'LIBRARY_ID: ClassVar[str] = "generated.fakewidgets"' in source
-    assert "def alpha_widget(" in source
+    assert "@ui_interface" in source
+    assert "class FakewidgetsUiLibrary:" in source
+    assert "def __element(cls, *, kind: str, kwds: dict[str, Any]) -> UIElement:" in source
+    assert "from frozendict import frozendict" in source
+    assert "from pyrolyze.backends.model import" in source
+    assert "UI_INTERFACE: ClassVar[UiInterface]" in source
+    assert "WIDGET_SPECS: ClassVar[frozendict[str, UiWidgetSpec]]" in source
+    assert "def CAlphaWidget(" in source
     assert "title: str" in source
     assert "visible: bool = True" in source
     assert "count: int = 0" in source
-    assert "visible=bool(visible)" in source
-    assert "count=int(count)" in source
+    assert "visible=visible" in source
+    assert "count=count" in source
+    assert "call_native(cls.__element)(" in source
     assert "# NOTE: original signature for VariadicWidget includes omitted variadic arguments" in source
 
 
@@ -111,9 +117,15 @@ def test_generate_library_source_renders_qt_property_metadata() -> None:
             DiscoveredWidgetClass(
                 module_name="PySide6.QtWidgets",
                 class_name="QPushButton",
-                callable_name="q_push_button",
+                public_name="CQPushButton",
                 parameters=(),
                 properties=(
+                    DiscoveredProperty(
+                        name="enabled",
+                        type_name="bool",
+                        readable=True,
+                        writable=True,
+                    ),
                     DiscoveredProperty(
                         name="text",
                         type_name="QString",
@@ -125,10 +137,19 @@ def test_generate_library_source_renders_qt_property_metadata() -> None:
         ],
     )
 
+    assert "class PySide6UiLibrary:" in source
+    assert "from pyrolyze.api import MISSING, MissingType, UIElement, call_native, pyrolyse, ui_interface" in source
     assert 'QT_PROPERTY_GETTER: ClassVar[str] = "property"' in source
     assert 'QT_PROPERTY_SETTER: ClassVar[str] = "setProperty"' in source
-    assert '"QPushButton": {' in source
-    assert '"text": ("QString", True, True),' in source
+    assert 'WIDGET_SPECS: ClassVar[frozendict[str, UiWidgetSpec]]' in source
+    assert 'UiWidgetSpec(' in source
+    assert 'UiPropSpec(' in source
+    assert 'name="text"' in source
+    assert 'mode=PropMode.CREATE_UPDATE' in source
+    assert 'setter_kind=AccessorKind.QT_PROPERTY' in source
+    assert "def CQPushButton(" in source
+    assert "enabled: bool | MissingType = MISSING" in source
+    assert "text: str | MissingType = MISSING" in source
 
 
 def test_write_generated_library_uses_package_name_for_output(
@@ -151,7 +172,7 @@ def test_write_generated_library_uses_package_name_for_output(
 
     assert out_file.name == "fakewidgets.py"
     assert out_file.exists()
-    assert "class FakewidgetsSemanticLibrary:" in out_file.read_text()
+    assert "class FakewidgetsUiLibrary:" in out_file.read_text()
 
 
 def test_main_generates_file_from_module_name(tmp_path: Path, monkeypatch) -> None:

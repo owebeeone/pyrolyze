@@ -67,7 +67,7 @@ Examples:
 
 - `CoreUiLibrary`
 - `PySide6UiLibrary`
-- `TkUiLibrary`
+- `TkinterUiLibrary`
 
 ### `UiBackend`
 
@@ -709,7 +709,7 @@ src/pyrolyze/backends/
         bindings.py
         widget_specs.py
         generated_library.py
-        learnings.toml
+        learnings.py
     tkinter/
         __init__.py
         backend.py
@@ -718,7 +718,7 @@ src/pyrolyze/backends/
         bindings.py
         widget_specs.py
         generated_library.py
-        learnings.toml
+        learnings.py
 ```
 
 Recommended responsibilities:
@@ -744,7 +744,7 @@ Recommended responsibilities:
   - backend-owned `UiWidgetSpec` / `UiPropSpec` / `UiMethodSpec` data
 - `generated_library.py`
   - generated `PySide6UiLibrary` / `TkinterUiLibrary`
-- `learnings.toml`
+- `learnings.py`
   - persistent constructor-to-setter and grouping corrections
 
 The existing files:
@@ -767,7 +767,7 @@ pyrolyze_tools/
 Recommended rebuild flow:
 
 1. dump raw toolkit constructor/property/method surfaces
-2. apply `learnings.toml`
+2. apply `learnings.py`
 3. generate `generated_library.py`
 4. regenerate or verify `widget_specs.py`
 
@@ -814,7 +814,7 @@ Recommended layers:
 2. Spec extraction tests
    - verify `.pyi` / property / setter discovery
    - verify generated callable signatures
-   - verify `learnings.toml` overlay application
+   - verify `learnings.py` overlay application
 
 3. Adapter tests
    - verify `CoreQtAdapter` and `CoreTkAdapter` map source props correctly
