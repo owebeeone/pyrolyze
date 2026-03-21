@@ -6,6 +6,15 @@ This document defines the plan for turning the current shipped reconciler into a
 generic library-facing reconciler that can support multiple UI libraries
 without hard-coding the semantic node set in backend adapters.
 
+The detailed terminology and API direction in this plan have been partially
+superseded by:
+
+- [GenericReconcilerRequirements.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/GenericReconcilerRequirements.md)
+- [GenericReconcilerApiProposal.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/GenericReconcilerApiProposal.md)
+
+Those two documents should be treated as the authoritative current direction
+for naming and public API shape.
+
 The intent is not to replace the current reconciler model. The intent is to
 finish the abstraction boundary that the current code already suggests.
 
