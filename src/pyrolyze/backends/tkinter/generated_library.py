@@ -10,10 +10,13 @@ from pyrolyze.api import MISSING, MissingType, UIElement, call_native, pyrolyse,
 from pyrolyze.backends.model import (
     AccessorKind,
     ChildPolicy,
+    FillPolicy,
+    MethodMode,
     PropMode,
     TypeRef,
     UiInterface,
     UiInterfaceEntry,
+    UiMethodSpec,
     UiParamSpec,
     UiPropSpec,
     UiWidgetSpec,
@@ -148,7 +151,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Button": UiWidgetSpec(
@@ -162,7 +166,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Button": UiWidgetSpec(
@@ -174,7 +179,8 @@ class TkinterUiLibrary:
             props=frozendict({
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "ButtonBox": UiWidgetSpec(
@@ -188,7 +194,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "CObjView": UiWidgetSpec(
@@ -208,7 +215,8 @@ class TkinterUiLibrary:
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "kw": UiPropSpec(name="kw", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='kw', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Canvas": UiWidgetSpec(
@@ -222,7 +230,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "CheckList": UiWidgetSpec(
@@ -236,7 +245,19 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+                "setstatus": UiMethodSpec(
+                    name="setstatus",
+                    mode=MethodMode.CREATE_UPDATE,
+                    params=(
+                        UiParamSpec(name="entrypath", annotation=None, default_repr=None),
+                        UiParamSpec(name="mode", annotation=None, default_repr="'on'"),
+                    ),
+                    source_props=("entrypath", "mode"),
+                    fill_policy=FillPolicy.RETAIN_EFFECTIVE,
+                    constructor_equivalent=False,
+                ),
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Checkbutton": UiWidgetSpec(
@@ -250,7 +271,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Checkbutton": UiWidgetSpec(
@@ -262,7 +284,8 @@ class TkinterUiLibrary:
             props=frozendict({
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "ComboBox": UiWidgetSpec(
@@ -276,7 +299,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Combobox": UiWidgetSpec(
@@ -288,7 +312,8 @@ class TkinterUiLibrary:
             props=frozendict({
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Control": UiWidgetSpec(
@@ -302,7 +327,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Dialog": UiWidgetSpec(
@@ -316,7 +342,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "DialogShell": UiWidgetSpec(
@@ -330,7 +357,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "DirList": UiWidgetSpec(
@@ -344,7 +372,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "DirSelectBox": UiWidgetSpec(
@@ -358,7 +387,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "DirSelectDialog": UiWidgetSpec(
@@ -372,7 +402,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "DirTree": UiWidgetSpec(
@@ -386,7 +417,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Entry": UiWidgetSpec(
@@ -400,7 +432,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Entry": UiWidgetSpec(
@@ -414,7 +447,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "widget": UiPropSpec(name="widget", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='widget', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "ExFileSelectBox": UiWidgetSpec(
@@ -428,7 +462,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "ExFileSelectDialog": UiWidgetSpec(
@@ -442,7 +477,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "FileEntry": UiWidgetSpec(
@@ -456,7 +492,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "FileSelectBox": UiWidgetSpec(
@@ -470,7 +507,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "FileSelectDialog": UiWidgetSpec(
@@ -484,7 +522,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Frame": UiWidgetSpec(
@@ -498,7 +537,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Frame": UiWidgetSpec(
@@ -510,7 +550,8 @@ class TkinterUiLibrary:
             props=frozendict({
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Grid": UiWidgetSpec(
@@ -524,7 +565,20 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+                "set": UiMethodSpec(
+                    name="set",
+                    mode=MethodMode.CREATE_UPDATE,
+                    params=(
+                        UiParamSpec(name="x", annotation=None, default_repr=None),
+                        UiParamSpec(name="y", annotation=None, default_repr=None),
+                        UiParamSpec(name="itemtype", annotation=None, default_repr='None'),
+                    ),
+                    source_props=("x", "y", "itemtype"),
+                    fill_policy=FillPolicy.RETAIN_EFFECTIVE,
+                    constructor_equivalent=False,
+                ),
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "HList": UiWidgetSpec(
@@ -538,7 +592,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "InputOnly": UiWidgetSpec(
@@ -552,7 +607,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Label": UiWidgetSpec(
@@ -566,7 +622,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Label": UiWidgetSpec(
@@ -578,7 +635,8 @@ class TkinterUiLibrary:
             props=frozendict({
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "LabelEntry": UiWidgetSpec(
@@ -592,7 +650,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "LabelFrame": UiWidgetSpec(
@@ -606,7 +665,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "LabelFrame": UiWidgetSpec(
@@ -620,7 +680,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "LabeledScale": UiWidgetSpec(
@@ -638,7 +699,8 @@ class TkinterUiLibrary:
                 "from_": UiPropSpec(name="from_", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='from_', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "to": UiPropSpec(name="to", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='to', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Labelframe": UiWidgetSpec(
@@ -650,7 +712,8 @@ class TkinterUiLibrary:
             props=frozendict({
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "ListNoteBook": UiWidgetSpec(
@@ -664,7 +727,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Listbox": UiWidgetSpec(
@@ -678,7 +742,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Menu": UiWidgetSpec(
@@ -692,7 +757,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Menubutton": UiWidgetSpec(
@@ -706,7 +772,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Menubutton": UiWidgetSpec(
@@ -718,7 +785,8 @@ class TkinterUiLibrary:
             props=frozendict({
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Message": UiWidgetSpec(
@@ -732,7 +800,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Meter": UiWidgetSpec(
@@ -746,7 +815,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "NoteBook": UiWidgetSpec(
@@ -760,7 +830,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "NoteBookFrame": UiWidgetSpec(
@@ -780,7 +851,8 @@ class TkinterUiLibrary:
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "kw": UiPropSpec(name="kw", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='kw', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Notebook": UiWidgetSpec(
@@ -792,7 +864,8 @@ class TkinterUiLibrary:
             props=frozendict({
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "OptionMenu": UiWidgetSpec(
@@ -808,7 +881,8 @@ class TkinterUiLibrary:
                 "variable": UiPropSpec(name="variable", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='variable', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "value": UiPropSpec(name="value", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='value', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "OptionMenu": UiWidgetSpec(
@@ -822,7 +896,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "OptionMenu": UiWidgetSpec(
@@ -838,7 +913,8 @@ class TkinterUiLibrary:
                 "variable": UiPropSpec(name="variable", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='variable', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "default": UiPropSpec(name="default", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='default', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "PanedWindow": UiWidgetSpec(
@@ -852,7 +928,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "PanedWindow": UiWidgetSpec(
@@ -866,7 +943,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Panedwindow": UiWidgetSpec(
@@ -878,7 +956,8 @@ class TkinterUiLibrary:
             props=frozendict({
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "PopupMenu": UiWidgetSpec(
@@ -892,7 +971,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Progressbar": UiWidgetSpec(
@@ -904,7 +984,8 @@ class TkinterUiLibrary:
             props=frozendict({
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Radiobutton": UiWidgetSpec(
@@ -918,7 +999,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Radiobutton": UiWidgetSpec(
@@ -930,7 +1012,8 @@ class TkinterUiLibrary:
             props=frozendict({
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "ResizeHandle": UiWidgetSpec(
@@ -944,7 +1027,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Scale": UiWidgetSpec(
@@ -958,7 +1042,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Scale": UiWidgetSpec(
@@ -970,7 +1055,8 @@ class TkinterUiLibrary:
             props=frozendict({
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Scrollbar": UiWidgetSpec(
@@ -984,7 +1070,19 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+                "set": UiMethodSpec(
+                    name="set",
+                    mode=MethodMode.CREATE_UPDATE,
+                    params=(
+                        UiParamSpec(name="first", annotation=None, default_repr=None),
+                        UiParamSpec(name="last", annotation=None, default_repr=None),
+                    ),
+                    source_props=("first", "last"),
+                    fill_policy=FillPolicy.RETAIN_EFFECTIVE,
+                    constructor_equivalent=False,
+                ),
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Scrollbar": UiWidgetSpec(
@@ -996,7 +1094,19 @@ class TkinterUiLibrary:
             props=frozendict({
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+                "set": UiMethodSpec(
+                    name="set",
+                    mode=MethodMode.CREATE_UPDATE,
+                    params=(
+                        UiParamSpec(name="first", annotation=None, default_repr=None),
+                        UiParamSpec(name="last", annotation=None, default_repr=None),
+                    ),
+                    source_props=("first", "last"),
+                    fill_policy=FillPolicy.RETAIN_EFFECTIVE,
+                    constructor_equivalent=False,
+                ),
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "ScrolledGrid": UiWidgetSpec(
@@ -1010,7 +1120,20 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+                "set": UiMethodSpec(
+                    name="set",
+                    mode=MethodMode.CREATE_UPDATE,
+                    params=(
+                        UiParamSpec(name="x", annotation=None, default_repr=None),
+                        UiParamSpec(name="y", annotation=None, default_repr=None),
+                        UiParamSpec(name="itemtype", annotation=None, default_repr='None'),
+                    ),
+                    source_props=("x", "y", "itemtype"),
+                    fill_policy=FillPolicy.RETAIN_EFFECTIVE,
+                    constructor_equivalent=False,
+                ),
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "ScrolledHList": UiWidgetSpec(
@@ -1024,7 +1147,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "ScrolledListBox": UiWidgetSpec(
@@ -1038,7 +1162,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "ScrolledTList": UiWidgetSpec(
@@ -1052,7 +1177,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "ScrolledText": UiWidgetSpec(
@@ -1064,7 +1190,8 @@ class TkinterUiLibrary:
             props=frozendict({
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "ScrolledText": UiWidgetSpec(
@@ -1078,7 +1205,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "ScrolledWindow": UiWidgetSpec(
@@ -1092,7 +1220,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Select": UiWidgetSpec(
@@ -1106,7 +1235,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Separator": UiWidgetSpec(
@@ -1118,7 +1248,8 @@ class TkinterUiLibrary:
             props=frozendict({
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Shell": UiWidgetSpec(
@@ -1132,7 +1263,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Sizegrip": UiWidgetSpec(
@@ -1144,7 +1276,8 @@ class TkinterUiLibrary:
             props=frozendict({
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Spinbox": UiWidgetSpec(
@@ -1158,7 +1291,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Spinbox": UiWidgetSpec(
@@ -1170,7 +1304,8 @@ class TkinterUiLibrary:
             props=frozendict({
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "StdButtonBox": UiWidgetSpec(
@@ -1184,7 +1319,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "TList": UiWidgetSpec(
@@ -1198,7 +1334,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Text": UiWidgetSpec(
@@ -1212,7 +1349,8 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "TixSubWidget": UiWidgetSpec(
@@ -1230,7 +1368,8 @@ class TkinterUiLibrary:
                 "destroy_physically": UiPropSpec(name="destroy_physically", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='destroy_physically', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "check_intermediate": UiPropSpec(name="check_intermediate", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='check_intermediate', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "TixWidget": UiWidgetSpec(
@@ -1250,7 +1389,8 @@ class TkinterUiLibrary:
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "kw": UiPropSpec(name="kw", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='kw', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Tree": UiWidgetSpec(
@@ -1264,7 +1404,19 @@ class TkinterUiLibrary:
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+                "setmode": UiMethodSpec(
+                    name="setmode",
+                    mode=MethodMode.CREATE_UPDATE,
+                    params=(
+                        UiParamSpec(name="entrypath", annotation=None, default_repr=None),
+                        UiParamSpec(name="mode", annotation=None, default_repr="'none'"),
+                    ),
+                    source_props=("entrypath", "mode"),
+                    fill_policy=FillPolicy.RETAIN_EFFECTIVE,
+                    constructor_equivalent=False,
+                ),
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "Treeview": UiWidgetSpec(
@@ -1276,7 +1428,20 @@ class TkinterUiLibrary:
             props=frozendict({
                 "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+                "set": UiMethodSpec(
+                    name="set",
+                    mode=MethodMode.CREATE_UPDATE,
+                    params=(
+                        UiParamSpec(name="item", annotation=None, default_repr=None),
+                        UiParamSpec(name="column", annotation=None, default_repr='None'),
+                        UiParamSpec(name="value", annotation=None, default_repr='None'),
+                    ),
+                    source_props=("item", "column", "value"),
+                    fill_policy=FillPolicy.RETAIN_EFFECTIVE,
+                    constructor_equivalent=False,
+                ),
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "_dummyButton": UiWidgetSpec(
@@ -1292,7 +1457,8 @@ class TkinterUiLibrary:
                 "name": UiPropSpec(name="name", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='name', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "destroy_physically": UiPropSpec(name="destroy_physically", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='destroy_physically', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "_dummyCheckbutton": UiWidgetSpec(
@@ -1308,7 +1474,8 @@ class TkinterUiLibrary:
                 "name": UiPropSpec(name="name", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='name', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "destroy_physically": UiPropSpec(name="destroy_physically", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='destroy_physically', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "_dummyComboBox": UiWidgetSpec(
@@ -1324,7 +1491,8 @@ class TkinterUiLibrary:
                 "name": UiPropSpec(name="name", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='name', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "destroy_physically": UiPropSpec(name="destroy_physically", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='destroy_physically', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "_dummyDirList": UiWidgetSpec(
@@ -1340,7 +1508,8 @@ class TkinterUiLibrary:
                 "name": UiPropSpec(name="name", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='name', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "destroy_physically": UiPropSpec(name="destroy_physically", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='destroy_physically', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "_dummyDirSelectBox": UiWidgetSpec(
@@ -1356,7 +1525,8 @@ class TkinterUiLibrary:
                 "name": UiPropSpec(name="name", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='name', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "destroy_physically": UiPropSpec(name="destroy_physically", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='destroy_physically', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "_dummyEntry": UiWidgetSpec(
@@ -1372,7 +1542,8 @@ class TkinterUiLibrary:
                 "name": UiPropSpec(name="name", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='name', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "destroy_physically": UiPropSpec(name="destroy_physically", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='destroy_physically', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "_dummyExFileSelectBox": UiWidgetSpec(
@@ -1388,7 +1559,8 @@ class TkinterUiLibrary:
                 "name": UiPropSpec(name="name", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='name', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "destroy_physically": UiPropSpec(name="destroy_physically", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='destroy_physically', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "_dummyFileComboBox": UiWidgetSpec(
@@ -1404,7 +1576,8 @@ class TkinterUiLibrary:
                 "name": UiPropSpec(name="name", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='name', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "destroy_physically": UiPropSpec(name="destroy_physically", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='destroy_physically', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "_dummyFileSelectBox": UiWidgetSpec(
@@ -1420,7 +1593,8 @@ class TkinterUiLibrary:
                 "name": UiPropSpec(name="name", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='name', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "destroy_physically": UiPropSpec(name="destroy_physically", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='destroy_physically', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "_dummyFrame": UiWidgetSpec(
@@ -1436,7 +1610,8 @@ class TkinterUiLibrary:
                 "name": UiPropSpec(name="name", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='name', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "destroy_physically": UiPropSpec(name="destroy_physically", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='destroy_physically', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "_dummyHList": UiWidgetSpec(
@@ -1452,7 +1627,8 @@ class TkinterUiLibrary:
                 "name": UiPropSpec(name="name", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='name', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "destroy_physically": UiPropSpec(name="destroy_physically", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='destroy_physically', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "_dummyLabel": UiWidgetSpec(
@@ -1468,7 +1644,8 @@ class TkinterUiLibrary:
                 "name": UiPropSpec(name="name", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='name', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "destroy_physically": UiPropSpec(name="destroy_physically", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='destroy_physically', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "_dummyListbox": UiWidgetSpec(
@@ -1484,7 +1661,8 @@ class TkinterUiLibrary:
                 "name": UiPropSpec(name="name", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='name', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "destroy_physically": UiPropSpec(name="destroy_physically", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='destroy_physically', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "_dummyMenu": UiWidgetSpec(
@@ -1500,7 +1678,8 @@ class TkinterUiLibrary:
                 "name": UiPropSpec(name="name", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='name', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "destroy_physically": UiPropSpec(name="destroy_physically", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='destroy_physically', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "_dummyMenubutton": UiWidgetSpec(
@@ -1516,7 +1695,8 @@ class TkinterUiLibrary:
                 "name": UiPropSpec(name="name", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='name', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "destroy_physically": UiPropSpec(name="destroy_physically", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='destroy_physically', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "_dummyNoteBookFrame": UiWidgetSpec(
@@ -1532,7 +1712,8 @@ class TkinterUiLibrary:
                 "name": UiPropSpec(name="name", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='name', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "destroy_physically": UiPropSpec(name="destroy_physically", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='destroy_physically', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "_dummyPanedWindow": UiWidgetSpec(
@@ -1548,7 +1729,8 @@ class TkinterUiLibrary:
                 "name": UiPropSpec(name="name", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='name', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "destroy_physically": UiPropSpec(name="destroy_physically", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='destroy_physically', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "_dummyScrollbar": UiWidgetSpec(
@@ -1564,7 +1746,19 @@ class TkinterUiLibrary:
                 "name": UiPropSpec(name="name", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='name', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "destroy_physically": UiPropSpec(name="destroy_physically", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='destroy_physically', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+                "set": UiMethodSpec(
+                    name="set",
+                    mode=MethodMode.CREATE_UPDATE,
+                    params=(
+                        UiParamSpec(name="first", annotation=None, default_repr=None),
+                        UiParamSpec(name="last", annotation=None, default_repr=None),
+                    ),
+                    source_props=("first", "last"),
+                    fill_policy=FillPolicy.RETAIN_EFFECTIVE,
+                    constructor_equivalent=False,
+                ),
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "_dummyScrolledHList": UiWidgetSpec(
@@ -1580,7 +1774,8 @@ class TkinterUiLibrary:
                 "name": UiPropSpec(name="name", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='name', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "destroy_physically": UiPropSpec(name="destroy_physically", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='destroy_physically', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "_dummyScrolledListBox": UiWidgetSpec(
@@ -1596,7 +1791,8 @@ class TkinterUiLibrary:
                 "name": UiPropSpec(name="name", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='name', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "destroy_physically": UiPropSpec(name="destroy_physically", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='destroy_physically', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "_dummyStdButtonBox": UiWidgetSpec(
@@ -1612,7 +1808,8 @@ class TkinterUiLibrary:
                 "name": UiPropSpec(name="name", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='name', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "destroy_physically": UiPropSpec(name="destroy_physically", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='destroy_physically', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "_dummyTList": UiWidgetSpec(
@@ -1628,7 +1825,8 @@ class TkinterUiLibrary:
                 "name": UiPropSpec(name="name", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='name', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "destroy_physically": UiPropSpec(name="destroy_physically", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='destroy_physically', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
         "_dummyText": UiWidgetSpec(
@@ -1644,7 +1842,8 @@ class TkinterUiLibrary:
                 "name": UiPropSpec(name="name", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='name', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
                 "destroy_physically": UiPropSpec(name="destroy_physically", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='destroy_physically', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
             }),
-            methods=frozendict(),
+            methods=frozendict({
+            }),
             child_policy=ChildPolicy.NONE,
         ),
     })

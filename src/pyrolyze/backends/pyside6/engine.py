@@ -9,7 +9,15 @@ from typing import Any, Mapping
 from PySide6.QtWidgets import QApplication, QLayout, QWidget
 
 from pyrolyze.api import MISSING, UIElement
-from pyrolyze.backends.model import AccessorKind, PropMode, UiPropSpec, UiWidgetSpec
+from pyrolyze.backends.model import (
+    AccessorKind,
+    FillPolicy,
+    MethodMode,
+    PropMode,
+    UiMethodSpec,
+    UiPropSpec,
+    UiWidgetSpec,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,6 +121,7 @@ class PySide6WidgetEngine:
             return node
 
         self._apply_changed_props(node.widget, spec, changed_props)
+        self._apply_changed_methods(node.widget, spec, next_effective, changed_props)
         node.spec = spec
         node.key = next_key
         node.element = element
@@ -148,14 +157,18 @@ class PySide6WidgetEngine:
     def _create_widget(self, spec: UiWidgetSpec, effective_props: Mapping[str, Any]) -> QWidget:
         widget_type = self._widget_type_for(spec)
         constructor_kwargs: dict[str, Any] = {}
+        method_backed_source_props = _method_backed_source_props(spec)
         for name, value in effective_props.items():
             prop = spec.props.get(name)
             if prop is None or prop.constructor_name is None:
+                continue
+            if name in method_backed_source_props:
                 continue
             if prop.mode in {PropMode.CREATE_ONLY, PropMode.CREATE_ONLY_REMOUNT} or prop.setter_kind is None:
                 constructor_kwargs[prop.constructor_name] = value
         widget = widget_type(**constructor_kwargs)
         self._apply_mount_props(widget, spec, effective_props)
+        self._apply_mount_methods(widget, spec, effective_props)
         return widget
 
     def _widget_type_for(self, spec: UiWidgetSpec) -> type[QWidget]:
@@ -176,7 +189,10 @@ class PySide6WidgetEngine:
         spec: UiWidgetSpec,
         effective_props: Mapping[str, Any],
     ) -> None:
+        method_backed_source_props = _method_backed_source_props(spec)
         for name, value in effective_props.items():
+            if name in method_backed_source_props:
+                continue
             prop = spec.props.get(name)
             if prop is None or prop.setter_kind is None:
                 continue
@@ -185,19 +201,60 @@ class PySide6WidgetEngine:
             elif prop.mode in {PropMode.CREATE_ONLY, PropMode.CREATE_ONLY_REMOUNT} and prop.constructor_name is None:
                 self._apply_prop(widget, prop, value)
 
+    def _apply_mount_methods(
+        self,
+        widget: QWidget,
+        spec: UiWidgetSpec,
+        effective_props: Mapping[str, Any],
+    ) -> None:
+        for method in spec.methods.values():
+            if method.mode not in {MethodMode.CREATE_ONLY, MethodMode.CREATE_ONLY_REMOUNT, MethodMode.CREATE_UPDATE}:
+                continue
+            resolved = self._resolve_method_args(widget, spec, effective_props, method)
+            if resolved is None:
+                continue
+            args, _ = resolved
+            self._apply_method(widget, method, args)
+
     def _apply_changed_props(
         self,
         widget: QWidget,
         spec: UiWidgetSpec,
         changed_props: Mapping[str, Any],
     ) -> None:
+        method_backed_source_props = _method_backed_source_props(spec)
         for name, value in changed_props.items():
+            if name in method_backed_source_props:
+                continue
             prop = spec.props.get(name)
             if prop is None or prop.setter_kind is None:
                 continue
             if prop.mode not in {PropMode.CREATE_UPDATE, PropMode.UPDATE_ONLY}:
                 continue
             self._apply_prop(widget, prop, value)
+
+    def _apply_changed_methods(
+        self,
+        widget: QWidget,
+        spec: UiWidgetSpec,
+        effective_props: dict[str, Any],
+        changed_props: Mapping[str, Any],
+    ) -> None:
+        if not changed_props:
+            return
+        changed_names = set(changed_props)
+        for method in spec.methods.values():
+            if method.mode not in {MethodMode.CREATE_UPDATE, MethodMode.UPDATE_ONLY}:
+                continue
+            if not changed_names.intersection(method.source_props):
+                continue
+            resolved = self._resolve_method_args(widget, spec, effective_props, method)
+            if resolved is None:
+                continue
+            args, backfilled = resolved
+            if backfilled:
+                effective_props.update(backfilled)
+            self._apply_method(widget, method, args)
 
     def _apply_prop(self, widget: QWidget, prop: UiPropSpec, value: Any) -> None:
         if prop.setter_kind is AccessorKind.QT_PROPERTY:
@@ -212,6 +269,50 @@ class PySide6WidgetEngine:
             setattr(widget, prop.setter_name or prop.name, value)
             return
         raise NotImplementedError(f"unsupported setter kind {prop.setter_kind!r} for PySide6 backend")
+
+    def _apply_method(self, widget: QWidget, method: UiMethodSpec, args: tuple[Any, ...]) -> None:
+        getattr(widget, method.name)(*args)
+
+    def _resolve_method_args(
+        self,
+        widget: QWidget,
+        spec: UiWidgetSpec,
+        effective_props: Mapping[str, Any],
+        method: UiMethodSpec,
+    ) -> tuple[tuple[Any, ...], dict[str, Any]] | None:
+        args: list[Any] = []
+        backfilled: dict[str, Any] = {}
+        for source_prop in method.source_props:
+            if source_prop in effective_props:
+                args.append(effective_props[source_prop])
+                continue
+            if method.fill_policy is not FillPolicy.RETAIN_EFFECTIVE:
+                return None
+            value = self._read_current_prop_value(widget, spec, source_prop)
+            if value is MISSING:
+                return None
+            backfilled[source_prop] = value
+            args.append(value)
+        return (tuple(args), backfilled)
+
+    def _read_current_prop_value(
+        self,
+        widget: QWidget,
+        spec: UiWidgetSpec,
+        prop_name: str,
+    ) -> Any:
+        prop = spec.props.get(prop_name)
+        if prop is None or prop.getter_kind is None:
+            return MISSING
+        if prop.getter_kind is AccessorKind.QT_PROPERTY:
+            return widget.property(prop.name)
+        if prop.getter_kind is AccessorKind.PYTHON_PROPERTY:
+            return getattr(widget, prop.getter_name or prop.name, MISSING)
+        if prop.getter_kind is AccessorKind.METHOD:
+            if prop.getter_name is None:
+                return MISSING
+            return getattr(widget, prop.getter_name)()
+        return MISSING
 
 
 def _capture_widget_placement(widget: QWidget) -> _WidgetPlacement:
@@ -242,6 +343,15 @@ def _dispose_widget(widget: QWidget) -> None:
     widget.hide()
     widget.setParent(None)
     widget.deleteLater()
+
+
+def _method_backed_source_props(spec: UiWidgetSpec) -> set[str]:
+    names: set[str] = set()
+    for method in spec.methods.values():
+        if not method.constructor_equivalent:
+            continue
+        names.update(method.source_props)
+    return names
 
 
 __all__ = ["MountedWidgetNode", "PySide6WidgetEngine", "WidgetNodeKey"]

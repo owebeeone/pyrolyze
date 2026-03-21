@@ -6,7 +6,7 @@ import inspect
 from frozendict import frozendict
 
 from pyrolyze.api import MISSING
-from pyrolyze.backends.model import UiInterface, UiWidgetSpec
+from pyrolyze.backends.model import UiInterface, UiMethodSpec, UiWidgetSpec
 
 
 def test_generated_backend_libraries_import() -> None:
@@ -26,3 +26,11 @@ def test_generated_backend_libraries_import() -> None:
     qlabel_signature = inspect.signature(pyside6_module.PySide6UiLibrary.CQLabel)
     assert "enabled" in qlabel_signature.parameters
     assert qlabel_signature.parameters["enabled"].default is MISSING
+
+    qpush_button_spec = pyside6_module.PySide6UiLibrary.WIDGET_SPECS["QPushButton"]
+    assert "setGeometry" in qpush_button_spec.methods
+    assert isinstance(qpush_button_spec.methods["setGeometry"], UiMethodSpec)
+
+    qspin_box_spec = pyside6_module.PySide6UiLibrary.WIDGET_SPECS["QSpinBox"]
+    assert qspin_box_spec.methods["setRange"].source_props == ("minimum", "maximum")
+    assert qspin_box_spec.methods["setRange"].constructor_equivalent is True

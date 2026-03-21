@@ -1,14 +1,20 @@
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 import sys
 
 import pytest
+from frozendict import frozendict
 
+from pyrolyze.backends.model import FillPolicy, MethodMode, TypeRef, UiMethodLearning, UiPropLearning, UiWidgetLearning
 
 from pyrolyze_tools.generate_semantic_library import (
+    DiscoveredParameter,
     DiscoveredProperty,
+    DiscoveredSetterMethod,
     DiscoveredWidgetClass,
+    apply_learnings,
     _extract_multiarg_setter_methods,
     _extract_pyside6_parameters,
     _extract_qt_properties,
@@ -152,6 +158,66 @@ def test_generate_library_source_renders_qt_property_metadata() -> None:
     assert "text: str | MissingType = MISSING" in source
 
 
+def test_generate_library_source_renders_discovered_method_specs() -> None:
+    source = generate_library_source(
+        "fakewidgets",
+        [
+            DiscoveredWidgetClass(
+                module_name="fakewidgets.widgets",
+                class_name="GeometryWidget",
+                public_name="CGeometryWidget",
+                parameters=(),
+                setter_methods=(
+                    DiscoveredSetterMethod(
+                        owner_class_name="GeometryWidget",
+                        name="setGeometry",
+                        parameters=(
+                            DiscoveredParameter(
+                                name="x",
+                                kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                                annotation_source="int",
+                                default_source=None,
+                                coerced_expression="int(x)",
+                            ),
+                            DiscoveredParameter(
+                                name="y",
+                                kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                                annotation_source="int",
+                                default_source=None,
+                                coerced_expression="int(y)",
+                            ),
+                            DiscoveredParameter(
+                                name="width",
+                                kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                                annotation_source="int",
+                                default_source=None,
+                                coerced_expression="int(width)",
+                            ),
+                            DiscoveredParameter(
+                                name="height",
+                                kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                                annotation_source="int",
+                                default_source=None,
+                                coerced_expression="int(height)",
+                            ),
+                        ),
+                    ),
+                ),
+            )
+        ],
+    )
+
+    assert "FillPolicy," in source
+    assert "MethodMode," in source
+    assert "UiMethodSpec," in source
+    assert 'methods=frozendict({' in source
+    assert '"setGeometry": UiMethodSpec(' in source
+    assert 'mode=MethodMode.CREATE_UPDATE' in source
+    assert 'source_props=("x", "y", "width", "height")' in source
+    assert 'fill_policy=FillPolicy.RETAIN_EFFECTIVE' in source
+    assert 'constructor_equivalent=False' in source
+
+
 def test_write_generated_library_uses_package_name_for_output(
     tmp_path: Path,
     monkeypatch,
@@ -238,3 +304,125 @@ def test_extract_tkinter_multiarg_setters_filters_generic_setvar() -> None:
 
     assert "set" in methods
     assert "setvar" not in methods
+
+
+def test_discover_widget_classes_captures_multiarg_setters_in_raw_phase() -> None:
+    pytest.importorskip("PySide6.QtWidgets")
+
+    widgets = discover_widget_classes("PySide6")
+    push_button = next(widget for widget in widgets if widget.class_name == "QPushButton")
+
+    assert "setGeometry" in {method.name for method in push_button.setter_methods}
+
+
+def test_apply_learnings_overrides_property_signature_defaults() -> None:
+    widgets = [
+        DiscoveredWidgetClass(
+            module_name="PySide6.QtWidgets",
+            class_name="QPushButton",
+            public_name="CQPushButton",
+            parameters=(),
+            properties=(
+                DiscoveredProperty(
+                    name="enabled",
+                    type_name="bool",
+                    readable=True,
+                    writable=True,
+                ),
+            ),
+        )
+    ]
+
+    resolved = apply_learnings(
+        widgets,
+        frozendict(
+            {
+                "QPushButton": UiWidgetLearning(
+                    prop_learnings=frozendict(
+                        {
+                            "enabled": UiPropLearning(
+                                signature_annotation=TypeRef("bool | None"),
+                                signature_default_repr="None",
+                            ),
+                        }
+                    )
+                )
+            }
+        ),
+    )
+    source = generate_library_source("PySide6", resolved)
+
+    assert "enabled: bool | None = None" in source
+
+
+def test_apply_learnings_overrides_method_source_props_and_constructor_equivalence() -> None:
+    widgets = [
+        DiscoveredWidgetClass(
+            module_name="fakewidgets.widgets",
+            class_name="SpinWidget",
+            public_name="CSpinWidget",
+            parameters=(
+                DiscoveredParameter(
+                    name="minimum",
+                    kind=inspect.Parameter.KEYWORD_ONLY,
+                    annotation_source="int | None",
+                    default_source="...",
+                    coerced_expression="minimum",
+                ),
+                DiscoveredParameter(
+                    name="maximum",
+                    kind=inspect.Parameter.KEYWORD_ONLY,
+                    annotation_source="int | None",
+                    default_source="...",
+                    coerced_expression="maximum",
+                ),
+            ),
+            setter_methods=(
+                DiscoveredSetterMethod(
+                    owner_class_name="SpinWidget",
+                    name="setRange",
+                    parameters=(
+                        DiscoveredParameter(
+                            name="min",
+                            kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                            annotation_source="int",
+                            default_source=None,
+                            coerced_expression="int(min)",
+                        ),
+                        DiscoveredParameter(
+                            name="max",
+                            kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                            annotation_source="int",
+                            default_source=None,
+                            coerced_expression="int(max)",
+                        ),
+                    ),
+                ),
+            ),
+        )
+    ]
+
+    resolved = apply_learnings(
+        widgets,
+        frozendict(
+            {
+                "SpinWidget": UiWidgetLearning(
+                    method_learnings=frozendict(
+                        {
+                            "setRange": UiMethodLearning(
+                                source_props=("minimum", "maximum"),
+                                constructor_equivalent=True,
+                                fill_policy=FillPolicy.RETAIN_EFFECTIVE,
+                                mode=MethodMode.CREATE_UPDATE,
+                            ),
+                        }
+                    )
+                )
+            }
+        ),
+    )
+    source = generate_library_source("fakewidgets", resolved)
+
+    assert '"setRange": UiMethodSpec(' in source
+    assert 'source_props=("minimum", "maximum")' in source
+    assert 'constructor_equivalent=True' in source

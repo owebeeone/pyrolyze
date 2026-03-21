@@ -89,6 +89,28 @@ class UiWidgetSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class UiPropLearning:
+    public: bool | None = None
+    signature_annotation: TypeRef | None = None
+    signature_default_repr: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class UiMethodLearning:
+    source_props: tuple[str, ...] | None = None
+    fill_policy: FillPolicy | None = None
+    mode: MethodMode | None = None
+    constructor_equivalent: bool | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class UiWidgetLearning:
+    public_name: str | None = None
+    prop_learnings: frozendict[str, UiPropLearning] = frozendict()
+    method_learnings: frozendict[str, UiMethodLearning] = frozendict()
+
+
+@dataclass(frozen=True, slots=True)
 class UiInterfaceEntry:
     public_name: str
     kind: str
@@ -119,8 +141,11 @@ __all__ = [
     "TypeRef",
     "UiInterface",
     "UiInterfaceEntry",
+    "UiMethodLearning",
     "UiMethodSpec",
     "UiParamSpec",
+    "UiPropLearning",
     "UiPropSpec",
+    "UiWidgetLearning",
     "UiWidgetSpec",
 ]

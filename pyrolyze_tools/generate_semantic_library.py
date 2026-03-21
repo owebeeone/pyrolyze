@@ -2,14 +2,18 @@ from __future__ import annotations
 
 import argparse
 import ast
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 import importlib
 import inspect
 import pkgutil
 from pathlib import Path
 import re
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
+
+from frozendict import frozendict
+
+from pyrolyze.backends.model import FillPolicy, MethodMode, UiMethodLearning, UiPropLearning, UiWidgetLearning
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,7 +47,10 @@ class DiscoveredWidgetClass:
     public_name: str
     parameters: tuple[DiscoveredParameter, ...]
     properties: tuple[DiscoveredProperty, ...] = ()
+    setter_methods: tuple[DiscoveredSetterMethod, ...] = ()
     omitted_variadic_arguments: bool = False
+    prop_learnings: frozendict[str, UiPropLearning] = frozendict()
+    method_learnings: frozendict[str, UiMethodLearning] = frozendict()
 
 
 def discover_modules(root_module_name: str) -> list[str]:
@@ -64,7 +71,16 @@ def discover_widget_classes(
     widget_base_specs: tuple[str, ...] | None = None,
 ) -> list[DiscoveredWidgetClass]:
     base_classes = _resolve_widget_bases(root_module_name, widget_base_specs)
-    discovered: list[tuple[str, str, tuple[DiscoveredParameter, ...], tuple[DiscoveredProperty, ...], bool]] = []
+    discovered: list[
+        tuple[
+            str,
+            str,
+            tuple[DiscoveredParameter, ...],
+            tuple[DiscoveredProperty, ...],
+            tuple[DiscoveredSetterMethod, ...],
+            bool,
+        ]
+    ] = []
     seen_classes: set[tuple[str, str]] = set()
     for module_name in discover_modules(root_module_name):
         try:
@@ -88,6 +104,7 @@ def discover_widget_classes(
                     candidate.__name__,
                     _extract_parameters(root_module_name, candidate),
                     _extract_properties(root_module_name, candidate),
+                    _extract_multiarg_setter_methods(root_module_name, candidate),
                     _has_variadic_parameters(root_module_name, candidate),
                 )
             )
@@ -100,14 +117,49 @@ def discover_widget_classes(
             public_name=public_name,
             parameters=parameters,
             properties=properties,
+            setter_methods=setter_methods,
             omitted_variadic_arguments=omitted_variadic_arguments,
         )
-        for (module_name, class_name, parameters, properties, omitted_variadic_arguments), public_name in zip(
+        for (module_name, class_name, parameters, properties, setter_methods, omitted_variadic_arguments), public_name in zip(
             ordered,
             public_names,
             strict=True,
         )
     ]
+
+
+def load_learnings(root_module_name: str) -> frozendict[str, UiWidgetLearning]:
+    backend_package = root_module_name.split(".", 1)[0].lower()
+    module_name = f"pyrolyze.backends.{backend_package}.learnings"
+    try:
+        module = importlib.import_module(module_name)
+    except ModuleNotFoundError:
+        return frozendict()
+    learnings = getattr(module, "LEARNINGS", frozendict())
+    if isinstance(learnings, frozendict):
+        return learnings
+    return frozendict(learnings)
+
+
+def apply_learnings(
+    widgets: Sequence[DiscoveredWidgetClass],
+    learnings: Mapping[str, UiWidgetLearning],
+) -> list[DiscoveredWidgetClass]:
+    resolved: list[DiscoveredWidgetClass] = []
+    for widget in widgets:
+        widget_learning = learnings.get(widget.class_name)
+        if widget_learning is None:
+            resolved.append(widget)
+            continue
+        resolved.append(
+            replace(
+                widget,
+                public_name=widget_learning.public_name or widget.public_name,
+                prop_learnings=widget_learning.prop_learnings,
+                method_learnings=widget_learning.method_learnings,
+            )
+        )
+    return resolved
 
 
 def generate_library_source(
@@ -129,10 +181,13 @@ def generate_library_source(
         "from pyrolyze.backends.model import (",
         "    AccessorKind,",
         "    ChildPolicy,",
+        "    FillPolicy,",
+        "    MethodMode,",
         "    PropMode,",
         "    TypeRef,",
         "    UiInterface,",
         "    UiInterfaceEntry,",
+        "    UiMethodSpec,",
         "    UiParamSpec,",
         "    UiPropSpec,",
         "    UiWidgetSpec,",
@@ -227,7 +282,13 @@ def _render_single_widget_spec(
     lines.extend(
         [
             "            }),",
-            "            methods=frozendict(),",
+            "            methods=frozendict({",
+        ]
+    )
+    lines.extend(_render_widget_methods(widget.setter_methods, widget.method_learnings))
+    lines.extend(
+        [
+            "            }),",
             "            child_policy=ChildPolicy.NONE,",
             "        ),",
         ]
@@ -274,17 +335,67 @@ def _render_widget_props(package_name: str, widget: DiscoveredWidgetClass) -> li
     return lines
 
 
+def _render_widget_methods(
+    setter_methods: Sequence[DiscoveredSetterMethod],
+    method_learnings: Mapping[str, UiMethodLearning],
+) -> list[str]:
+    lines: list[str] = []
+    for method in setter_methods:
+        learning = method_learnings.get(method.name)
+        source_props = (
+            learning.source_props
+            if learning is not None and learning.source_props is not None
+            else tuple(parameter.name for parameter in method.parameters)
+        )
+        fill_policy = (
+            learning.fill_policy
+            if learning is not None and learning.fill_policy is not None
+            else FillPolicy.RETAIN_EFFECTIVE
+        )
+        mode = (
+            learning.mode
+            if learning is not None and learning.mode is not None
+            else MethodMode.CREATE_UPDATE
+        )
+        constructor_equivalent = (
+            learning.constructor_equivalent
+            if learning is not None and learning.constructor_equivalent is not None
+            else False
+        )
+        lines.append(f'                "{method.name}": UiMethodSpec(')
+        lines.append(f'                    name="{method.name}",')
+        lines.append(f"                    mode=MethodMode.{mode.name},")
+        lines.append("                    params=(")
+        for parameter in method.parameters:
+            lines.append(
+                "                        "
+                f'UiParamSpec(name="{parameter.name}", annotation={_render_type_ref(parameter.annotation_source)}, '
+                f"default_repr={parameter.default_source!r}),"
+            )
+        lines.append("                    ),")
+        lines.append(
+            "                    "
+            f"source_props={_render_string_tuple(source_props)},"
+        )
+        lines.append(f"                    fill_policy=FillPolicy.{fill_policy.name},")
+        lines.append(f"                    constructor_equivalent={constructor_equivalent!r},")
+        lines.append("                ),")
+    return lines
+
+
 def write_generated_library(
     root_module_name: str,
     widgets: Sequence[DiscoveredWidgetClass],
     *,
     output_dir: Path,
     output_name: str | None = None,
+    learnings: Mapping[str, UiWidgetLearning] | None = None,
 ) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     package_name = root_module_name.split(".", 1)[0]
     output_file = output_dir / (output_name or f"{package_name.lower()}.py")
-    output_file.write_text(generate_library_source(root_module_name, widgets))
+    resolved_widgets = apply_learnings(widgets, learnings or load_learnings(root_module_name))
+    output_file.write_text(generate_library_source(root_module_name, resolved_widgets))
     return output_file
 
 
@@ -738,22 +849,61 @@ def _public_parameters_for_widget(
     package_name: str,
     widget: DiscoveredWidgetClass,
 ) -> tuple[DiscoveredParameter, ...]:
-    parameters = list(widget.parameters)
+    parameters: list[DiscoveredParameter] = []
+    for parameter in widget.parameters:
+        learning = widget.prop_learnings.get(parameter.name)
+        if learning is not None and learning.public is False:
+            continue
+        parameters.append(_apply_parameter_learning(parameter, learning))
     known_names = {parameter.name for parameter in parameters}
     for prop in widget.properties:
+        learning = widget.prop_learnings.get(prop.name)
+        if learning is not None and learning.public is False:
+            continue
         if not prop.writable or prop.name in known_names:
             continue
         parameters.append(
             DiscoveredParameter(
                 name=prop.name,
                 kind=inspect.Parameter.KEYWORD_ONLY,
-                annotation_source=_signature_annotation_for_property(package_name, prop),
-                default_source="MISSING",
+                annotation_source=(
+                    learning.signature_annotation.expr
+                    if learning is not None and learning.signature_annotation is not None
+                    else _signature_annotation_for_property(package_name, prop)
+                ),
+                default_source=(
+                    learning.signature_default_repr
+                    if learning is not None and learning.signature_default_repr is not None
+                    else "MISSING"
+                ),
                 coerced_expression=prop.name,
             )
         )
         known_names.add(prop.name)
     return tuple(parameters)
+
+
+def _apply_parameter_learning(
+    parameter: DiscoveredParameter,
+    learning: UiPropLearning | None,
+) -> DiscoveredParameter:
+    if learning is None:
+        return parameter
+    return DiscoveredParameter(
+        name=parameter.name,
+        kind=parameter.kind,
+        annotation_source=(
+            learning.signature_annotation.expr
+            if learning.signature_annotation is not None
+            else parameter.annotation_source
+        ),
+        default_source=(
+            learning.signature_default_repr
+            if learning.signature_default_repr is not None
+            else parameter.default_source
+        ),
+        coerced_expression=parameter.coerced_expression,
+    )
 
 
 def _signature_annotation_for_property(
@@ -779,6 +929,15 @@ def _render_type_ref(annotation_source: str | None) -> str:
     if annotation_source is None:
         return "None"
     return f'TypeRef(expr={annotation_source!r})'
+
+
+def _render_string_tuple(values: tuple[str, ...]) -> str:
+    if not values:
+        return "()"
+    rendered = ", ".join(f'"{value}"' for value in values)
+    if len(values) == 1:
+        rendered += ","
+    return f"({rendered})"
 
 
 def _render_prop_mode(
