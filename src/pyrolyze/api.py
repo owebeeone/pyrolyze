@@ -41,6 +41,8 @@ class ComponentMetadata(Generic[P]):
 
     name: str
     _func: Callable[..., None]
+    packed_kwargs: bool = False
+    packed_kwarg_param_names: tuple[str, ...] = ()
 
 
 class ComponentRef(Protocol[P]):
@@ -73,6 +75,10 @@ def pyrolyse(fn: Callable[..., T]) -> Callable[..., T]:
 
 def reactive_component(fn: Callable[..., T]) -> Callable[..., T]:
     return pyrolyse(fn)
+
+
+def ui_interface(cls: type[T]) -> type[T]:
+    return cls
 
 
 def pyrolyze_slotted(fn: Callable[..., T]) -> Callable[..., T]:
@@ -130,6 +136,7 @@ __all__ = [
     "pyrolyze_slotted",
     "pyrolyse",
     "reactive_component",
+    "ui_interface",
     "use_effect",
     "use_grip",
     "use_mount",

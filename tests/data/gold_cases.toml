@@ -12,3 +12,4 @@
 "phase5_imported_annotations.py" = "golden.phase5.imported_annotations"
 "phase5_event_handler_lowering.py" = "golden.phase5.event_handler_lowering"
 "phase7_label_panel.py" = "golden.phase7.label_panel"
+"phase7_ui_interface_kwds_native_wrapper.py" = "golden.phase7.ui_interface_kwds_native_wrapper"

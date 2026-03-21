@@ -107,6 +107,136 @@ class _LoweringState:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class _PackedNativeComponentSpec:
+    factory: ast.expr
+    kind_keyword: ast.keyword
+
+
+def _collect_packed_native_helper_names(body: list[ast.stmt]) -> set[str]:
+    return {
+        statement.name
+        for statement in body
+        if isinstance(statement, ast.FunctionDef) and _is_packed_native_helper(statement)
+    }
+
+
+def _is_packed_native_helper(function: ast.FunctionDef) -> bool:
+    if function.name != "__element":
+        return False
+    if function.args.vararg is not None or function.args.kwarg is not None:
+        return False
+    if len(function.args.kwonlyargs) != 2:
+        return False
+    kind_arg, kwds_arg = function.args.kwonlyargs
+    if kind_arg.arg != "kind" or kwds_arg.arg != "kwds":
+        return False
+    return _is_dict_annotation(kwds_arg.annotation)
+
+
+def _is_dict_annotation(annotation: ast.expr | None) -> bool:
+    if annotation is None:
+        return False
+    if isinstance(annotation, ast.Name):
+        return annotation.id in {"dict", "Dict"}
+    if isinstance(annotation, ast.Subscript):
+        return _is_dict_annotation(annotation.value)
+    if isinstance(annotation, ast.Attribute):
+        return annotation.attr == "Dict"
+    return False
+
+
+def _packed_native_component_spec(
+    original: ast.FunctionDef,
+    *,
+    packed_native_helper_names: set[str],
+    qual_prefix: str,
+) -> _PackedNativeComponentSpec | None:
+    if len(original.body) != 1 or not isinstance(original.body[0], ast.Expr):
+        return None
+    call = original.body[0].value
+    if not isinstance(call, ast.Call) or not _is_call_native_expr(call):
+        return None
+    if call.args:
+        return None
+    if not isinstance(call.func, ast.Call) or not call.func.args:
+        return None
+    factory = call.func.args[0]
+    if not _is_packed_native_factory(factory, packed_native_helper_names=packed_native_helper_names):
+        return None
+
+    param_names = set(_function_parameter_names(original, qual_prefix=qual_prefix))
+    kind_keyword: ast.keyword | None = None
+    for keyword in call.keywords:
+        if keyword.arg == "kind":
+            kind_keyword = copy.deepcopy(keyword)
+            continue
+        if keyword.arg is None:
+            return None
+        if keyword.arg not in param_names:
+            return None
+        if not isinstance(keyword.value, ast.Name) or keyword.value.id != keyword.arg:
+            return None
+    if kind_keyword is None:
+        return None
+    return _PackedNativeComponentSpec(factory=copy.deepcopy(factory), kind_keyword=kind_keyword)
+
+
+def _is_packed_native_factory(
+    factory: ast.expr,
+    *,
+    packed_native_helper_names: set[str],
+) -> bool:
+    if isinstance(factory, ast.Name):
+        return factory.id in packed_native_helper_names
+    if isinstance(factory, ast.Attribute):
+        return factory.attr in packed_native_helper_names
+    return False
+
+
+def _function_parameter_names(function: ast.FunctionDef, *, qual_prefix: str) -> tuple[str, ...]:
+    args = list(function.args.args)
+    if _method_kind(function, qual_prefix=qual_prefix) in {"instance", "class"} and args:
+        args = args[1:]
+    source_args = [*function.args.posonlyargs, *args, *function.args.kwonlyargs]
+    return tuple(argument.arg for argument in source_args)
+
+
+def _next_call_site_id(shared: _LoweringShared) -> int:
+    call_site_id = shared.call_site_index
+    shared.call_site_index += 1
+    return call_site_id
+
+
+def _lower_packed_native_component_body(
+    original: ast.FunctionDef,
+    *,
+    factory: ast.expr,
+    kind_keyword: ast.keyword,
+    state_call_site_shared: _LoweringShared,
+) -> list[ast.stmt]:
+    call_site_id = _next_call_site_id(state_call_site_shared)
+    lowered = ast.Expr(
+        value=ast.Call(
+            func=ast.Attribute(
+                value=ast.Name(id="__pyr_ctx", ctx=ast.Load()),
+                attr="call_native",
+                ctx=ast.Load(),
+            ),
+            args=[copy.deepcopy(factory)],
+            keywords=[
+                copy.deepcopy(kind_keyword),
+                ast.keyword(
+                    arg="kwds",
+                    value=ast.Name(id="kwds", ctx=ast.Load()),
+                ),
+                ast.keyword(arg="__pyr_call_site_id", value=ast.Constant(call_site_id)),
+            ],
+        )
+    )
+    return [copy_reason_location(lowered, original)]
+
+
 def lower_module_plan(plan: ModuleTransformPlan) -> ast.Module:
     if not plan.component_plans:
         module_ast = copy.deepcopy(plan.module_ast)
@@ -203,6 +333,7 @@ def lower_component(plan: ComponentTransformPlan) -> ast.FunctionDef | ast.Async
         callable_return_kinds={},
         legacy_container_names=set(),
         event_handler_type_names=set(_EVENT_HANDLER_TYPES),
+        packed_native_helper_names=set(),
         module_name=plan.public_name,
         qual_prefix="",
         in_class_scope=False,
@@ -237,6 +368,7 @@ def _rewrite_body(
     shared: _LoweringShared,
 ) -> list[ast.stmt]:
     rewritten: list[ast.stmt] = []
+    packed_native_helper_names = _collect_packed_native_helper_names(body)
     for statement in body:
         if isinstance(statement, ast.ClassDef):
             class_copy = copy.deepcopy(statement)
@@ -293,6 +425,7 @@ def _rewrite_body(
                 callable_return_kinds=callable_return_kinds,
                 legacy_container_names=legacy_container_names,
                 event_handler_type_names=event_handler_type_names,
+                packed_native_helper_names=packed_native_helper_names,
                 module_name=module_name,
                 qual_prefix=qual_prefix,
                 in_class_scope=in_class_scope,
@@ -317,6 +450,7 @@ def _lower_component_definition(
     callable_return_kinds: dict[str, str],
     legacy_container_names: set[str],
     event_handler_type_names: set[str],
+    packed_native_helper_names: set[str],
     module_name: str,
     qual_prefix: str,
     in_class_scope: bool,
@@ -335,26 +469,42 @@ def _lower_component_definition(
     private_function = copy.deepcopy(original)
     private_function.name = plan.generated_private_name
     private_function.decorator_list = []
-    private_function.args = _private_args_for_component(original, qual_prefix=qual_prefix)
+    packed_native_spec = _packed_native_component_spec(
+        original,
+        packed_native_helper_names=packed_native_helper_names,
+        qual_prefix=qual_prefix,
+    )
+    private_function.args = _private_args_for_component(
+        original,
+        qual_prefix=qual_prefix,
+        packed_native=packed_native_spec is not None,
+    )
+    if packed_native_spec is not None:
+        private_body = _lower_packed_native_component_body(
+            original,
+            factory=packed_native_spec.factory,
+            kind_keyword=packed_native_spec.kind_keyword,
+            state_call_site_shared=shared,
+        )
+    else:
+        private_body = _lower_component_body(
+            original,
+            reactive_decorator_names=reactive_decorator_names,
+            slotted_helper_names=slotted_helper_names,
+            top_level_component_names=top_level_component_names,
+            component_param_names=component_param_names,
+            component_event_params=component_event_params,
+            callable_return_kinds=callable_return_kinds,
+            legacy_container_names=legacy_container_names,
+            event_handler_type_names=event_handler_type_names,
+            module_name=module_name,
+            qual_prefix=qual_prefix,
+            in_class_scope=in_class_scope,
+            shared=shared,
+        )
     private_function.body = [
         copy_reason_location(
-            _build_pass_scope(
-                _lower_component_body(
-                    original,
-                    reactive_decorator_names=reactive_decorator_names,
-                    slotted_helper_names=slotted_helper_names,
-                    top_level_component_names=top_level_component_names,
-                    component_param_names=component_param_names,
-                    component_event_params=component_event_params,
-                    callable_return_kinds=callable_return_kinds,
-                    legacy_container_names=legacy_container_names,
-                    event_handler_type_names=event_handler_type_names,
-                    module_name=module_name,
-                    qual_prefix=qual_prefix,
-                    in_class_scope=in_class_scope,
-                    shared=shared,
-                )
-            ),
+            _build_pass_scope(private_body),
             original,
         )
     ]
@@ -366,6 +516,7 @@ def _lower_component_definition(
         plan,
         reactive_decorator_names=reactive_decorator_names,
         in_class_scope=in_class_scope,
+        packed_kwarg_param_names=_component_parameter_names(plan) if packed_native_spec is not None else (),
     )
     wrapper.body = [
         copy_reason_location(
@@ -1075,11 +1226,28 @@ def _private_args_for_component(
     original: ast.FunctionDef,
     *,
     qual_prefix: str,
+    packed_native: bool,
 ) -> ast.arguments:
-    args = copy.deepcopy(original.args)
     ctx_arg = ast.arg(arg="__pyr_ctx")
     dirty_arg = ast.arg(arg="__pyr_dirty_state")
     method_kind = _method_kind(original, qual_prefix=qual_prefix)
+    if packed_native:
+        args = ast.arguments(
+            posonlyargs=[],
+            args=[],
+            vararg=None,
+            kwonlyargs=[],
+            kw_defaults=[],
+            kwarg=ast.arg(arg="kwds"),
+            defaults=[],
+        )
+        if method_kind in {"instance", "class"} and original.args.args:
+            args.args = [copy.deepcopy(original.args.args[0]), ctx_arg, dirty_arg]
+        else:
+            args.args = [ctx_arg, dirty_arg]
+        return args
+
+    args = copy.deepcopy(original.args)
     if method_kind in {"instance", "class"} and args.args:
         args.args = [args.args[0], ctx_arg, dirty_arg, *args.args[1:]]
     else:
@@ -1093,6 +1261,7 @@ def _wrapper_decorators_for_component(
     *,
     reactive_decorator_names: set[str],
     in_class_scope: bool,
+    packed_kwarg_param_names: tuple[str, ...],
 ) -> list[ast.expr]:
     remaining = [
         copy.deepcopy(decorator)
@@ -1109,7 +1278,22 @@ def _wrapper_decorators_for_component(
                         ast.Constant(plan.public_name),
                         ast.Name(id=plan.generated_private_name, ctx=ast.Load()),
                     ],
-                    keywords=[],
+                    keywords=[
+                        *(
+                            [
+                                ast.keyword(arg="packed_kwargs", value=ast.Constant(True)),
+                                ast.keyword(
+                                    arg="packed_kwarg_param_names",
+                                    value=ast.Tuple(
+                                        elts=[ast.Constant(name) for name in packed_kwarg_param_names],
+                                        ctx=ast.Load(),
+                                    ),
+                                ),
+                            ]
+                            if packed_kwarg_param_names
+                            else []
+                        )
+                    ],
                 )
             ],
             keywords=[],

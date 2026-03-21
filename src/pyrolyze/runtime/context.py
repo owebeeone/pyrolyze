@@ -1142,6 +1142,21 @@ def _clean_dirty_state(previous: DirtyStateContext | None) -> DirtyStateContext:
     return dirtyof(**{key: False for key in previous.values})
 
 
+def _pack_component_kwargs(
+    param_names: tuple[str, ...],
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> dict[str, Any]:
+    if len(args) > len(param_names):
+        raise TypeError("too many positional arguments for packed component call")
+    packed = {param_names[index]: value for index, value in enumerate(args)}
+    for key, value in kwargs.items():
+        if key in packed:
+            raise TypeError(f"multiple values for argument {key!r}")
+        packed[key] = value
+    return packed
+
+
 def _resolve_runtime_component_func(runtime_func: object) -> Callable[..., Any] | None:
     if isinstance(runtime_func, (classmethod, staticmethod)):
         candidate = runtime_func.__func__
@@ -1390,6 +1405,8 @@ class ComponentCallSlotContext(RerunnableSlotContext):
     last_dirty_state: DirtyStateContext | None = None
     pending_dirty_state: DirtyStateContext | None = None
     uses_dirty_state_api: bool = False
+    packed_kwargs: bool = False
+    packed_kwarg_param_names: tuple[str, ...] = ()
 
     def invoke(
         self,
@@ -1427,6 +1444,10 @@ class ComponentCallSlotContext(RerunnableSlotContext):
 
         self.last_runtime_func = runtime_func
         self.last_bound_receiver = bound_receiver
+        self.packed_kwargs = bool(getattr(metadata, "packed_kwargs", False))
+        self.packed_kwarg_param_names = tuple(
+            getattr(metadata, "packed_kwarg_param_names", ())
+        )
         if dirty_state is None:
             normalized_args = tuple(_wrap_comp_value(arg) for arg in args)
             normalized_kwargs = {key: _wrap_comp_value(value) for key, value in kwargs.items()}
@@ -1460,6 +1481,29 @@ class ComponentCallSlotContext(RerunnableSlotContext):
                 dirty_state = _clean_dirty_state(self.last_dirty_state)
             else:
                 self.pending_dirty_state = None
+            if self.packed_kwargs:
+                packed_kwargs = _pack_component_kwargs(
+                    self.packed_kwarg_param_names,
+                    self.last_plain_args,
+                    self.last_plain_kwargs,
+                )
+                if self.last_bound_receiver is _BOUND_METHOD_SELF_MISSING:
+                    runtime_func(
+                        child_context,
+                        dirty_state,
+                        **packed_kwargs,
+                    )
+                else:
+                    runtime_func(
+                        self.last_bound_receiver,
+                        child_context,
+                        dirty_state,
+                        **packed_kwargs,
+                    )
+                self._committed_ui = child_context._committed_ui
+                if not self.parent._scope_active:
+                    self.parent._refresh_committed_ui_from_children()
+                return
             if self.last_bound_receiver is _BOUND_METHOD_SELF_MISSING:
                 runtime_func(
                     child_context,
@@ -1474,6 +1518,25 @@ class ComponentCallSlotContext(RerunnableSlotContext):
                     dirty_state,
                     *self.last_plain_args,
                     **self.last_plain_kwargs,
+                )
+            self._committed_ui = child_context._committed_ui
+            if not self.parent._scope_active:
+                self.parent._refresh_committed_ui_from_children()
+            return
+
+        if self.packed_kwargs:
+            packed_kwargs = _pack_component_kwargs(
+                self.packed_kwarg_param_names,
+                self.last_args,
+                self.last_kwargs,
+            )
+            if self.last_bound_receiver is _BOUND_METHOD_SELF_MISSING:
+                runtime_func(child_context, **packed_kwargs)
+            else:
+                runtime_func(
+                    self.last_bound_receiver,
+                    child_context,
+                    **packed_kwargs,
                 )
             self._committed_ui = child_context._committed_ui
             if not self.parent._scope_active:
