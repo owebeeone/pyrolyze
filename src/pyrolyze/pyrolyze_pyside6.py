@@ -4,18 +4,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import weakref
-from typing import Any, Callable, Mapping, Sequence, cast
+from typing import Any, Callable, Mapping, Protocol, Sequence, cast
 
 from pyrolyze.api import UIElement
 from pyrolyze.runtime.context import ModuleRegistry, SlotId
-from pyrolyze.runtime.mount_reconciler import reconcile_owner
+from pyrolyze.runtime.mount_reconciler import mount_subtree, reconcile_owner
 from pyrolyze.runtime.ui_nodes import (
     UiBackendAdapter,
     UiNode,
     UiNodeBinding,
     UiNodeSpec,
     UiOwnerCommitState,
-    mount_subtree,
     normalize_ui_inputs,
 )
 from PySide6.QtCore import QSignalBlocker, QThread, QTimer
@@ -52,6 +51,27 @@ class _QtLayoutState:
 
 
 _QT_LAYOUT_STATES: dict[int, _QtLayoutState] = {}
+
+
+class _QtNodeMapper(Protocol):
+    kind: str
+
+    def create_binding(
+        self,
+        spec: UiNodeSpec,
+        *,
+        backend: "_PySideBackend",
+        parent_binding: UiNodeBinding | None,
+    ) -> UiNodeBinding: ...
+
+    def update_binding(
+        self,
+        binding: UiNodeBinding,
+        next_spec: UiNodeSpec,
+        *,
+        changed_props: Mapping[str, Any],
+        changed_events: Mapping[str, Callable[..., None] | None],
+    ) -> None: ...
 
 
 @dataclass(slots=True)
@@ -204,6 +224,7 @@ class _QtBindingBase(UiNodeBinding):
 
 @dataclass(eq=False, slots=True, kw_only=True)
 class _QtSectionBinding(_QtBindingBase):
+    mapper: _QtNodeMapper
     widget: QGroupBox
     layout: QVBoxLayout
 
@@ -214,16 +235,17 @@ class _QtSectionBinding(_QtBindingBase):
         changed_props: Mapping[str, Any],
         changed_events: Mapping[str, Callable[..., None] | None],
     ) -> None:
-        if "title" in changed_props:
-            self.widget.setTitle(str(next_spec.props["title"]))
-        if "accent" in changed_props:
-            self.widget.setProperty("accent", _optional_str(next_spec.props.get("accent")))
-        if "visible" in changed_props:
-            self.widget.setVisible(bool(next_spec.props["visible"]))
+        self.mapper.update_binding(
+            self,
+            next_spec,
+            changed_props=changed_props,
+            changed_events=changed_events,
+        )
 
 
 @dataclass(eq=False, slots=True, kw_only=True)
 class _QtRowBinding(_QtBindingBase):
+    mapper: _QtNodeMapper
     widget: QWidget
     layout: QHBoxLayout
     headline: QLabel
@@ -236,17 +258,17 @@ class _QtRowBinding(_QtBindingBase):
         changed_props: Mapping[str, Any],
         changed_events: Mapping[str, Callable[..., None] | None],
     ) -> None:
-        if "headline" in changed_props:
-            self.headline.setText(str(next_spec.props["headline"]))
-            self.widget.setProperty("headline", next_spec.props["headline"])
-        if "row_id" in changed_props:
-            self.widget.setProperty("row_id", next_spec.props["row_id"])
-        if "visible" in changed_props:
-            self.widget.setVisible(bool(next_spec.props["visible"]))
+        self.mapper.update_binding(
+            self,
+            next_spec,
+            changed_props=changed_props,
+            changed_events=changed_events,
+        )
 
 
 @dataclass(eq=False, slots=True, kw_only=True)
 class _QtBadgeBinding(_QtBindingBase):
+    mapper: _QtNodeMapper
     widget: QLabel
 
     def update_props(
@@ -256,16 +278,17 @@ class _QtBadgeBinding(_QtBindingBase):
         changed_props: Mapping[str, Any],
         changed_events: Mapping[str, Callable[..., None] | None],
     ) -> None:
-        if "text" in changed_props:
-            self.widget.setText(str(next_spec.props["text"]))
-        if "tone" in changed_props:
-            self.widget.setProperty("tone", next_spec.props.get("tone"))
-        if "visible" in changed_props:
-            self.widget.setVisible(bool(next_spec.props["visible"]))
+        self.mapper.update_binding(
+            self,
+            next_spec,
+            changed_props=changed_props,
+            changed_events=changed_events,
+        )
 
 
 @dataclass(eq=False, slots=True, kw_only=True)
 class _QtButtonBinding(_QtBindingBase):
+    mapper: _QtNodeMapper
     widget: QPushButton
     on_after_event: Callable[[], None] | None
     on_press: Callable[..., None] | None = None
@@ -280,16 +303,12 @@ class _QtButtonBinding(_QtBindingBase):
         changed_props: Mapping[str, Any],
         changed_events: Mapping[str, Callable[..., None] | None],
     ) -> None:
-        if "label" in changed_props:
-            self.widget.setText(str(next_spec.props["label"]))
-        if "enabled" in changed_props:
-            self.widget.setEnabled(bool(next_spec.props["enabled"]))
-        if "tone" in changed_props:
-            self.widget.setProperty("tone", next_spec.props.get("tone"))
-        if "visible" in changed_props:
-            self.widget.setVisible(bool(next_spec.props["visible"]))
-        if "on_press" in changed_events:
-            self.on_press = next_spec.event_props.get("on_press")
+        self.mapper.update_binding(
+            self,
+            next_spec,
+            changed_props=changed_props,
+            changed_events=changed_events,
+        )
 
     def _handle_click(self, checked: bool = False) -> None:
         del checked
@@ -303,6 +322,7 @@ class _QtButtonBinding(_QtBindingBase):
 
 @dataclass(eq=False, slots=True, kw_only=True)
 class _QtTextFieldBinding(_QtBindingBase):
+    mapper: _QtNodeMapper
     widget: QWidget
     layout: QVBoxLayout
     label: QLabel
@@ -322,25 +342,12 @@ class _QtTextFieldBinding(_QtBindingBase):
         changed_props: Mapping[str, Any],
         changed_events: Mapping[str, Callable[..., None] | None],
     ) -> None:
-        if "label" in changed_props:
-            self.label.setText(str(next_spec.props["label"]))
-        if "value" in changed_props:
-            next_value = str(next_spec.props["value"])
-            if self.line_edit.text() != next_value:
-                blocker = QSignalBlocker(self.line_edit)
-                self.line_edit.setText(next_value)
-                del blocker
-        if "enabled" in changed_props:
-            self.line_edit.setEnabled(bool(next_spec.props["enabled"]))
-        if "placeholder" in changed_props:
-            placeholder = next_spec.props.get("placeholder")
-            self.line_edit.setPlaceholderText("" if placeholder is None else str(placeholder))
-        if "visible" in changed_props:
-            self.widget.setVisible(bool(next_spec.props["visible"]))
-        if "on_change" in changed_events:
-            self.on_change = next_spec.event_props.get("on_change")
-        if "on_submit" in changed_events:
-            self.on_submit = next_spec.event_props.get("on_submit")
+        self.mapper.update_binding(
+            self,
+            next_spec,
+            changed_props=changed_props,
+            changed_events=changed_events,
+        )
 
     def _handle_text_changed(self, next_value: str) -> None:
         if callable(self.on_change):
@@ -361,6 +368,7 @@ class _QtTextFieldBinding(_QtBindingBase):
 
 @dataclass(eq=False, slots=True, kw_only=True)
 class _QtToggleBinding(_QtBindingBase):
+    mapper: _QtNodeMapper
     widget: QCheckBox
     on_after_event: Callable[[], None] | None
     on_toggle: Callable[..., None] | None = None
@@ -375,18 +383,12 @@ class _QtToggleBinding(_QtBindingBase):
         changed_props: Mapping[str, Any],
         changed_events: Mapping[str, Callable[..., None] | None],
     ) -> None:
-        if "label" in changed_props:
-            self.widget.setText(str(next_spec.props["label"]))
-        if "checked" in changed_props:
-            blocker = QSignalBlocker(self.widget)
-            self.widget.setChecked(bool(next_spec.props["checked"]))
-            del blocker
-        if "enabled" in changed_props:
-            self.widget.setEnabled(bool(next_spec.props["enabled"]))
-        if "visible" in changed_props:
-            self.widget.setVisible(bool(next_spec.props["visible"]))
-        if "on_toggle" in changed_events:
-            self.on_toggle = next_spec.event_props.get("on_toggle")
+        self.mapper.update_binding(
+            self,
+            next_spec,
+            changed_props=changed_props,
+            changed_events=changed_events,
+        )
 
     def _handle_toggle(self, next_value: bool) -> None:
         if callable(self.on_toggle):
@@ -399,6 +401,7 @@ class _QtToggleBinding(_QtBindingBase):
 
 @dataclass(eq=False, slots=True, kw_only=True)
 class _QtSelectFieldBinding(_QtBindingBase):
+    mapper: _QtNodeMapper
     widget: QWidget
     layout: QVBoxLayout
     label: QLabel
@@ -416,18 +419,12 @@ class _QtSelectFieldBinding(_QtBindingBase):
         changed_props: Mapping[str, Any],
         changed_events: Mapping[str, Callable[..., None] | None],
     ) -> None:
-        if "label" in changed_props:
-            self.label.setText(str(next_spec.props["label"]))
-        if "options" in changed_props:
-            _replace_combo_items(self.combo_box, next_spec.props["options"])
-        if "value" in changed_props or "options" in changed_props:
-            _set_combo_value(self.combo_box, str(next_spec.props["value"]))
-        if "enabled" in changed_props:
-            self.combo_box.setEnabled(bool(next_spec.props["enabled"]))
-        if "visible" in changed_props:
-            self.widget.setVisible(bool(next_spec.props["visible"]))
-        if "on_change" in changed_events:
-            self.on_change = next_spec.event_props.get("on_change")
+        self.mapper.update_binding(
+            self,
+            next_spec,
+            changed_props=changed_props,
+            changed_events=changed_events,
+        )
 
     def _handle_change(self, next_value: str) -> None:
         if callable(self.on_change):
@@ -438,11 +435,360 @@ class _QtSelectFieldBinding(_QtBindingBase):
             )
 
 
+@dataclass(frozen=True, slots=True)
+class _QtSectionMapper:
+    kind: str = "section"
+
+    def create_binding(
+        self,
+        spec: UiNodeSpec,
+        *,
+        backend: "_PySideBackend",
+        parent_binding: UiNodeBinding | None,
+    ) -> UiNodeBinding:
+        del backend, parent_binding
+        section = QGroupBox(str(spec.props["title"]))
+        section.setProperty("accent", _optional_str(spec.props.get("accent")))
+        _set_initial_visibility(section, bool(spec.props["visible"]))
+        layout = QVBoxLayout(section)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
+        return _QtSectionBinding(mapper=self, widget=section, layout=layout)
+
+    def update_binding(
+        self,
+        binding: UiNodeBinding,
+        next_spec: UiNodeSpec,
+        *,
+        changed_props: Mapping[str, Any],
+        changed_events: Mapping[str, Callable[..., None] | None],
+    ) -> None:
+        del changed_events
+        section = cast(_QtSectionBinding, binding)
+        if "title" in changed_props:
+            section.widget.setTitle(str(next_spec.props["title"]))
+        if "accent" in changed_props:
+            section.widget.setProperty("accent", _optional_str(next_spec.props.get("accent")))
+        if "visible" in changed_props:
+            section.widget.setVisible(bool(next_spec.props["visible"]))
+
+
+@dataclass(frozen=True, slots=True)
+class _QtRowMapper:
+    kind: str = "row"
+
+    def create_binding(
+        self,
+        spec: UiNodeSpec,
+        *,
+        backend: "_PySideBackend",
+        parent_binding: UiNodeBinding | None,
+    ) -> UiNodeBinding:
+        del backend, parent_binding
+        container = QWidget()
+        _set_initial_visibility(container, bool(spec.props["visible"]))
+        container.setProperty("row_id", spec.props["row_id"])
+        container.setProperty("headline", spec.props["headline"])
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        headline = QLabel(str(spec.props["headline"]))
+        layout.addWidget(headline)
+        return _QtRowBinding(mapper=self, widget=container, layout=layout, headline=headline)
+
+    def update_binding(
+        self,
+        binding: UiNodeBinding,
+        next_spec: UiNodeSpec,
+        *,
+        changed_props: Mapping[str, Any],
+        changed_events: Mapping[str, Callable[..., None] | None],
+    ) -> None:
+        del changed_events
+        row = cast(_QtRowBinding, binding)
+        if "headline" in changed_props:
+            row.headline.setText(str(next_spec.props["headline"]))
+            row.widget.setProperty("headline", next_spec.props["headline"])
+        if "row_id" in changed_props:
+            row.widget.setProperty("row_id", next_spec.props["row_id"])
+        if "visible" in changed_props:
+            row.widget.setVisible(bool(next_spec.props["visible"]))
+
+
+@dataclass(frozen=True, slots=True)
+class _QtBadgeMapper:
+    kind: str = "badge"
+
+    def create_binding(
+        self,
+        spec: UiNodeSpec,
+        *,
+        backend: "_PySideBackend",
+        parent_binding: UiNodeBinding | None,
+    ) -> UiNodeBinding:
+        del backend, parent_binding
+        label = QLabel(str(spec.props["text"]))
+        label.setWordWrap(True)
+        _set_initial_visibility(label, bool(spec.props["visible"]))
+        label.setProperty("tone", spec.props.get("tone"))
+        return _QtBadgeBinding(mapper=self, widget=label)
+
+    def update_binding(
+        self,
+        binding: UiNodeBinding,
+        next_spec: UiNodeSpec,
+        *,
+        changed_props: Mapping[str, Any],
+        changed_events: Mapping[str, Callable[..., None] | None],
+    ) -> None:
+        del changed_events
+        badge = cast(_QtBadgeBinding, binding)
+        if "text" in changed_props:
+            badge.widget.setText(str(next_spec.props["text"]))
+        if "tone" in changed_props:
+            badge.widget.setProperty("tone", next_spec.props.get("tone"))
+        if "visible" in changed_props:
+            badge.widget.setVisible(bool(next_spec.props["visible"]))
+
+
+@dataclass(frozen=True, slots=True)
+class _QtButtonMapper:
+    kind: str = "button"
+
+    def create_binding(
+        self,
+        spec: UiNodeSpec,
+        *,
+        backend: "_PySideBackend",
+        parent_binding: UiNodeBinding | None,
+    ) -> UiNodeBinding:
+        del parent_binding
+        button = QPushButton(str(spec.props["label"]))
+        button.setEnabled(bool(spec.props["enabled"]))
+        _set_initial_visibility(button, bool(spec.props["visible"]))
+        button.setProperty("tone", spec.props.get("tone"))
+        return _QtButtonBinding(
+            mapper=self,
+            widget=button,
+            on_after_event=backend.on_after_event,
+            on_press=spec.event_props.get("on_press"),
+        )
+
+    def update_binding(
+        self,
+        binding: UiNodeBinding,
+        next_spec: UiNodeSpec,
+        *,
+        changed_props: Mapping[str, Any],
+        changed_events: Mapping[str, Callable[..., None] | None],
+    ) -> None:
+        button = cast(_QtButtonBinding, binding)
+        if "label" in changed_props:
+            button.widget.setText(str(next_spec.props["label"]))
+        if "enabled" in changed_props:
+            button.widget.setEnabled(bool(next_spec.props["enabled"]))
+        if "tone" in changed_props:
+            button.widget.setProperty("tone", next_spec.props.get("tone"))
+        if "visible" in changed_props:
+            button.widget.setVisible(bool(next_spec.props["visible"]))
+        if "on_press" in changed_events:
+            button.on_press = next_spec.event_props.get("on_press")
+
+
+@dataclass(frozen=True, slots=True)
+class _QtTextFieldMapper:
+    kind: str = "text_field"
+
+    def create_binding(
+        self,
+        spec: UiNodeSpec,
+        *,
+        backend: "_PySideBackend",
+        parent_binding: UiNodeBinding | None,
+    ) -> UiNodeBinding:
+        del parent_binding
+        container = QWidget()
+        _set_initial_visibility(container, bool(spec.props["visible"]))
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        label = QLabel(str(spec.props["label"]))
+        line_edit = QLineEdit()
+        line_edit.setObjectName(str(spec.props["field_id"]))
+        line_edit.setText(str(spec.props["value"]))
+        line_edit.setEnabled(bool(spec.props["enabled"]))
+        placeholder = spec.props.get("placeholder")
+        line_edit.setPlaceholderText("" if placeholder is None else str(placeholder))
+        layout.addWidget(label)
+        layout.addWidget(line_edit)
+        return _QtTextFieldBinding(
+            mapper=self,
+            widget=container,
+            layout=layout,
+            label=label,
+            line_edit=line_edit,
+            on_after_event=backend.on_after_event,
+            on_change=spec.event_props.get("on_change"),
+            on_submit=spec.event_props.get("on_submit"),
+        )
+
+    def update_binding(
+        self,
+        binding: UiNodeBinding,
+        next_spec: UiNodeSpec,
+        *,
+        changed_props: Mapping[str, Any],
+        changed_events: Mapping[str, Callable[..., None] | None],
+    ) -> None:
+        field = cast(_QtTextFieldBinding, binding)
+        if "label" in changed_props:
+            field.label.setText(str(next_spec.props["label"]))
+        if "value" in changed_props:
+            next_value = str(next_spec.props["value"])
+            if field.line_edit.text() != next_value:
+                blocker = QSignalBlocker(field.line_edit)
+                field.line_edit.setText(next_value)
+                del blocker
+        if "enabled" in changed_props:
+            field.line_edit.setEnabled(bool(next_spec.props["enabled"]))
+        if "placeholder" in changed_props:
+            placeholder = next_spec.props.get("placeholder")
+            field.line_edit.setPlaceholderText("" if placeholder is None else str(placeholder))
+        if "visible" in changed_props:
+            field.widget.setVisible(bool(next_spec.props["visible"]))
+        if "on_change" in changed_events:
+            field.on_change = next_spec.event_props.get("on_change")
+        if "on_submit" in changed_events:
+            field.on_submit = next_spec.event_props.get("on_submit")
+
+
+@dataclass(frozen=True, slots=True)
+class _QtToggleMapper:
+    kind: str = "toggle"
+
+    def create_binding(
+        self,
+        spec: UiNodeSpec,
+        *,
+        backend: "_PySideBackend",
+        parent_binding: UiNodeBinding | None,
+    ) -> UiNodeBinding:
+        del parent_binding
+        checkbox = QCheckBox(str(spec.props["label"]))
+        checkbox.setChecked(bool(spec.props["checked"]))
+        checkbox.setEnabled(bool(spec.props["enabled"]))
+        _set_initial_visibility(checkbox, bool(spec.props["visible"]))
+        return _QtToggleBinding(
+            mapper=self,
+            widget=checkbox,
+            on_after_event=backend.on_after_event,
+            on_toggle=spec.event_props.get("on_toggle"),
+        )
+
+    def update_binding(
+        self,
+        binding: UiNodeBinding,
+        next_spec: UiNodeSpec,
+        *,
+        changed_props: Mapping[str, Any],
+        changed_events: Mapping[str, Callable[..., None] | None],
+    ) -> None:
+        toggle = cast(_QtToggleBinding, binding)
+        if "label" in changed_props:
+            toggle.widget.setText(str(next_spec.props["label"]))
+        if "checked" in changed_props:
+            blocker = QSignalBlocker(toggle.widget)
+            toggle.widget.setChecked(bool(next_spec.props["checked"]))
+            del blocker
+        if "enabled" in changed_props:
+            toggle.widget.setEnabled(bool(next_spec.props["enabled"]))
+        if "visible" in changed_props:
+            toggle.widget.setVisible(bool(next_spec.props["visible"]))
+        if "on_toggle" in changed_events:
+            toggle.on_toggle = next_spec.event_props.get("on_toggle")
+
+
+@dataclass(frozen=True, slots=True)
+class _QtSelectFieldMapper:
+    kind: str = "select_field"
+
+    def create_binding(
+        self,
+        spec: UiNodeSpec,
+        *,
+        backend: "_PySideBackend",
+        parent_binding: UiNodeBinding | None,
+    ) -> UiNodeBinding:
+        del parent_binding
+        container = QWidget()
+        _set_initial_visibility(container, bool(spec.props["visible"]))
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        label = QLabel(str(spec.props["label"]))
+        combo_box = QComboBox()
+        combo_box.setObjectName(str(spec.props["field_id"]))
+        _replace_combo_items(combo_box, spec.props["options"])
+        _set_combo_value(combo_box, str(spec.props["value"]))
+        combo_box.setEnabled(bool(spec.props["enabled"]))
+        layout.addWidget(label)
+        layout.addWidget(combo_box)
+        return _QtSelectFieldBinding(
+            mapper=self,
+            widget=container,
+            layout=layout,
+            label=label,
+            combo_box=combo_box,
+            on_after_event=backend.on_after_event,
+            on_change=spec.event_props.get("on_change"),
+        )
+
+    def update_binding(
+        self,
+        binding: UiNodeBinding,
+        next_spec: UiNodeSpec,
+        *,
+        changed_props: Mapping[str, Any],
+        changed_events: Mapping[str, Callable[..., None] | None],
+    ) -> None:
+        select = cast(_QtSelectFieldBinding, binding)
+        if "label" in changed_props:
+            select.label.setText(str(next_spec.props["label"]))
+        if "options" in changed_props:
+            _replace_combo_items(select.combo_box, next_spec.props["options"])
+        if "value" in changed_props or "options" in changed_props:
+            _set_combo_value(select.combo_box, str(next_spec.props["value"]))
+        if "enabled" in changed_props:
+            select.combo_box.setEnabled(bool(next_spec.props["enabled"]))
+        if "visible" in changed_props:
+            select.widget.setVisible(bool(next_spec.props["visible"]))
+        if "on_change" in changed_events:
+            select.on_change = next_spec.event_props.get("on_change")
+
+
+_QT_KIND_MAPPERS: dict[str, _QtNodeMapper] = {
+    "section": _QtSectionMapper(),
+    "row": _QtRowMapper(),
+    "badge": _QtBadgeMapper(),
+    "button": _QtButtonMapper(),
+    "text_field": _QtTextFieldMapper(),
+    "toggle": _QtToggleMapper(),
+    "select_field": _QtSelectFieldMapper(),
+}
+
+
 @dataclass(slots=True)
 class _PySideBackend(UiBackendAdapter):
     app: QApplication
     on_after_event: Callable[[], None] | None = None
     backend_id: str = "pyside6"
+    mappers: Mapping[str, _QtNodeMapper] = field(default_factory=lambda: _QT_KIND_MAPPERS)
+
+    def _mapper_for(self, kind: str) -> _QtNodeMapper:
+        mapper = self.mappers.get(kind)
+        if mapper is None:
+            raise ValueError(f"Unsupported semantic node kind: {kind!r}")
+        return mapper
 
     def create_binding(
         self,
@@ -450,106 +796,11 @@ class _PySideBackend(UiBackendAdapter):
         *,
         parent_binding: UiNodeBinding | None,
     ) -> UiNodeBinding:
-        del parent_binding
-        if spec.kind == "section":
-            section = QGroupBox(str(spec.props["title"]))
-            section.setProperty("accent", _optional_str(spec.props.get("accent")))
-            _set_initial_visibility(section, bool(spec.props["visible"]))
-            layout = QVBoxLayout(section)
-            layout.setContentsMargins(14, 14, 14, 14)
-            layout.setSpacing(10)
-            return _QtSectionBinding(widget=section, layout=layout)
-
-        if spec.kind == "row":
-            container = QWidget()
-            _set_initial_visibility(container, bool(spec.props["visible"]))
-            container.setProperty("row_id", spec.props["row_id"])
-            container.setProperty("headline", spec.props["headline"])
-            layout = QHBoxLayout(container)
-            layout.setContentsMargins(0, 0, 0, 0)
-            layout.setSpacing(8)
-            headline = QLabel(str(spec.props["headline"]))
-            layout.addWidget(headline)
-            return _QtRowBinding(widget=container, layout=layout, headline=headline)
-
-        if spec.kind == "badge":
-            label = QLabel(str(spec.props["text"]))
-            label.setWordWrap(True)
-            _set_initial_visibility(label, bool(spec.props["visible"]))
-            label.setProperty("tone", spec.props.get("tone"))
-            return _QtBadgeBinding(widget=label)
-
-        if spec.kind == "button":
-            button = QPushButton(str(spec.props["label"]))
-            button.setEnabled(bool(spec.props["enabled"]))
-            _set_initial_visibility(button, bool(spec.props["visible"]))
-            button.setProperty("tone", spec.props.get("tone"))
-            return _QtButtonBinding(
-                widget=button,
-                on_after_event=self.on_after_event,
-                on_press=spec.event_props.get("on_press"),
-            )
-
-        if spec.kind == "text_field":
-            container = QWidget()
-            _set_initial_visibility(container, bool(spec.props["visible"]))
-            layout = QVBoxLayout(container)
-            layout.setContentsMargins(0, 0, 0, 0)
-            layout.setSpacing(4)
-            label = QLabel(str(spec.props["label"]))
-            line_edit = QLineEdit()
-            line_edit.setObjectName(str(spec.props["field_id"]))
-            line_edit.setText(str(spec.props["value"]))
-            line_edit.setEnabled(bool(spec.props["enabled"]))
-            placeholder = spec.props.get("placeholder")
-            line_edit.setPlaceholderText("" if placeholder is None else str(placeholder))
-            layout.addWidget(label)
-            layout.addWidget(line_edit)
-            return _QtTextFieldBinding(
-                widget=container,
-                layout=layout,
-                label=label,
-                line_edit=line_edit,
-                on_after_event=self.on_after_event,
-                on_change=spec.event_props.get("on_change"),
-                on_submit=spec.event_props.get("on_submit"),
-            )
-
-        if spec.kind == "toggle":
-            checkbox = QCheckBox(str(spec.props["label"]))
-            checkbox.setChecked(bool(spec.props["checked"]))
-            checkbox.setEnabled(bool(spec.props["enabled"]))
-            _set_initial_visibility(checkbox, bool(spec.props["visible"]))
-            return _QtToggleBinding(
-                widget=checkbox,
-                on_after_event=self.on_after_event,
-                on_toggle=spec.event_props.get("on_toggle"),
-            )
-
-        if spec.kind == "select_field":
-            container = QWidget()
-            _set_initial_visibility(container, bool(spec.props["visible"]))
-            layout = QVBoxLayout(container)
-            layout.setContentsMargins(0, 0, 0, 0)
-            layout.setSpacing(4)
-            label = QLabel(str(spec.props["label"]))
-            combo_box = QComboBox()
-            combo_box.setObjectName(str(spec.props["field_id"]))
-            _replace_combo_items(combo_box, spec.props["options"])
-            _set_combo_value(combo_box, str(spec.props["value"]))
-            combo_box.setEnabled(bool(spec.props["enabled"]))
-            layout.addWidget(label)
-            layout.addWidget(combo_box)
-            return _QtSelectFieldBinding(
-                widget=container,
-                layout=layout,
-                label=label,
-                combo_box=combo_box,
-                on_after_event=self.on_after_event,
-                on_change=spec.event_props.get("on_change"),
-            )
-
-        raise ValueError(f"Unsupported semantic node kind: {spec.kind!r}")
+        return self._mapper_for(spec.kind).create_binding(
+            spec,
+            backend=self,
+            parent_binding=parent_binding,
+        )
 
     def can_reuse(self, current: UiNode, next_spec: UiNodeSpec) -> bool:
         return current.spec.kind == next_spec.kind

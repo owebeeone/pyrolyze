@@ -6,6 +6,10 @@ import pytest
 
 from pyrolyze.api import UIElement
 from pyrolyze.pyrolyze_tkinter import (
+    _TkBackend,
+    _TkButtonBinding,
+    _TkButtonMapper,
+    _load_tk_modules,
     _layout_metrics_delta,
     _layout_metrics_snapshot,
     _pack_child,
@@ -42,6 +46,25 @@ def _semantic_button(*, owner: str, index: int, label: str) -> dict[str, object]
 
 def test_tkinter_available_reports_host_support_as_bool() -> None:
     assert isinstance(tkinter_available(), bool)
+
+
+@pytest.mark.skipif(not tkinter_available(), reason="Tk root unavailable in this environment")
+def test_tk_backend_delegates_button_binding_creation_to_mapper() -> None:
+    tk, ttk = _load_tk_modules()
+    backend = _TkBackend(tk=tk, ttk=ttk)
+
+    mapper = backend._mapper_for("button")
+    binding = backend.create_binding(
+        type("Spec", (), {
+            "kind": "button",
+            "props": {"label": "Run", "enabled": True, "tone": "default", "visible": True},
+            "event_props": {"on_press": None},
+        })(),
+        parent_binding=None,
+    )
+
+    assert isinstance(mapper, _TkButtonMapper)
+    assert isinstance(binding, _TkButtonBinding)
 
 
 @pytest.mark.skipif(not tkinter_available(), reason="Tk root unavailable in this environment")

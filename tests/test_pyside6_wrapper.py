@@ -10,6 +10,9 @@ from PySide6.QtWidgets import QComboBox, QGroupBox, QLabel, QLineEdit, QPushButt
 
 from pyrolyze.api import UIElement
 from pyrolyze.pyrolyze_pyside6 import (
+    _PySideBackend,
+    _QtButtonBinding,
+    _QtButtonMapper,
     PyrolyzeWindow,
     create_window,
     reconcile_window_content,
@@ -98,6 +101,47 @@ def test_render_ui_element_builds_widgets_from_frozen_v1_schema() -> None:
     assert len(buttons) == 1
     assert buttons[0].text() == "Run"
     assert buttons[0].isEnabled() is False
+
+
+def test_render_ui_element_attaches_pyro_node_with_reconciled_children() -> None:
+    widget = render_ui_element(
+        UIElement(
+            kind="section",
+            props={"title": "Account Settings", "accent": "blue", "visible": True},
+            children=(
+                UIElement(
+                    kind="badge",
+                    props={"text": "Ready to save", "tone": "success", "visible": True},
+                ),
+                UIElement(
+                    kind="button",
+                    props={"label": "Run", "enabled": False, "visible": True},
+                ),
+            ),
+        )
+    )
+
+    node = getattr(widget, "_pyrolyze_node")
+
+    assert node.spec.kind == "section"
+    assert [child.spec.kind for child in node.children] == ["badge", "button"]
+
+
+def test_pyside_backend_delegates_button_binding_creation_to_mapper() -> None:
+    backend = _PySideBackend(app=create_window("Mapper Test").app)
+
+    mapper = backend._mapper_for("button")
+    binding = backend.create_binding(
+        type("Spec", (), {
+            "kind": "button",
+            "props": {"label": "Run", "enabled": True, "tone": "default", "visible": True},
+            "event_props": {"on_press": None},
+        })(),
+        parent_binding=None,
+    )
+
+    assert isinstance(mapper, _QtButtonMapper)
+    assert isinstance(binding, _QtButtonBinding)
 
 
 def test_render_ui_element_leaves_unmounted_visible_widgets_hidden() -> None:

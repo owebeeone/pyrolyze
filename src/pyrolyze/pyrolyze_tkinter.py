@@ -9,11 +9,11 @@ import subprocess
 import sys
 import time
 import weakref
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable, Mapping, Protocol, Sequence, cast
 
 from pyrolyze.api import UIElement
 from pyrolyze.runtime.context import ModuleRegistry, SlotId
-from pyrolyze.runtime.mount_reconciler import reconcile_owner
+from pyrolyze.runtime.mount_reconciler import mount_subtree, reconcile_owner
 from pyrolyze.runtime.trace import TraceChannel, emit_trace, trace_enabled
 from pyrolyze.runtime.ui_nodes import (
     UiBackendAdapter,
@@ -21,7 +21,6 @@ from pyrolyze.runtime.ui_nodes import (
     UiNodeBinding,
     UiNodeSpec,
     UiOwnerCommitState,
-    mount_subtree,
     normalize_ui_inputs,
 )
 
@@ -47,6 +46,27 @@ class _TkPackState:
 
 
 _TK_PACK_STATES: weakref.WeakKeyDictionary[Any, _TkPackState] = weakref.WeakKeyDictionary()
+
+
+class _TkNodeMapper(Protocol):
+    kind: str
+
+    def create_binding(
+        self,
+        spec: UiNodeSpec,
+        *,
+        backend: "_TkBackend",
+        parent_binding: UiNodeBinding | None,
+    ) -> UiNodeBinding: ...
+
+    def update_binding(
+        self,
+        binding: UiNodeBinding,
+        next_spec: UiNodeSpec,
+        *,
+        changed_props: Mapping[str, Any],
+        changed_events: Mapping[str, Callable[..., None] | None],
+    ) -> None: ...
 
 
 @dataclass(slots=True)
@@ -193,6 +213,7 @@ class _TkBindingBase(UiNodeBinding):
 
 @dataclass(eq=False, slots=True, kw_only=True)
 class _TkSectionBinding(_TkBindingBase):
+    mapper: _TkNodeMapper
     widget: Any
     accepts_children: bool = True
 
@@ -203,16 +224,17 @@ class _TkSectionBinding(_TkBindingBase):
         changed_props: Mapping[str, Any],
         changed_events: Mapping[str, Callable[..., None] | None],
     ) -> None:
-        if "title" in changed_props:
-            self.widget.configure(text=str(next_spec.props["title"]))
-        if "accent" in changed_props:
-            self.widget.configure(style=_section_style_name(next_spec.props.get("accent")))
-        if "visible" in changed_props:
-            _set_visible_flag(self.widget, bool(next_spec.props["visible"]))
+        self.mapper.update_binding(
+            self,
+            next_spec,
+            changed_props=changed_props,
+            changed_events=changed_events,
+        )
 
 
 @dataclass(eq=False, slots=True, kw_only=True)
 class _TkRowBinding(_TkBindingBase):
+    mapper: _TkNodeMapper
     widget: Any
     headline: Any
     child_side: str = "left"
@@ -226,14 +248,17 @@ class _TkRowBinding(_TkBindingBase):
         changed_props: Mapping[str, Any],
         changed_events: Mapping[str, Callable[..., None] | None],
     ) -> None:
-        if "headline" in changed_props:
-            self.headline.configure(text=str(next_spec.props["headline"]))
-        if "visible" in changed_props:
-            _set_visible_flag(self.widget, bool(next_spec.props["visible"]))
+        self.mapper.update_binding(
+            self,
+            next_spec,
+            changed_props=changed_props,
+            changed_events=changed_events,
+        )
 
 
 @dataclass(eq=False, slots=True, kw_only=True)
 class _TkBadgeBinding(_TkBindingBase):
+    mapper: _TkNodeMapper
     widget: Any
 
     def update_props(
@@ -243,14 +268,17 @@ class _TkBadgeBinding(_TkBindingBase):
         changed_props: Mapping[str, Any],
         changed_events: Mapping[str, Callable[..., None] | None],
     ) -> None:
-        if "text" in changed_props:
-            self.widget.configure(text=str(next_spec.props["text"]))
-        if "visible" in changed_props:
-            _set_visible_flag(self.widget, bool(next_spec.props["visible"]))
+        self.mapper.update_binding(
+            self,
+            next_spec,
+            changed_props=changed_props,
+            changed_events=changed_events,
+        )
 
 
 @dataclass(eq=False, slots=True, kw_only=True)
 class _TkButtonBinding(_TkBindingBase):
+    mapper: _TkNodeMapper
     widget: Any
     on_after_event: Callable[[], None] | None
     on_press: Callable[..., None] | None = None
@@ -265,14 +293,12 @@ class _TkButtonBinding(_TkBindingBase):
         changed_props: Mapping[str, Any],
         changed_events: Mapping[str, Callable[..., None] | None],
     ) -> None:
-        if "label" in changed_props:
-            self.widget.configure(text=str(next_spec.props["label"]))
-        if "enabled" in changed_props:
-            _set_widget_enabled(self.widget, bool(next_spec.props["enabled"]))
-        if "visible" in changed_props:
-            _set_visible_flag(self.widget, bool(next_spec.props["visible"]))
-        if "on_press" in changed_events:
-            self.on_press = next_spec.event_props.get("on_press")
+        self.mapper.update_binding(
+            self,
+            next_spec,
+            changed_props=changed_props,
+            changed_events=changed_events,
+        )
 
     def _handle_press(self) -> None:
         if callable(self.on_press):
@@ -281,6 +307,7 @@ class _TkButtonBinding(_TkBindingBase):
 
 @dataclass(eq=False, slots=True, kw_only=True)
 class _TkTextFieldBinding(_TkBindingBase):
+    mapper: _TkNodeMapper
     widget: Any
     label: Any
     variable: Any
@@ -301,22 +328,12 @@ class _TkTextFieldBinding(_TkBindingBase):
         changed_props: Mapping[str, Any],
         changed_events: Mapping[str, Callable[..., None] | None],
     ) -> None:
-        if "label" in changed_props:
-            self.label.configure(text=str(next_spec.props["label"]))
-        if "value" in changed_props:
-            next_value = str(next_spec.props["value"])
-            if self.variable.get() != next_value:
-                self.suppress_events = True
-                self.variable.set(next_value)
-                self.suppress_events = False
-        if "enabled" in changed_props:
-            _set_widget_enabled(self.entry, bool(next_spec.props["enabled"]))
-        if "visible" in changed_props:
-            _set_visible_flag(self.widget, bool(next_spec.props["visible"]))
-        if "on_change" in changed_events:
-            self.on_change = next_spec.event_props.get("on_change")
-        if "on_submit" in changed_events:
-            self.on_submit = next_spec.event_props.get("on_submit")
+        self.mapper.update_binding(
+            self,
+            next_spec,
+            changed_props=changed_props,
+            changed_events=changed_events,
+        )
 
     def _handle_variable_change(self, *_args: Any) -> None:
         if self.suppress_events or not callable(self.on_change):
@@ -334,6 +351,7 @@ class _TkTextFieldBinding(_TkBindingBase):
 
 @dataclass(eq=False, slots=True, kw_only=True)
 class _TkToggleBinding(_TkBindingBase):
+    mapper: _TkNodeMapper
     widget: Any
     variable: Any
     on_after_event: Callable[[], None] | None
@@ -350,18 +368,12 @@ class _TkToggleBinding(_TkBindingBase):
         changed_props: Mapping[str, Any],
         changed_events: Mapping[str, Callable[..., None] | None],
     ) -> None:
-        if "label" in changed_props:
-            self.widget.configure(text=str(next_spec.props["label"]))
-        if "checked" in changed_props:
-            self.suppress_events = True
-            self.variable.set(bool(next_spec.props["checked"]))
-            self.suppress_events = False
-        if "enabled" in changed_props:
-            _set_widget_enabled(self.widget, bool(next_spec.props["enabled"]))
-        if "visible" in changed_props:
-            _set_visible_flag(self.widget, bool(next_spec.props["visible"]))
-        if "on_toggle" in changed_events:
-            self.on_toggle = next_spec.event_props.get("on_toggle")
+        self.mapper.update_binding(
+            self,
+            next_spec,
+            changed_props=changed_props,
+            changed_events=changed_events,
+        )
 
     def _handle_toggle(self) -> None:
         if self.suppress_events or not callable(self.on_toggle):
@@ -375,6 +387,7 @@ class _TkToggleBinding(_TkBindingBase):
 
 @dataclass(eq=False, slots=True, kw_only=True)
 class _TkSelectFieldBinding(_TkBindingBase):
+    mapper: _TkNodeMapper
     widget: Any
     label: Any
     variable: Any
@@ -393,22 +406,12 @@ class _TkSelectFieldBinding(_TkBindingBase):
         changed_props: Mapping[str, Any],
         changed_events: Mapping[str, Callable[..., None] | None],
     ) -> None:
-        if "label" in changed_props:
-            self.label.configure(text=str(next_spec.props["label"]))
-        if "options" in changed_props:
-            self.combo_box.configure(values=tuple(str(option) for option in tuple(next_spec.props["options"])))
-        if "value" in changed_props or "options" in changed_props:
-            next_value = str(next_spec.props["value"])
-            if self.variable.get() != next_value:
-                self.suppress_events = True
-                self.variable.set(next_value)
-                self.suppress_events = False
-        if "enabled" in changed_props:
-            self.combo_box.configure(state="readonly" if bool(next_spec.props["enabled"]) else "disabled")
-        if "visible" in changed_props:
-            _set_visible_flag(self.widget, bool(next_spec.props["visible"]))
-        if "on_change" in changed_events:
-            self.on_change = next_spec.event_props.get("on_change")
+        self.mapper.update_binding(
+            self,
+            next_spec,
+            changed_props=changed_props,
+            changed_events=changed_events,
+        )
 
     def _handle_variable_change(self, *_args: Any) -> None:
         if self.suppress_events or not callable(self.on_change):
@@ -420,12 +423,340 @@ class _TkSelectFieldBinding(_TkBindingBase):
         )
 
 
+@dataclass(frozen=True, slots=True)
+class _TkSectionMapper:
+    kind: str = "section"
+
+    def create_binding(
+        self,
+        spec: UiNodeSpec,
+        *,
+        backend: "_TkBackend",
+        parent_binding: UiNodeBinding | None,
+    ) -> UiNodeBinding:
+        parent = _parent_widget(parent_binding)
+        frame = backend.ttk.LabelFrame(parent, text=str(spec.props["title"]))
+        style_name = _section_style_name(spec.props.get("accent"))
+        if style_name is not None:
+            frame.configure(style=style_name)
+        _set_visible_flag(frame, bool(spec.props["visible"]))
+        return _TkSectionBinding(mapper=self, widget=frame)
+
+    def update_binding(
+        self,
+        binding: UiNodeBinding,
+        next_spec: UiNodeSpec,
+        *,
+        changed_props: Mapping[str, Any],
+        changed_events: Mapping[str, Callable[..., None] | None],
+    ) -> None:
+        del changed_events
+        section = cast(_TkSectionBinding, binding)
+        if "title" in changed_props:
+            section.widget.configure(text=str(next_spec.props["title"]))
+        if "accent" in changed_props:
+            section.widget.configure(style=_section_style_name(next_spec.props.get("accent")))
+        if "visible" in changed_props:
+            _set_visible_flag(section.widget, bool(next_spec.props["visible"]))
+
+
+@dataclass(frozen=True, slots=True)
+class _TkRowMapper:
+    kind: str = "row"
+
+    def create_binding(
+        self,
+        spec: UiNodeSpec,
+        *,
+        backend: "_TkBackend",
+        parent_binding: UiNodeBinding | None,
+    ) -> UiNodeBinding:
+        parent = _parent_widget(parent_binding)
+        frame = backend.ttk.Frame(parent)
+        headline = backend.ttk.Label(frame, text=str(spec.props["headline"]))
+        headline.pack(side="left")
+        _set_visible_flag(frame, bool(spec.props["visible"]))
+        return _TkRowBinding(mapper=self, widget=frame, headline=headline)
+
+    def update_binding(
+        self,
+        binding: UiNodeBinding,
+        next_spec: UiNodeSpec,
+        *,
+        changed_props: Mapping[str, Any],
+        changed_events: Mapping[str, Callable[..., None] | None],
+    ) -> None:
+        del changed_events
+        row = cast(_TkRowBinding, binding)
+        if "headline" in changed_props:
+            row.headline.configure(text=str(next_spec.props["headline"]))
+        if "visible" in changed_props:
+            _set_visible_flag(row.widget, bool(next_spec.props["visible"]))
+
+
+@dataclass(frozen=True, slots=True)
+class _TkBadgeMapper:
+    kind: str = "badge"
+
+    def create_binding(
+        self,
+        spec: UiNodeSpec,
+        *,
+        backend: "_TkBackend",
+        parent_binding: UiNodeBinding | None,
+    ) -> UiNodeBinding:
+        parent = _parent_widget(parent_binding)
+        label = backend.ttk.Label(parent, text=str(spec.props["text"]))
+        _set_visible_flag(label, bool(spec.props["visible"]))
+        return _TkBadgeBinding(mapper=self, widget=label)
+
+    def update_binding(
+        self,
+        binding: UiNodeBinding,
+        next_spec: UiNodeSpec,
+        *,
+        changed_props: Mapping[str, Any],
+        changed_events: Mapping[str, Callable[..., None] | None],
+    ) -> None:
+        del changed_events
+        badge = cast(_TkBadgeBinding, binding)
+        if "text" in changed_props:
+            badge.widget.configure(text=str(next_spec.props["text"]))
+        if "visible" in changed_props:
+            _set_visible_flag(badge.widget, bool(next_spec.props["visible"]))
+
+
+@dataclass(frozen=True, slots=True)
+class _TkButtonMapper:
+    kind: str = "button"
+
+    def create_binding(
+        self,
+        spec: UiNodeSpec,
+        *,
+        backend: "_TkBackend",
+        parent_binding: UiNodeBinding | None,
+    ) -> UiNodeBinding:
+        parent = _parent_widget(parent_binding)
+        button = backend.ttk.Button(parent, text=str(spec.props["label"]))
+        _set_widget_enabled(button, bool(spec.props["enabled"]))
+        _set_visible_flag(button, bool(spec.props["visible"]))
+        return _TkButtonBinding(
+            mapper=self,
+            widget=button,
+            on_after_event=backend.on_after_event,
+            on_press=spec.event_props.get("on_press"),
+        )
+
+    def update_binding(
+        self,
+        binding: UiNodeBinding,
+        next_spec: UiNodeSpec,
+        *,
+        changed_props: Mapping[str, Any],
+        changed_events: Mapping[str, Callable[..., None] | None],
+    ) -> None:
+        button = cast(_TkButtonBinding, binding)
+        if "label" in changed_props:
+            button.widget.configure(text=str(next_spec.props["label"]))
+        if "enabled" in changed_props:
+            _set_widget_enabled(button.widget, bool(next_spec.props["enabled"]))
+        if "visible" in changed_props:
+            _set_visible_flag(button.widget, bool(next_spec.props["visible"]))
+        if "on_press" in changed_events:
+            button.on_press = next_spec.event_props.get("on_press")
+
+
+@dataclass(frozen=True, slots=True)
+class _TkTextFieldMapper:
+    kind: str = "text_field"
+
+    def create_binding(
+        self,
+        spec: UiNodeSpec,
+        *,
+        backend: "_TkBackend",
+        parent_binding: UiNodeBinding | None,
+    ) -> UiNodeBinding:
+        parent = _parent_widget(parent_binding)
+        frame = backend.ttk.Frame(parent)
+        label = backend.ttk.Label(frame, text=str(spec.props["label"]))
+        label.pack(fill="x")
+        variable = backend.tk.StringVar(master=frame, value=str(spec.props["value"]))
+        entry = backend.ttk.Entry(frame, textvariable=variable)
+        _set_widget_enabled(entry, bool(spec.props["enabled"]))
+        entry.pack(fill="x")
+        _set_visible_flag(frame, bool(spec.props["visible"]))
+        return _TkTextFieldBinding(
+            mapper=self,
+            widget=frame,
+            label=label,
+            variable=variable,
+            entry=entry,
+            on_after_event=backend.on_after_event,
+            on_change=spec.event_props.get("on_change"),
+            on_submit=spec.event_props.get("on_submit"),
+        )
+
+    def update_binding(
+        self,
+        binding: UiNodeBinding,
+        next_spec: UiNodeSpec,
+        *,
+        changed_props: Mapping[str, Any],
+        changed_events: Mapping[str, Callable[..., None] | None],
+    ) -> None:
+        field = cast(_TkTextFieldBinding, binding)
+        if "label" in changed_props:
+            field.label.configure(text=str(next_spec.props["label"]))
+        if "value" in changed_props:
+            next_value = str(next_spec.props["value"])
+            if field.variable.get() != next_value:
+                field.suppress_events = True
+                field.variable.set(next_value)
+                field.suppress_events = False
+        if "enabled" in changed_props:
+            _set_widget_enabled(field.entry, bool(next_spec.props["enabled"]))
+        if "visible" in changed_props:
+            _set_visible_flag(field.widget, bool(next_spec.props["visible"]))
+        if "on_change" in changed_events:
+            field.on_change = next_spec.event_props.get("on_change")
+        if "on_submit" in changed_events:
+            field.on_submit = next_spec.event_props.get("on_submit")
+
+
+@dataclass(frozen=True, slots=True)
+class _TkToggleMapper:
+    kind: str = "toggle"
+
+    def create_binding(
+        self,
+        spec: UiNodeSpec,
+        *,
+        backend: "_TkBackend",
+        parent_binding: UiNodeBinding | None,
+    ) -> UiNodeBinding:
+        parent = _parent_widget(parent_binding)
+        variable = backend.tk.BooleanVar(master=parent, value=bool(spec.props["checked"]))
+        button = backend.ttk.Checkbutton(parent, text=str(spec.props["label"]), variable=variable)
+        _set_widget_enabled(button, bool(spec.props["enabled"]))
+        _set_visible_flag(button, bool(spec.props["visible"]))
+        return _TkToggleBinding(
+            mapper=self,
+            widget=button,
+            variable=variable,
+            on_after_event=backend.on_after_event,
+            on_toggle=spec.event_props.get("on_toggle"),
+        )
+
+    def update_binding(
+        self,
+        binding: UiNodeBinding,
+        next_spec: UiNodeSpec,
+        *,
+        changed_props: Mapping[str, Any],
+        changed_events: Mapping[str, Callable[..., None] | None],
+    ) -> None:
+        toggle = cast(_TkToggleBinding, binding)
+        if "label" in changed_props:
+            toggle.widget.configure(text=str(next_spec.props["label"]))
+        if "checked" in changed_props:
+            toggle.suppress_events = True
+            toggle.variable.set(bool(next_spec.props["checked"]))
+            toggle.suppress_events = False
+        if "enabled" in changed_props:
+            _set_widget_enabled(toggle.widget, bool(next_spec.props["enabled"]))
+        if "visible" in changed_props:
+            _set_visible_flag(toggle.widget, bool(next_spec.props["visible"]))
+        if "on_toggle" in changed_events:
+            toggle.on_toggle = next_spec.event_props.get("on_toggle")
+
+
+@dataclass(frozen=True, slots=True)
+class _TkSelectFieldMapper:
+    kind: str = "select_field"
+
+    def create_binding(
+        self,
+        spec: UiNodeSpec,
+        *,
+        backend: "_TkBackend",
+        parent_binding: UiNodeBinding | None,
+    ) -> UiNodeBinding:
+        parent = _parent_widget(parent_binding)
+        frame = backend.ttk.Frame(parent)
+        label = backend.ttk.Label(frame, text=str(spec.props["label"]))
+        label.pack(fill="x")
+        variable = backend.tk.StringVar(master=frame, value=str(spec.props["value"]))
+        combo_box = backend.ttk.Combobox(
+            frame,
+            textvariable=variable,
+            values=tuple(str(option) for option in tuple(spec.props["options"])),
+            state="readonly" if bool(spec.props["enabled"]) else "disabled",
+        )
+        combo_box.pack(fill="x")
+        _set_visible_flag(frame, bool(spec.props["visible"]))
+        return _TkSelectFieldBinding(
+            mapper=self,
+            widget=frame,
+            label=label,
+            variable=variable,
+            combo_box=combo_box,
+            on_after_event=backend.on_after_event,
+            on_change=spec.event_props.get("on_change"),
+        )
+
+    def update_binding(
+        self,
+        binding: UiNodeBinding,
+        next_spec: UiNodeSpec,
+        *,
+        changed_props: Mapping[str, Any],
+        changed_events: Mapping[str, Callable[..., None] | None],
+    ) -> None:
+        select = cast(_TkSelectFieldBinding, binding)
+        if "label" in changed_props:
+            select.label.configure(text=str(next_spec.props["label"]))
+        if "options" in changed_props:
+            select.combo_box.configure(values=tuple(str(option) for option in tuple(next_spec.props["options"])))
+        if "value" in changed_props or "options" in changed_props:
+            next_value = str(next_spec.props["value"])
+            if select.variable.get() != next_value:
+                select.suppress_events = True
+                select.variable.set(next_value)
+                select.suppress_events = False
+        if "enabled" in changed_props:
+            select.combo_box.configure(state="readonly" if bool(next_spec.props["enabled"]) else "disabled")
+        if "visible" in changed_props:
+            _set_visible_flag(select.widget, bool(next_spec.props["visible"]))
+        if "on_change" in changed_events:
+            select.on_change = next_spec.event_props.get("on_change")
+
+
+_TK_KIND_MAPPERS: dict[str, _TkNodeMapper] = {
+    "section": _TkSectionMapper(),
+    "row": _TkRowMapper(),
+    "badge": _TkBadgeMapper(),
+    "button": _TkButtonMapper(),
+    "text_field": _TkTextFieldMapper(),
+    "toggle": _TkToggleMapper(),
+    "select_field": _TkSelectFieldMapper(),
+}
+
+
 @dataclass(slots=True)
 class _TkBackend(UiBackendAdapter):
     tk: Any
     ttk: Any
     on_after_event: Callable[[], None] | None = None
     backend_id: str = "tkinter"
+    mappers: Mapping[str, _TkNodeMapper] = field(default_factory=lambda: _TK_KIND_MAPPERS)
+
+    def _mapper_for(self, kind: str) -> _TkNodeMapper:
+        mapper = self.mappers.get(kind)
+        if mapper is None:
+            raise ValueError(f"Unsupported semantic node kind: {kind!r}")
+        return mapper
 
     def create_binding(
         self,
@@ -433,92 +764,11 @@ class _TkBackend(UiBackendAdapter):
         *,
         parent_binding: UiNodeBinding | None,
     ) -> UiNodeBinding:
-        parent = _parent_widget(parent_binding)
-
-        if spec.kind == "section":
-            frame = self.ttk.LabelFrame(parent, text=str(spec.props["title"]))
-            style_name = _section_style_name(spec.props.get("accent"))
-            if style_name is not None:
-                frame.configure(style=style_name)
-            _set_visible_flag(frame, bool(spec.props["visible"]))
-            return _TkSectionBinding(widget=frame)
-
-        if spec.kind == "row":
-            frame = self.ttk.Frame(parent)
-            headline = self.ttk.Label(frame, text=str(spec.props["headline"]))
-            headline.pack(side="left")
-            _set_visible_flag(frame, bool(spec.props["visible"]))
-            return _TkRowBinding(widget=frame, headline=headline)
-
-        if spec.kind == "badge":
-            label = self.ttk.Label(parent, text=str(spec.props["text"]))
-            _set_visible_flag(label, bool(spec.props["visible"]))
-            return _TkBadgeBinding(widget=label)
-
-        if spec.kind == "button":
-            button = self.ttk.Button(parent, text=str(spec.props["label"]))
-            _set_widget_enabled(button, bool(spec.props["enabled"]))
-            _set_visible_flag(button, bool(spec.props["visible"]))
-            return _TkButtonBinding(
-                widget=button,
-                on_after_event=self.on_after_event,
-                on_press=spec.event_props.get("on_press"),
-            )
-
-        if spec.kind == "text_field":
-            frame = self.ttk.Frame(parent)
-            label = self.ttk.Label(frame, text=str(spec.props["label"]))
-            label.pack(fill="x")
-            variable = self.tk.StringVar(master=frame, value=str(spec.props["value"]))
-            entry = self.ttk.Entry(frame, textvariable=variable)
-            _set_widget_enabled(entry, bool(spec.props["enabled"]))
-            entry.pack(fill="x")
-            _set_visible_flag(frame, bool(spec.props["visible"]))
-            return _TkTextFieldBinding(
-                widget=frame,
-                label=label,
-                variable=variable,
-                entry=entry,
-                on_after_event=self.on_after_event,
-                on_change=spec.event_props.get("on_change"),
-                on_submit=spec.event_props.get("on_submit"),
-            )
-
-        if spec.kind == "toggle":
-            variable = self.tk.BooleanVar(master=parent, value=bool(spec.props["checked"]))
-            button = self.ttk.Checkbutton(parent, text=str(spec.props["label"]), variable=variable)
-            _set_widget_enabled(button, bool(spec.props["enabled"]))
-            _set_visible_flag(button, bool(spec.props["visible"]))
-            return _TkToggleBinding(
-                widget=button,
-                variable=variable,
-                on_after_event=self.on_after_event,
-                on_toggle=spec.event_props.get("on_toggle"),
-            )
-
-        if spec.kind == "select_field":
-            frame = self.ttk.Frame(parent)
-            label = self.ttk.Label(frame, text=str(spec.props["label"]))
-            label.pack(fill="x")
-            variable = self.tk.StringVar(master=frame, value=str(spec.props["value"]))
-            combo_box = self.ttk.Combobox(
-                frame,
-                textvariable=variable,
-                values=tuple(str(option) for option in tuple(spec.props["options"])),
-                state="readonly" if bool(spec.props["enabled"]) else "disabled",
-            )
-            combo_box.pack(fill="x")
-            _set_visible_flag(frame, bool(spec.props["visible"]))
-            return _TkSelectFieldBinding(
-                widget=frame,
-                label=label,
-                variable=variable,
-                combo_box=combo_box,
-                on_after_event=self.on_after_event,
-                on_change=spec.event_props.get("on_change"),
-            )
-
-        raise ValueError(f"Unsupported semantic node kind: {spec.kind!r}")
+        return self._mapper_for(spec.kind).create_binding(
+            spec,
+            backend=self,
+            parent_binding=parent_binding,
+        )
 
     def can_reuse(self, current: UiNode, next_spec: UiNodeSpec) -> bool:
         return current.spec.kind == next_spec.kind
