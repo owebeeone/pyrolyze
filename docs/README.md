@@ -14,6 +14,9 @@ It is organized by reader and task:
 - [design/Architecture.md](design/Architecture.md)
   - implementation-facing architecture
   - compiler, runtime, backends, tests
+- [design/UI_Interface_Schema.md](design/UI_Interface_Schema.md)
+  - `UiInterface` and `UiInterfaceEntry`
+  - common, PySide6, tkinter, and Hydo interface families
 - [user/README.md](user/README.md)
   - authoring guide entry point
   - decorators, annotations, hooks, native UI, testing

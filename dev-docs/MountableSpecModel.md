@@ -33,6 +33,40 @@ It is the runtime-side contract for:
 - source syntax like `mount(...)`
 
 
+## Phase-1 Status
+
+The lower-level phase-1 mount model should be considered decided enough to
+implement.
+
+Resolved design points:
+
+- explicit mount selection is represented by retained `MountDirective` nodes
+- selectors are runtime values
+- phase-1 produced-type metadata remains `TypeRef`
+- a mount directive holds one or more selector terms
+- selector terms are tried left-to-right
+- first viable selector wins
+- later selectors are not materialized if they are not selected
+- `default` is a soft reset to generated default attach behavior
+- `no_emit` is a hard non-emitting barrier
+- `no_emit` is only valid as the sole selector term
+- selector changes across rerenders update the same retained mount-directive
+  slot and may trigger detach/reattach or remount
+
+Still to implement, but not still to design:
+
+- source/compiler lowering of `mount(...)`
+- emitted-tree support for `MountDirective`
+- selector flattening into `MountState`
+- rerender handling for winning-selector changes
+- end-to-end tests on the new mountable path
+
+Still worth naming explicitly before implementation:
+
+- the exact runtime class names for the new slot-backed scoped directive
+  context types
+
+
 ## Core Types
 
 The backend-owned model should converge on these concepts:
@@ -302,6 +336,27 @@ with mount(no_emit, menu):
 
 because `no_emit` is a hard barrier, not a fallback selector
 
+Suggested runtime selector shape:
+
+```python
+class SlotSelector:
+    pass
+
+
+@dataclass(slots=True, frozen=True)
+class add_corner(SlotSelector):
+    corner: object
+```
+
+Rules:
+
+- there should be one generated selector value/class per selector family
+- selector classes do not need to be owner-class-specific if the selector
+  semantics are the same across multiple parent types
+- selector artifacts can be attached to the local generated UI-interface class
+  alongside the other generated class metadata
+- these selector values are what `mount(...)` consumes at runtime
+
 Special selector forms:
 
 1. `mount(default)`
@@ -378,6 +433,10 @@ structural directive nodes. They should not immediately mutate child
 Conceptually:
 
 ```python
+class SlotSelector:
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class MountSelector:
     kind: Literal["named", "default", "no_emit"]
@@ -388,7 +447,7 @@ class MountSelector:
 @dataclass(frozen=True, slots=True)
 class MountDirective:
     slot_id: object
-    selectors: tuple[MountSelector, ...]
+    selectors: tuple[SlotSelector | MountSelector, ...]
     children: tuple[EmittedNode, ...]
 ```
 
@@ -404,6 +463,10 @@ Where:
 Each `MountDirective` may hold one or more selectors. Selectors are attempted
 left-to-right for each emitted child, and the first viable selector wins.
 
+In generated code, those selector terms should typically be concrete
+`SlotSelector` subclasses or singleton selector values, not ad hoc tuples or
+magic strings.
+
 `MountDirective` is a retained reactive node with its own slot identity.
 On rerender:
 
@@ -418,6 +481,116 @@ On rerender:
 - if the selector becomes `no_emit`, the subtree must emit nothing
 - if the selector changes from `no_emit` to something else, the same directive
   slot now permits emission and attaches through the newly selected mount
+
+
+## Slot-Backed Scoped Directive Runtime
+
+`mount(...)` should not be implemented as pure ambient mutable state and should
+not be modeled as a one-off special case either.
+
+The recommended runtime shape is a new slot-backed scoped directive context.
+
+Conceptually:
+
+```python
+@dataclass(slots=True)
+class DirectiveSlotContext(ContextBase):
+    slot_id: SlotId
+    directive_binding: PlainCallBinding
+
+
+@dataclass(frozen=True, slots=True)
+class DirectiveRuntimeContext:
+    slot: DirectiveSlotContext
+```
+
+And on `RenderContext`:
+
+```python
+def open_directive(
+    self,
+    slot_id: SlotId,
+    evaluator: Callable[..., tuple[SlotSelector, ...]],
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    *,
+    result_shape: object | None = None,
+) -> AbstractContextManager[DirectiveRuntimeContext]: ...
+```
+
+Meaning:
+
+- `DirectiveSlotContext` owns a normal slot identity
+- selector evaluation reuses the same retained plain-call/value semantics as
+  `call_plain(...)`
+- the directive also owns a child-emission region like a container context
+- commit/rollback happens on the directive as one retained unit
+
+This should be viewed as:
+
+- reusing slotted/plain-call machinery for selector evaluation
+- while adding scoped child capture and commit/rollback behavior
+
+It should **not** be viewed as:
+
+- forcing plain-call runtime context itself to become the child-emission owner
+- or introducing a mount-only bespoke runtime path that cannot generalize to
+  other future scoped directives
+
+
+## Golden Lowering Example
+
+Source:
+
+```python
+sel, set_sel = use_state(default)
+
+with mount(sel, corner_widget(corner=Qt.TopLeftCorner)):
+    foo()
+```
+
+Conceptual transformed shape:
+
+```python
+(__pyr_sel_dirty, __pyr_set_sel_dirty), (sel, set_sel) = __pyr_ctx.call_plain(
+    __pyr_SlotId(__pyr_module_id, 1, line_no=1, is_top_level=True),
+    use_state,
+    default,
+    result_shape=("tuple", 2),
+)
+
+with __pyr_ctx.open_directive(
+    __pyr_SlotId(__pyr_module_id, 2, line_no=3, is_top_level=True),
+    __pyr_build_mount_selectors,
+    (sel, corner_widget(corner=Qt.TopLeftCorner)),
+    {},
+    result_shape=("tuple", "selectors"),
+) as __pyr_mount:
+    foo()
+```
+
+Where `__pyr_build_mount_selectors(...)` conceptually returns:
+
+```python
+(
+    sel,
+    corner_widget(corner=Qt.TopLeftCorner),
+)
+```
+
+and `open_directive(...)` is responsible for:
+
+1. retaining the directive slot
+2. evaluating and retaining the selector tuple
+3. capturing emitted child nodes within the `with` block
+4. producing a retained `MountDirective`
+5. committing or rolling back the directive subtree as one unit
+
+The important point is that mount lowering becomes:
+
+- a slot-backed scoped directive
+- not a raw ambient scope flag
+- and not merely a plain-call helper with no child region
 
 `EmittedNode` is conceptually:
 

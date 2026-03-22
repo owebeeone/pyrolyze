@@ -26,6 +26,11 @@ grouped by milestone priority.
   - Verify that detached/removed objects are fully unsubscribed and do not continue receiving events or retain backend-owned attachments.
   - This is the main confidence test still missing before pushing deeper into multi-mount support.
 
+- [P2] Exhaustively discover and classify PySide6 mount-point-shaped APIs.
+  - Run a deliberate full search across the PySide6 API surface for discoverable object-attachment and mount-point-like functions.
+  - Record the raw candidate list, then apply backend learnings as an overlay for exclusions, renames, keyed params, and selector generation.
+  - This is the source of truth needed before claiming the generated mount surface is complete.
+
 - [P2] Enforce UI-thread checks for the Tkinter backend.
   - `reconcile_owner(...)` expects backend thread assertions.
   - `_TkBackend.assert_ui_thread(...)` is currently a no-op.

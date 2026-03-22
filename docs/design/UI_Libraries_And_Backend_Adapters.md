@@ -5,6 +5,9 @@
 Describe how backend adapters consume committed UI and turn it into native
 widgets.
 
+For the concrete `UiInterface` schema and the current interface families, see
+[UI_Interface_Schema.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/docs/design/UI_Interface_Schema.md).
+
 ## Current implementation
 
 The package currently ships two backend adapters:

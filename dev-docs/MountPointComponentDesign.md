@@ -66,16 +66,48 @@ def CQMenu(*, text: str) -> None:
 
 @pyrolyze
 def panel() -> None:
-    with mount[QTabWidget.setCornerWidget](corner=Qt.TopLeftCorner):
+    with mount(corner_widget(corner=Qt.TopLeftCorner)):
         CQMenu(text="Top Left")
 ```
 
 This means:
 
 - `CQMenu` produces a managed native `QMenu`
-- the current mount scope is `QTabWidget.setCornerWidget`
+- the current mount scope selects the parent-relative `corner_widget` mount
+  point
 - `corner=...` is a mount-time parameter
 - the emitted object is attached through that mount point
+
+
+## Phase-1 Status
+
+The phase-1 mount design should be treated as frozen enough to implement on top
+of the mountable engine path.
+
+Resolved for phase 1:
+
+- source syntax uses `mount(...)`, not `mount[...]`
+- selectors are runtime values
+- `mount(*sels)` is valid
+- selector params belong to selector terms, not to the outer `mount(...)`
+- selector choice is left-to-right, first viable wins
+- later selectors are not materialized if an earlier selector wins
+- `default` and `no_emit` are special selector values
+- `no_emit` is only valid as the sole selector term
+- explicit mount scopes lower to retained `MountDirective` nodes
+- parent-side flattening resolves selector scopes into concrete `MountState`
+- implementation should target the mountable engine path, not the legacy
+  `ui_nodes.py` path
+
+Not yet implemented is not the same as undecided. The following are phase-1
+implementation tasks, not open design questions:
+
+- compiler lowering for `mount(...)`
+- retained emitted-tree support for `MountDirective`
+- parent-side selector flattening
+- rerender/remount behavior when a retained mount directive changes its winning
+  selector
+- diagnostics around explicit selector failure paths
 
 
 ## Canonical Current Child Interface
@@ -346,6 +378,15 @@ Conceptually, source-level mount selectors should lower to retained structural
 runtime state. Parent-side flattening then resolves each emitted child against
 the nearest enclosing selector scope.
 
+Implementation direction:
+
+- `mount(...)` should reuse slotted/plain-call mechanics for selector
+  evaluation
+- but it should do so through a new slot-backed scoped directive context, not
+  by reusing `PlainCallRuntimeContext` directly as the `with` body owner
+- this keeps slot retention, dirty tracking, and subtree capture in one
+  retained unit
+
 Deferred sugar, not phase 1:
 
 - `mount(a).Widget(...)`
@@ -359,6 +400,21 @@ Phase-1 surface:
 - `mount(*selectors)`
 - `mount(default)`
 - `mount(no_emit)`
+
+Golden lowering target:
+
+```python
+with __pyr_ctx.open_directive(
+    __pyr_SlotId(__pyr_module_id, 2, line_no=3, is_top_level=True),
+    __pyr_build_mount_selectors,
+    (sel, corner_widget(corner=Qt.TopLeftCorner)),
+    {},
+    result_shape=("tuple", "selectors"),
+) as __pyr_mount:
+    foo()
+```
+
+That is the intended compiler/runtime direction for phase 1.
 
 ### Runtime-checked form
 
@@ -830,12 +886,25 @@ It does not try to solve:
 - every future produced native object family in one step
 
 
-## Open Decisions
+## Remaining Open Decisions
 
-- exact metadata shape used for produced component types beyond `TypeRef`
-- whether mount point generics should encode only the parent API site or also
-  the accepted produced type explicitly
-- how much of the mount surface should be auto-discovered versus hand-curated in
-  backend learnings
-- whether indexed mount points ever need a batch `sync(...)` path or can rely on
-  per-instance `apply(...)`
+These are the areas that still need genuine design decisions. They are much
+smaller than the phase-1 mount model itself:
+
+- there are no remaining blocker-level syntax questions for phase 1
+- exhaustive backend mount discovery still needs to be executed and verified in
+  code and tests
+- non-phase-1 future relation APIs remain separate work
+
+
+## Resolved Direction
+
+The following points should now be treated as decided:
+
+- phase-1 produced-type metadata remains `TypeRef`
+- selector runtime values should be generated as concrete selector artifacts
+  such as `SlotSelector` subclasses or singleton values
+- exhaustive search of discoverable PySide6 mount-point-shaped APIs is required
+- backend learnings remain an overlay to refine, exclude, or rename discovered
+  candidates rather than replacing discovery entirely
+- indexed mount points should support a batch `sync(...)` path in phase 1

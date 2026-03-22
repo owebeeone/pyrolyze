@@ -10,14 +10,25 @@ from pyrolyze.backends.model import UiEventSpec, UiInterface, UiMethodSpec, UiWi
 
 
 def test_generated_backend_libraries_import() -> None:
+    common_module = importlib.import_module("pyrolyze.backends.common.generated_library")
     pyside6_module = importlib.import_module("pyrolyze.backends.pyside6.generated_library")
     tkinter_module = importlib.import_module("pyrolyze.backends.tkinter.generated_library")
 
+    assert hasattr(common_module, "CoreUiLibrary")
     assert hasattr(pyside6_module, "PySide6UiLibrary")
     assert hasattr(tkinter_module, "TkinterUiLibrary")
 
+    assert isinstance(common_module.CoreUiLibrary.UI_INTERFACE, UiInterface)
     assert isinstance(pyside6_module.PySide6UiLibrary.UI_INTERFACE, UiInterface)
     assert isinstance(tkinter_module.TkinterUiLibrary.UI_INTERFACE, UiInterface)
+    assert common_module.CoreUiLibrary.UI_INTERFACE.name == "CoreUiLibrary"
+    assert common_module.CoreUiLibrary.UI_INTERFACE.build_element(
+        "section",
+        title="Root",
+        accent="blue",
+    ).kind == "section"
+    assert hasattr(common_module.CoreUiLibrary.section, "_pyrolyze_meta")
+    assert hasattr(common_module.CoreUiLibrary.button, "_pyrolyze_meta")
     assert isinstance(pyside6_module.PySide6UiLibrary.WIDGET_SPECS, frozendict)
     assert isinstance(tkinter_module.TkinterUiLibrary.WIDGET_SPECS, frozendict)
     assert all(isinstance(spec, UiWidgetSpec) for spec in pyside6_module.PySide6UiLibrary.WIDGET_SPECS.values())
