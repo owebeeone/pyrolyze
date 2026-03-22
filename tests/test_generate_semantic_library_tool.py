@@ -252,6 +252,8 @@ def test_generate_library_source_renders_mount_point_specs() -> None:
     assert "mount_points=frozendict({" in source
     assert '"standard": MountPointSpec(' in source
     assert 'accepted_produced_type=TypeRef(expr=\'fakewidgets.widgets.LayoutWidget\')' in source
+    assert "default_child_mount_point_name='standard'" in source
+    assert "default_attach_mount_point_names=('standard',)" in source
     assert "sync_method_name='sync_widgets'" in source
     assert "place_method_name='place_widget'" in source
     assert "detach_method_name='detach_widget'" in source

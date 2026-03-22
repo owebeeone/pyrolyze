@@ -122,6 +122,8 @@ class UiWidgetSpec:
     methods: frozendict[str, UiMethodSpec]
     child_policy: ChildPolicy
     mount_points: frozendict[str, MountPointSpec] = frozendict()
+    default_child_mount_point_name: str | None = None
+    default_attach_mount_point_names: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

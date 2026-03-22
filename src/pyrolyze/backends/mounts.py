@@ -87,6 +87,7 @@ class ResolvedMountOps:
     apply: Callable[[object, MountState], None] | None = None
     sync: Callable[[object, Sequence[MountState]], None] | None = None
     place: Callable[[object, object, int], None] | None = None
+    place_before: Callable[[object, object, object | None], None] | None = None
     detach: Callable[[object, object], None] | None = None
     capture_snapshot: Callable[[object], object] | None = None
     restore_snapshot: Callable[[object, object], None] | None = None
@@ -122,6 +123,7 @@ def resolve_mount_ops(parent_type: type[object], mount_point: MountPointSpec) ->
                 getattr(parent, _method_name)(values)
 
     place = None
+    place_before = None
     detach = None
     place_name, detach_name = _ordered_fallback_method_names(mount_point)
     if place_name is None and mount_point.name == "standard":
@@ -130,19 +132,36 @@ def resolve_mount_ops(parent_type: type[object], mount_point: MountPointSpec) ->
         detach_name = "detach_child" if hasattr(parent_type, "detach_child") else None
     if place_name and hasattr(parent_type, place_name):
         call_shape = _ordered_place_call_shape(parent_type, place_name)
+        if call_shape == "anchor_before":
+            append_method_name = _ordered_append_method_name(place_name)
 
-        def place(
-            parent: object,
-            value: object,
-            index: int,
-            *,
-            _method_name: str = place_name,
-            _call_shape: Literal["index_first", "value_first"] = call_shape,
-        ) -> None:
-            if _call_shape == "index_first":
-                getattr(parent, _method_name)(index, value)
-                return
-            getattr(parent, _method_name)(value, index)
+            def place_before(
+                parent: object,
+                value: object,
+                before: object | None,
+                *,
+                _method_name: str = place_name,
+                _append_method_name: str | None = append_method_name,
+            ) -> None:
+                if before is None and _append_method_name and hasattr(parent, _append_method_name):
+                    getattr(parent, _append_method_name)(value)
+                    return
+                getattr(parent, _method_name)(before, value)
+
+        else:
+
+            def place(
+                parent: object,
+                value: object,
+                index: int,
+                *,
+                _method_name: str = place_name,
+                _call_shape: Literal["index_first", "value_first"] = call_shape,
+            ) -> None:
+                if _call_shape == "index_first":
+                    getattr(parent, _method_name)(index, value)
+                    return
+                getattr(parent, _method_name)(value, index)
 
     if detach_name and hasattr(parent_type, detach_name):
 
@@ -153,6 +172,7 @@ def resolve_mount_ops(parent_type: type[object], mount_point: MountPointSpec) ->
         apply=apply,
         sync=sync,
         place=place,
+        place_before=place_before,
         detach=detach,
     )
 
@@ -168,7 +188,10 @@ def choose_mount_applier(
         return MountApplierPlan(kind="skip")
 
     is_ordered = mount_point.max_children is None or mount_point.max_children > 1
-    has_replay = resolved_ops.place is not None and resolved_ops.detach is not None
+    has_replay = (
+        (resolved_ops.place is not None or resolved_ops.place_before is not None)
+        and resolved_ops.detach is not None
+    )
     has_sync = resolved_ops.sync is not None
     has_apply = resolved_ops.apply is not None
 
@@ -182,8 +205,6 @@ def choose_mount_applier(
     if old_state is None:
         if has_sync:
             return MountApplierPlan(kind="direct_sync")
-        if has_replay:
-            return MountApplierPlan(kind="incremental_ordered_replay")
         return MountApplierPlan(kind="full_rebuild_fallback")
 
     if has_replay and _is_small_replay_delta(old_state, new_state):
@@ -191,7 +212,7 @@ def choose_mount_applier(
     if has_sync:
         return MountApplierPlan(kind="direct_sync")
     if has_replay:
-        return MountApplierPlan(kind="incremental_ordered_replay")
+        return MountApplierPlan(kind="full_rebuild_fallback")
     return MountApplierPlan(kind="full_rebuild_fallback")
 
 
@@ -234,7 +255,7 @@ def apply_mount_state(
     if plan.kind == "skip":
         return
     if plan.kind == "incremental_ordered_replay":
-        _replay_mount_ops(parent, next_ordered, resolved)
+        _replay_mount_ops(parent, previous_ordered, next_ordered, resolved)
         return
     if plan.kind == "direct_sync":
         if resolved.sync is None:
@@ -267,7 +288,12 @@ def _mount_call_args(state: MountState) -> tuple[tuple[Any, ...], dict[str, Any]
     args: list[Any] = []
     kwargs: dict[str, Any] = {}
     for param in state.mount_point.params:
-        value = next(keyed_values) if param.keyed else state.values[param.name]
+        if param.keyed:
+            value = next(keyed_values)
+        else:
+            if param.name not in state.values:
+                continue
+            value = state.values[param.name]
         if param.keyed:
             args.append(value)
         else:
@@ -298,45 +324,71 @@ def _singularize(name: str) -> str:
 def _ordered_place_call_shape(
     parent_type: type[object],
     method_name: str,
-) -> Literal["index_first", "value_first"]:
+) -> Literal["index_first", "value_first", "anchor_before"]:
     method = getattr(parent_type, method_name)
-    parameters = tuple(signature(method).parameters.values())
+    try:
+        parameters = tuple(signature(method).parameters.values())
+    except (TypeError, ValueError):
+        if method_name in {"insertAction", "insertMenu"}:
+            return "anchor_before"
+        return "index_first"
     non_self = [parameter for parameter in parameters if parameter.name != "self"]
     if not non_self:
         return "index_first"
     first_name = non_self[0].name
     if first_name in {"index", "position", "pos"}:
         return "index_first"
+    if first_name in {"before", "before_action", "before_action_ref", "anchor"}:
+        return "anchor_before"
     return "value_first"
+
+
+def _ordered_append_method_name(place_method_name: str) -> str | None:
+    if place_method_name.startswith("insert") and len(place_method_name) > len("insert"):
+        return f"add{place_method_name[len('insert'):]}"
+    return None
 
 
 def _is_small_replay_delta(
     old_state: ImmutableOrderedMountState[Any] | None,
     new_state: ImmutableOrderedMountState[Any],
 ) -> bool:
-    del old_state
     op_count = len(new_state.ops)
-    object_count = len(new_state.objects)
-    return op_count <= 8 or op_count <= max(1, object_count // 4)
+    if op_count == 0 and old_state is not None and old_state.objects != new_state.objects:
+        return False
+    return op_count <= 8
 
 
 def _replay_mount_ops(
     parent: object,
+    old_state: ImmutableOrderedMountState[Any] | None,
     state: ImmutableOrderedMountState[Any],
     resolved: ResolvedMountOps,
 ) -> None:
-    if resolved.place is None or resolved.detach is None:
-        raise ValueError("replay selected without place/detach ops")
+    if (resolved.place is None and resolved.place_before is None) or resolved.detach is None:
+        raise ValueError("replay selected without placement/detach ops")
+    current = list(old_state.objects if old_state is not None else ())
     for op in state.ops:
         if op.kind == "clear":
+            for ref in tuple(current):
+                resolved.detach(parent, ref.value)
+            current.clear()
             continue
         if op.kind == "detach":
             if op.ref is not None:
+                current = [existing for existing in current if existing.node_id != op.ref.node_id]
                 resolved.detach(parent, op.ref.value)
             continue
         if op.kind == "place":
             if op.ref is not None and op.index is not None:
-                resolved.place(parent, op.ref.value, op.index)
+                current = [existing for existing in current if existing.node_id != op.ref.node_id]
+                index = max(0, min(op.index, len(current)))
+                if resolved.place_before is not None:
+                    anchor = current[index].value if index < len(current) else None
+                    resolved.place_before(parent, op.ref.value, anchor)
+                elif resolved.place is not None:
+                    resolved.place(parent, op.ref.value, index)
+                current.insert(index, op.ref)
 
 
 def _full_rebuild_ordered_mount(
@@ -348,12 +400,18 @@ def _full_rebuild_ordered_mount(
     if resolved.sync is not None:
         resolved.sync(parent, (new_state,))
         return
-    if resolved.place is None or resolved.detach is None:
+    if (resolved.place is None and resolved.place_before is None) or resolved.detach is None:
         raise ValueError("ordered mount has no sync or replay ops")
 
     if old_state is not None:
         for ref in old_state.objects:
             resolved.detach(parent, ref.value)
+    if resolved.place_before is not None:
+        for ref in new_state.objects:
+            resolved.place_before(parent, ref.value, None)
+        return
+    if resolved.place is None:
+        raise ValueError("ordered mount has no index placement op")
     for index, ref in enumerate(new_state.objects):
         resolved.place(parent, ref.value, index)
 

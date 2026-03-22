@@ -6,12 +6,18 @@ from dataclasses import dataclass, field
 import importlib
 from typing import Any, Callable, Mapping
 
+from frozendict import frozendict
+
 from pyrolyze.api import MISSING, UIElement
+from pyrolyze.backends.mounts import MountedRef, apply_mount_state
 from pyrolyze.backends.model import (
     AccessorKind,
     FillPolicy,
     MethodMode,
+    MountPointSpec,
+    MountState,
     PropMode,
+    TypeRef,
     UiMethodSpec,
     UiPropSpec,
     UiWidgetSpec,
@@ -33,6 +39,7 @@ class MountedMountableNode:
     mountable: object
     effective_props: dict[str, Any] = field(default_factory=dict)
     child_nodes: list["MountedMountableNode"] = field(default_factory=list)
+    mount_states: dict[tuple[object, ...], MountState] = field(default_factory=dict)
 
 
 class MountableEngine:
@@ -122,12 +129,15 @@ class MountableEngine:
 
         self._apply_changed_props(node.mountable, spec, changed_props)
         self._apply_changed_methods(node.mountable, spec, next_effective, changed_props)
-        node.child_nodes = self._mount_standard_children(
+        child_nodes, mount_states = self._mount_children(
             node.mountable,
             spec,
             element.children,
             parent_slot_id=next_key.slot_id,
+            old_mount_states=node.mount_states,
         )
+        node.child_nodes = child_nodes
+        node.mount_states = mount_states
         node.key = next_key
         node.element = element
         node.spec = spec
@@ -143,7 +153,7 @@ class MountableEngine:
         key: MountableNodeKey,
     ) -> MountedMountableNode:
         mountable = self._create_mountable(spec, effective_props)
-        child_nodes = self._mount_standard_children(
+        child_nodes, mount_states = self._mount_children(
             mountable,
             spec,
             element.children,
@@ -156,6 +166,7 @@ class MountableEngine:
             mountable=mountable,
             effective_props=dict(effective_props),
             child_nodes=child_nodes,
+            mount_states=mount_states,
         )
 
     def _replace_node_mountable(
@@ -203,16 +214,29 @@ class MountableEngine:
 
     def _create_mountable(self, spec: UiWidgetSpec, effective_props: Mapping[str, Any]) -> object:
         mountable_type = self._mountable_type_for(spec)
+        constructor_args: list[Any] = []
         constructor_kwargs: dict[str, Any] = {}
         method_backed_source_props = _method_backed_source_props(spec)
-        for name, value in effective_props.items():
+        for name in spec.constructor_params:
+            if name not in effective_props:
+                continue
+            value = effective_props[name]
             prop = spec.props.get(name)
             if prop is None or prop.constructor_name is None:
                 continue
             if name in method_backed_source_props:
                 continue
+            if _is_positional_constructor_name(prop.constructor_name):
+                position = _constructor_position(prop.constructor_name)
+                while len(constructor_args) <= position:
+                    constructor_args.append(MISSING)
+                constructor_args[position] = value
+                continue
             constructor_kwargs[prop.constructor_name] = value
-        mountable = mountable_type(**constructor_kwargs)
+        mountable = mountable_type(
+            *[value for value in constructor_args if value is not MISSING],
+            **constructor_kwargs,
+        )
         self._apply_mount_props(mountable, spec, effective_props)
         self._apply_mount_methods(mountable, spec, effective_props)
         return mountable
@@ -361,24 +385,202 @@ class MountableEngine:
                 return
         raise AttributeError(f"{type(mountable).__name__} has no method for spec {method.name!r}")
 
-    def _mount_standard_children(
+    def _mount_children(
         self,
         parent: object,
         spec: UiWidgetSpec,
         children: tuple[UIElement, ...],
         *,
         parent_slot_id: Any | None,
-    ) -> list[MountedMountableNode]:
-        mount_point = spec.mount_points.get("standard")
-        if mount_point is None:
-            return []
+        old_mount_states: Mapping[tuple[object, ...], MountState] | None = None,
+    ) -> tuple[list[MountedMountableNode], dict[tuple[object, ...], MountState]]:
+        if not children and not old_mount_states:
+            return [], {}
+
         child_nodes = [
             self.mount(child, slot_id=_child_slot_id(parent_slot_id, index), call_site_id=child.call_site_id)
             for index, child in enumerate(children)
         ]
-        if mount_point.sync_method_name is not None:
-            getattr(parent, mount_point.sync_method_name)([child.mountable for child in child_nodes])
-        return child_nodes
+        mount_states = self._build_mount_states(spec, child_nodes)
+
+        for instance_key, state in mount_states.items():
+            apply_mount_state(
+                parent,
+                old_state=None if old_mount_states is None else old_mount_states.get(instance_key),
+                new_state=state,
+            )
+        return child_nodes, mount_states
+
+    def _build_mount_states(
+        self,
+        spec: UiWidgetSpec,
+        child_nodes: list[MountedMountableNode],
+    ) -> dict[tuple[object, ...], MountState]:
+        mount_point = spec.mount_points.get("standard")
+        if mount_point is not None:
+            state = MountState(
+                mount_point=mount_point,
+                instance_key=mount_point.instance_key({}),
+                values=frozendict(),
+                objects=tuple(
+                    MountedRef(
+                        node_id=child.key.slot_id if child.key.slot_id is not None else index,
+                        value=child.mountable,
+                    )
+                    for index, child in enumerate(child_nodes)
+                ),
+            )
+            return {state.instance_key: state}
+
+        grouped: dict[tuple[object, ...], dict[str, Any]] = {}
+        for index, child in enumerate(child_nodes):
+            mount_point = self._default_mount_point_for_child(spec, child.spec)
+            values: dict[str, Any] = {}
+            instance_key = mount_point.instance_key(values)
+            bucket = grouped.setdefault(
+                instance_key,
+                {
+                    "mount_point": mount_point,
+                    "values": values,
+                    "objects": [],
+                },
+            )
+            bucket["objects"].append(
+                MountedRef(
+                    node_id=child.key.slot_id if child.key.slot_id is not None else index,
+                    value=child.mountable,
+                )
+            )
+
+        return {
+            instance_key: MountState(
+                mount_point=bucket["mount_point"],
+                instance_key=instance_key,
+                values=frozendict(bucket["values"]),
+                objects=tuple(bucket["objects"]),
+            )
+            for instance_key, bucket in grouped.items()
+        }
+
+    def _default_mount_point_for_child(
+        self,
+        parent_spec: UiWidgetSpec,
+        child_spec: UiWidgetSpec,
+    ) -> MountPointSpec:
+        child_type = self._mountable_type_for(child_spec)
+        default_mount_points = [
+            mount_point
+            for mount_name in parent_spec.default_attach_mount_point_names
+            if (mount_point := parent_spec.mount_points.get(mount_name)) is not None
+        ]
+        for mount_name in parent_spec.default_attach_mount_point_names:
+            mount_point = parent_spec.mount_points.get(mount_name)
+            if mount_point is None:
+                continue
+            if not self._mount_point_accepts_child(mount_point, child_type):
+                continue
+            return mount_point
+        compatible_explicit_mount_points = [
+            mount_point
+            for mount_point in parent_spec.mount_points.values()
+            if mount_point.name not in parent_spec.default_attach_mount_point_names
+            and self._mount_point_accepts_child(mount_point, child_type)
+        ]
+        raise ValueError(
+            self._format_unspecified_attach_error(
+                parent_spec,
+                child_spec,
+                default_mount_points=default_mount_points,
+                compatible_explicit_mount_points=compatible_explicit_mount_points,
+            )
+        )
+
+    def _mount_point_accepts_child(
+        self,
+        mount_point: MountPointSpec,
+        child_type: type[object],
+    ) -> bool:
+        accepted_type = self._resolve_type_ref(mount_point.accepted_produced_type)
+        return accepted_type is not None and issubclass(child_type, accepted_type)
+
+    def _format_unspecified_attach_error(
+        self,
+        parent_spec: UiWidgetSpec,
+        child_spec: UiWidgetSpec,
+        *,
+        default_mount_points: list[MountPointSpec],
+        compatible_explicit_mount_points: list[MountPointSpec],
+    ) -> str:
+        prefix = (
+            f"Cannot attach child kind {child_spec.kind!r} to parent {parent_spec.kind!r} "
+            "without an explicit mount."
+        )
+        if default_mount_points:
+            default_summary = ", ".join(
+                self._format_mount_point_summary(mount_point) for mount_point in default_mount_points
+            )
+            if compatible_explicit_mount_points:
+                explicit_summary = ", ".join(
+                    self._format_mount_point_summary(mount_point)
+                    for mount_point in compatible_explicit_mount_points
+                )
+                return (
+                    f"{prefix} Default attach mount points are: {default_summary}. "
+                    f"This child is supported, but explicit mount is required. "
+                    f"Compatible explicit mount points: {explicit_summary}."
+                )
+            return (
+                f"{prefix} Default attach mount points are: {default_summary}. "
+                "No compatible explicit mount points were found."
+            )
+        if compatible_explicit_mount_points:
+            explicit_summary = ", ".join(
+                self._format_mount_point_summary(mount_point)
+                for mount_point in compatible_explicit_mount_points
+            )
+            return (
+                f"{prefix} {parent_spec.kind!r} has no default attach mount point. "
+                f"This child is supported, but explicit mount is required. "
+                f"Compatible explicit mount points: {explicit_summary}."
+            )
+        available_mount_points = ", ".join(
+            self._format_mount_point_summary(mount_point)
+            for mount_point in parent_spec.mount_points.values()
+        ) or "none"
+        return (
+            f"{prefix} {parent_spec.kind!r} has no compatible default attach mount point, "
+            f"and no explicit mount point accepts {child_spec.kind!r}. "
+            f"Available mount points: {available_mount_points}."
+        )
+
+    def _format_mount_point_summary(self, mount_point: MountPointSpec) -> str:
+        details = [f"accepts {mount_point.accepted_produced_type.expr}"]
+        keyed_params = [param.name for param in mount_point.params if param.keyed]
+        required_params = [
+            param.name for param in mount_point.params if not param.keyed and param.default_repr is None
+        ]
+        if keyed_params:
+            details.append(f"keyed params: {', '.join(keyed_params)}")
+        if required_params:
+            details.append(f"required params: {', '.join(required_params)}")
+        return f"{mount_point.name} ({'; '.join(details)})"
+
+    def _resolve_type_ref(self, type_ref: TypeRef) -> type[object] | None:
+        expr = type_ref.expr.strip()
+        if not expr or "|" in expr:
+            return None
+        resolved = self._mountable_types.get(expr)
+        if resolved is not None:
+            return resolved
+        module_name, _, attr_name = expr.rpartition(".")
+        if not module_name or not attr_name:
+            return None
+        module = importlib.import_module(module_name)
+        resolved = getattr(module, attr_name)
+        if not isinstance(resolved, type):
+            return None
+        self._mountable_types[expr] = resolved
+        return resolved
 
 
 def _method_backed_source_props(spec: UiWidgetSpec) -> set[str]:
@@ -405,6 +607,12 @@ def _child_slot_id(parent_slot_id: Any | None, index: int) -> Any:
     if isinstance(parent_slot_id, tuple):
         return (*parent_slot_id, index)
     return (parent_slot_id, index)
+def _is_positional_constructor_name(name: str) -> bool:
+    return name.startswith("arg__")
+
+
+def _constructor_position(name: str) -> int:
+    return int(name.removeprefix("arg__")) - 1
 
 
 __all__ = ["MountableEngine", "MountedMountableNode", "MountableNodeKey"]

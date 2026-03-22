@@ -160,6 +160,39 @@ Each mount point describes:
 - how many attached objects may exist in one mount instance
 
 
+## Unspecified Mount Rules
+
+When authored source does not use an explicit `mount[...]` form, the runtime
+uses generated default mount metadata instead of trying to infer the mount site
+from live toolkit APIs.
+
+There are two separate defaults:
+
+- `default_child_mount_point_name`
+  - the mount point a mountable opens for its own nested children when source
+    enters `with SomeMountable(...):`
+- `default_attach_mount_point_names`
+  - the ordered parent-side candidate list used when a child is attached
+    without an explicit `mount[...]`
+
+Rules:
+
+1. Entering a mountable scope opens `default_child_mount_point_name`.
+2. If nested children are emitted and `default_child_mount_point_name` is
+   `None`, that is a fatal error.
+3. When a child is attached without explicit `mount[...]`, the parent scans
+   `default_attach_mount_point_names` in order.
+4. The first candidate that:
+   - accepts the child's produced type
+   - requires no keyed mount params
+   - has defaults for any optional non-keyed mount params
+   is selected.
+5. If no candidate matches, that is a fatal error.
+6. Explicit `mount[...]` always overrides the generated defaults.
+
+This keeps unspecified behavior deterministic and generator-owned.
+
+
 ## Mount Instance Keys
 
 `MountPointSpec` defines the abstract attachment site.
@@ -231,8 +264,8 @@ Rules:
 
 - `apply(...)` is the required behavior contract
 - `sync(...)` is an optional batch optimization
-- lower-level `place(...)` / `detach(...)` operations remain backend
-  implementation details or fallback primitives
+- lower-level placement operations remain backend implementation details or
+  fallback primitives
 
 
 ## Resolved Mount Ops
@@ -249,6 +282,7 @@ class ResolvedMountOps:
     apply: Callable[[object, MountState], None] | None = None
     sync: Callable[[object, Sequence[MountState]], None] | None = None
     place: Callable[[object, object, int], None] | None = None
+    place_before: Callable[[object, object, object | None], None] | None = None
     detach: Callable[[object, object], None] | None = None
     capture_snapshot: Callable[[object], object] | None = None
     restore_snapshot: Callable[[object, object], None] | None = None
@@ -379,8 +413,10 @@ adds the missing imperative parent-mutation restoration.
 Ordered mount points need a stable immutable state object that can support:
 
 - O(1) unchanged detection by revision
+- O(n) diffing against a new ordered sequence when needed
 - replay of simple mutations
 - fallback to full ordered `sync(...)`
+- lowering to either index-based or anchor-based placement APIs
 
 The intended mutation model is builder-based:
 
@@ -389,20 +425,37 @@ The intended mutation model is builder-based:
 - the builder applies mount deltas
 - `build()` freezes the next immutable candidate state
 
-Proposed phase-1 shape:
+The key identity for ordered mount deltas should be `slot_id`, not position.
+That is what lets the runtime distinguish:
+
+- reused objects
+- inserted objects
+- removed objects
+- moved objects
+
+without conflating them with the current index.
+
+Proposed shape:
 
 ```python
 @dataclass(frozen=True, slots=True)
 class MountedRef[T]:
-    node_id: object
+    slot_id: object
     value: T
+    attachment_handle: object | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class MountOp[T]:
-    kind: Literal["place", "detach", "clear"]
-    index: int | None = None
+    kind: Literal[
+        "append",
+        "insert_before",
+        "move_before",
+        "detach",
+        "clear",
+    ]
     ref: MountedRef[T] | None = None
+    anchor_slot_id: object | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -418,8 +471,10 @@ class OrderedMountStateBuilder[T]:
     _working: list[MountedRef[T]]
     _ops: list[MountOp[T]]
 
-    def place(self, index: int, ref: MountedRef[T]) -> None: ...
-    def detach(self, ref: MountedRef[T]) -> None: ...
+    def append(self, ref: MountedRef[T]) -> None: ...
+    def insert_before(self, ref: MountedRef[T], anchor_slot_id: object | None) -> None: ...
+    def move_before(self, slot_id: object, anchor_slot_id: object | None) -> None: ...
+    def detach(self, slot_id: object) -> None: ...
     def clear(self) -> None: ...
     def build(self) -> ImmutableOrderedMountState[T]: ...
 ```
@@ -434,15 +489,32 @@ Expected lifecycle:
 - if unchanged, skip
 - if changed, choose an applier strategy from the resolved mount ops
 
+This does not require a tree or rope initially. A tuple plus builder is enough
+to validate the model.
+
+### Complexity
+
+The runtime should not aim for true `O(log n)` detection of arbitrary sequence
+changes. That is not realistic. If a new ordered sequence is presented, the
+runtime has to inspect it, which gives an `O(n)` lower bound for general diff.
+
+The practical targets are:
+
+- `O(1)` no-op detection when the revision or generation is unchanged
+- `O(n)` sequence diff by `slot_id`
+- `O(k)` replay for small known delta logs
+- optionally `O(n log n)` move minimization later, for example via LIS on the
+  retained old-index stream
+
 Phase-1 implementation can keep this simple:
 
 - immutable tuple of final ordered refs
 - mutable builder with a working list
-- small replay log
+- small semantic op log
 - old state retained only for the current reconciliation boundary
 
-This does not require a tree or rope initially. A tuple plus log is enough to
-validate the model.
+The important point is that the op log should be expressed in semantic
+slot/anchor terms, not raw integer indices.
 
 
 ## Delta Applier Strategies
@@ -469,12 +541,12 @@ Behavior:
 
 Use when:
 
-- `ResolvedMountOps.place` and `ResolvedMountOps.detach` exist
+- `ResolvedMountOps` can consume fine-grained placement ops
 - delta log is small/simple
 
 Behavior:
 
-- replay `place(...)` / `detach(...)` from the op log
+- replay semantic ordered ops from the op log
 - preserve O(k) work for small mutations
 
 ### 3. Per-Instance Apply
@@ -500,6 +572,78 @@ Behavior:
 - rebuild the final mount state and apply it directly
 
 
+## Low-Level Ordered Mount Interface
+
+The ordered-mount runtime should expose a small semantic delta interface, then
+lower that interface to the concrete backend API shape.
+
+Recommended internal op surface:
+
+```python
+@dataclass(frozen=True, slots=True)
+class OrderedMountDelta[T]:
+    ops: tuple[MountOp[T], ...]
+    next_state: ImmutableOrderedMountState[T]
+
+
+@dataclass(frozen=True, slots=True)
+class MountOp[T]:
+    kind: Literal[
+        "append",
+        "insert_before",
+        "move_before",
+        "detach",
+        "clear",
+    ]
+    ref: MountedRef[T] | None = None
+    anchor_slot_id: object | None = None
+```
+
+The important rule is:
+
+- deltas are expressed in semantic slot/anchor terms
+- adapters are free to lower them to:
+  - `place(index, value)`
+  - `place_before(value, anchor)`
+  - `insertAction(before, action)`
+  - full `sync(...)`
+
+### Resolved Ordered Ops
+
+For ordered mounts, the adapter-facing callable set should conceptually be:
+
+```python
+@dataclass(frozen=True, slots=True)
+class ResolvedMountOps:
+    sync: Callable[[object, Sequence[MountState]], None] | None = None
+    place: Callable[[object, object, int], None] | None = None
+    place_before: Callable[[object, object, object | None], None] | None = None
+    detach: Callable[[object, object], None] | None = None
+```
+
+Where:
+
+- `place(...)` is for index-addressable parents
+- `place_before(...)` is for anchor-addressable parents
+- `sync(...)` is the batch fast path
+- `detach(...)` removes one currently mounted child/object
+
+### Rebuild Behavior
+
+When incremental replay is rejected, the runtime should stop trying to be
+clever.
+
+Preferred rebuild order:
+
+1. if `sync(...)` exists, build the final ordered state and call `sync(...)`
+2. otherwise, detach everything currently mounted in that mount instance
+3. then append/reinsert everything in final order using the best available
+   primitive
+
+This is deliberately blunt. The goal is to avoid a long series of widget-side
+move operations that each do hidden `O(n)` work.
+
+
 ## Strategy Selection
 
 The runtime should choose the applier from the resolved function set, not from
@@ -522,8 +666,10 @@ Selection inputs:
 
 - mount point cardinality
 - presence/absence of `sync`
-- presence/absence of `place` and `detach`
+- presence/absence of index-based placement
+- presence/absence of anchor-based placement
 - delta log size vs final object count
+- replay operation count cap
 - duplicate mount-instance validity
 
 ### Required Decision Order
@@ -554,7 +700,12 @@ def choose_mount_applier(
         return MountApplierPlan(kind="skip")
 
     is_ordered = mount_point.max_children is None or mount_point.max_children > 1
-    has_replay = resolved_ops.place is not None and resolved_ops.detach is not None
+    has_index_replay = (
+        resolved_ops.place is not None and resolved_ops.detach is not None
+    )
+    has_anchor_replay = (
+        resolved_ops.place_before is not None and resolved_ops.detach is not None
+    )
     has_sync = resolved_ops.sync is not None
     has_apply = resolved_ops.apply is not None
 
@@ -565,29 +716,41 @@ def choose_mount_applier(
             return MountApplierPlan(kind="direct_sync")
         return MountApplierPlan(kind="full_rebuild_fallback")
 
-    if has_replay and is_small_replay_delta(old_state, new_state):
+    if (has_anchor_replay or has_index_replay) and is_small_replay_delta(old_state, new_state):
         return MountApplierPlan(kind="incremental_ordered_replay")
     if has_sync:
         return MountApplierPlan(kind="direct_sync")
-    if has_replay:
+    if has_anchor_replay or has_index_replay:
         return MountApplierPlan(kind="incremental_ordered_replay")
     return MountApplierPlan(kind="full_rebuild_fallback")
 ```
 
 ### Meaning Of "Small Replay Delta"
 
-Phase-1 does not need a sophisticated cost model. A simple heuristic is enough:
+Phase-1 should use a hard replay cap to avoid accidental quadratic widget-side
+costs.
 
-- replay if:
-  - `len(ops) <= 8`, or
-  - `len(ops) <= len(objects) // 4`
-- otherwise use direct sync if available
+Recommended rule:
 
-That keeps the decision:
+- replay only if all are true:
+  - `len(ops) <= 8`
+  - the adapter exposes replay primitives (`place_before(...)` or `place(...)`)
+- otherwise rebuild
 
-- cheap for small insert/move/remove edits
-- simple to reason about
-- easy to tune later without changing the rest of the model
+This is intentionally conservative.
+
+Why:
+
+- even if PyRolyze computes the delta in `O(n)`
+- replaying many moves may still cost `O(n)` each inside the toolkit
+- so a long replay can become effectively quadratic at the widget layer
+
+The design goal is therefore:
+
+- no accidental `O(n^2)` or worse in common ordered-mount updates
+- accept `O(n)` or `O(n log n)` diff computation
+- cap replay aggressively
+- rebuild once the mutation count stops being small
 
 ### Decision Table
 
@@ -596,9 +759,10 @@ That keeps the decision:
 | single/keyed | `apply` | `per_instance_apply` |
 | single/keyed | no `apply`, `sync` | `direct_sync` |
 | single/keyed | neither | `full_rebuild_fallback` |
-| ordered | `place` + `detach`, small delta | `incremental_ordered_replay` |
+| ordered | `place_before` or `place` + `detach`, small delta | `incremental_ordered_replay` |
 | ordered | `sync`, large delta | `direct_sync` |
-| ordered | no `sync`, `place` + `detach` | `incremental_ordered_replay` |
+| ordered | no `sync`, replay ops only, small delta | `incremental_ordered_replay` |
+| ordered | no `sync`, replay ops only, large delta | `full_rebuild_fallback` |
 | ordered | only `apply`-like coarse ops | `full_rebuild_fallback` |
 
 ### Examples
@@ -607,6 +771,10 @@ That keeps the decision:
   - use `direct_sync` for broad reshapes
 - `standard` child list on a parent with `place(...)` / `detach(...)`
   - use `incremental_ordered_replay` for small inserts/moves/removals
+  - use full rebuild once replay exceeds the cap
+- `menu` or `toolbar` mount with `insertAction(before, action)`
+  - use anchor-based replay rather than index-based replay
+  - use rebuild once the anchor-based op count exceeds the cap
 - `corner_widget(top_left)` with `set_corner_widget(...)`
   - use `per_instance_apply`
 - `cell_widget(row, column)` with `set_cell_widget(...)`

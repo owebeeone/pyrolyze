@@ -4,14 +4,14 @@ from frozendict import frozendict
 
 from pyrolyze.backends.mounts import (
     ImmutableOrderedMountState,
-    MountedRef,
     OrderedMountStateBuilder,
     MountOp,
+    MountedRef,
     apply_mount_state,
     choose_mount_applier,
     resolve_mount_ops,
 )
-from pyrolyze.backends.model import MountState
+from pyrolyze.backends.model import MountPointSpec, MountState, TypeRef
 from pyrolyze.testing.hydo import (
     HYDO_MOUNTABLE_SPECS,
     HydoGridLayout,
@@ -24,6 +24,39 @@ from pyrolyze.testing.hydo import (
 def _ordered_state(*mountables: object, revision: int = 1) -> ImmutableOrderedMountState[object]:
     refs = tuple(MountedRef(node_id=("node", index), value=value) for index, value in enumerate(mountables))
     return ImmutableOrderedMountState(revision=revision, objects=refs)
+
+
+class _AnchorOrderedParent:
+    def __init__(self) -> None:
+        self.actions: list[object] = []
+        self.operations: list[tuple[str, tuple[object, ...]]] = []
+
+    def addAction(self, action: object) -> None:
+        self.actions.append(action)
+        self.operations.append(("addAction", (action,)))
+
+    def insertAction(self, before: object, action: object) -> None:
+        index = self.actions.index(before)
+        if action in self.actions:
+            self.actions.remove(action)
+            index = self.actions.index(before)
+        self.actions.insert(index, action)
+        self.operations.append(("insertAction", (before, action)))
+
+    def removeAction(self, action: object) -> None:
+        if action in self.actions:
+            self.actions.remove(action)
+        self.operations.append(("removeAction", (action,)))
+
+
+def _anchor_mount_point() -> MountPointSpec:
+    return MountPointSpec(
+        name="action",
+        accepted_produced_type=TypeRef("Action"),
+        max_children=None,
+        place_method_name="insertAction",
+        detach_method_name="removeAction",
+    )
 
 
 def test_ordered_mount_state_builder_builds_immutable_state_with_ops() -> None:
@@ -54,6 +87,14 @@ def test_resolve_mount_ops_discovers_sync_and_replay_for_hydo_standard_mount() -
     assert resolve_mount_ops(HydoWidget, standard_mount) is ops
 
 
+def test_resolve_mount_ops_discovers_anchor_replay_for_before_style_mounts() -> None:
+    ops = resolve_mount_ops(_AnchorOrderedParent, _anchor_mount_point())
+
+    assert ops.place is None
+    assert ops.place_before is not None
+    assert ops.detach is not None
+
+
 def test_choose_mount_applier_prefers_incremental_replay_for_small_ordered_delta() -> None:
     standard_mount = HYDO_MOUNTABLE_SPECS["HydoWidget"].mount_points["standard"]
     old_state = _ordered_state(HydoWidget(name="a"), HydoWidget(name="b"), revision=1)
@@ -71,6 +112,25 @@ def test_choose_mount_applier_prefers_incremental_replay_for_small_ordered_delta
     )
 
     assert plan.kind == "incremental_ordered_replay"
+
+
+def test_choose_mount_applier_prefers_full_rebuild_for_large_replay_only_delta() -> None:
+    mount_point = _anchor_mount_point()
+    old_state = _ordered_state("a", "b", "c", "d", "e", "f", "g", "h", "i", revision=1)
+
+    builder = OrderedMountStateBuilder.from_state(old_state)
+    for _ in range(9):
+        builder.place(0, old_state.objects[-1])
+    new_state = builder.build()
+
+    plan = choose_mount_applier(
+        mount_point=mount_point,
+        old_state=old_state,
+        new_state=new_state,
+        resolved_ops=resolve_mount_ops(_AnchorOrderedParent, mount_point),
+    )
+
+    assert plan.kind == "full_rebuild_fallback"
 
 
 def test_apply_mount_state_uses_sync_for_initial_standard_mount() -> None:
@@ -123,6 +183,57 @@ def test_apply_mount_state_replays_small_standard_delta_with_place_api() -> None
 
     assert [child.name for child in parent.children] == ["second", "first", "third"]
     assert [op.method for op in parent.operations[-2:]] == ["place_child", "place_child"]
+
+
+def test_apply_mount_state_uses_full_rebuild_for_initial_anchor_mount() -> None:
+    parent = _AnchorOrderedParent()
+    mount_point = _anchor_mount_point()
+    first = "first"
+    second = "second"
+    state = MountState(
+        mount_point=mount_point,
+        instance_key=mount_point.instance_key({}),
+        values=frozendict(),
+        objects=_ordered_state(first, second).objects,
+    )
+
+    apply_mount_state(parent, old_state=None, new_state=state)
+
+    assert parent.actions == [first, second]
+    assert [name for name, _ in parent.operations] == ["addAction", "addAction"]
+
+
+def test_apply_mount_state_replays_small_anchor_delta_with_place_before() -> None:
+    parent = _AnchorOrderedParent()
+    mount_point = _anchor_mount_point()
+    first = "first"
+    second = "second"
+    third = "third"
+
+    old_order = _ordered_state(first, second, third, revision=1)
+    old_state = MountState(
+        mount_point=mount_point,
+        instance_key=mount_point.instance_key({}),
+        values=frozendict(),
+        objects=old_order.objects,
+    )
+    apply_mount_state(parent, old_state=None, new_state=old_state)
+    parent.operations.clear()
+
+    builder = OrderedMountStateBuilder.from_state(old_order)
+    builder.place(0, old_order.objects[2])
+    new_order = builder.build()
+    new_state = MountState(
+        mount_point=mount_point,
+        instance_key=mount_point.instance_key({}),
+        values=frozendict(),
+        objects=new_order.objects,
+    )
+
+    apply_mount_state(parent, old_state=old_state, new_state=new_state, ordered_state=new_order)
+
+    assert parent.actions == [third, first, second]
+    assert parent.operations == [("insertAction", (first, third))]
 
 
 def test_apply_mount_state_handles_keyed_single_mount() -> None:

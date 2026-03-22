@@ -9,7 +9,7 @@ import pytest
 
 pytest.importorskip("PySide6.QtWidgets")
 
-from PySide6.QtWidgets import QApplication, QPushButton, QSpinBox, QWidget
+from PySide6.QtWidgets import QApplication, QBoxLayout, QFormLayout, QMainWindow, QMenuBar, QPushButton, QSpinBox, QWidget
 
 from pyrolyze.api import UIElement
 from pyrolyze.backends.model import ChildPolicy, FillPolicy, MethodMode, TypeRef, UiMethodSpec, UiParamSpec, UiPropSpec, UiWidgetSpec
@@ -199,3 +199,127 @@ def test_generated_qspinbox_uses_learned_range_method_for_partial_updates(qapp: 
     assert updated.widget.maximum() == 12
     assert updated.effective_props["minimum"] == 1
     assert updated.effective_props["maximum"] == 12
+
+
+def test_mount_infers_default_layout_mount_from_generated_children(qapp: QApplication) -> None:
+    del qapp
+    engine = PySide6WidgetEngine(PySide6UiLibrary.WIDGET_SPECS)
+    assert PySide6UiLibrary.WIDGET_SPECS["QWidget"].default_child_mount_point_name == "layout"
+
+    node = engine.mount(
+        UIElement(
+            kind="QWidget",
+            props={"objectName": "root"},
+            children=(
+                UIElement(
+                    kind="QBoxLayout",
+                    props={"arg__1": QBoxLayout.Direction.TopToBottom},
+                    children=(
+                        UIElement(
+                            kind="QPushButton",
+                            props={"text": "Save"},
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        slot_id=("root", "widget", 1),
+        call_site_id=41,
+    )
+
+    assert isinstance(node.widget, QWidget)
+    layout = node.widget.layout()
+    assert isinstance(layout, QBoxLayout)
+    assert layout.count() == 1
+    item = layout.itemAt(0)
+    assert item is not None
+    child_widget = item.widget()
+    assert isinstance(child_widget, QPushButton)
+    assert child_widget.text() == "Save"
+
+
+def test_mount_raises_when_unspecified_child_has_no_compatible_default_attach_path(qapp: QApplication) -> None:
+    del qapp
+    engine = PySide6WidgetEngine(PySide6UiLibrary.WIDGET_SPECS)
+
+    with pytest.raises(ValueError) as excinfo:
+        engine.mount(
+            UIElement(
+                kind="QWidget",
+                props={"objectName": "root"},
+                children=(
+                    UIElement(
+                        kind="QPushButton",
+                        props={"text": "Save"},
+                    ),
+                ),
+            ),
+            slot_id=("root", "widget", 2),
+            call_site_id=42,
+        )
+
+    message = str(excinfo.value)
+    assert "Cannot attach child kind 'QPushButton' to parent 'QWidget'" in message
+    assert "Default attach mount points" in message
+    assert "layout" in message
+    assert "PySide6.QtWidgets.QLayout" in message
+
+
+def test_mount_error_explains_when_explicit_mount_is_required(qapp: QApplication) -> None:
+    del qapp
+    engine = PySide6WidgetEngine(PySide6UiLibrary.WIDGET_SPECS)
+
+    with pytest.raises(ValueError) as excinfo:
+        engine.mount(
+            UIElement(
+                kind="QFormLayout",
+                props={},
+                children=(
+                    UIElement(
+                        kind="QPushButton",
+                        props={"text": "Save"},
+                    ),
+                ),
+            ),
+            slot_id=("root", "form", 1),
+            call_site_id=44,
+        )
+
+    message = str(excinfo.value)
+    assert "Cannot attach child kind 'QPushButton' to parent 'QFormLayout'" in message
+    assert "explicit mount is required" in message
+    assert "widget" in message
+    assert "row" in message
+    assert "role" in message
+
+
+def test_mount_infers_default_main_window_mounts_from_generated_children(qapp: QApplication) -> None:
+    del qapp
+    engine = PySide6WidgetEngine(PySide6UiLibrary.WIDGET_SPECS)
+
+    node = engine.mount(
+        UIElement(
+            kind="QMainWindow",
+            props={"windowTitle": "Workspace"},
+            children=(
+                UIElement(
+                    kind="QMenuBar",
+                    props={"objectName": "main-menu"},
+                ),
+                UIElement(
+                    kind="QWidget",
+                    props={"objectName": "central"},
+                ),
+            ),
+        ),
+        slot_id=("root", "window", 1),
+        call_site_id=43,
+    )
+
+    assert isinstance(node.widget, QMainWindow)
+    menu_bar = node.widget.menuBar()
+    assert isinstance(menu_bar, QMenuBar)
+    assert menu_bar.objectName() == "main-menu"
+    central = node.widget.centralWidget()
+    assert isinstance(central, QWidget)
+    assert central.objectName() == "central"

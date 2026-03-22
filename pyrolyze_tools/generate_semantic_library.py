@@ -534,6 +534,8 @@ def _render_single_widget_spec(
     package_name: str,
     widget: DiscoveredWidgetClass,
 ) -> list[str]:
+    default_child_mount_point_name = _infer_default_child_mount_point_name(package_name, widget.mount_points)
+    default_attach_mount_point_names = _infer_default_attach_mount_point_names(package_name, widget.mount_points)
     lines = [
         f'        "{widget.class_name}": UiWidgetSpec(',
         f'            kind="{widget.class_name}",',
@@ -565,6 +567,8 @@ def _render_single_widget_spec(
     lines.extend(
         [
             "            }),",
+            f"            default_child_mount_point_name={default_child_mount_point_name!r},",
+            f"            default_attach_mount_point_names={default_attach_mount_point_names!r},",
             "            child_policy=ChildPolicy.NONE,",
             "        ),",
         ]
@@ -609,6 +613,97 @@ def _render_widget_props(package_name: str, widget: DiscoveredWidgetClass) -> li
             f"affects_identity={_render_affects_identity(parameter is not None, discovered_property)}),"
         )
     return lines
+
+
+def _infer_default_child_mount_point_name(
+    package_name: str,
+    mount_points: Sequence[DiscoveredMountPoint],
+) -> str | None:
+    available = {mount_point.name for mount_point in mount_points}
+    for candidate in _default_child_mount_priority(package_name):
+        if candidate in available:
+            return candidate
+    return next(iter(available), None)
+
+
+def _infer_default_attach_mount_point_names(
+    package_name: str,
+    mount_points: Sequence[DiscoveredMountPoint],
+) -> tuple[str, ...]:
+    candidate_names = {
+        mount_point.name
+        for mount_point in mount_points
+        if _mount_point_supports_unspecified_attach(mount_point)
+    }
+    ordered = [
+        candidate
+        for candidate in _default_attach_mount_priority(package_name)
+        if candidate in candidate_names
+    ]
+    extras = sorted(candidate_names.difference(ordered))
+    return tuple([*ordered, *extras])
+
+
+def _mount_point_supports_unspecified_attach(mount_point: DiscoveredMountPoint) -> bool:
+    for param in mount_point.params:
+        if param.kind not in {
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        }:
+            return False
+        if param.default_source is None:
+            return False
+    return True
+
+
+def _default_child_mount_priority(package_name: str) -> tuple[str, ...]:
+    if package_name == "PySide6":
+        return (
+            "standard",
+            "layout",
+            "widget",
+            "central_widget",
+            "menu",
+            "action",
+            "menu_bar",
+            "status_bar",
+            "viewport",
+            "title_bar_widget",
+            "menu_widget",
+            "corner_widget",
+        )
+    return (
+        "standard",
+        "widget",
+        "layout",
+        "menu",
+        "action",
+    )
+
+
+def _default_attach_mount_priority(package_name: str) -> tuple[str, ...]:
+    if package_name == "PySide6":
+        return (
+            "standard",
+            "menu_bar",
+            "status_bar",
+            "title_bar_widget",
+            "viewport",
+            "layout",
+            "central_widget",
+            "widget",
+            "menu",
+            "action",
+            "menu_widget",
+            "corner_widget",
+        )
+    return (
+        "standard",
+        "widget",
+        "layout",
+        "menu",
+        "action",
+    )
 
 
 def _render_widget_methods(
