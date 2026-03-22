@@ -5,10 +5,12 @@ from dataclasses import dataclass, field
 import pytest
 
 from pyrolyze.api import UIElement
+import pyrolyze.pyrolyze_tkinter as tk_wrapper
 from pyrolyze.pyrolyze_tkinter import (
     _TkBackend,
     _TkButtonBinding,
     _TkButtonMapper,
+    _create_tk_root,
     _load_tk_modules,
     _layout_metrics_delta,
     _layout_metrics_snapshot,
@@ -48,8 +50,19 @@ def test_tkinter_available_reports_host_support_as_bool() -> None:
     assert isinstance(tkinter_available(), bool)
 
 
-@pytest.mark.skipif(not tkinter_available(), reason="Tk root unavailable in this environment")
-def test_tk_backend_delegates_button_binding_creation_to_mapper() -> None:
+@pytest.fixture
+def tk_runtime(monkeypatch: pytest.MonkeyPatch):
+    root = _create_tk_root()
+    root.destroy()
+    monkeypatch.setattr(tk_wrapper, "tkinter_available", lambda: True)
+    yield
+    hidden_root = getattr(tk_wrapper, "_TK_ROOT", None)
+    if hidden_root is not None:
+        hidden_root.destroy()
+        tk_wrapper._TK_ROOT = None
+
+
+def test_tk_backend_delegates_button_binding_creation_to_mapper(tk_runtime) -> None:
     tk, ttk = _load_tk_modules()
     backend = _TkBackend(tk=tk, ttk=ttk)
 
@@ -67,8 +80,7 @@ def test_tk_backend_delegates_button_binding_creation_to_mapper() -> None:
     assert isinstance(binding, _TkButtonBinding)
 
 
-@pytest.mark.skipif(not tkinter_available(), reason="Tk root unavailable in this environment")
-def test_render_ui_element_builds_tk_button_from_frozen_v1_schema() -> None:
+def test_render_ui_element_builds_tk_button_from_frozen_v1_schema(tk_runtime) -> None:
     widget = render_ui_element(
         UIElement(
             kind="button",
@@ -80,8 +92,7 @@ def test_render_ui_element_builds_tk_button_from_frozen_v1_schema() -> None:
     assert str(widget.cget("state")) == "disabled"
 
 
-@pytest.mark.skipif(not tkinter_available(), reason="Tk root unavailable in this environment")
-def test_render_semantic_node_builds_tk_select_field_widget() -> None:
+def test_render_semantic_node_builds_tk_select_field_widget(tk_runtime) -> None:
     widget = render_semantic_node(
         {
             "kind": "select_field",
@@ -104,8 +115,7 @@ def test_render_semantic_node_builds_tk_select_field_widget() -> None:
     assert tuple(combo.cget("values")) == ("Berlin", "Paris")
 
 
-@pytest.mark.skipif(not tkinter_available(), reason="Tk root unavailable in this environment")
-def test_reconcile_window_content_updates_badge_in_place() -> None:
+def test_reconcile_window_content_updates_badge_in_place(tk_runtime) -> None:
     host = create_window("Retained Badge")
 
     reconcile_window_content(host, [_semantic_badge(owner="root", index=1, text="One")])
@@ -120,8 +130,7 @@ def test_reconcile_window_content_updates_badge_in_place() -> None:
     host.close()
 
 
-@pytest.mark.skipif(not tkinter_available(), reason="Tk root unavailable in this environment")
-def test_reconcile_window_content_reorders_reused_widgets() -> None:
+def test_reconcile_window_content_reorders_reused_widgets(tk_runtime) -> None:
     host = create_window("Retained Reorder")
     first_nodes = [
         _semantic_button(owner="root", index=1, label="One"),

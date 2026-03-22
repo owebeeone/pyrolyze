@@ -9,8 +9,9 @@ import pytest
 
 from pyrolyze.api import UIElement
 from pyrolyze.compiler import load_transformed_namespace
+import pyrolyze.pyrolyze_tkinter as tk_wrapper
 from pyrolyze.runtime import RenderContext, TraceChannel, TraceRecord, dirtyof
-from pyrolyze.pyrolyze_tkinter import tkinter_available
+from pyrolyze.pyrolyze_tkinter import _create_tk_root, tkinter_available
 
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -283,8 +284,19 @@ def test_run_grid_app_main_configures_stdout_trace_sink() -> None:
     assert output_lines[1].endswith("flush.start queued=()")
 
 
-@pytest.mark.skipif(not tkinter_available(), reason="Tk root unavailable in this environment")
-def test_run_grid_app_builds_tkinter_host() -> None:
+@pytest.fixture
+def tk_runtime(monkeypatch: pytest.MonkeyPatch):
+    root = _create_tk_root()
+    root.destroy()
+    monkeypatch.setattr(tk_wrapper, "tkinter_available", lambda: True)
+    yield
+    hidden_root = getattr(tk_wrapper, "_TK_ROOT", None)
+    if hidden_root is not None:
+        hidden_root.destroy()
+        tk_wrapper._TK_ROOT = None
+
+
+def test_run_grid_app_builds_tkinter_host(tk_runtime) -> None:
     namespace = run_path(str(RUNNER_PATH))
     build_app_host = namespace["build_app_host"]
     host, ctx = build_app_host("tkinter")

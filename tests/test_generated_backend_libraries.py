@@ -6,7 +6,7 @@ import inspect
 from frozendict import frozendict
 
 from pyrolyze.api import MISSING
-from pyrolyze.backends.model import UiEventSpec, UiInterface, UiMethodSpec, UiWidgetSpec
+from pyrolyze.backends.model import MountReplayKind, UiEventSpec, UiInterface, UiMethodSpec, UiWidgetSpec
 
 
 def test_generated_backend_libraries_import() -> None:
@@ -44,11 +44,18 @@ def test_generated_backend_libraries_import() -> None:
     assert "geometry_x" in qpush_signature.parameters
     assert "geometry_height" in qpush_signature.parameters
 
+    qaction_signature = inspect.signature(pyside6_module.PySide6UiLibrary.CQAction)
+    assert "separator" in qaction_signature.parameters
+    assert "on_triggered" in qaction_signature.parameters
+
     qhbox_signature = inspect.signature(pyside6_module.PySide6UiLibrary.CQHBoxLayout)
     assert qhbox_signature.parameters["parent"].default is Ellipsis
 
     qvbox_signature = inspect.signature(pyside6_module.PySide6UiLibrary.CQVBoxLayout)
     assert qvbox_signature.parameters["parent"].default is Ellipsis
+
+    tk_combobox_signature = inspect.signature(tkinter_module.TkinterUiLibrary.CCombobox)
+    assert "value" in tk_combobox_signature.parameters
 
     qpush_button_spec = pyside6_module.PySide6UiLibrary.WIDGET_SPECS["QPushButton"]
     assert "setGeometry" in qpush_button_spec.methods
@@ -84,6 +91,62 @@ def test_generated_backend_libraries_import() -> None:
     assert qbox_layout_spec.mount_points["widget"].place_method_name == "insertWidget"
     assert qbox_layout_spec.mount_points["widget"].detach_method_name == "removeWidget"
 
+    qgrid_layout_spec = pyside6_module.PySide6UiLibrary.WIDGET_SPECS["QGridLayout"]
+    assert "widget" in qgrid_layout_spec.mount_points
+    assert qgrid_layout_spec.mount_points["widget"].apply_method_name == "addWidget"
+    assert qgrid_layout_spec.mount_points["widget"].detach_method_name == "removeWidget"
+    assert "layout" in qgrid_layout_spec.mount_points
+    assert qgrid_layout_spec.mount_points["layout"].apply_method_name == "addLayout"
+    assert qgrid_layout_spec.mount_points["layout"].detach_method_name == "removeItem"
+
+    qmenu_bar_spec = pyside6_module.PySide6UiLibrary.WIDGET_SPECS["QMenuBar"]
+    assert "action" in qmenu_bar_spec.mount_points
+    assert qmenu_bar_spec.mount_points["action"].params == ()
+
     qaction_spec = pyside6_module.PySide6UiLibrary.WIDGET_SPECS["QAction"]
+    assert "setSeparator" in qaction_spec.methods
+    assert "on_triggered" in qaction_spec.events
+    assert qaction_spec.events["on_triggered"].signal_name == "triggered"
     assert "menu" in qaction_spec.mount_points
     assert qaction_spec.mount_points["menu"].apply_method_name == "setMenu"
+    qwidget_spec = pyside6_module.PySide6UiLibrary.WIDGET_SPECS["QWidget"]
+    assert "setHidden" not in qwidget_spec.methods
+    assert "setContextMenuPolicy" not in qwidget_spec.methods
+
+    tk_combobox_spec = tkinter_module.TkinterUiLibrary.WIDGET_SPECS["Combobox"]
+    assert "set" in tk_combobox_spec.methods
+
+    notebook_spec = tkinter_module.TkinterUiLibrary.WIDGET_SPECS["Notebook"]
+    panedwindow_spec = tkinter_module.TkinterUiLibrary.WIDGET_SPECS["Panedwindow"]
+    raw_panedwindow_kind = tkinter_module.TkinterUiLibrary.UI_INTERFACE.entries["CPanedWindow"].kind
+    tix_panedwindow_kind = tkinter_module.TkinterUiLibrary.UI_INTERFACE.entries["CTixPanedWindow"].kind
+    raw_panedwindow_spec = tkinter_module.TkinterUiLibrary.WIDGET_SPECS[raw_panedwindow_kind]
+    assert isinstance(notebook_spec, UiWidgetSpec)
+    assert isinstance(panedwindow_spec, UiWidgetSpec)
+    assert "tab" in notebook_spec.mount_points
+    assert notebook_spec.mount_points["tab"].place_method_name == "insert"
+    assert notebook_spec.mount_points["tab"].append_method_name == "add"
+    assert notebook_spec.mount_points["tab"].detach_method_name == "forget"
+    assert notebook_spec.mount_points["tab"].replay_kind is MountReplayKind.INDEX
+    assert notebook_spec.default_child_mount_point_name == "tab"
+    assert notebook_spec.default_attach_mount_point_names == ("tab",)
+
+    assert "pane" in panedwindow_spec.mount_points
+    assert panedwindow_spec.mount_points["pane"].place_method_name == "insert"
+    assert panedwindow_spec.mount_points["pane"].append_method_name == "add"
+    assert panedwindow_spec.mount_points["pane"].detach_method_name == "forget"
+    assert panedwindow_spec.mount_points["pane"].replay_kind is MountReplayKind.INDEX
+    assert panedwindow_spec.default_child_mount_point_name == "pane"
+    assert panedwindow_spec.default_attach_mount_point_names == ("pane",)
+
+    assert raw_panedwindow_kind != tix_panedwindow_kind
+    assert tkinter_module.TkinterUiLibrary.UI_INTERFACE.entries["CButton"].kind != tkinter_module.TkinterUiLibrary.UI_INTERFACE.entries["CTtkButton"].kind
+    assert "pane" in raw_panedwindow_spec.mount_points
+    assert raw_panedwindow_spec.mount_points["pane"].place_method_name is None
+    assert raw_panedwindow_spec.mount_points["pane"].append_method_name == "add"
+    assert raw_panedwindow_spec.mount_points["pane"].detach_method_name == "remove"
+    assert raw_panedwindow_spec.default_child_mount_point_name == "pane"
+    assert raw_panedwindow_spec.default_attach_mount_point_names == ("pane",)
+
+    assert tkinter_module.TkinterUiLibrary.mounts.tab.name == "tab"
+    assert tkinter_module.TkinterUiLibrary.mounts.pane.name == "pane"

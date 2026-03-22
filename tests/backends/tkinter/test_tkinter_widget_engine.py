@@ -6,6 +6,7 @@ import pytest
 from pyrolyze.api import UIElement
 from pyrolyze.backends.model import AccessorKind, ChildPolicy, PropMode, TypeRef, UiParamSpec, UiPropSpec, UiWidgetSpec
 from pyrolyze.backends.tkinter.engine import MountedWidgetNode, TkinterWidgetEngine, WidgetNodeKey
+from pyrolyze.pyrolyze_tkinter import _create_tk_root
 
 
 @pytest.fixture(scope="module")
@@ -13,8 +14,7 @@ def tk_root():
     tkinter = pytest.importorskip("tkinter")
     ttk = pytest.importorskip("tkinter.ttk")
     try:
-        root = tkinter.Tk()
-        root.withdraw()
+        root = _create_tk_root(tkinter)
     except Exception as exc:
         pytest.skip(f"Tk root unavailable: {exc}")
     yield tkinter, ttk, root

@@ -449,6 +449,16 @@ LEARNINGS: frozendict[str, UiWidgetLearning] = frozendict(
                 }
             )
         ),
+        "QAction": UiWidgetLearning(
+            event_learnings=frozendict(
+                {
+                    "on_triggered": UiEventLearning(
+                        signal_name="triggered",
+                        payload_policy=EventPayloadPolicy.NONE,
+                    ),
+                }
+            )
+        ),
         "QCalendarWidget": UiWidgetLearning(
             method_learnings=frozendict(
                 {

@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from frozendict import frozendict
 import pytest
 
-from pyrolyze.api import UIElement
+from pyrolyze.api import MountDirective, MountSelector, UIElement, default
 from pyrolyze.backends.model import (
     ChildPolicy,
     FillPolicy,
@@ -121,6 +121,24 @@ class _FakeAcceptsZ:
 
     def sync_children(self, children: list[object]) -> None:
         self.children = list(children)
+
+
+@dataclass
+class _FakeMountHost:
+    name: str
+    widget_children: list[object] = field(default_factory=list)
+    menu_children: list[object] = field(default_factory=list)
+
+    def sync_widgets(self, children: list[object]) -> None:
+        self.widget_children = list(children)
+
+    def sync_menus(self, children: list[object]) -> None:
+        self.menu_children = list(children)
+
+
+@dataclass
+class _FakeMountChoice:
+    name: str
 
 
 def _matrix_specs() -> dict[str, UiWidgetSpec]:
@@ -240,6 +258,56 @@ def _multi_inheritance_specs() -> dict[str, UiWidgetSpec]:
         "X": UiWidgetSpec(
             kind="X",
             mounted_type_name="tests.test_mountable_engine_generic._FakeX",
+            constructor_params=frozendict({"name": UiParamSpec(name="name", annotation=TypeRef("str"))}),
+            props=prop_name(),
+            methods=frozendict(),
+            child_policy=ChildPolicy.NONE,
+        ),
+    }
+
+
+def _explicit_mount_specs() -> dict[str, UiWidgetSpec]:
+    def prop_name() -> frozendict[str, UiPropSpec]:
+        return frozendict(
+            {
+                "name": UiPropSpec(
+                    name="name",
+                    annotation=TypeRef("str"),
+                    mode=PropMode.CREATE_UPDATE,
+                    constructor_name="name",
+                )
+            }
+        )
+
+    shared_type = TypeRef("tests.test_mountable_engine_generic._FakeMountChoice")
+    return {
+        "Host": UiWidgetSpec(
+            kind="Host",
+            mounted_type_name="tests.test_mountable_engine_generic._FakeMountHost",
+            constructor_params=frozendict({"name": UiParamSpec(name="name", annotation=TypeRef("str"))}),
+            props=prop_name(),
+            methods=frozendict(),
+            child_policy=ChildPolicy.NONE,
+            mount_points=frozendict(
+                {
+                    "widget": MountPointSpec(
+                        name="widget",
+                        accepted_produced_type=shared_type,
+                        sync_method_name="sync_widgets",
+                    ),
+                    "menu": MountPointSpec(
+                        name="menu",
+                        accepted_produced_type=shared_type,
+                        sync_method_name="sync_menus",
+                    ),
+                }
+            ),
+            default_child_mount_point_name="widget",
+            default_attach_mount_point_names=("widget",),
+        ),
+        "Choice": UiWidgetSpec(
+            kind="Choice",
+            mounted_type_name="tests.test_mountable_engine_generic._FakeMountChoice",
             constructor_params=frozendict({"name": UiParamSpec(name="name", annotation=TypeRef("str"))}),
             props=prop_name(),
             methods=frozendict(),
@@ -467,3 +535,81 @@ def test_mountable_engine_allows_child_when_new_parent_accepts_alternate_base() 
     assert len(node.child_nodes) == 1
     assert isinstance(node.child_nodes[0].mountable, _FakeX)
     assert node.element.kind == "AcceptsZ"
+
+
+def test_mountable_engine_flattens_nested_mount_directives_into_mount_states() -> None:
+    engine = MountableEngine(_explicit_mount_specs())
+    menu = MountSelector.named("menu")
+    widget = MountSelector.named("widget")
+
+    node = engine.mount(
+        UIElement(
+            kind="Host",
+            props={"name": "host"},
+            children=(
+                MountDirective(
+                    selectors=(menu,),
+                    children=(
+                        UIElement(kind="Choice", props={"name": "File"}),
+                        MountDirective(
+                            selectors=(widget,),
+                            children=(UIElement(kind="Choice", props={"name": "Body"}),),
+                        ),
+                        UIElement(kind="Choice", props={"name": "Edit"}),
+                    ),
+                ),
+            ),
+        ),
+        slot_id=("root", "explicit", 1),
+        call_site_id=61,
+    )
+
+    host = node.mountable
+    assert isinstance(host, _FakeMountHost)
+    assert [child.name for child in host.menu_children] == ["File", "Edit"]
+    assert [child.name for child in host.widget_children] == ["Body"]
+    assert len(node.child_nodes) == 3
+
+
+def test_mountable_engine_reuses_child_when_selector_changes_mount_bucket() -> None:
+    engine = MountableEngine(_explicit_mount_specs())
+    menu = MountSelector.named("menu")
+
+    node = engine.mount(
+        UIElement(
+            kind="Host",
+            props={"name": "host"},
+            children=(
+                MountDirective(
+                    selectors=(menu,),
+                    children=(UIElement(kind="Choice", props={"name": "File"}),),
+                ),
+            ),
+        ),
+        slot_id=("root", "explicit", 2),
+        call_site_id=62,
+    )
+
+    host = node.mountable
+    assert isinstance(host, _FakeMountHost)
+    original_child = node.child_nodes[0].mountable
+    assert [child.name for child in host.menu_children] == ["File"]
+    assert host.widget_children == []
+
+    engine.update(
+        node,
+        UIElement(
+            kind="Host",
+            props={"name": "host"},
+            children=(
+                MountDirective(
+                    selectors=(default,),
+                    children=(UIElement(kind="Choice", props={"name": "File"}),),
+                ),
+            ),
+        ),
+    )
+
+    assert node.child_nodes[0].mountable is original_child
+    assert [child.name for child in host.widget_children] == ["File"]
+    assert host.menu_children == []

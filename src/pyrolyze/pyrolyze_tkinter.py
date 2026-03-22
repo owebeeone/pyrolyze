@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from functools import lru_cache
 import os
-import subprocess
 import sys
 import time
 import weakref
@@ -37,6 +36,13 @@ _TK_LAYOUT_METRICS: dict[str, int] = {
     "hidden_skip": 0,
     "detach_unpacked": 0,
 }
+
+_TK_SCALING_SHIM = """
+namespace eval ::tk {}
+if {[llength [info commands ::tk::ScalingPct]] == 0} {
+    proc ::tk::ScalingPct {} { return 100 }
+}
+"""
 
 
 @dataclass(slots=True)
@@ -88,42 +94,40 @@ class PyrolyzeTkWindow:
 
 @lru_cache(maxsize=1)
 def tkinter_available() -> bool:
-    probe = (
-        "import tkinter as tk;"
-        "root = tk.Tk();"
-        "root.withdraw();"
-        "root.destroy()"
-    )
     trace_reconcile = trace_enabled(TraceChannel.RECONCILE)
     if trace_reconcile:
         emit_trace(
             TraceChannel.RECONCILE,
             "tk_probe_start",
             pid=os.getpid(),
-            ppid=os.getppid(),
             executable=sys.executable,
         )
-    completed = subprocess.run(
-        [sys.executable, "-c", probe],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        root = _create_tk_root()
+    except Exception as exc:
+        if trace_reconcile:
+            emit_trace(
+                TraceChannel.RECONCILE,
+                "tk_probe_end",
+                pid=os.getpid(),
+                ok=False,
+                error=str(exc)[:240],
+            )
+        return False
+    root.destroy()
     if trace_reconcile:
         emit_trace(
             TraceChannel.RECONCILE,
             "tk_probe_end",
             pid=os.getpid(),
-            returncode=completed.returncode,
-            stderr=(completed.stderr or "").strip()[:240],
+            ok=True,
         )
-    return completed.returncode == 0
+    return True
 
 
 def create_window(title: str) -> PyrolyzeTkWindow:
     tk, ttk = _load_tk_modules()
-    root = tk.Tk()
-    root.withdraw()
+    root = _create_tk_root(tk)
     root.title(title)
     frame = ttk.Frame(root)
     frame.pack(fill="both", expand=True)
@@ -1121,12 +1125,28 @@ def _load_tk_modules() -> tuple[Any, Any]:
     return tk, ttk
 
 
+def _create_tk_root(tk: Any | None = None) -> Any:
+    if tk is None:
+        import tkinter as tk
+    root = tk.Tk(useTk=False)
+    try:
+        root.tk.eval(_TK_SCALING_SHIM)
+        root.loadtk()
+        root.withdraw()
+        return root
+    except Exception:
+        try:
+            root.destroy()
+        except Exception:
+            pass
+        raise
+
+
 def _get_hidden_root() -> Any:
     global _TK_ROOT
     if _TK_ROOT is None:
         tk, _ = _load_tk_modules()
-        _TK_ROOT = tk.Tk()
-        _TK_ROOT.withdraw()
+        _TK_ROOT = _create_tk_root(tk)
     return _TK_ROOT
 
 

@@ -616,6 +616,8 @@ HYDO_MOUNTABLE_SPECS = frozendict(
             methods=frozendict(),
             child_policy=ChildPolicy.NONE,
             mount_points=frozendict({"standard": _standard_mount("HydoWidget", "sync_widgets")}),
+            default_child_mount_point_name="standard",
+            default_attach_mount_point_names=("standard",),
         ),
         "HydoHorizontalLayout": UiWidgetSpec(
             kind="HydoHorizontalLayout",
@@ -625,6 +627,8 @@ HYDO_MOUNTABLE_SPECS = frozendict(
             methods=frozendict(),
             child_policy=ChildPolicy.NONE,
             mount_points=frozendict({"standard": _standard_mount("HydoWidget", "sync_widgets")}),
+            default_child_mount_point_name="standard",
+            default_attach_mount_point_names=("standard",),
         ),
         "HydoGridLayout": UiWidgetSpec(
             kind="HydoGridLayout",
@@ -650,6 +654,8 @@ HYDO_MOUNTABLE_SPECS = frozendict(
                     ),
                 }
             ),
+            default_child_mount_point_name="standard",
+            default_attach_mount_point_names=("standard",),
         ),
         "HydoWidget": UiWidgetSpec(
             kind="HydoWidget",
@@ -659,6 +665,8 @@ HYDO_MOUNTABLE_SPECS = frozendict(
             methods=_widget_methods(),
             child_policy=ChildPolicy.ORDERED,
             mount_points=_widget_mount_points(),
+            default_child_mount_point_name="standard",
+            default_attach_mount_point_names=("standard",),
         ),
         "HydoAppWidget": UiWidgetSpec(
             kind="HydoAppWidget",
@@ -668,6 +676,8 @@ HYDO_MOUNTABLE_SPECS = frozendict(
             methods=_widget_methods(),
             child_policy=ChildPolicy.ORDERED,
             mount_points=_widget_mount_points(),
+            default_child_mount_point_name="standard",
+            default_attach_mount_point_names=("standard",),
         ),
         "HydoMenu": UiWidgetSpec(
             kind="HydoMenu",
@@ -686,6 +696,8 @@ HYDO_MOUNTABLE_SPECS = frozendict(
                     ),
                 }
             ),
+            default_child_mount_point_name="standard",
+            default_attach_mount_point_names=("standard",),
         ),
         "HydoWindow": UiWidgetSpec(
             kind="HydoWindow",
@@ -711,6 +723,8 @@ HYDO_MOUNTABLE_SPECS = frozendict(
                     ),
                 }
             ),
+            default_child_mount_point_name="standard",
+            default_attach_mount_point_names=("standard",),
         ),
     }
 )

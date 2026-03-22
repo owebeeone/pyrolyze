@@ -11,7 +11,7 @@ from pyrolyze.backends.mounts import (
     choose_mount_applier,
     resolve_mount_ops,
 )
-from pyrolyze.backends.model import MountPointSpec, MountState, TypeRef
+from pyrolyze.backends.model import MountPointSpec, MountReplayKind, MountState, TypeRef
 from pyrolyze.testing.hydo import (
     HYDO_MOUNTABLE_SPECS,
     HydoGridLayout,
@@ -49,6 +49,21 @@ class _AnchorOrderedParent:
         self.operations.append(("removeAction", (action,)))
 
 
+class _AppendOnlyParent:
+    def __init__(self) -> None:
+        self.children: list[object] = []
+        self.operations: list[tuple[str, tuple[object, ...]]] = []
+
+    def add(self, child: object) -> None:
+        self.children.append(child)
+        self.operations.append(("add", (child,)))
+
+    def remove(self, child: object) -> None:
+        if child in self.children:
+            self.children.remove(child)
+        self.operations.append(("remove", (child,)))
+
+
 def _anchor_mount_point() -> MountPointSpec:
     return MountPointSpec(
         name="action",
@@ -56,6 +71,17 @@ def _anchor_mount_point() -> MountPointSpec:
         max_children=None,
         place_method_name="insertAction",
         detach_method_name="removeAction",
+    )
+
+
+def _append_only_mount_point() -> MountPointSpec:
+    return MountPointSpec(
+        name="pane",
+        accepted_produced_type=TypeRef("Pane"),
+        max_children=None,
+        append_method_name="add",
+        detach_method_name="remove",
+        replay_kind=MountReplayKind.INDEX,
     )
 
 
@@ -201,6 +227,59 @@ def test_apply_mount_state_uses_full_rebuild_for_initial_anchor_mount() -> None:
 
     assert parent.actions == [first, second]
     assert [name for name, _ in parent.operations] == ["addAction", "addAction"]
+
+
+def test_apply_mount_state_uses_append_only_full_rebuild_when_insert_is_unavailable() -> None:
+    parent = _AppendOnlyParent()
+    mount_point = _append_only_mount_point()
+    first = "first"
+    second = "second"
+
+    state = MountState(
+        mount_point=mount_point,
+        instance_key=mount_point.instance_key({}),
+        values=frozendict(),
+        objects=_ordered_state(first, second).objects,
+    )
+
+    apply_mount_state(parent, old_state=None, new_state=state)
+
+    assert parent.children == [first, second]
+    assert parent.operations == [("add", (first,)), ("add", (second,))]
+
+
+def test_apply_mount_state_rebuilds_append_only_mounts_in_new_order() -> None:
+    parent = _AppendOnlyParent()
+    mount_point = _append_only_mount_point()
+    first = "first"
+    second = "second"
+    third = "third"
+
+    old_state = MountState(
+        mount_point=mount_point,
+        instance_key=mount_point.instance_key({}),
+        values=frozendict(),
+        objects=_ordered_state(first, second).objects,
+    )
+    apply_mount_state(parent, old_state=None, new_state=old_state)
+    parent.operations.clear()
+
+    new_state = MountState(
+        mount_point=mount_point,
+        instance_key=mount_point.instance_key({}),
+        values=frozendict(),
+        objects=_ordered_state(third, first).objects,
+    )
+
+    apply_mount_state(parent, old_state=old_state, new_state=new_state)
+
+    assert parent.children == [third, first]
+    assert parent.operations == [
+        ("remove", (first,)),
+        ("remove", (second,)),
+        ("add", (third,)),
+        ("add", (first,)),
+    ]
 
 
 def test_apply_mount_state_replays_small_anchor_delta_with_place_before() -> None:

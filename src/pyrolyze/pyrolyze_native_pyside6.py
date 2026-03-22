@@ -5,7 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Sequence
 
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QApplication, QMainWindow, QWidget
+from shiboken6 import isValid
 
 from pyrolyze.api import UIElement
 from pyrolyze.backends.pyside6.engine import MountedWidgetNode, PySide6WidgetEngine
@@ -26,6 +27,7 @@ class NativePySide6Host:
             raise RuntimeError("native PySide6 host has no mounted root widget")
         self._shown = True
         widget.show()
+        _show_attached_window_chrome(widget)
 
     def exec(self) -> int:
         self.show()
@@ -33,7 +35,7 @@ class NativePySide6Host:
 
     def close(self) -> None:
         widget = self.root_widget
-        if widget is not None:
+        if self._shown and widget is not None and isValid(widget):
             widget.close()
         self.root_node = None
         self.root_widget = None
@@ -74,7 +76,16 @@ def reconcile_window_content(
     host.root_widget = host.root_node.widget
     if host._shown and host.root_widget is not None:
         host.root_widget.show()
+        _show_attached_window_chrome(host.root_widget)
     return host.root_node
+
+
+def _show_attached_window_chrome(widget: QWidget) -> None:
+    if not isinstance(widget, QMainWindow):
+        return
+    menu_bar = widget.menuBar()
+    if menu_bar is not None and not menu_bar.isNativeMenuBar():
+        menu_bar.show()
 
 
 __all__ = ["NativePySide6Host", "create_host", "reconcile_window_content"]

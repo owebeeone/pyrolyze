@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import ast
 from dataclasses import dataclass, field
 import importlib
 from typing import Any, Callable, Mapping
 
 from frozendict import frozendict
 
-from pyrolyze.api import MISSING, UIElement
+from pyrolyze.api import MISSING, EmittedNode, MountDirective, MountSelector, SlotSelector, UIElement
 from pyrolyze.backends.mounts import MountedRef, apply_mount_state
 from pyrolyze.backends.model import (
     AccessorKind,
@@ -41,6 +42,13 @@ class MountedMountableNode:
     effective_props: dict[str, Any] = field(default_factory=dict)
     child_nodes: list["MountedMountableNode"] = field(default_factory=list)
     mount_states: dict[tuple[object, ...], MountState] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class _FlattenedMountAttachment:
+    element: UIElement
+    mount_point: MountPointSpec
+    values: frozendict[str, Any]
 
 
 class MountableEngine:
@@ -460,7 +468,7 @@ class MountableEngine:
         self,
         parent: object,
         spec: UiWidgetSpec,
-        children: tuple[UIElement, ...],
+        children: tuple[EmittedNode, ...],
         *,
         parent_slot_id: Any | None,
         old_child_nodes: list[MountedMountableNode] | None = None,
@@ -468,10 +476,11 @@ class MountableEngine:
     ) -> tuple[list[MountedMountableNode], dict[tuple[object, ...], MountState]]:
         if not children and not old_mount_states and not old_child_nodes:
             return [], {}
-        self._validate_child_mount_compatibility(spec, children)
+        flattened_children = self._flatten_child_attachments(spec, children)
         reusable_children = _child_node_pool(old_child_nodes or [])
         child_nodes: list[MountedMountableNode] = []
-        for index, child in enumerate(children):
+        for index, attachment in enumerate(flattened_children):
+            child = attachment.element
             child_slot_id = _resolved_child_slot_id(child, parent_slot_id, index)
             child_call_site_id = child.call_site_id
             current = _take_reusable_child(
@@ -497,7 +506,7 @@ class MountableEngine:
                     call_site_id=child_call_site_id,
                 )
             )
-        mount_states = self._build_mount_states(spec, child_nodes)
+        mount_states = self._build_mount_states(child_nodes, flattened_children)
 
         for instance_key, state in mount_states.items():
             apply_mount_state(
@@ -523,25 +532,110 @@ class MountableEngine:
             self._dispose_node_subtree(removed_child)
         return child_nodes, mount_states
 
-    def _validate_child_mount_compatibility(
+    def _flatten_child_attachments(
         self,
         parent_spec: UiWidgetSpec,
-        children: tuple[UIElement, ...],
-    ) -> None:
-        mount_point = parent_spec.mount_points.get("standard")
-        if mount_point is not None:
-            for child in children:
-                child_spec = self._spec_for(child.kind)
-                child_type = self._mountable_type_for(child_spec)
-                if self._mount_point_accepts_child(mount_point, child_type):
-                    continue
-                raise ValueError(
-                    self._format_standard_mount_error(parent_spec, child_spec, mount_point)
-                )
-            return
+        children: tuple[EmittedNode, ...],
+        *,
+        selectors: tuple[SlotSelector, ...] | None = None,
+    ) -> list[_FlattenedMountAttachment]:
+        attachments: list[_FlattenedMountAttachment] = []
         for child in children:
-            child_spec = self._spec_for(child.kind)
-            self._default_mount_point_for_child(parent_spec, child_spec)
+            if isinstance(child, MountDirective):
+                directive_selectors = child.selectors
+                if any(
+                    isinstance(selector, MountSelector) and selector.kind == "no_emit"
+                    for selector in directive_selectors
+                ):
+                    if child.children:
+                        raise RuntimeError("mount(no_emit) does not allow emitted children")
+                    continue
+                attachments.extend(
+                    self._flatten_child_attachments(
+                        parent_spec,
+                        child.children,
+                        selectors=directive_selectors,
+                    )
+                )
+                continue
+            mount_point, values = self._resolve_child_mount(parent_spec, child, selectors)
+            attachments.append(
+                _FlattenedMountAttachment(
+                    element=child,
+                    mount_point=mount_point,
+                    values=frozendict(values),
+                )
+            )
+        return attachments
+
+    def _resolve_child_mount(
+        self,
+        parent_spec: UiWidgetSpec,
+        child: UIElement,
+        selectors: tuple[SlotSelector, ...] | None,
+    ) -> tuple[MountPointSpec, dict[str, Any]]:
+        child_spec = self._spec_for(child.kind)
+        if selectors is None:
+            mount_point = self._default_mount_point_for_child(parent_spec, child_spec)
+            return mount_point, {}
+        child_type = self._mountable_type_for(child_spec)
+        for selector in selectors:
+            resolved = self._resolve_selector_mount_point(
+                parent_spec,
+                child_type,
+                selector,
+            )
+            if resolved is not None:
+                return resolved
+        raise ValueError(
+            self._format_selector_attach_error(
+                parent_spec,
+                child_spec,
+                selectors,
+            )
+        )
+
+    def _resolve_selector_mount_point(
+        self,
+        parent_spec: UiWidgetSpec,
+        child_type: type[object],
+        selector: SlotSelector,
+    ) -> tuple[MountPointSpec, dict[str, Any]] | None:
+        if not isinstance(selector, MountSelector):
+            raise TypeError("mount selectors must currently be MountSelector values")
+        if selector.kind == "no_emit":
+            raise RuntimeError("mount(no_emit) does not allow emitted children")
+        if selector.kind == "default":
+            mount_point = self._try_default_mount_point_for_child(parent_spec, child_type)
+            if mount_point is None:
+                return None
+            return mount_point, {}
+        if selector.kind != "named" or selector.name is None:
+            return None
+        mount_point = parent_spec.mount_points.get(selector.name)
+        if mount_point is None:
+            return None
+        if not self._mount_point_accepts_child(mount_point, child_type):
+            return None
+        values = dict(selector.values)
+        if not self._selector_values_satisfy_mount_point(mount_point, values):
+            return None
+        return mount_point, values
+
+    def _selector_values_satisfy_mount_point(
+        self,
+        mount_point: MountPointSpec,
+        values: Mapping[str, Any],
+    ) -> bool:
+        param_names = {param.name for param in mount_point.params}
+        if any(name not in param_names for name in values):
+            return False
+        for param in mount_point.params:
+            if param.name in values:
+                continue
+            if param.default_repr is None:
+                return False
+        return True
 
     def _dispose_node_subtree(self, node: MountedMountableNode) -> None:
         for child in node.child_nodes:
@@ -555,35 +649,14 @@ class MountableEngine:
 
     def _build_mount_states(
         self,
-        spec: UiWidgetSpec,
         child_nodes: list[MountedMountableNode],
+        attachments: list[_FlattenedMountAttachment],
     ) -> dict[tuple[object, ...], MountState]:
-        mount_point = spec.mount_points.get("standard")
-        if mount_point is not None:
-            for child in child_nodes:
-                if not self._mount_point_accepts_child(mount_point, self._mountable_type_for(child.spec)):
-                    raise ValueError(
-                        self._format_standard_mount_error(spec, child.spec, mount_point)
-                    )
-            state = MountState(
-                mount_point=mount_point,
-                instance_key=mount_point.instance_key({}),
-                values=frozendict(),
-                objects=tuple(
-                    MountedRef(
-                        node_id=child.key.slot_id if child.key.slot_id is not None else index,
-                        value=child.mountable,
-                    )
-                    for index, child in enumerate(child_nodes)
-                ),
-            )
-            return {state.instance_key: state}
-
         grouped: dict[tuple[object, ...], dict[str, Any]] = {}
-        for index, child in enumerate(child_nodes):
-            mount_point = self._default_mount_point_for_child(spec, child.spec)
-            values: dict[str, Any] = {}
-            instance_key = mount_point.instance_key(values)
+        for index, (child, attachment) in enumerate(zip(child_nodes, attachments, strict=True)):
+            mount_point = attachment.mount_point
+            values = dict(attachment.values)
+            instance_key = self._mount_instance_key(mount_point, values)
             bucket = grouped.setdefault(
                 instance_key,
                 {
@@ -615,18 +688,14 @@ class MountableEngine:
         child_spec: UiWidgetSpec,
     ) -> MountPointSpec:
         child_type = self._mountable_type_for(child_spec)
+        mount_point = self._try_default_mount_point_for_child(parent_spec, child_type)
+        if mount_point is not None:
+            return mount_point
         default_mount_points = [
             mount_point
             for mount_name in parent_spec.default_attach_mount_point_names
             if (mount_point := parent_spec.mount_points.get(mount_name)) is not None
         ]
-        for mount_name in parent_spec.default_attach_mount_point_names:
-            mount_point = parent_spec.mount_points.get(mount_name)
-            if mount_point is None:
-                continue
-            if not self._mount_point_accepts_child(mount_point, child_type):
-                continue
-            return mount_point
         compatible_explicit_mount_points = [
             mount_point
             for mount_point in parent_spec.mount_points.values()
@@ -641,6 +710,42 @@ class MountableEngine:
                 compatible_explicit_mount_points=compatible_explicit_mount_points,
             )
         )
+
+    def _try_default_mount_point_for_child(
+        self,
+        parent_spec: UiWidgetSpec,
+        child_type: type[object],
+    ) -> MountPointSpec | None:
+        for mount_name in parent_spec.default_attach_mount_point_names:
+            mount_point = parent_spec.mount_points.get(mount_name)
+            if mount_point is None:
+                continue
+            if not self._mount_point_accepts_child(mount_point, child_type):
+                continue
+            return mount_point
+        return None
+
+    def _mount_instance_key(
+        self,
+        mount_point: MountPointSpec,
+        values: dict[str, Any],
+    ) -> tuple[object, ...]:
+        resolved_values = dict(values)
+        for param in mount_point.params:
+            if not param.keyed or param.name in resolved_values:
+                continue
+            if param.default_repr is None:
+                raise ValueError(
+                    f"mount point {mount_point.name!r} requires keyed parameter {param.name!r}"
+                )
+            resolved_values[param.name] = self._mount_param_default_value(param.default_repr)
+        return mount_point.instance_key(resolved_values)
+
+    def _mount_param_default_value(self, default_repr: str) -> Any:
+        try:
+            return ast.literal_eval(default_repr)
+        except Exception:
+            return default_repr
 
     def _mount_point_accepts_child(
         self,
@@ -699,6 +804,45 @@ class MountableEngine:
             f"and no explicit mount point accepts {child_spec.kind!r}. "
             f"Available mount points: {available_mount_points}."
         )
+
+    def _format_selector_attach_error(
+        self,
+        parent_spec: UiWidgetSpec,
+        child_spec: UiWidgetSpec,
+        selectors: tuple[SlotSelector, ...],
+    ) -> str:
+        selector_summary = ", ".join(self._format_selector(selector) for selector in selectors)
+        compatible_mount_points = [
+            mount_point
+            for mount_point in parent_spec.mount_points.values()
+            if self._mount_point_accepts_child(
+                mount_point,
+                self._mountable_type_for(child_spec),
+            )
+        ]
+        if compatible_mount_points:
+            available = ", ".join(
+                self._format_mount_point_summary(mount_point)
+                for mount_point in compatible_mount_points
+            )
+            return (
+                f"Cannot attach child kind {child_spec.kind!r} to parent {parent_spec.kind!r} "
+                f"using selectors [{selector_summary}]. Compatible mount points are: {available}."
+            )
+        return (
+            f"Cannot attach child kind {child_spec.kind!r} to parent {parent_spec.kind!r} "
+            f"using selectors [{selector_summary}]; no compatible mount points were found."
+        )
+
+    def _format_selector(self, selector: SlotSelector) -> str:
+        if not isinstance(selector, MountSelector):
+            return type(selector).__name__
+        if selector.kind == "named":
+            if selector.values:
+                args = ", ".join(f"{name}={value!r}" for name, value in selector.values.items())
+                return f"{selector.name}({args})"
+            return selector.name or "named"
+        return selector.kind
 
     def _format_mount_point_summary(self, mount_point: MountPointSpec) -> str:
         details = [f"accepts {mount_point.accepted_produced_type.expr}"]

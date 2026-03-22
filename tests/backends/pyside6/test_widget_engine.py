@@ -11,7 +11,7 @@ pytest.importorskip("PySide6.QtWidgets")
 
 from PySide6.QtWidgets import QApplication, QBoxLayout, QFormLayout, QMainWindow, QMenuBar, QPushButton, QSpinBox, QWidget
 
-from pyrolyze.api import UIElement
+from pyrolyze.api import MISSING, MountDirective, UIElement
 from pyrolyze.backends.model import ChildPolicy, FillPolicy, MethodMode, TypeRef, UiMethodSpec, UiParamSpec, UiPropSpec, UiWidgetSpec
 from pyrolyze.backends.pyside6.engine import MountedWidgetNode, PySide6WidgetEngine, WidgetNodeKey
 from pyrolyze.backends.pyside6.generated_library import PySide6UiLibrary
@@ -20,6 +20,24 @@ from pyrolyze.backends.pyside6.generated_library import PySide6UiLibrary
 @pytest.fixture(scope="module")
 def qapp() -> QApplication:
     return QApplication.instance() or QApplication([])
+
+
+class _BrokenQtPropertyWidget(QWidget):
+    def property(self, name: str):  # type: ignore[override]
+        raise RuntimeError(f"cannot convert {name}")
+
+
+def test_read_current_prop_value_returns_missing_when_qt_property_read_raises(qapp: QApplication) -> None:
+    del qapp
+    engine = PySide6WidgetEngine(PySide6UiLibrary.WIDGET_SPECS)
+
+    value = engine._read_current_prop_value(
+        _BrokenQtPropertyWidget(),
+        PySide6UiLibrary.WIDGET_SPECS["QWidget"],
+        "contextMenuPolicy",
+    )
+
+    assert value is MISSING
 
 
 def test_mount_builds_widget_from_generated_uielement(qapp: QApplication) -> None:
@@ -372,6 +390,43 @@ def test_mount_infers_default_main_window_mounts_from_generated_children(qapp: Q
         ),
         slot_id=("root", "window", 1),
         call_site_id=43,
+    )
+
+    assert isinstance(node.widget, QMainWindow)
+    menu_bar = node.widget.menuBar()
+    assert isinstance(menu_bar, QMenuBar)
+    assert menu_bar.objectName() == "main-menu"
+    central = node.widget.centralWidget()
+    assert isinstance(central, QWidget)
+    assert central.objectName() == "central"
+
+
+def test_mount_honors_explicit_generated_menu_bar_selector(qapp: QApplication) -> None:
+    del qapp
+    engine = PySide6WidgetEngine(PySide6UiLibrary.WIDGET_SPECS)
+
+    node = engine.mount(
+        UIElement(
+            kind="QMainWindow",
+            props={"windowTitle": "Workspace"},
+            children=(
+                MountDirective(
+                    selectors=(PySide6UiLibrary.mounts.menu_bar,),
+                    children=(
+                        UIElement(
+                            kind="QMenuBar",
+                            props={"objectName": "main-menu"},
+                        ),
+                    ),
+                ),
+                UIElement(
+                    kind="QWidget",
+                    props={"objectName": "central"},
+                ),
+            ),
+        ),
+        slot_id=("root", "window", 9),
+        call_site_id=49,
     )
 
     assert isinstance(node.widget, QMainWindow)

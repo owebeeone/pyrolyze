@@ -205,7 +205,9 @@ def apply_learnings(
 ) -> list[DiscoveredWidgetClass]:
     resolved: list[DiscoveredWidgetClass] = []
     for widget in widgets:
-        widget_learning = learnings.get(widget.class_name)
+        widget_learning = learnings.get(f"{widget.module_name}:{widget.class_name}")
+        if widget_learning is None:
+            widget_learning = learnings.get(widget.class_name)
         if widget_learning is None:
             resolved.append(widget)
             continue
@@ -327,6 +329,7 @@ _PYSIDE6_BLOCKED_METHOD_NAMES = frozenset(
         "setModelColumn",
         "setSelectionModel",
         "setRootModelIndex",
+        "setHidden",
         "setViewport",
         "setCentralWidget",
         "setWidget",
@@ -443,7 +446,7 @@ def _infer_pyside6_source_props(
     direct = _infer_pyside6_direct_source_props(widget, method)
     if direct is not None:
         return direct, True
-    return _infer_pyside6_prefixed_source_props(method), False
+    return _default_pyside6_source_props(method), False
 
 
 def _infer_pyside6_direct_source_props(
@@ -467,6 +470,14 @@ def _pyside6_author_settable_names(widget: DiscoveredWidgetClass) -> set[str]:
     return author_settable
 
 
+def _pyside6_author_settable_names_from_class(widget_class: type[Any]) -> set[str]:
+    return {
+        prop.name
+        for prop in _extract_qt_properties(widget_class)
+        if prop.writable
+    }
+
+
 def _infer_pyside6_prefixed_source_props(
     method: DiscoveredSetterMethod,
 ) -> tuple[str, ...]:
@@ -475,6 +486,91 @@ def _infer_pyside6_prefixed_source_props(
         f"{prefix}_{_normalized_pyside6_method_param_name(parameter.name)}"
         for parameter in method.parameters
     )
+
+
+def _default_source_props_for_method(
+    package_name: str,
+    widget: DiscoveredWidgetClass,
+    method: DiscoveredSetterMethod,
+) -> tuple[str, ...]:
+    if package_name == "PySide6":
+        return _default_pyside6_source_props_for_widget(widget, method)
+    if package_name == "tkinter":
+        return _default_tkinter_source_props(method)
+    return tuple(parameter.name for parameter in method.parameters)
+
+
+def _default_pyside6_source_props_for_widget(
+    widget: DiscoveredWidgetClass,
+    method: DiscoveredSetterMethod,
+) -> tuple[str, ...]:
+    direct = _infer_pyside6_direct_source_props(widget, method)
+    if direct is not None:
+        return direct
+    return _default_pyside6_source_props(method)
+
+
+def _default_pyside6_source_props(
+    method: DiscoveredSetterMethod,
+) -> tuple[str, ...]:
+    if len(method.parameters) == 1:
+        return (_default_pyside6_single_arg_source_prop(method),)
+    return _infer_pyside6_prefixed_source_props(method)
+
+
+def _default_tkinter_source_props(
+    method: DiscoveredSetterMethod,
+) -> tuple[str, ...]:
+    if len(method.parameters) == 1:
+        return (_default_tkinter_single_arg_source_prop(method),)
+    return tuple(parameter.name for parameter in method.parameters)
+
+
+def _default_pyside6_single_arg_source_prop(
+    method: DiscoveredSetterMethod,
+) -> str:
+    if method.name.startswith("set") and len(method.name) > 3:
+        suffix = method.name[3:]
+        return suffix[:1].lower() + suffix[1:]
+    if method.parameters:
+        return method.parameters[0].name
+    return method.name
+
+
+def _default_tkinter_single_arg_source_prop(
+    method: DiscoveredSetterMethod,
+) -> str:
+    if method.name == "set" and method.parameters:
+        return _to_snake_case(method.parameters[0].name)
+    if method.name.startswith("set") and len(method.name) > 3:
+        return _to_snake_case(method.name[3:])
+    if method.parameters:
+        return _to_snake_case(method.parameters[0].name)
+    return _to_snake_case(method.name)
+
+
+def _is_viable_pyside6_single_arg_setter(
+    widget_class: type[Any],
+    method: DiscoveredSetterMethod,
+    author_settable_names: set[str],
+    property_names: set[str],
+) -> bool:
+    source_prop = _default_pyside6_single_arg_source_prop(method)
+    if source_prop in property_names:
+        return False
+    if source_prop in author_settable_names:
+        return True
+    getter_candidates = (
+        source_prop,
+        f"is{_to_pascal_case(source_prop)}",
+    )
+    return any(callable(getattr(widget_class, getter_name, None)) for getter_name in getter_candidates)
+
+
+def _to_pascal_case(name: str) -> str:
+    if "_" in name:
+        return "".join(part[:1].upper() + part[1:] for part in name.split("_") if part)
+    return name[:1].upper() + name[1:]
 
 
 def _normalized_pyside6_method_param_name(name: str) -> str:
@@ -620,6 +716,7 @@ def generate_library_source(
 ) -> str:
     package_name = root_module_name.split(".", 1)[0]
     class_name = _library_class_name(package_name)
+    kind_names = _assign_kind_names(root_module_name, widgets)
     lines = [
         "#@pyrolyze",
         "",
@@ -633,7 +730,7 @@ def generate_library_source(
         "",
         "from frozendict import frozendict",
         "",
-        "from pyrolyze.api import MISSING, MissingType, PyrolyzeHandler, UIElement, call_native, pyrolyze, ui_interface",
+        "from pyrolyze.api import MISSING, MissingType, MountSelector, PyrolyzeHandler, UIElement, call_native, pyrolyze, ui_interface",
         "from pyrolyze.backends.model import (",
         "    AccessorKind,",
         "    ChildPolicy,",
@@ -664,7 +761,7 @@ def generate_library_source(
         "        owner=None,",
         "        entries=frozendict({",
     ]
-    lines.extend(_render_ui_interface_entries(widgets))
+    lines.extend(_render_ui_interface_entries(widgets, kind_names))
     lines.extend(
         [
             "        }),",
@@ -673,12 +770,13 @@ def generate_library_source(
             "    WIDGET_SPECS: ClassVar[frozendict[str, UiWidgetSpec]] = frozendict({",
         ]
     )
-    lines.extend(_render_widget_specs(root_module_name, widgets))
+    lines.extend(_render_widget_specs(root_module_name, widgets, kind_names))
     lines.extend(
         [
             "    })",
         ]
     )
+    lines.extend(_render_mount_selectors(widgets))
     if package_name == "PySide6" and any(widget.properties for widget in widgets):
         lines.extend(
             [
@@ -700,37 +798,61 @@ def generate_library_source(
         ]
     )
     for widget in widgets:
-        lines.extend(_render_widget_method(package_name, widget))
+        lines.extend(_render_widget_method(package_name, widget, kind_names))
     return "\n".join(lines) + "\n"
 
 
-def _render_ui_interface_entries(widgets: Sequence[DiscoveredWidgetClass]) -> list[str]:
+def _render_ui_interface_entries(
+    widgets: Sequence[DiscoveredWidgetClass],
+    kind_names: Mapping[tuple[str, str], str],
+) -> list[str]:
     return [
-        f'            "{widget.public_name}": UiInterfaceEntry(public_name="{widget.public_name}", kind="{widget.class_name}"),'
+        f'            "{widget.public_name}": UiInterfaceEntry(public_name="{widget.public_name}", kind="{kind_names[(widget.module_name, widget.class_name)]}"),'
         for widget in widgets
     ]
+
+
+def _render_mount_selectors(widgets: Sequence[DiscoveredWidgetClass]) -> list[str]:
+    names = sorted(
+        {
+            mount_point.name
+            for widget in widgets
+            for mount_point in widget.mount_points
+            if mount_point.name.isidentifier()
+        }
+    )
+    lines = ["", "    class mounts:"]
+    if not names:
+        lines.append("        pass")
+        return lines
+    for name in names:
+        lines.append(f'        {name} = MountSelector.named("{name}")')
+    return lines
 
 
 def _render_widget_specs(
     root_module_name: str,
     widgets: Sequence[DiscoveredWidgetClass],
+    kind_names: Mapping[tuple[str, str], str],
 ) -> list[str]:
     package_name = root_module_name.split(".", 1)[0]
     lines: list[str] = []
     for widget in widgets:
-        lines.extend(_render_single_widget_spec(package_name, widget))
+        lines.extend(_render_single_widget_spec(package_name, widget, kind_names))
     return lines
 
 
 def _render_single_widget_spec(
     package_name: str,
     widget: DiscoveredWidgetClass,
+    kind_names: Mapping[tuple[str, str], str],
 ) -> list[str]:
     default_child_mount_point_name = _infer_default_child_mount_point_name(package_name, widget.mount_points)
     default_attach_mount_point_names = _infer_default_attach_mount_point_names(package_name, widget.mount_points)
+    kind_name = kind_names[(widget.module_name, widget.class_name)]
     lines = [
-        f'        "{widget.class_name}": UiWidgetSpec(',
-        f'            kind="{widget.class_name}",',
+        f'        "{kind_name}": UiWidgetSpec(',
+        f'            kind="{kind_name}",',
         f'            mounted_type_name="{widget.module_name}.{widget.class_name}",',
         "            constructor_params=frozendict({",
     ]
@@ -748,7 +870,7 @@ def _render_single_widget_spec(
             "            methods=frozendict({",
         ]
     )
-    lines.extend(_render_widget_methods(widget.setter_methods, widget.method_learnings))
+    lines.extend(_render_widget_methods(package_name, widget))
     lines.extend(
         [
             "            }),",
@@ -926,16 +1048,16 @@ def _default_attach_mount_priority(package_name: str) -> tuple[str, ...]:
 
 
 def _render_widget_methods(
-    setter_methods: Sequence[DiscoveredSetterMethod],
-    method_learnings: Mapping[str, UiMethodLearning],
+    package_name: str,
+    widget: DiscoveredWidgetClass,
 ) -> list[str]:
     lines: list[str] = []
-    for method in setter_methods:
-        learning = method_learnings.get(method.name)
+    for method in widget.setter_methods:
+        learning = widget.method_learnings.get(method.name)
         source_props = (
             learning.source_props
             if learning is not None and learning.source_props is not None
-            else tuple(parameter.name for parameter in method.parameters)
+            else _default_source_props_for_method(package_name, widget, method)
         )
         fill_policy = (
             learning.fill_policy
@@ -1195,9 +1317,9 @@ def _extract_multiarg_setter_methods(
 ) -> tuple[DiscoveredSetterMethod, ...]:
     package_name = root_module_name.split(".", 1)[0]
     if package_name == "PySide6":
-        return _extract_pyside6_multiarg_setters(widget_class)
+        return _extract_pyside6_setters(widget_class)
     if package_name == "tkinter":
-        return _extract_tkinter_multiarg_setters(widget_class)
+        return _extract_tkinter_setters(widget_class)
     return ()
 
 
@@ -1208,6 +1330,8 @@ def _extract_mount_points(
     package_name = root_module_name.split(".", 1)[0]
     if package_name == "PySide6":
         return _extract_pyside6_mount_points(widget_class)
+    if package_name == "tkinter":
+        return _extract_tkinter_mount_points(widget_class)
     return ()
 
 
@@ -1280,6 +1404,45 @@ def _extract_pyside6_mount_points(
     return tuple(discovered[name] for name in sorted(discovered))
 
 
+_TKINTER_ORDERED_MOUNT_FAMILIES: tuple[
+    tuple[str, str, str, str, str | None, tuple[str, ...]],
+    ...,
+] = (
+    ("tkinter.ttk", "Notebook", "tab", "add", "insert", ("forget",)),
+    ("tkinter.ttk", "Panedwindow", "pane", "add", "insert", ("forget", "remove")),
+    ("tkinter", "PanedWindow", "pane", "add", None, ("remove", "forget")),
+)
+
+
+def _extract_tkinter_mount_points(
+    widget_class: type[Any],
+) -> tuple[DiscoveredMountPoint, ...]:
+    for module_name, class_name, mount_name, add_name, insert_name, detach_names in _TKINTER_ORDERED_MOUNT_FAMILIES:
+        if widget_class.__module__ != module_name or widget_class.__name__ != class_name:
+            continue
+        if not hasattr(widget_class, add_name):
+            return ()
+        if insert_name is not None and not hasattr(widget_class, insert_name):
+            return ()
+        detach_name = next((name for name in detach_names if hasattr(widget_class, name)), None)
+        if detach_name is None:
+            return ()
+        return (
+            DiscoveredMountPoint(
+                name=mount_name,
+                accepted_type_name="tkinter.Widget",
+                max_children=None,
+                place_method_name=insert_name,
+                append_method_name=add_name,
+                detach_method_name=detach_name,
+                replay_kind=MountReplayKind.INDEX,
+                default_child=True,
+                default_attach_rank=0,
+            ),
+        )
+    return ()
+
+
 def _build_pyside6_single_mount_point(
     method_name: str,
     mount_name: str,
@@ -1338,6 +1501,7 @@ def _build_pyside6_family_mount_point(
             ),
             max_children=1,
             apply_method_name=add_method_name,
+            detach_method_name=detach_method_name,
             prefer_sync=True,
         )
     if preferred_method_name != insert_method_name:
@@ -1374,6 +1538,8 @@ def _find_mount_object_parameter(
         else tuple(_PYSIDE6_MOUNT_TYPE_QUALIFIERS)
     )
     for parameter in parameters:
+        if parameter.name in _PYSIDE6_IGNORED_ORDERING_PARAM_NAMES:
+            continue
         annotation_source = parameter.annotation_source or ""
         if any(fragment in annotation_source for fragment in target_fragments):
             return parameter
@@ -1445,10 +1611,12 @@ def _extract_stub_init_overloads(class_node: ast.ClassDef) -> list[tuple[Discove
     return overloads
 
 
-def _extract_pyside6_multiarg_setters(
+def _extract_pyside6_setters(
     widget_class: type[Any],
 ) -> tuple[DiscoveredSetterMethod, ...]:
     discovered: dict[str, DiscoveredSetterMethod] = {}
+    author_settable_names = _pyside6_author_settable_names_from_class(widget_class)
+    property_names = {prop.name for prop in _extract_qt_properties(widget_class)}
     for base_class in widget_class.__mro__:
         if not getattr(base_class, "__module__", "").startswith("PySide6."):
             continue
@@ -1463,8 +1631,26 @@ def _extract_pyside6_multiarg_setters(
                 continue
             if node.name == "setProperty":
                 continue
+            if node.name in _PYSIDE6_BLOCKED_METHOD_NAMES:
+                continue
+            if node.name in _PYSIDE6_SINGLE_MOUNT_METHODS:
+                continue
             parameters = _ast_method_parameters_to_discovered(node.args)
-            if not _is_multiarg_method(parameters, has_var_keyword=node.args.kwarg is not None):
+            if not _is_supported_setter_method(parameters, has_var_keyword=node.args.kwarg is not None):
+                continue
+            method = DiscoveredSetterMethod(
+                owner_class_name=base_class.__name__,
+                name=node.name,
+                parameters=parameters,
+            )
+            if _pyside6_method_uses_blocked_types(method):
+                continue
+            if len(parameters) == 1 and not _is_viable_pyside6_single_arg_setter(
+                widget_class,
+                method,
+                author_settable_names,
+                property_names,
+            ):
                 continue
             grouped.setdefault(node.name, []).append(parameters)
         for method_name, overloads in grouped.items():
@@ -1479,7 +1665,7 @@ def _extract_pyside6_multiarg_setters(
     return tuple(discovered[name] for name in sorted(discovered))
 
 
-def _extract_tkinter_multiarg_setters(
+def _extract_tkinter_setters(
     widget_class: type[Any],
 ) -> tuple[DiscoveredSetterMethod, ...]:
     discovered: dict[str, DiscoveredSetterMethod] = {}
@@ -1500,7 +1686,7 @@ def _extract_tkinter_multiarg_setters(
                 parameter.kind == inspect.Parameter.VAR_KEYWORD
                 for parameter in signature.parameters.values()
             )
-            if not _is_multiarg_method(parameters, has_var_keyword=has_var_keyword):
+            if not _is_supported_setter_method(parameters, has_var_keyword=has_var_keyword):
                 continue
             discovered.setdefault(
                 method_name,
@@ -1591,12 +1777,12 @@ def _signature_method_parameters_to_discovered(
     return tuple(parameters)
 
 
-def _is_multiarg_method(
+def _is_supported_setter_method(
     parameters: Sequence[DiscoveredParameter],
     *,
     has_var_keyword: bool,
 ) -> bool:
-    return len(parameters) > 1 or has_var_keyword
+    return len(parameters) >= 1 or has_var_keyword
 
 
 def _parameter_specificity(parameters: Sequence[DiscoveredParameter]) -> int:
@@ -1633,10 +1819,12 @@ def _coerce_expression(
 def _render_widget_method(
     package_name: str,
     widget: DiscoveredWidgetClass,
+    kind_names: Mapping[tuple[str, str], str],
 ) -> list[str]:
     public_parameters = _public_parameters_for_widget(package_name, widget)
     signature_lines = _render_signature_lines(public_parameters)
     prop_lines = _render_prop_lines(public_parameters)
+    kind_name = kind_names[(widget.module_name, widget.class_name)]
     lines = [
         "",
         "    @classmethod",
@@ -1652,12 +1840,42 @@ def _render_widget_method(
         [
             "    ) -> None:",
             "        call_native(cls.__element)(",
-            f'            kind="{widget.class_name}",',
+            f'            kind="{kind_name}",',
         ]
     )
     lines.extend(prop_lines)
     lines.extend(["        )"])
     return lines
+
+
+def _assign_kind_names(
+    root_module_name: str,
+    widgets: Sequence[DiscoveredWidgetClass],
+) -> dict[tuple[str, str], str]:
+    class_counts: dict[str, int] = {}
+    for widget in widgets:
+        class_counts[widget.class_name] = class_counts.get(widget.class_name, 0) + 1
+
+    kind_names: dict[tuple[str, str], str] = {}
+    for widget in widgets:
+        key = (widget.module_name, widget.class_name)
+        if class_counts[widget.class_name] == 1:
+            kind_names[key] = widget.class_name
+            continue
+        module_fragment = _kind_module_fragment(root_module_name, widget.module_name)
+        kind_names[key] = f"{module_fragment}_{widget.class_name}"
+    return kind_names
+
+
+def _kind_module_fragment(root_module_name: str, module_name: str) -> str:
+    if module_name == root_module_name:
+        fragment = root_module_name.split(".")[-1]
+    elif module_name.startswith(f"{root_module_name}."):
+        fragment = module_name[len(root_module_name) + 1 :]
+    else:
+        fragment = module_name
+    sanitized = re.sub(r"[^0-9A-Za-z_]+", "_", fragment).strip("_")
+    return sanitized or "backend"
 
 
 def _render_signature_lines(parameters: Sequence[DiscoveredParameter]) -> list[str]:
@@ -1719,12 +1937,14 @@ def _public_parameters_for_widget(
             )
         )
         known_names.add(prop.name)
-    method_by_name = {method.name: method for method in widget.setter_methods}
-    for method_name, learning in widget.method_learnings.items():
-        method = method_by_name.get(method_name)
-        if method is None or learning.source_props is None:
-            continue
-        for index, source_prop in enumerate(learning.source_props):
+    for method in widget.setter_methods:
+        learning = widget.method_learnings.get(method.name)
+        source_props = (
+            learning.source_props
+            if learning is not None and learning.source_props is not None
+            else _default_source_props_for_method(package_name, widget, method)
+        )
+        for index, source_prop in enumerate(source_props):
             prop_learning = widget.prop_learnings.get(source_prop)
             if prop_learning is not None and prop_learning.public is False:
                 continue

@@ -453,6 +453,11 @@ Phase 1 should be considered complete when:
 
 ## Progress Table
 
+Current status:
+
+- Steps 1 through 9 are complete.
+- Phase-1 `mount(...)` implementation is complete.
+
 | Step | Area | Status | Notes |
 | --- | --- | --- | --- |
 | 1 | Expand backend model metadata and learnings model | Done | Added replay-shape metadata, mount-point learnings, and generator support |
@@ -460,7 +465,7 @@ Phase 1 should be considered complete when:
 | 3 | Add slot-backed directive context | Done | Added `DirectiveSlotContext`, `open_directive(...)`, and directive rollback/no-emit enforcement |
 | 4 | Add compiler lowering for `mount(...)` | Done | Added `mount(...)` lowering to `open_directive(...)`, including nested and splatted selectors |
 | 5 | Add retained `MountDirective` emitted-tree support | Done | Emitted runtime tree now preserves `MountDirective` nodes structurally |
-| 6 | Add parent-side flattening to `MountState` | Pending | Resolve selectors left-to-right into concrete mount buckets |
-| 7 | Integrate flattened mount states into existing mount runtime | Pending | Consume flattened states through current apply/replay logic |
-| 8 | Emit new mount metadata from generator | Pending | Replay kind, append path, prefer-sync, learnings overrides |
-| 9 | Prove one backend path end-to-end | Pending | One generated backend with explicit mount selection fully working |
+| 6 | Add parent-side flattening to `MountState` | Done | Engine now flattens nested `MountDirective` trees into concrete mount attachments before child reconciliation |
+| 7 | Integrate flattened mount states into existing mount runtime | Done | Flattened attachments now feed ordinary `MountState` buckets through the existing apply/replay runtime |
+| 8 | Emit new mount metadata from generator | Done | Generated libraries now expose `mounts.*` selector artifacts and render the expanded mount metadata |
+| 9 | Prove one backend path end-to-end | Done | Authored `mount(...)` source now runs end-to-end through the native PySide6 generated-library path |

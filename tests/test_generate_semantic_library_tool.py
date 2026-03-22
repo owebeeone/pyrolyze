@@ -163,7 +163,7 @@ def test_generate_library_source_renders_qt_property_metadata() -> None:
     assert "class PySide6UiLibrary:" in source
     assert "import PySide6" in source
     assert (
-        "from pyrolyze.api import MISSING, MissingType, PyrolyzeHandler, UIElement, call_native, "
+        "from pyrolyze.api import MISSING, MissingType, MountSelector, PyrolyzeHandler, UIElement, call_native, "
         "pyrolyze, ui_interface" in source
     )
     assert 'QT_PROPERTY_GETTER: ClassVar[str] = "property"' in source
@@ -196,6 +196,43 @@ def test_generated_pyside6_scroll_area_prefers_widget_for_default_attach() -> No
     assert spec.default_attach_mount_point_names.index("widget") < spec.default_attach_mount_point_names.index(
         "viewport"
     )
+
+
+def test_generated_pyside6_library_exposes_mount_selector_artifacts() -> None:
+    assert PySide6UiLibrary.mounts.layout.name == "layout"
+    assert PySide6UiLibrary.mounts.menu_bar.name == "menu_bar"
+    assert PySide6UiLibrary.mounts.central_widget.name == "central_widget"
+
+
+def test_generate_library_source_renders_mount_selector_artifacts() -> None:
+    source = generate_library_source(
+        "fakewidgets",
+        [
+            DiscoveredWidgetClass(
+                module_name="fakewidgets.widgets",
+                class_name="Panel",
+                public_name="CPanel",
+                parameters=(),
+                mount_points=(
+                    DiscoveredMountPoint(
+                        name="widget",
+                        accepted_type_name="fakewidgets.widgets.Child",
+                        sync_method_name="sync_widgets",
+                    ),
+                    DiscoveredMountPoint(
+                        name="menu",
+                        accepted_type_name="fakewidgets.widgets.Child",
+                        sync_method_name="sync_menus",
+                    ),
+                ),
+            )
+        ],
+    )
+
+    assert "from pyrolyze.api import MISSING, MissingType, MountSelector, PyrolyzeHandler" in source
+    assert "class mounts:" in source
+    assert 'widget = MountSelector.named("widget")' in source
+    assert 'menu = MountSelector.named("menu")' in source
 
 
 def test_generate_library_source_renders_discovered_method_specs() -> None:
@@ -393,7 +430,7 @@ def test_extract_qt_properties_uses_metaobject() -> None:
     assert properties["enabled"].type_name == "bool"
 
 
-def test_extract_pyside6_multiarg_setters_ignores_single_value_property_setters() -> None:
+def test_extract_pyside6_setters_ignore_property_backed_single_value_setters() -> None:
     pytest.importorskip("PySide6.QtWidgets")
     from PySide6.QtWidgets import QPushButton
 
@@ -437,6 +474,41 @@ def test_discover_widget_classes_includes_pyside6_mountable_base_classes_and_mou
     assert "widget" in {mount.name for mount in by_name["QBoxLayout"].mount_points}
 
 
+def test_discover_widget_classes_includes_tkinter_mount_points() -> None:
+    pytest.importorskip("tkinter")
+    pytest.importorskip("tkinter.ttk")
+
+    widgets = discover_widget_classes("tkinter")
+    by_name = {widget.class_name: widget for widget in widgets}
+    by_identity = {(widget.module_name, widget.class_name): widget for widget in widgets}
+
+    assert "Notebook" in by_name
+    assert "PanedWindow" in by_name
+    assert "Panedwindow" in by_name
+    assert "tab" in {mount.name for mount in by_name["Notebook"].mount_points}
+    assert "pane" in {mount.name for mount in by_identity[("tkinter", "PanedWindow")].mount_points}
+    assert "pane" in {mount.name for mount in by_name["Panedwindow"].mount_points}
+
+
+def test_discover_widget_classes_includes_pyside6_single_arg_setters() -> None:
+    pytest.importorskip("PySide6.QtWidgets")
+
+    widgets = discover_widget_classes("PySide6")
+    by_name = {widget.class_name: widget for widget in widgets}
+
+    assert "setSeparator" in {method.name for method in by_name["QAction"].setter_methods}
+
+
+def test_discover_widget_classes_includes_tkinter_single_arg_setters() -> None:
+    pytest.importorskip("tkinter")
+    pytest.importorskip("tkinter.ttk")
+
+    widgets = discover_widget_classes("tkinter")
+    by_identity = {(widget.module_name, widget.class_name): widget for widget in widgets}
+
+    assert "set" in {method.name for method in by_identity[("tkinter.ttk", "Combobox")].setter_methods}
+
+
 def test_apply_learnings_overrides_property_signature_defaults() -> None:
     widgets = [
         DiscoveredWidgetClass(
@@ -475,6 +547,36 @@ def test_apply_learnings_overrides_property_signature_defaults() -> None:
     source = generate_library_source("PySide6", resolved)
 
     assert "enabled: bool | None = None" in source
+
+
+def test_apply_learnings_prefers_module_qualified_widget_keys_for_duplicates() -> None:
+    widgets = [
+        DiscoveredWidgetClass(
+            module_name="tkinter",
+            class_name="PanedWindow",
+            public_name="CPanedWindow",
+            parameters=(),
+        ),
+        DiscoveredWidgetClass(
+            module_name="tkinter.tix",
+            class_name="PanedWindow",
+            public_name="CTixPanedWindow",
+            parameters=(),
+        ),
+    ]
+
+    resolved = apply_learnings(
+        widgets,
+        frozendict(
+            {
+                "tkinter:PanedWindow": UiWidgetLearning(public_name="CRawPanedWindow"),
+                "PanedWindow": UiWidgetLearning(public_name="CFallbackPanedWindow"),
+            }
+        ),
+    )
+
+    assert resolved[0].public_name == "CRawPanedWindow"
+    assert resolved[1].public_name == "CFallbackPanedWindow"
 
 
 def test_apply_learnings_overrides_method_source_props_and_constructor_equivalence() -> None:

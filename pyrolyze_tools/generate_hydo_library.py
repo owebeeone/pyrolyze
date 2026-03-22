@@ -9,6 +9,7 @@ from pyrolyze.backends.model import (
     ChildPolicy,
     FillPolicy,
     MethodMode,
+    MountReplayKind,
     MountParamSpec,
     MountPointSpec,
     PropMode,
@@ -35,12 +36,13 @@ def generate_hydo_library_source() -> str:
         "",
         "from frozendict import frozendict",
         "",
-        "from pyrolyze.api import MISSING, MissingType, UIElement, call_native, pyrolyze, ui_interface",
+        "from pyrolyze.api import MISSING, MissingType, MountSelector, UIElement, call_native, pyrolyze, ui_interface",
         "from pyrolyze.backends.model import (",
         "    AccessorKind,",
         "    ChildPolicy,",
         "    FillPolicy,",
         "    MethodMode,",
+        "    MountReplayKind,",
         "    MountParamSpec,",
         "    MountPointSpec,",
         "    PropMode,",
@@ -82,6 +84,25 @@ def generate_hydo_library_source() -> str:
         [
             "    })",
             "    WIDGET_SPECS: ClassVar[frozendict[str, UiWidgetSpec]] = MOUNTABLE_SPECS",
+            "",
+            "    class mounts:",
+        ]
+    )
+    mount_names = sorted(
+        {
+            mount_point.name
+            for spec in specs
+            for mount_point in spec.mount_points.values()
+            if mount_point.name.isidentifier()
+        }
+    )
+    if not mount_names:
+        lines.append("        pass")
+    else:
+        for name in mount_names:
+            lines.append(f'        {name} = MountSelector.named("{name}")')
+    lines.extend(
+        [
             "",
             "    @classmethod",
             "    # NOTE: a trailing `kwds` parameter enables PyRolyze's tail kwds optimization.",
@@ -184,6 +205,8 @@ def _render_mountable_spec(spec: UiWidgetSpec) -> list[str]:
     lines.extend(
         [
             "            }),",
+            f"            default_child_mount_point_name={spec.default_child_mount_point_name!r},",
+            f"            default_attach_mount_point_names={spec.default_attach_mount_point_names!r},",
             f"            child_policy=ChildPolicy.{spec.child_policy.name},",
             "            mount_points=frozendict({",
         ]
@@ -219,6 +242,11 @@ def _render_mount_point_spec(mount_point: MountPointSpec) -> list[str]:
             f"                    max_children={mount_point.max_children!r},",
             f"                    apply_method_name={mount_point.apply_method_name!r},",
             f"                    sync_method_name={mount_point.sync_method_name!r},",
+            f"                    place_method_name={mount_point.place_method_name!r},",
+            f"                    append_method_name={mount_point.append_method_name!r},",
+            f"                    detach_method_name={mount_point.detach_method_name!r},",
+            f"                    replay_kind=MountReplayKind.{mount_point.replay_kind.name},",
+            f"                    prefer_sync={mount_point.prefer_sync!r},",
             "                ),",
         ]
     )

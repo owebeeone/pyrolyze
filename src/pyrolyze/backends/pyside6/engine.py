@@ -130,7 +130,13 @@ class PySide6WidgetEngine:
         if prop is None or prop.getter_kind is None:
             return MISSING
         if prop.getter_kind is AccessorKind.QT_PROPERTY:
-            return mountable.property(prop.name)
+            try:
+                return mountable.property(prop.name)
+            except (RuntimeError, TypeError):
+                # Some Qt meta-properties expose enum/flag types that PySide6
+                # cannot convert through QObject.property(...). Treat them as
+                # unreadable for retained backfill purposes.
+                return MISSING
         if prop.getter_kind is AccessorKind.PYTHON_PROPERTY:
             return getattr(mountable, prop.getter_name or prop.name, MISSING)
         if prop.getter_kind is AccessorKind.METHOD:

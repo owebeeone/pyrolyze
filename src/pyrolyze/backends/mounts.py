@@ -88,6 +88,7 @@ class ResolvedMountOps:
     sync: Callable[[object, Sequence[MountState]], None] | None = None
     place: Callable[[object, object, int], None] | None = None
     place_before: Callable[[object, object, object | None], None] | None = None
+    append: Callable[[object, object], None] | None = None
     detach: Callable[[object, object], None] | None = None
     capture_snapshot: Callable[[object], object] | None = None
     restore_snapshot: Callable[[object, object], None] | None = None
@@ -124,16 +125,27 @@ def resolve_mount_ops(parent_type: type[object], mount_point: MountPointSpec) ->
 
     place = None
     place_before = None
+    append = None
     detach = None
     place_name, detach_name = _ordered_fallback_method_names(mount_point)
+    if detach_name is None and mount_point.max_children == 1:
+        detach_name = _single_mount_detach_method_name(mount_point)
     if place_name is None and mount_point.name == "standard":
         place_name = "place_child" if hasattr(parent_type, "place_child") else None
     if detach_name is None and mount_point.name == "standard":
         detach_name = "detach_child" if hasattr(parent_type, "detach_child") else None
+    append_name = mount_point.append_method_name
+    if append_name is None and place_name is not None:
+        append_name = _ordered_append_method_name(place_name)
+    if append_name and hasattr(parent_type, append_name):
+
+        def append(parent: object, value: object, *, _method_name: str = append_name) -> None:
+            getattr(parent, _method_name)(value)
+
     if place_name and hasattr(parent_type, place_name):
         call_shape = _ordered_place_call_shape(parent_type, place_name)
         if call_shape == "anchor_before":
-            append_method_name = _ordered_append_method_name(place_name)
+            append_method_name = append_name
 
             def place_before(
                 parent: object,
@@ -173,6 +185,7 @@ def resolve_mount_ops(parent_type: type[object], mount_point: MountPointSpec) ->
         sync=sync,
         place=place,
         place_before=place_before,
+        append=append,
         detach=detach,
     )
 
@@ -227,7 +240,17 @@ def apply_mount_state(
     resolved = resolve_mount_ops(type(parent), new_state.mount_point)
 
     if new_state.mount_point.max_children == 1:
+        old_value = None if old_state is None or not old_state.objects else old_state.objects[0].value
+        new_value = None if not new_state.objects else new_state.objects[0].value
+        if new_value is None:
+            if old_value is None:
+                return
+            if resolved.detach is not None:
+                resolved.detach(parent, old_value)
+                return
         if resolved.apply is not None:
+            if old_value is not None and old_value is not new_value and resolved.detach is not None:
+                resolved.detach(parent, old_value)
             resolved.apply(parent, new_state)
             return
         if resolved.sync is not None:
@@ -278,10 +301,31 @@ def _validate_mount_state(state: MountState) -> None:
 
 def _apply_single_mount(parent: object, state: MountState, method_name: str) -> None:
     args, kwargs = _mount_call_args(state)
+    all_args = _mount_all_args(state)
     if len(state.objects) > 1:
         raise ValueError(f"single mount point {state.mount_point.name!r} requires at most one object")
     value = None if not state.objects else state.objects[0].value
-    getattr(parent, method_name)(*args, value, **kwargs)
+    method = getattr(parent, method_name)
+    attempts = [
+        (lambda: method(*args, value, **kwargs)),
+        (lambda: method(value, *args, **kwargs)),
+    ]
+    if kwargs:
+        attempts.extend(
+            [
+                (lambda: method(*all_args, value)),
+                (lambda: method(value, *all_args)),
+            ]
+        )
+    last_error: Exception | None = None
+    for attempt in attempts:
+        try:
+            attempt()
+            return
+        except (TypeError, AttributeError) as exc:
+            last_error = exc
+    if last_error is not None:
+        raise last_error
 
 
 def _mount_call_args(state: MountState) -> tuple[tuple[Any, ...], dict[str, Any]]:
@@ -302,6 +346,19 @@ def _mount_call_args(state: MountState) -> tuple[tuple[Any, ...], dict[str, Any]
     return tuple(args), kwargs
 
 
+def _mount_all_args(state: MountState) -> tuple[Any, ...]:
+    keyed_values = iter(state.instance_key[1:])
+    args: list[Any] = []
+    for param in state.mount_point.params:
+        if param.keyed:
+            args.append(next(keyed_values))
+            continue
+        if param.name not in state.values:
+            continue
+        args.append(state.values[param.name])
+    return tuple(args)
+
+
 def _ordered_fallback_method_names(mount_point: MountPointSpec) -> tuple[str | None, str | None]:
     if mount_point.place_method_name is not None or mount_point.detach_method_name is not None:
         return mount_point.place_method_name, mount_point.detach_method_name
@@ -310,6 +367,15 @@ def _ordered_fallback_method_names(mount_point: MountPointSpec) -> tuple[str | N
     plural = mount_point.sync_method_name.removeprefix("sync_")
     singular = _singularize(plural)
     return f"place_{singular}", f"detach_{singular}"
+
+
+def _single_mount_detach_method_name(mount_point: MountPointSpec) -> str | None:
+    apply_name = mount_point.apply_method_name
+    if apply_name == "addWidget":
+        return "removeWidget"
+    if apply_name == "addLayout":
+        return "removeItem"
+    return None
 
 
 def _singularize(name: str) -> str:
@@ -401,7 +467,11 @@ def _full_rebuild_ordered_mount(
     if resolved.sync is not None:
         resolved.sync(parent, (new_state,))
         return
-    if (resolved.place is None and resolved.place_before is None) or resolved.detach is None:
+    if (
+        resolved.place is None
+        and resolved.place_before is None
+        and resolved.append is None
+    ) or resolved.detach is None:
         raise ValueError("ordered mount has no sync or replay ops")
 
     if old_state is not None:
@@ -410,6 +480,10 @@ def _full_rebuild_ordered_mount(
     if resolved.place_before is not None:
         for ref in new_state.objects:
             resolved.place_before(parent, ref.value, None)
+        return
+    if resolved.append is not None and resolved.place is None:
+        for ref in new_state.objects:
+            resolved.append(parent, ref.value)
         return
     if resolved.place is None:
         raise ValueError("ordered mount has no index placement op")
