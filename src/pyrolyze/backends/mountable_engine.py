@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import importlib
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from pyrolyze.api import MISSING, UIElement
 from pyrolyze.backends.model import (
@@ -36,9 +36,21 @@ class MountedMountableNode:
 
 
 class MountableEngine:
-    def __init__(self, mountable_specs: Mapping[str, UiWidgetSpec]):
+    def __init__(
+        self,
+        mountable_specs: Mapping[str, UiWidgetSpec],
+        *,
+        read_current_prop_value: Callable[[object, UiWidgetSpec, str], Any] | None = None,
+        capture_placement: Callable[[object], object | None] | None = None,
+        restore_placement: Callable[[object, object | None], None] | None = None,
+        dispose_mountable: Callable[[object], None] | None = None,
+    ):
         self._mountable_specs = mountable_specs
         self._mountable_types: dict[str, type[object]] = {}
+        self._read_current_prop_value = read_current_prop_value
+        self._capture_placement = capture_placement
+        self._restore_placement = restore_placement
+        self._dispose_mountable = dispose_mountable
 
     def mount(
         self,
@@ -49,24 +61,15 @@ class MountableEngine:
     ) -> MountedMountableNode:
         spec = self._spec_for(element.kind)
         effective_props = self._initial_effective_props(spec, element)
-        mountable = self._create_mountable(spec, effective_props)
-        child_nodes = self._mount_standard_children(
-            mountable,
-            spec,
-            element.children,
-            parent_slot_id=slot_id if slot_id is not None else element.slot_id,
-        )
-        return MountedMountableNode(
+        return self._mount_node(
+            element=element,
+            spec=spec,
+            effective_props=effective_props,
             key=MountableNodeKey(
                 slot_id=slot_id if slot_id is not None else element.slot_id,
                 call_site_id=call_site_id if call_site_id is not None else element.call_site_id,
                 kind=element.kind,
             ),
-            element=element,
-            spec=spec,
-            mountable=mountable,
-            effective_props=effective_props,
-            child_nodes=child_nodes,
         )
 
     def update(
@@ -85,33 +88,37 @@ class MountableEngine:
         )
 
         if spec.kind != node.spec.kind:
-            replacement = self.mount(
-                element,
-                slot_id=next_key.slot_id,
-                call_site_id=next_key.call_site_id,
-            )
-            node.key = replacement.key
-            node.element = replacement.element
-            node.spec = replacement.spec
-            node.mountable = replacement.mountable
-            node.effective_props = replacement.effective_props
-            node.child_nodes = replacement.child_nodes
+            replacement = self.mount(element, slot_id=next_key.slot_id, call_site_id=next_key.call_site_id)
+            self._replace_node_mountable(node, replacement)
             return node
 
         next_effective = dict(node.effective_props)
         changed_props: dict[str, Any] = {}
+        remount_required = False
         for name, value in element.props.items():
             if value is MISSING:
                 continue
             prop = self._prop_for(spec, name)
             if prop.mode is PropMode.READONLY:
                 raise ValueError(f"readonly prop {name!r} may not be updated")
-            if prop.mode in {PropMode.CREATE_ONLY, PropMode.CREATE_ONLY_REMOUNT}:
+            if prop.mode is PropMode.CREATE_ONLY:
                 continue
             if next_effective.get(name, MISSING) == value:
                 continue
             next_effective[name] = value
             changed_props[name] = value
+            if prop.mode is PropMode.CREATE_ONLY_REMOUNT:
+                remount_required = True
+
+        if remount_required:
+            replacement = self._mount_node(
+                element=element,
+                spec=spec,
+                effective_props=next_effective,
+                key=next_key,
+            )
+            self._replace_node_mountable(node, replacement)
+            return node
 
         self._apply_changed_props(node.mountable, spec, changed_props)
         self._apply_changed_methods(node.mountable, spec, next_effective, changed_props)
@@ -126,6 +133,50 @@ class MountableEngine:
         node.spec = spec
         node.effective_props = next_effective
         return node
+
+    def _mount_node(
+        self,
+        *,
+        element: UIElement,
+        spec: UiWidgetSpec,
+        effective_props: Mapping[str, Any],
+        key: MountableNodeKey,
+    ) -> MountedMountableNode:
+        mountable = self._create_mountable(spec, effective_props)
+        child_nodes = self._mount_standard_children(
+            mountable,
+            spec,
+            element.children,
+            parent_slot_id=key.slot_id,
+        )
+        return MountedMountableNode(
+            key=key,
+            element=element,
+            spec=spec,
+            mountable=mountable,
+            effective_props=dict(effective_props),
+            child_nodes=child_nodes,
+        )
+
+    def _replace_node_mountable(
+        self,
+        node: MountedMountableNode,
+        replacement: MountedMountableNode,
+    ) -> None:
+        old_mountable = node.mountable
+        placement = (
+            None if self._capture_placement is None else self._capture_placement(old_mountable)
+        )
+        node.key = replacement.key
+        node.element = replacement.element
+        node.spec = replacement.spec
+        node.mountable = replacement.mountable
+        node.effective_props = replacement.effective_props
+        node.child_nodes = replacement.child_nodes
+        if self._restore_placement is not None:
+            self._restore_placement(node.mountable, placement)
+        if self._dispose_mountable is not None:
+            self._dispose_mountable(old_mountable)
 
     def _spec_for(self, kind: str) -> UiWidgetSpec:
         spec = self._mountable_specs.get(kind)
@@ -209,9 +260,10 @@ class MountableEngine:
                 MethodMode.CREATE_UPDATE,
             }:
                 continue
-            args = self._resolve_method_args(effective_props, method)
-            if args is None:
+            resolved = self._resolve_method_args(mountable, spec, effective_props, method)
+            if resolved is None:
                 continue
+            args, _ = resolved
             self._apply_method(mountable, method, args)
 
     def _apply_changed_props(
@@ -235,7 +287,7 @@ class MountableEngine:
         self,
         mountable: object,
         spec: UiWidgetSpec,
-        effective_props: Mapping[str, Any],
+        effective_props: dict[str, Any],
         changed_props: Mapping[str, Any],
     ) -> None:
         if not changed_props:
@@ -246,24 +298,37 @@ class MountableEngine:
                 continue
             if not changed_names.intersection(method.source_props):
                 continue
-            args = self._resolve_method_args(effective_props, method)
-            if args is None:
+            resolved = self._resolve_method_args(mountable, spec, effective_props, method)
+            if resolved is None:
                 continue
+            args, backfilled = resolved
+            if backfilled:
+                effective_props.update(backfilled)
             self._apply_method(mountable, method, args)
 
     def _resolve_method_args(
         self,
+        mountable: object,
+        spec: UiWidgetSpec,
         effective_props: Mapping[str, Any],
         method: UiMethodSpec,
-    ) -> tuple[Any, ...] | None:
+    ) -> tuple[tuple[Any, ...], dict[str, Any]] | None:
         args: list[Any] = []
+        backfilled: dict[str, Any] = {}
         for source_prop in method.source_props:
             if source_prop not in effective_props:
                 if method.fill_policy is FillPolicy.RETAIN_EFFECTIVE:
-                    return None
+                    if self._read_current_prop_value is None:
+                        return None
+                    value = self._read_current_prop_value(mountable, spec, source_prop)
+                    if value is MISSING:
+                        return None
+                    backfilled[source_prop] = value
+                    args.append(value)
+                    continue
                 return None
             args.append(effective_props[source_prop])
-        return tuple(args)
+        return (tuple(args), backfilled)
 
     def _apply_prop(self, mountable: object, prop: UiPropSpec, value: Any) -> None:
         if prop.setter_kind is AccessorKind.PYTHON_PROPERTY:
