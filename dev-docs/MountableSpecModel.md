@@ -235,6 +235,387 @@ Rules:
   implementation details or fallback primitives
 
 
+## Resolved Mount Ops
+
+`MountPointSpec` describes the declarative surface of a mount point. The
+runtime still needs one resolved callable set for the concrete parent type it
+is mounting on.
+
+Proposed shape:
+
+```python
+@dataclass(frozen=True, slots=True)
+class ResolvedMountOps:
+    apply: Callable[[object, MountState], None] | None = None
+    sync: Callable[[object, Sequence[MountState]], None] | None = None
+    place: Callable[[object, object, int], None] | None = None
+    detach: Callable[[object, object], None] | None = None
+    capture_snapshot: Callable[[object], object] | None = None
+    restore_snapshot: Callable[[object, object], None] | None = None
+```
+
+The runtime should resolve these callables once per:
+
+- parent mounted type
+- mount point name
+
+Suggested rule:
+
+```python
+@lru_cache
+def resolve_mount_ops(
+    parent_type: type[object],
+    mount_point: MountPointSpec,
+) -> ResolvedMountOps: ...
+```
+
+This lets the backend:
+
+- inspect class-level API only once
+- cache the discovered callable set
+- choose the best delta applier for that parent/mount-point pair
+
+The important detail is that resolution happens from the class, not from each
+instance, so we do not repeatedly rebuild the same function set during normal
+reconciliation.
+
+
+## Transaction And Rollback Contract
+
+Mount application is imperative. Even if the reconciler keeps immutable mount
+state, the live parent object may already have been mutated by the time an
+exception is raised.
+
+So the mount adapter contract must be transactional from the reconciler's point
+of view:
+
+- committed mount state is not replaced until the pass succeeds
+- staged mount deltas are dropped on failure
+- any live parent mutation caused by the failed mount application must be
+  rolled back before the exception escapes the owning scope
+
+The existing scope machinery already restores staged UI emission and child slot
+state. The new mount adapter layer must additionally restore imperative parent
+mount-point state.
+
+### Required Rollback Paths
+
+Every concrete mount-point adapter must support at least one of:
+
+1. `capture_snapshot` + `restore_snapshot`
+2. replay/apply of the previously committed mount state
+3. explicit parent remount fallback
+
+If none of those are available, the mount point is not valid for the generic
+reconciler.
+
+### Preferred Rollback Order
+
+When a mount-point update fails part-way through:
+
+1. if a snapshot was captured, restore it
+2. else if the previously committed mount state can be re-applied, do that
+3. else if the parent mountable/spec explicitly allows remount-on-failure,
+   remount the parent
+4. else re-raise as a mount adapter contract failure
+
+This keeps rollback deterministic and makes unsupported opaque imperative APIs
+fail loudly instead of corrupting committed state silently.
+
+### Suggested Failure Boundary
+
+The runtime should stage mount updates inside one parent-local transaction:
+
+```python
+def apply_mount_transaction(
+    parent: object,
+    old_mount_states: Mapping[MountInstanceKey, MountState],
+    new_mount_states: Mapping[MountInstanceKey, MountState],
+    resolved_ops: ResolvedMountOps,
+) -> None:
+    snapshot = (
+        resolved_ops.capture_snapshot(parent)
+        if resolved_ops.capture_snapshot is not None
+        else None
+    )
+    try:
+        apply_mount_delta(...)
+    except BaseException:
+        rollback_mount_delta(
+            parent=parent,
+            old_mount_states=old_mount_states,
+            resolved_ops=resolved_ops,
+            snapshot=snapshot,
+        )
+        raise
+```
+
+The important rule is:
+
+- committed mount state is swapped only after `apply_mount_delta(...)`
+  completes successfully
+
+So yes: on failure, we drop the new deltas and restore the previous committed
+mount state.
+
+### Parent-Local Scope
+
+Rollback should be parent-local.
+
+That means:
+
+- if one mount point on a parent fails, all mount-point mutations on that same
+  parent from the current pass are rolled back
+- the failure then propagates to the owning component scope
+- the existing component `pass_scope()` rollback drops the higher-level staged
+  UI delta as well
+
+This mirrors the current runtime behavior for emitted `UIElement` staging, but
+adds the missing imperative parent-mutation restoration.
+
+
+## Immutable Ordered Mount State
+
+Ordered mount points need a stable immutable state object that can support:
+
+- O(1) unchanged detection by revision
+- replay of simple mutations
+- fallback to full ordered `sync(...)`
+
+The intended mutation model is builder-based:
+
+- committed state is immutable
+- one reconciliation pass creates a mutable builder from committed state
+- the builder applies mount deltas
+- `build()` freezes the next immutable candidate state
+
+Proposed phase-1 shape:
+
+```python
+@dataclass(frozen=True, slots=True)
+class MountedRef[T]:
+    node_id: object
+    value: T
+
+
+@dataclass(frozen=True, slots=True)
+class MountOp[T]:
+    kind: Literal["place", "detach", "clear"]
+    index: int | None = None
+    ref: MountedRef[T] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ImmutableOrderedMountState[T]:
+    revision: int
+    objects: tuple[MountedRef[T], ...]
+    ops: tuple[MountOp[T], ...] = ()
+
+
+@dataclass(slots=True)
+class OrderedMountStateBuilder[T]:
+    _base: ImmutableOrderedMountState[T]
+    _working: list[MountedRef[T]]
+    _ops: list[MountOp[T]]
+
+    def place(self, index: int, ref: MountedRef[T]) -> None: ...
+    def detach(self, ref: MountedRef[T]) -> None: ...
+    def clear(self) -> None: ...
+    def build(self) -> ImmutableOrderedMountState[T]: ...
+```
+
+Expected lifecycle:
+
+- a transaction begins from one committed `ImmutableOrderedMountState`
+- the runtime creates an `OrderedMountStateBuilder` from that committed state
+- mutations update the builder's working sequence and append a small op log
+- `build()` freezes the next immutable state candidate
+- commit compares old/new revisions
+- if unchanged, skip
+- if changed, choose an applier strategy from the resolved mount ops
+
+Phase-1 implementation can keep this simple:
+
+- immutable tuple of final ordered refs
+- mutable builder with a working list
+- small replay log
+- old state retained only for the current reconciliation boundary
+
+This does not require a tree or rope initially. A tuple plus log is enough to
+validate the model.
+
+
+## Delta Applier Strategies
+
+The runtime should not hard-code one mount update algorithm. It should choose
+an applier based on the resolved mount ops that exist for a concrete mount
+point.
+
+Suggested strategy families:
+
+### 1. Direct Sync
+
+Use when:
+
+- `ResolvedMountOps.sync` exists
+- or the delta is large enough that replay is not worthwhile
+
+Behavior:
+
+- build the final ordered object list from the immutable mount state
+- call `sync(parent, states)` or `sync(parent, values)`
+
+### 2. Incremental Ordered Replay
+
+Use when:
+
+- `ResolvedMountOps.place` and `ResolvedMountOps.detach` exist
+- delta log is small/simple
+
+Behavior:
+
+- replay `place(...)` / `detach(...)` from the op log
+- preserve O(k) work for small mutations
+
+### 3. Per-Instance Apply
+
+Use when:
+
+- the mount point is single or keyed
+- `ResolvedMountOps.apply` exists
+
+Behavior:
+
+- call `apply(parent, state)` for each changed mount instance
+
+### 4. Full Rebuild Fallback
+
+Use when:
+
+- the runtime cannot safely replay incrementally
+- the mount point exposes only coarse sync/apply behavior
+
+Behavior:
+
+- rebuild the final mount state and apply it directly
+
+
+## Strategy Selection
+
+The runtime should choose the applier from the resolved function set, not from
+hard-coded parent-type branches.
+
+Proposed rule:
+
+```python
+@dataclass(frozen=True, slots=True)
+class MountApplierPlan:
+    kind: Literal[
+        "direct_sync",
+        "incremental_ordered_replay",
+        "per_instance_apply",
+        "full_rebuild_fallback",
+    ]
+```
+
+Selection inputs:
+
+- mount point cardinality
+- presence/absence of `sync`
+- presence/absence of `place` and `detach`
+- delta log size vs final object count
+- duplicate mount-instance validity
+
+### Required Decision Order
+
+The runtime should select the strategy in this exact order:
+
+1. validate the mount-state set
+2. skip if unchanged
+3. prefer per-instance apply for single/keyed non-ordered mounts
+4. prefer incremental replay for ordered mounts when a small replayable delta
+   exists
+5. otherwise prefer direct sync when available
+6. otherwise fall back to full rebuild
+
+Illustrative rule:
+
+```python
+def choose_mount_applier(
+    *,
+    mount_point: MountPointSpec,
+    old_state: MountState | ImmutableOrderedMountState | None,
+    new_state: MountState | ImmutableOrderedMountState,
+    resolved_ops: ResolvedMountOps,
+) -> MountApplierPlan:
+    validate_mount_state(new_state)
+
+    if old_state is not None and old_state == new_state:
+        return MountApplierPlan(kind="skip")
+
+    is_ordered = mount_point.max_children is None or mount_point.max_children > 1
+    has_replay = resolved_ops.place is not None and resolved_ops.detach is not None
+    has_sync = resolved_ops.sync is not None
+    has_apply = resolved_ops.apply is not None
+
+    if not is_ordered:
+        if has_apply:
+            return MountApplierPlan(kind="per_instance_apply")
+        if has_sync:
+            return MountApplierPlan(kind="direct_sync")
+        return MountApplierPlan(kind="full_rebuild_fallback")
+
+    if has_replay and is_small_replay_delta(old_state, new_state):
+        return MountApplierPlan(kind="incremental_ordered_replay")
+    if has_sync:
+        return MountApplierPlan(kind="direct_sync")
+    if has_replay:
+        return MountApplierPlan(kind="incremental_ordered_replay")
+    return MountApplierPlan(kind="full_rebuild_fallback")
+```
+
+### Meaning Of "Small Replay Delta"
+
+Phase-1 does not need a sophisticated cost model. A simple heuristic is enough:
+
+- replay if:
+  - `len(ops) <= 8`, or
+  - `len(ops) <= len(objects) // 4`
+- otherwise use direct sync if available
+
+That keeps the decision:
+
+- cheap for small insert/move/remove edits
+- simple to reason about
+- easy to tune later without changing the rest of the model
+
+### Decision Table
+
+| Mount shape | Available ops | Suggested plan |
+| --- | --- | --- |
+| single/keyed | `apply` | `per_instance_apply` |
+| single/keyed | no `apply`, `sync` | `direct_sync` |
+| single/keyed | neither | `full_rebuild_fallback` |
+| ordered | `place` + `detach`, small delta | `incremental_ordered_replay` |
+| ordered | `sync`, large delta | `direct_sync` |
+| ordered | no `sync`, `place` + `detach` | `incremental_ordered_replay` |
+| ordered | only `apply`-like coarse ops | `full_rebuild_fallback` |
+
+### Examples
+
+- `standard` child list on a parent with `sync_children(...)`
+  - use `direct_sync` for broad reshapes
+- `standard` child list on a parent with `place(...)` / `detach(...)`
+  - use `incremental_ordered_replay` for small inserts/moves/removals
+- `corner_widget(top_left)` with `set_corner_widget(...)`
+  - use `per_instance_apply`
+- `cell_widget(row, column)` with `set_cell_widget(...)`
+  - use `per_instance_apply`
+
+This makes mount updating extensible without locking the reconciler to one
+toolkit-specific algorithm.
+
+
 ## Produced Type Compatibility
 
 Compatibility is checked between:

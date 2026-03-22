@@ -1,10 +1,10 @@
-"""Shared backend model types for generated UI libraries and widget specs."""
+"""Shared backend model types for generated UI libraries and mountable specs."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from enum import StrEnum
-from typing import Any
+from typing import Any, TypeVar
 
 from frozendict import frozendict
 
@@ -79,6 +79,39 @@ class UiMethodSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class MountParamSpec:
+    name: str
+    annotation: TypeRef | None
+    keyed: bool = False
+    default_repr: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class MountPointSpec:
+    name: str
+    accepted_produced_type: TypeRef
+    params: tuple[MountParamSpec, ...] = ()
+    min_children: int = 0
+    max_children: int | None = None
+    apply_method_name: str | None = None
+    sync_method_name: str | None = None
+
+    def instance_key(self, values: dict[str, Any]) -> tuple[object, ...]:
+        return (self.name, *(values[param.name] for param in self.params if param.keyed))
+
+
+T = TypeVar("T")
+
+
+@dataclass(frozen=True, slots=True)
+class MountState:
+    mount_point: MountPointSpec
+    instance_key: tuple[object, ...]
+    values: frozendict[str, Any]
+    objects: tuple[Any, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class UiWidgetSpec:
     kind: str
     mounted_type_name: str
@@ -86,6 +119,7 @@ class UiWidgetSpec:
     props: frozendict[str, UiPropSpec]
     methods: frozendict[str, UiMethodSpec]
     child_policy: ChildPolicy
+    mount_points: frozendict[str, MountPointSpec] = frozendict()
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,6 +171,9 @@ __all__ = [
     "ChildPolicy",
     "FillPolicy",
     "MethodMode",
+    "MountParamSpec",
+    "MountPointSpec",
+    "MountState",
     "PropMode",
     "TypeRef",
     "UiInterface",

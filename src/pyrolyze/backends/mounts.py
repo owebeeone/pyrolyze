@@ -1,0 +1,335 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from functools import lru_cache
+from typing import Any, Callable, Generic, Literal, Mapping, Sequence, TypeVar
+
+from frozendict import frozendict
+
+from .model import MountPointSpec, MountState
+
+T = TypeVar("T")
+
+
+@dataclass(frozen=True, slots=True)
+class MountedRef(Generic[T]):
+    node_id: object
+    value: T
+
+
+@dataclass(frozen=True, slots=True)
+class MountOp(Generic[T]):
+    kind: Literal["place", "detach", "clear"]
+    index: int | None = None
+    ref: MountedRef[T] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ImmutableOrderedMountState(Generic[T]):
+    revision: int
+    objects: tuple[MountedRef[T], ...]
+    ops: tuple[MountOp[T], ...] = ()
+
+
+@dataclass(slots=True)
+class OrderedMountStateBuilder(Generic[T]):
+    _base: ImmutableOrderedMountState[T]
+    _working: list[MountedRef[T]]
+    _ops: list[MountOp[T]]
+
+    @classmethod
+    def empty(cls) -> OrderedMountStateBuilder[T]:
+        return cls(
+            _base=ImmutableOrderedMountState(revision=0, objects=()),
+            _working=[],
+            _ops=[],
+        )
+
+    @classmethod
+    def from_state(cls, state: ImmutableOrderedMountState[T]) -> OrderedMountStateBuilder[T]:
+        return cls(
+            _base=state,
+            _working=list(state.objects),
+            _ops=[],
+        )
+
+    def place(self, index: int, ref: MountedRef[T]) -> None:
+        self._working = [existing for existing in self._working if existing.node_id != ref.node_id]
+        if index < 0:
+            index = 0
+        if index > len(self._working):
+            index = len(self._working)
+        self._working.insert(index, ref)
+        self._ops.append(MountOp(kind="place", index=index, ref=ref))
+
+    def detach(self, ref: MountedRef[T]) -> None:
+        self._working = [existing for existing in self._working if existing.node_id != ref.node_id]
+        self._ops.append(MountOp(kind="detach", ref=ref))
+
+    def clear(self) -> None:
+        self._working.clear()
+        self._ops.append(MountOp(kind="clear"))
+
+    def build(self) -> ImmutableOrderedMountState[T]:
+        return ImmutableOrderedMountState(
+            revision=self._base.revision + 1,
+            objects=tuple(self._working),
+            ops=tuple(self._ops),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedMountOps:
+    apply: Callable[[object, MountState], None] | None = None
+    sync: Callable[[object, Sequence[MountState]], None] | None = None
+    place: Callable[[object, object, int], None] | None = None
+    detach: Callable[[object, object], None] | None = None
+    capture_snapshot: Callable[[object], object] | None = None
+    restore_snapshot: Callable[[object, object], None] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class MountApplierPlan:
+    kind: Literal[
+        "skip",
+        "direct_sync",
+        "incremental_ordered_replay",
+        "per_instance_apply",
+        "full_rebuild_fallback",
+    ]
+
+
+@lru_cache
+def resolve_mount_ops(parent_type: type[object], mount_point: MountPointSpec) -> ResolvedMountOps:
+    apply = None
+    if mount_point.apply_method_name and hasattr(parent_type, mount_point.apply_method_name):
+        method_name = mount_point.apply_method_name
+
+        def apply(parent: object, state: MountState, *, _method_name: str = method_name) -> None:
+            _apply_single_mount(parent, state, _method_name)
+
+    sync = None
+    if mount_point.sync_method_name and hasattr(parent_type, mount_point.sync_method_name):
+        method_name = mount_point.sync_method_name
+
+        def sync(parent: object, states: Sequence[MountState], *, _method_name: str = method_name) -> None:
+            for state in states:
+                values = [ref.value for ref in state.objects]
+                getattr(parent, _method_name)(values)
+
+    place = None
+    detach = None
+    place_name, detach_name = _ordered_fallback_method_names(mount_point)
+    if place_name and hasattr(parent_type, place_name):
+
+        def place(parent: object, value: object, index: int, *, _method_name: str = place_name) -> None:
+            getattr(parent, _method_name)(index, value)
+
+    if detach_name and hasattr(parent_type, detach_name):
+
+        def detach(parent: object, value: object, *, _method_name: str = detach_name) -> None:
+            getattr(parent, _method_name)(value)
+
+    return ResolvedMountOps(
+        apply=apply,
+        sync=sync,
+        place=place,
+        detach=detach,
+    )
+
+
+def choose_mount_applier(
+    *,
+    mount_point: MountPointSpec,
+    old_state: ImmutableOrderedMountState[Any] | None,
+    new_state: ImmutableOrderedMountState[Any],
+    resolved_ops: ResolvedMountOps,
+) -> MountApplierPlan:
+    if old_state is not None and old_state == new_state:
+        return MountApplierPlan(kind="skip")
+
+    is_ordered = mount_point.max_children is None or mount_point.max_children > 1
+    has_replay = resolved_ops.place is not None and resolved_ops.detach is not None
+    has_sync = resolved_ops.sync is not None
+    has_apply = resolved_ops.apply is not None
+
+    if not is_ordered:
+        if has_apply:
+            return MountApplierPlan(kind="per_instance_apply")
+        if has_sync:
+            return MountApplierPlan(kind="direct_sync")
+        return MountApplierPlan(kind="full_rebuild_fallback")
+
+    if old_state is None:
+        if has_sync:
+            return MountApplierPlan(kind="direct_sync")
+        if has_replay:
+            return MountApplierPlan(kind="incremental_ordered_replay")
+        return MountApplierPlan(kind="full_rebuild_fallback")
+
+    if has_replay and _is_small_replay_delta(old_state, new_state):
+        return MountApplierPlan(kind="incremental_ordered_replay")
+    if has_sync:
+        return MountApplierPlan(kind="direct_sync")
+    if has_replay:
+        return MountApplierPlan(kind="incremental_ordered_replay")
+    return MountApplierPlan(kind="full_rebuild_fallback")
+
+
+def apply_mount_state(
+    parent: object,
+    *,
+    old_state: MountState | None,
+    new_state: MountState,
+    ordered_state: ImmutableOrderedMountState[Any] | None = None,
+) -> None:
+    _validate_mount_state(new_state)
+    resolved = resolve_mount_ops(type(parent), new_state.mount_point)
+
+    if new_state.mount_point.max_children == 1:
+        if resolved.apply is not None:
+            resolved.apply(parent, new_state)
+            return
+        if resolved.sync is not None:
+            resolved.sync(parent, (new_state,))
+            return
+        raise ValueError(f"mount point {new_state.mount_point.name!r} has no applicable ops")
+
+    next_ordered = ordered_state or ImmutableOrderedMountState(
+        revision=(1 if old_state is None else 0),
+        objects=tuple(new_state.objects),
+        ops=(),
+    )
+    previous_ordered = (
+        None
+        if old_state is None
+        else ImmutableOrderedMountState(revision=0, objects=tuple(old_state.objects), ops=())
+    )
+    plan = choose_mount_applier(
+        mount_point=new_state.mount_point,
+        old_state=previous_ordered,
+        new_state=next_ordered,
+        resolved_ops=resolved,
+    )
+
+    if plan.kind == "skip":
+        return
+    if plan.kind == "incremental_ordered_replay":
+        _replay_mount_ops(parent, next_ordered, resolved)
+        return
+    if plan.kind == "direct_sync":
+        if resolved.sync is None:
+            raise ValueError("direct sync selected without sync op")
+        resolved.sync(parent, (new_state,))
+        return
+    if plan.kind == "full_rebuild_fallback":
+        _full_rebuild_ordered_mount(parent, old_state, new_state, resolved)
+        return
+    raise ValueError(f"unexpected mount applier plan {plan.kind!r}")
+
+
+def _validate_mount_state(state: MountState) -> None:
+    max_children = state.mount_point.max_children
+    if max_children is not None and len(state.objects) > max_children:
+        raise ValueError(
+            f"mount point {state.mount_point.name!r} exceeds max_children={max_children}"
+        )
+
+
+def _apply_single_mount(parent: object, state: MountState, method_name: str) -> None:
+    args, kwargs = _mount_call_args(state)
+    if len(state.objects) != 1:
+        raise ValueError(f"single mount point {state.mount_point.name!r} requires exactly one object")
+    getattr(parent, method_name)(*args, state.objects[0].value, **kwargs)
+
+
+def _mount_call_args(state: MountState) -> tuple[tuple[Any, ...], dict[str, Any]]:
+    keyed_values = iter(state.instance_key[1:])
+    args: list[Any] = []
+    kwargs: dict[str, Any] = {}
+    for param in state.mount_point.params:
+        value = next(keyed_values) if param.keyed else state.values[param.name]
+        if param.keyed:
+            args.append(value)
+        else:
+            kwargs[param.name] = value
+    return tuple(args), kwargs
+
+
+def _ordered_fallback_method_names(mount_point: MountPointSpec) -> tuple[str | None, str | None]:
+    if mount_point.sync_method_name is None or not mount_point.sync_method_name.startswith("sync_"):
+        return None, None
+    plural = mount_point.sync_method_name.removeprefix("sync_")
+    singular = _singularize(plural)
+    return f"place_{singular}", f"detach_{singular}"
+
+
+def _singularize(name: str) -> str:
+    if name.endswith("ies"):
+        return f"{name[:-3]}y"
+    if name.endswith("ren"):
+        return "child"
+    if name.endswith("s"):
+        return name[:-1]
+    return name
+
+
+def _is_small_replay_delta(
+    old_state: ImmutableOrderedMountState[Any] | None,
+    new_state: ImmutableOrderedMountState[Any],
+) -> bool:
+    del old_state
+    op_count = len(new_state.ops)
+    object_count = len(new_state.objects)
+    return op_count <= 8 or op_count <= max(1, object_count // 4)
+
+
+def _replay_mount_ops(
+    parent: object,
+    state: ImmutableOrderedMountState[Any],
+    resolved: ResolvedMountOps,
+) -> None:
+    if resolved.place is None or resolved.detach is None:
+        raise ValueError("replay selected without place/detach ops")
+    for op in state.ops:
+        if op.kind == "clear":
+            continue
+        if op.kind == "detach":
+            if op.ref is not None:
+                resolved.detach(parent, op.ref.value)
+            continue
+        if op.kind == "place":
+            if op.ref is not None and op.index is not None:
+                resolved.place(parent, op.ref.value, op.index)
+
+
+def _full_rebuild_ordered_mount(
+    parent: object,
+    old_state: MountState | None,
+    new_state: MountState,
+    resolved: ResolvedMountOps,
+) -> None:
+    if resolved.sync is not None:
+        resolved.sync(parent, (new_state,))
+        return
+    if resolved.place is None or resolved.detach is None:
+        raise ValueError("ordered mount has no sync or replay ops")
+
+    if old_state is not None:
+        for ref in old_state.objects:
+            resolved.detach(parent, ref.value)
+    for index, ref in enumerate(new_state.objects):
+        resolved.place(parent, ref.value, index)
+
+
+__all__ = [
+    "ImmutableOrderedMountState",
+    "MountedRef",
+    "MountApplierPlan",
+    "MountOp",
+    "OrderedMountStateBuilder",
+    "ResolvedMountOps",
+    "apply_mount_state",
+    "choose_mount_applier",
+    "resolve_mount_ops",
+]

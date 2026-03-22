@@ -128,6 +128,9 @@ Coverage:
 - explicit mount-point application
 - duplicate mount-instance rejection
 - rollback on mount-point application failure
+- snapshot/restore rollback when the adapter exposes snapshot hooks
+- re-apply-old-state rollback when snapshot hooks are absent
+- mount adapter contract failure when no rollback path exists
 
 
 ## 7. Mount Point Conformance Tests
@@ -146,6 +149,7 @@ Coverage:
 - ordered reapply/reorder behavior
 - backend-native `sync(...)` fast path where implemented
 - fallback `apply(...)` behavior where direct `sync(...)` is absent
+- rollback leaves the live parent identical to the last committed mount state
 
 
 ## 8. Mountable Matrix Tests
