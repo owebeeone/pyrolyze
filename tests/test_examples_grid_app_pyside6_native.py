@@ -10,7 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 pytest.importorskip("PySide6.QtWidgets")
 
-from PySide6.QtWidgets import QLabel, QMainWindow, QPushButton
+from PySide6.QtWidgets import QGroupBox, QLineEdit, QMainWindow, QPushButton, QScrollArea
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -33,13 +33,21 @@ def test_native_grid_app_example_mounts_and_rerenders() -> None:
 
     try:
         assert isinstance(host.root_widget, QMainWindow)
+        grid_scroll = host.root_widget.findChild(QScrollArea, "grid:scroll")
+        header_group = host.root_widget.findChild(QGroupBox, "header:group")
+        assert grid_scroll is not None
+        assert header_group is not None
+        assert grid_scroll.widgetResizable() is True
+        assert header_group.parent() is not grid_scroll.widget()
 
-        cols_value = host.root_widget.findChild(QLabel, "header:cols:value")
-        rows_value = host.root_widget.findChild(QLabel, "header:rows:value")
-        first_cell_value = host.root_widget.findChild(QLabel, "cell:0:0:value")
+        cols_value = host.root_widget.findChild(QLineEdit, "header:cols:value")
+        rows_value = host.root_widget.findChild(QLineEdit, "header:rows:value")
+        first_cell_decrement = host.root_widget.findChild(QPushButton, "cell:0:0:decrement")
+        first_cell_value = host.root_widget.findChild(QLineEdit, "cell:0:0:value")
         first_cell_increment = host.root_widget.findChild(QPushButton, "cell:0:0:increment")
         assert cols_value is not None
         assert rows_value is not None
+        assert first_cell_decrement is not None
         assert first_cell_value is not None
         assert first_cell_increment is not None
         assert cols_value.text() == "2"
@@ -48,9 +56,15 @@ def test_native_grid_app_example_mounts_and_rerenders() -> None:
 
         first_cell_increment.click()
         _pump_events()
-        first_cell_value = host.root_widget.findChild(QLabel, "cell:0:0:value")
+        first_cell_value = host.root_widget.findChild(QLineEdit, "cell:0:0:value")
         assert first_cell_value is not None
         assert first_cell_value.text() == "1"
+
+        first_cell_value.setText("7")
+        _pump_events()
+        first_cell_value = host.root_widget.findChild(QLineEdit, "cell:0:0:value")
+        assert first_cell_value is not None
+        assert first_cell_value.text() == "7"
 
         cols_increment = host.root_widget.findChild(QPushButton, "header:cols:increment")
         rows_decrement = host.root_widget.findChild(QPushButton, "header:rows:decrement")
@@ -64,14 +78,14 @@ def test_native_grid_app_example_mounts_and_rerenders() -> None:
         rows_decrement.click()
         _pump_events()
 
-        cols_value = host.root_widget.findChild(QLabel, "header:cols:value")
-        rows_value = host.root_widget.findChild(QLabel, "header:rows:value")
+        cols_value = host.root_widget.findChild(QLineEdit, "header:cols:value")
+        rows_value = host.root_widget.findChild(QLineEdit, "header:rows:value")
         assert cols_value is not None
         assert rows_value is not None
         assert cols_value.text() == "3"
         assert rows_value.text() == "1"
-        assert host.root_widget.findChild(QLabel, "cell:0:2:value") is not None
-        assert host.root_widget.findChild(QLabel, "cell:1:0:value") is None
+        assert host.root_widget.findChild(QLineEdit, "cell:0:2:value") is not None
+        assert host.root_widget.findChild(QLineEdit, "cell:1:0:value") is None
     finally:
         ctx.close_app_contexts()
         host.close()

@@ -3295,7 +3295,15 @@ LEARNINGS: frozendict[str, UiWidgetLearning] = frozendict(
                         constructor_equivalent=False,
                     ),
                 }
-            )
+            ),
+            event_learnings=frozendict(
+                {
+                    "on_textChanged": UiEventLearning(
+                        signal_name="textChanged",
+                        payload_policy=EventPayloadPolicy.FIRST_ARG,
+                    ),
+                }
+            ),
         ),
         "QListView": UiWidgetLearning(
             method_learnings=frozendict(

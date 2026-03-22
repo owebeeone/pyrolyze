@@ -5,26 +5,41 @@ from pyrolyze.api import keyed, pyrolyze, use_state
 from pyrolyze.backends.pyside6.generated_library import PySide6UiLibrary as Qt
 
 
+def _coerce_count(raw_value: str) -> int:
+    try:
+        return max(0, int(raw_value))
+    except ValueError:
+        return 0
+
+
 def _decrement(value: int) -> int:
-    return max(1, value - 1)
+    return max(0, value - 1)
 
 
 @pyrolyze
-def value_stepper(
+def counter(
     title: str,
-    value: int,
-    *,
-    decrement_name: str,
-    value_name: str,
-    increment_name: str,
-    on_decrement,
-    on_increment,
+    field_id: str,
+    count: int,
+    set_count,
 ) -> None:
     with Qt.CQGroupBox(title):
         with Qt.CQHBoxLayout():
-            Qt.CQPushButton("-", objectName=decrement_name, on_clicked=on_decrement)
-            Qt.CQLabel(str(value), objectName=value_name)
-            Qt.CQPushButton("+", objectName=increment_name, on_clicked=on_increment)
+            Qt.CQPushButton(
+                "-",
+                objectName=f"{field_id}:decrement",
+                on_clicked=lambda: set_count(lambda current: _decrement(int(current))),
+            )
+            Qt.CQLineEdit(
+                str(count),
+                objectName=f"{field_id}:value",
+                on_textChanged=lambda next_value: set_count(_coerce_count(next_value)),
+            )
+            Qt.CQPushButton(
+                "+",
+                objectName=f"{field_id}:increment",
+                on_clicked=lambda: set_count(lambda current: int(current) + 1),
+            )
 
 
 @pyrolyze
@@ -36,37 +51,29 @@ def header(
 ) -> None:
     with Qt.CQGroupBox("Dimensions", objectName="header:group"):
         with Qt.CQHBoxLayout():
-            value_stepper(
+            counter(
                 "Cols",
+                "header:cols",
                 cols,
-                decrement_name="header:cols:decrement",
-                value_name="header:cols:value",
-                increment_name="header:cols:increment",
-                on_decrement=lambda: set_cols(lambda current: _decrement(int(current))),
-                on_increment=lambda: set_cols(lambda current: int(current) + 1),
+                set_cols,
             )
-            value_stepper(
+            counter(
                 "Rows",
+                "header:rows",
                 rows,
-                decrement_name="header:rows:decrement",
-                value_name="header:rows:value",
-                increment_name="header:rows:increment",
-                on_decrement=lambda: set_rows(lambda current: _decrement(int(current))),
-                on_increment=lambda: set_rows(lambda current: int(current) + 1),
+                set_rows,
             )
 
 
 @pyrolyze
 def cell(row_index: int, col_index: int) -> None:
     count, set_count = use_state(0)
-    with Qt.CQGroupBox(f"R{row_index + 1} C{col_index + 1}", objectName=f"cell:{row_index}:{col_index}:group"):
-        with Qt.CQVBoxLayout():
-            Qt.CQLabel(str(count), objectName=f"cell:{row_index}:{col_index}:value")
-            Qt.CQPushButton(
-                "Increment",
-                objectName=f"cell:{row_index}:{col_index}:increment",
-                on_clicked=lambda: set_count(lambda current: int(current) + 1),
-            )
+    counter(
+        f"R{row_index + 1} C{col_index + 1}",
+        f"cell:{row_index}:{col_index}",
+        count,
+        set_count,
+    )
 
 
 @pyrolyze
@@ -89,4 +96,7 @@ def grid_app_pyside6() -> None:
         with Qt.CQWidget(objectName="central_widget"):
             with Qt.CQBoxLayout(QBoxLayout.Direction.TopToBottom):
                 header(cols, set_cols, rows, set_rows)
-                grid(cols, rows)
+                with Qt.CQScrollArea(objectName="grid:scroll", widgetResizable=True):
+                    with Qt.CQWidget(objectName="grid:content"):
+                        with Qt.CQVBoxLayout():
+                            grid(cols, rows)

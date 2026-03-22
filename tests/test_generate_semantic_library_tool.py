@@ -7,7 +7,8 @@ import sys
 import pytest
 from frozendict import frozendict
 
-from pyrolyze.backends.model import FillPolicy, MethodMode, TypeRef, UiMethodLearning, UiPropLearning, UiWidgetLearning
+from pyrolyze.backends.model import EventPayloadPolicy, FillPolicy, MethodMode, TypeRef, UiMethodLearning, UiPropLearning, UiWidgetLearning
+from pyrolyze.backends.pyside6.generated_library import PySide6UiLibrary
 
 from pyrolyze_tools.generate_semantic_library import (
     DiscoveredMountPoint,
@@ -165,6 +166,25 @@ def test_generate_library_source_renders_qt_property_metadata() -> None:
     assert "def CQPushButton(" in source
     assert "enabled: bool | MissingType = MISSING" in source
     assert "text: str | MissingType = MISSING" in source
+
+
+def test_generated_pyside6_line_edit_exposes_text_changed_event() -> None:
+    spec = PySide6UiLibrary.WIDGET_SPECS["QLineEdit"]
+
+    event = spec.events["on_textChanged"]
+
+    assert event.signal_name == "textChanged"
+    assert event.payload_policy is EventPayloadPolicy.FIRST_ARG
+
+
+def test_generated_pyside6_scroll_area_prefers_widget_for_default_attach() -> None:
+    spec = PySide6UiLibrary.WIDGET_SPECS["QScrollArea"]
+
+    assert "widget" in spec.default_attach_mount_point_names
+    assert "viewport" in spec.default_attach_mount_point_names
+    assert spec.default_attach_mount_point_names.index("widget") < spec.default_attach_mount_point_names.index(
+        "viewport"
+    )
 
 
 def test_generate_library_source_renders_discovered_method_specs() -> None:
