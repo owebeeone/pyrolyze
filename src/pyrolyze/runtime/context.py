@@ -9,7 +9,7 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from typing import Any, Callable, Generic, Iterator, Protocol, TypeVar, cast
 
-from pyrolyze.api import UIElement
+from pyrolyze.api import MountDirective, SlotSelector, UIElement
 
 from .app_context import AppContextKey, AppContextStore, GENERATION_TRACKER_KEY
 from .trace import TraceChannel, emit_trace, trace_enabled
@@ -53,7 +53,7 @@ class PlainCallResult(Generic[T]):
 @dataclass(frozen=True, slots=True)
 class _CommittedUiEntry:
     generation_id: int
-    element: UIElement
+    element: UIElement | MountDirective
 
 
 @dataclass(frozen=True, slots=True)
@@ -678,13 +678,13 @@ class ContextBase:
         self._scope_active = False
         self._pass_child_order: tuple[SlotId, ...] = ()
         self._pass_child_dirty: dict[SlotId, bool] = {}
-        self._committed_ui: tuple[UIElement, ...] = ()
-        self._own_committed_ui: tuple[UIElement, ...] = ()
+        self._committed_ui: tuple[UIElement | MountDirective, ...] = ()
+        self._own_committed_ui: tuple[UIElement | MountDirective, ...] = ()
         self._own_committed_ui_entries: tuple[_CommittedUiEntry, ...] = ()
-        self._pass_committed_ui: tuple[UIElement, ...] = ()
-        self._pass_own_committed_ui: tuple[UIElement, ...] = ()
+        self._pass_committed_ui: tuple[UIElement | MountDirective, ...] = ()
+        self._pass_own_committed_ui: tuple[UIElement | MountDirective, ...] = ()
         self._pass_own_committed_ui_entries: tuple[_CommittedUiEntry, ...] = ()
-        self._staged_ui: list[UIElement] = []
+        self._staged_ui: list[UIElement | MountDirective] = []
         self._staged_ui_entries: list[_CommittedUiEntry] = []
 
     @property
@@ -809,6 +809,22 @@ class ContextBase:
             container_fn=cast(Callable[..., Any], raw_container_fn),
             args=raw_args,
             kwargs=raw_kwargs,
+        )
+
+    def open_directive(
+        self,
+        slot_id: SlotId,
+        directive_fn: CompValue[Callable[..., Any]] | Callable[..., Any],
+        *args: CompValue[Any] | Any,
+        **kwargs: CompValue[Any] | Any,
+    ) -> _DirectiveCallHandle:
+        self._require_active_scope()
+        slot = self._ensure_slot(slot_id, DirectiveSlotContext)
+        return _DirectiveCallHandle(
+            slot=slot,
+            directive_fn=directive_fn,
+            args=args,
+            kwargs=kwargs,
         )
 
     def leaf_call(
@@ -1029,7 +1045,7 @@ class ContextBase:
             return
         raise TypeError("call_native factory must return UIElement or None")
 
-    def _build_committed_ui(self) -> tuple[UIElement, ...]:
+    def _build_committed_ui(self) -> tuple[UIElement | MountDirective, ...]:
         own_elements = self._own_committed_ui
         child_elements = tuple(
             element
@@ -1387,6 +1403,73 @@ class PlainCallSlotContext(RerunnableSlotContext):
 
 
 @dataclass(slots=True)
+class DirectiveSlotContext(PlainCallSlotContext):
+    committed_selectors: tuple[SlotSelector, ...] = ()
+    _pass_committed_selectors: tuple[SlotSelector, ...] = ()
+
+    def evaluate_directive(
+        self,
+        directive_fn: CompValue[Callable[..., Any]] | Callable[..., Any],
+        args: tuple[CompValue[Any] | Any, ...],
+        kwargs: dict[str, CompValue[Any] | Any],
+    ) -> tuple[SlotSelector, ...]:
+        result = self.evaluate(directive_fn, args, kwargs)
+        selectors = tuple(result.value)
+        for selector in selectors:
+            if not isinstance(selector, SlotSelector):
+                raise TypeError("mount directive evaluator must return SlotSelector values")
+        return selectors
+
+    def pending_selectors(self) -> tuple[SlotSelector, ...]:
+        binding = self.binding
+        if binding is None:
+            return self.committed_selectors
+        selectors = tuple(binding.exposed_value())
+        for selector in selectors:
+            if not isinstance(selector, SlotSelector):
+                raise TypeError("mount directive evaluator must return SlotSelector values")
+        return selectors
+
+    def has_pending_emitted_children(self) -> bool:
+        if self._staged_ui_entries:
+            return True
+        return any(
+            isinstance(child, ContextBase) and bool(child._committed_ui)
+            for child in self._children.values()
+        )
+
+    def _begin_scope_pass(self) -> None:
+        self._pass_committed_selectors = self.committed_selectors
+        super(DirectiveSlotContext, self)._begin_scope_pass()
+
+    def _commit_scope_pass(self) -> None:
+        self.committed_selectors = self.pending_selectors()
+        super(DirectiveSlotContext, self)._commit_scope_pass()
+        self._pass_committed_selectors = ()
+
+    def _rollback_scope_pass(self) -> None:
+        super(DirectiveSlotContext, self)._rollback_scope_pass()
+        self.committed_selectors = self._pass_committed_selectors
+        self._pass_committed_selectors = ()
+
+    def _build_committed_ui(self) -> tuple[MountDirective, ...]:
+        own_children = tuple(entry.element for entry in self._own_committed_ui_entries)
+        nested_children = tuple(
+            element
+            for child in self._children.values()
+            if isinstance(child, ContextBase)
+            for element in child._committed_ui
+        )
+        return (
+            MountDirective(
+                selectors=self.committed_selectors,
+                children=own_children + nested_children,
+                slot_id=self.slot_id,
+            ),
+        )
+
+
+@dataclass(slots=True)
 class ContainerSlotContext(RerunnableSlotContext):
     expects_native_root: bool = False
     committed_native_root: bool = False
@@ -1670,6 +1753,45 @@ class _ContainerCallHandle(AbstractContextManager[ContainerSlotContext]):
 
 
 @dataclass(slots=True)
+class _DirectiveCallHandle(AbstractContextManager[DirectiveSlotContext]):
+    slot: DirectiveSlotContext
+    directive_fn: CompValue[Callable[..., Any]] | Callable[..., Any]
+    args: tuple[CompValue[Any] | Any, ...]
+    kwargs: dict[str, CompValue[Any] | Any]
+
+    def __enter__(self) -> DirectiveSlotContext:
+        self.slot._begin_scope_pass()
+        try:
+            self.slot.evaluate_directive(
+                self.directive_fn,
+                self.args,
+                self.kwargs,
+            )
+        except BaseException:
+            self.slot._rollback_scope_pass()
+            raise
+        return self.slot
+
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
+        if exc_type is not None:
+            self.slot._rollback_scope_pass()
+            return False
+        try:
+            selectors = self.slot.pending_selectors()
+            if (
+                len(selectors) == 1
+                and getattr(selectors[0], "kind", None) == "no_emit"
+                and self.slot.has_pending_emitted_children()
+            ):
+                raise RuntimeError("mount(no_emit) does not allow emitted children")
+            self.slot._commit_scope_pass()
+        except BaseException:
+            self.slot._rollback_scope_pass()
+            raise
+        return False
+
+
+@dataclass(slots=True)
 class _NativeContainerCallHandle(AbstractContextManager[ContainerSlotContext]):
     slot: ContainerSlotContext
     container_fn: Callable[..., Any]
@@ -1937,7 +2059,7 @@ class RenderContext(ContextBase):
         scheduler_root = self._scheduler_root
         return tuple(boundary._debug_boundary_id() for boundary in scheduler_root._scheduler.queue)
 
-    def debug_ui(self, slot_id: SlotId | None = None) -> tuple[UIElement, ...]:
+    def debug_ui(self, slot_id: SlotId | None = None) -> tuple[UIElement | MountDirective, ...]:
         if slot_id is None:
             owner: ContextBase = self
         else:
@@ -1947,7 +2069,7 @@ class RenderContext(ContextBase):
             owner = slot
         return owner._committed_ui
 
-    def committed_ui(self) -> tuple[UIElement, ...]:
+    def committed_ui(self) -> tuple[UIElement | MountDirective, ...]:
         return self._committed_ui
 
     def _refresh_committed_ui_from_children(self) -> None:

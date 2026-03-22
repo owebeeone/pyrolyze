@@ -561,27 +561,17 @@ Conceptual transformed shape:
 
 with __pyr_ctx.open_directive(
     __pyr_SlotId(__pyr_module_id, 2, line_no=3, is_top_level=True),
-    __pyr_build_mount_selectors,
-    (sel, corner_widget(corner=Qt.TopLeftCorner)),
-    {},
-    result_shape=("tuple", "selectors"),
-) as __pyr_mount:
-    foo()
-```
-
-Where `__pyr_build_mount_selectors(...)` conceptually returns:
-
-```python
-(
+    __pyr_validate_mount_selectors,
     sel,
     corner_widget(corner=Qt.TopLeftCorner),
-)
+) as __pyr_mount:
+    foo()
 ```
 
 and `open_directive(...)` is responsible for:
 
 1. retaining the directive slot
-2. evaluating and retaining the selector tuple
+2. evaluating and retaining the validated selector tuple
 3. capturing emitted child nodes within the `with` block
 4. producing a retained `MountDirective`
 5. committing or rolling back the directive subtree as one unit

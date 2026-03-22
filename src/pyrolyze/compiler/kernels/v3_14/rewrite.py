@@ -15,6 +15,7 @@ from .builders import copy_reason_location
 _REACTIVE_DECORATORS = {"pyrolyze", "reactive_component"}
 _SLOTTED_DECORATORS = {"pyrolyze_slotted"}
 _EVENT_HANDLER_TYPES = {"PyrolyzeHandler", "PyrolyteHandler"}
+_MOUNT_HELPERS = {"mount"}
 _CALLABLE_KIND_COMPONENT_REF = "component_ref"
 _CALLABLE_KIND_SLOT_CALLABLE = "slot_callable"
 _CALLABLE_KIND_PLAIN_CALLABLE = "plain_callable"
@@ -39,6 +40,7 @@ class _LoweringState:
     callable_kinds: dict[str, str]
     callable_return_kinds: dict[str, str]
     legacy_container_names: set[str]
+    mount_helper_names: set[str]
     event_handler_type_names: set[str]
     dirty_by_name: dict[str, ast.expr]
     in_class_scope: bool
@@ -99,6 +101,7 @@ class _LoweringState:
             callable_kinds=dict(self.callable_kinds),
             callable_return_kinds=self.callable_return_kinds,
             legacy_container_names=self.legacy_container_names,
+            mount_helper_names=self.mount_helper_names,
             event_handler_type_names=self.event_handler_type_names,
             dirty_by_name=self.dirty_by_name if dirty_by_name is None else dirty_by_name,
             in_class_scope=self.in_class_scope,
@@ -246,6 +249,7 @@ def lower_module_plan(plan: ModuleTransformPlan) -> ast.Module:
     reactive_decorator_names, slotted_decorator_names, event_handler_type_names = _collect_source_api_aliases(
         plan.module_ast
     )
+    mount_helper_names = _collect_mount_helper_names(plan.module_ast)
     shared = _LoweringShared(hoist_slots=True)
     component_plans = {component.public_name: component for component in plan.component_plans}
     (
@@ -293,6 +297,7 @@ def lower_module_plan(plan: ModuleTransformPlan) -> ast.Module:
         component_event_params=component_event_params,
         callable_return_kinds=callable_return_kinds,
         legacy_container_names=legacy_container_names,
+        mount_helper_names=mount_helper_names,
         event_handler_type_names=event_handler_type_names,
         module_name=plan.module_name,
         qual_prefix="",
@@ -332,6 +337,7 @@ def lower_component(plan: ComponentTransformPlan) -> ast.FunctionDef | ast.Async
         },
         callable_return_kinds={},
         legacy_container_names=set(),
+        mount_helper_names=set(_MOUNT_HELPERS),
         event_handler_type_names=set(_EVENT_HANDLER_TYPES),
         packed_native_helper_names=set(),
         module_name=plan.public_name,
@@ -361,6 +367,7 @@ def _rewrite_body(
     component_event_params: dict[str, frozenset[str]],
     callable_return_kinds: dict[str, str],
     legacy_container_names: set[str],
+    mount_helper_names: set[str],
     event_handler_type_names: set[str],
     module_name: str,
     qual_prefix: str,
@@ -383,6 +390,7 @@ def _rewrite_body(
                 component_event_params=component_event_params,
                 callable_return_kinds=callable_return_kinds,
                 legacy_container_names=legacy_container_names,
+                mount_helper_names=mount_helper_names,
                 event_handler_type_names=event_handler_type_names,
                 module_name=module_name,
                 qual_prefix=class_prefix,
@@ -407,6 +415,7 @@ def _rewrite_body(
                     component_event_params=component_event_params,
                     callable_return_kinds=callable_return_kinds,
                     legacy_container_names=legacy_container_names,
+                    mount_helper_names=mount_helper_names,
                     event_handler_type_names=event_handler_type_names,
                     module_name=module_name,
                     qual_prefix=f"{qualified_name}.<locals>",
@@ -424,6 +433,7 @@ def _rewrite_body(
                 component_event_params=component_event_params,
                 callable_return_kinds=callable_return_kinds,
                 legacy_container_names=legacy_container_names,
+                mount_helper_names=mount_helper_names,
                 event_handler_type_names=event_handler_type_names,
                 packed_native_helper_names=packed_native_helper_names,
                 module_name=module_name,
@@ -449,6 +459,7 @@ def _lower_component_definition(
     component_event_params: dict[str, frozenset[str]],
     callable_return_kinds: dict[str, str],
     legacy_container_names: set[str],
+    mount_helper_names: set[str],
     event_handler_type_names: set[str],
     packed_native_helper_names: set[str],
     module_name: str,
@@ -496,6 +507,7 @@ def _lower_component_definition(
             component_event_params=component_event_params,
             callable_return_kinds=callable_return_kinds,
             legacy_container_names=legacy_container_names,
+            mount_helper_names=mount_helper_names,
             event_handler_type_names=event_handler_type_names,
             module_name=module_name,
             qual_prefix=qual_prefix,
@@ -550,6 +562,7 @@ def _lower_component_body(
     component_event_params: dict[str, frozenset[str]],
     callable_return_kinds: dict[str, str],
     legacy_container_names: set[str],
+    mount_helper_names: set[str],
     event_handler_type_names: set[str],
     module_name: str,
     qual_prefix: str,
@@ -566,6 +579,7 @@ def _lower_component_body(
         callable_kinds=_parameter_callable_kinds(component),
         callable_return_kinds=callable_return_kinds,
         legacy_container_names=legacy_container_names,
+        mount_helper_names=mount_helper_names,
         event_handler_type_names=event_handler_type_names,
         dirty_by_name=_initial_dirty_map(component, qual_prefix=qual_prefix),
         in_class_scope=in_class_scope,
@@ -674,6 +688,15 @@ def _lower_container_with(statement: ast.With, *, state: _LoweringState) -> list
 
     slot_index, slot_name, slot_setup = state.next_slot_id(reason=statement)
     context_expr = cast(ast.Call, item.context_expr)
+    if _is_mount_call(context_expr, state=state):
+        return _lower_mount_with(
+            statement,
+            slot_index=slot_index,
+            slot_name=slot_name,
+            slot_setup=slot_setup,
+            call=context_expr,
+            state=state,
+        )
     if not _is_container_candidate_call(context_expr, state=state):
         raise error_from_node(
             statement,
@@ -763,6 +786,70 @@ def _lower_container_with(statement: ast.With, *, state: _LoweringState) -> list
     )
     lowered = ast.If(test=guard, body=[container_with], orelse=[])
     return [*slot_setup, *event_slot_setup, copy_reason_location(lowered, statement)]
+
+
+def _lower_mount_with(
+    statement: ast.With,
+    *,
+    slot_index: int,
+    slot_name: ast.expr,
+    slot_setup: list[ast.stmt],
+    call: ast.Call,
+    state: _LoweringState,
+) -> list[ast.stmt]:
+    if call.keywords:
+        raise error_from_node(
+            statement,
+            code="PYR-E-MOUNT-KEYWORDS",
+            message="mount(...) accepts selector terms as positional arguments only",
+            module_name=state.module_name,
+            suggested_fix="pass_selector_values_positionally",
+        )
+
+    mount_ctx_name = _context_name_for_slot(slot_index)
+    child_state = state.child(context_name=mount_ctx_name)
+    lowered_body = _lower_block(statement.body, state=child_state)
+    directive_with = ast.With(
+        items=[
+            ast.withitem(
+                context_expr=ast.Call(
+                    func=ast.Attribute(
+                        value=state.context_ref(),
+                        attr="open_directive",
+                        ctx=ast.Load(),
+                    ),
+                    args=[
+                        slot_name,
+                        _support_reference(
+                            "__pyr_validate_mount_selectors",
+                            in_class_scope=state.in_class_scope,
+                        ),
+                        *copy.deepcopy(call.args),
+                    ],
+                    keywords=[],
+                ),
+                optional_vars=ast.Name(id=mount_ctx_name, ctx=ast.Store()),
+            )
+        ],
+        body=lowered_body or [ast.Pass()],
+    )
+    guard = _or_expression(
+        [
+            _dirty_expr_for_value(call, state.dirty_by_name),
+            _dirty_expr_for_statements(statement.body, state.dirty_by_name),
+            ast.Call(
+                func=ast.Attribute(
+                    value=state.context_ref(),
+                    attr="visit_slot_and_dirty",
+                    ctx=ast.Load(),
+                ),
+                args=[slot_name],
+                keywords=[],
+            ),
+        ]
+    )
+    lowered = ast.If(test=guard, body=[directive_with], orelse=[])
+    return [*slot_setup, copy_reason_location(lowered, statement)]
 
 
 def _lower_keyed_for(statement: ast.For, *, state: _LoweringState) -> list[ast.stmt]:
@@ -1189,14 +1276,19 @@ def _inject_module_scaffold(
     insert_at = 1 if _is_module_docstring(body[0]) else 0
     while insert_at < len(body) and _is_future_import(body[insert_at]):
         insert_at += 1
+    api_names = [
+        ast.alias(name="CallFromNonPyrolyzeContext", asname="__pyr_CallFromNonPyrolyzeContext"),
+        ast.alias(name="ComponentMetadata", asname="__pyr_ComponentMetadata"),
+        ast.alias(name="pyrolyze_component_ref", asname="__pyr_component_ref"),
+    ]
+    if _body_uses_support_name(body, "__pyr_validate_mount_selectors"):
+        api_names.append(
+            ast.alias(name="validate_mount_selectors", asname="__pyr_validate_mount_selectors")
+        )
     scaffold = [
         ast.ImportFrom(
             module="pyrolyze.api",
-            names=[
-                ast.alias(name="CallFromNonPyrolyzeContext", asname="__pyr_CallFromNonPyrolyzeContext"),
-                ast.alias(name="ComponentMetadata", asname="__pyr_ComponentMetadata"),
-                ast.alias(name="pyrolyze_component_ref", asname="__pyr_component_ref"),
-            ],
+            names=api_names,
             level=0,
         ),
         ast.ImportFrom(
@@ -1222,6 +1314,16 @@ def _inject_module_scaffold(
         ),
     ]
     return [*body[:insert_at], *scaffold, *slot_declarations, *body[insert_at:]]
+
+
+def _body_uses_support_name(body: list[ast.stmt], name: str) -> bool:
+    for statement in body:
+        for node in ast.walk(statement):
+            if isinstance(node, ast.Name) and node.id == name:
+                return True
+            if isinstance(node, ast.Constant) and node.value == name:
+                return True
+    return False
 
 
 def _is_future_import(statement: ast.stmt) -> bool:
@@ -1753,6 +1855,17 @@ def _collect_source_api_aliases(module_ast: ast.Module) -> tuple[set[str], set[s
     return reactive, slotted, event_handlers
 
 
+def _collect_mount_helper_names(module_ast: ast.Module) -> set[str]:
+    mount_names = set(_MOUNT_HELPERS)
+    for statement in module_ast.body:
+        if not isinstance(statement, ast.ImportFrom) or statement.module != "pyrolyze.api":
+            continue
+        for alias in statement.names:
+            if alias.name in _MOUNT_HELPERS:
+                mount_names.add(alias.asname or alias.name)
+    return mount_names
+
+
 def _collect_imported_annotated_symbols(
     module_ast: ast.Module,
 ) -> tuple[set[str], set[str], dict[str, tuple[str, ...]], dict[str, frozenset[str]], dict[str, str]]:
@@ -1981,6 +2094,8 @@ def _is_pyrolyze_sensitive_call(call: ast.Call, *, state: _LoweringState) -> boo
     call_name = _call_name(call)
     if call_name is None:
         return False
+    if call_name in state.mount_helper_names:
+        return True
     callable_kind = _callable_kind_for_name(call_name, state=state)
     return callable_kind in {_CALLABLE_KIND_COMPONENT_REF, _CALLABLE_KIND_SLOT_CALLABLE}
 
@@ -1988,6 +2103,11 @@ def _is_pyrolyze_sensitive_call(call: ast.Call, *, state: _LoweringState) -> boo
 def _is_container_candidate_call(call: ast.Call, *, state: _LoweringState) -> bool:
     call_name = _call_name(call)
     return call_name is not None and _callable_kind_for_name(call_name, state=state) == _CALLABLE_KIND_COMPONENT_REF
+
+
+def _is_mount_call(call: ast.Call, *, state: _LoweringState) -> bool:
+    call_name = _call_name(call)
+    return call_name is not None and call_name in state.mount_helper_names
 
 
 def _update_callable_kind_from_assignment(target: ast.expr, value: ast.AST, *, state: _LoweringState) -> None:

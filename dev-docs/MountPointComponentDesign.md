@@ -406,10 +406,9 @@ Golden lowering target:
 ```python
 with __pyr_ctx.open_directive(
     __pyr_SlotId(__pyr_module_id, 2, line_no=3, is_top_level=True),
-    __pyr_build_mount_selectors,
-    (sel, corner_widget(corner=Qt.TopLeftCorner)),
-    {},
-    result_shape=("tuple", "selectors"),
+    __pyr_validate_mount_selectors,
+    sel,
+    corner_widget(corner=Qt.TopLeftCorner),
 ) as __pyr_mount:
     foo()
 ```

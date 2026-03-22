@@ -29,7 +29,7 @@ class UIElement:
 
     kind: str
     props: dict[str, Any]
-    children: tuple["UIElement", ...] = ()
+    children: tuple["EmittedNode", ...] = ()
     call_site_id: int | str | None = field(default=None, compare=False)
     slot_id: Any | None = field(default=None, compare=False)
 
@@ -112,6 +112,18 @@ class MountSelector(SlotSelector):
         return MountSelector(kind=self.kind, name=self.name, values=frozendict(values))
 
 
+@dataclass(frozen=True, slots=True)
+class MountDirective:
+    """Retained structural mount-selection node emitted by transformed source."""
+
+    selectors: tuple[SlotSelector, ...]
+    children: tuple["EmittedNode", ...] = ()
+    slot_id: Any | None = field(default=None, compare=False)
+
+
+EmittedNode = UIElement | MountDirective
+
+
 default = MountSelector.default_selector()
 no_emit = MountSelector.no_emit_selector()
 
@@ -128,6 +140,13 @@ def validate_mount_selectors(*selectors: SlotSelector) -> tuple[SlotSelector, ..
         if len(selectors) != 1:
             raise ValueError("no_emit must be the sole mount selector term")
     return selectors
+
+
+def mount(*selectors: SlotSelector) -> object:
+    validate_mount_selectors(*selectors)
+    raise CallFromNonPyrolyzeContext(
+        "mount() may only be used inside a transformed @pyrolyze function"
+    )
 
 
 
@@ -208,6 +227,7 @@ __all__ = [
     "Label",
     "MISSING",
     "MissingType",
+    "MountDirective",
     "MountSelector",
     "PyrolyzeHandler",
     "PyrolyzeEventParam",
@@ -217,6 +237,7 @@ __all__ = [
     "UIElement",
     "default",
     "keyed",
+    "mount",
     "no_emit",
     "pyrolyze",
     "pyrolyze_component_ref",

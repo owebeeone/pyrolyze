@@ -457,9 +457,9 @@ Phase 1 should be considered complete when:
 | --- | --- | --- | --- |
 | 1 | Expand backend model metadata and learnings model | Done | Added replay-shape metadata, mount-point learnings, and generator support |
 | 2 | Add selector runtime artifacts | Done | Added immutable selector values, named selector parameterization, and selector validation |
-| 3 | Add slot-backed directive context | Pending | `open_directive(...)` and retained directive slot behavior |
-| 4 | Add compiler lowering for `mount(...)` | Pending | Detection, lowering, goldens, splat support |
-| 5 | Add retained `MountDirective` emitted-tree support | Pending | Emitted tree must preserve directive nodes structurally |
+| 3 | Add slot-backed directive context | Done | Added `DirectiveSlotContext`, `open_directive(...)`, and directive rollback/no-emit enforcement |
+| 4 | Add compiler lowering for `mount(...)` | Done | Added `mount(...)` lowering to `open_directive(...)`, including nested and splatted selectors |
+| 5 | Add retained `MountDirective` emitted-tree support | Done | Emitted runtime tree now preserves `MountDirective` nodes structurally |
 | 6 | Add parent-side flattening to `MountState` | Pending | Resolve selectors left-to-right into concrete mount buckets |
 | 7 | Integrate flattened mount states into existing mount runtime | Pending | Consume flattened states through current apply/replay logic |
 | 8 | Emit new mount metadata from generator | Pending | Replay kind, append path, prefer-sync, learnings overrides |
