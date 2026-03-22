@@ -1,5 +1,17 @@
 from __future__ import annotations
 
+"""Widget-library extraction and code generation.
+
+This tool is intentionally widget-specific for the current iteration. It
+discovers widget classes, widget properties, and widget setter methods and emits
+`UiWidgetSpec`-backed UI libraries.
+
+It should not be treated as the final generic extractor for every reactive
+backend-native value. If deferred parameters later need to resolve to non-widget
+native values such as menus or other attachable objects, that should extend the
+backend extraction model rather than overloading this widget-only pipeline.
+"""
+
 import argparse
 import ast
 from dataclasses import dataclass, replace
@@ -160,6 +172,205 @@ def apply_learnings(
             )
         )
     return resolved
+
+
+def infer_pyside6_learnings(
+    widgets: Sequence[DiscoveredWidgetClass],
+) -> frozendict[str, UiWidgetLearning]:
+    learned_widgets: dict[str, UiWidgetLearning] = {}
+    for widget in widgets:
+        method_learnings: dict[str, UiMethodLearning] = {}
+        for method in widget.setter_methods:
+            learned = _infer_pyside6_method_learning(widget, method)
+            if learned is None:
+                continue
+            method_learnings[method.name] = learned
+        if method_learnings:
+            learned_widgets[widget.class_name] = UiWidgetLearning(
+                method_learnings=frozendict(method_learnings)
+            )
+    return frozendict(learned_widgets)
+
+
+_PYSIDE6_BLOCKED_METHOD_NAMES = frozenset(
+    {
+        "setParent",
+        "setTabOrder",
+        "setIndexWidget",
+        "setItemDelegate",
+        "setItemDelegateForColumn",
+        "setItemDelegateForRow",
+        "setCellWidget",
+        "setItemWidget",
+        "setCornerWidget",
+        "setMenu",
+        "setLayout",
+        "setModel",
+        "setModelColumn",
+        "setSelectionModel",
+        "setRootModelIndex",
+        "setViewport",
+        "setCentralWidget",
+        "setWidget",
+    }
+)
+
+_PYSIDE6_BLOCKED_TYPE_FRAGMENTS = (
+    "QWidget",
+    "QLayout",
+    "QModelIndex",
+    "QPersistentModelIndex",
+    "QAbstractItemModel",
+    "QItemSelectionModel",
+    "QAbstractItemDelegate",
+    "QCompleter",
+    "QValidator",
+    "QMenu",
+    "QAction",
+)
+
+_PYSIDE6_DIRECT_METHOD_PROP_CANDIDATES = {
+    "setRange": ("minimum", "maximum"),
+    "setMinimumSize": ("minimumWidth", "minimumHeight"),
+    "setMaximumSize": ("maximumWidth", "maximumHeight"),
+}
+
+_PYSIDE6_FALLBACK_PARAM_NAME_MAP = {
+    "w": "width",
+    "h": "height",
+    "min": "minimum",
+    "max": "maximum",
+    "minw": "min_width",
+    "minh": "min_height",
+    "maxw": "max_width",
+    "maxh": "max_height",
+    "f": "flag",
+}
+
+
+def _infer_pyside6_method_learning(
+    widget: DiscoveredWidgetClass,
+    method: DiscoveredSetterMethod,
+) -> UiMethodLearning | None:
+    if method.name in _PYSIDE6_BLOCKED_METHOD_NAMES:
+        return None
+    if _pyside6_method_uses_blocked_types(method):
+        return None
+    source_props, constructor_equivalent = _infer_pyside6_source_props(widget, method)
+    return UiMethodLearning(
+        source_props=source_props,
+        fill_policy=FillPolicy.RETAIN_EFFECTIVE,
+        mode=MethodMode.CREATE_UPDATE,
+        constructor_equivalent=constructor_equivalent,
+    )
+
+
+def _pyside6_method_uses_blocked_types(method: DiscoveredSetterMethod) -> bool:
+    for parameter in method.parameters:
+        if parameter.name.startswith("arg__"):
+            return True
+        annotation_source = parameter.annotation_source or ""
+        if any(fragment in annotation_source for fragment in _PYSIDE6_BLOCKED_TYPE_FRAGMENTS):
+            return True
+    return False
+
+
+def _infer_pyside6_source_props(
+    widget: DiscoveredWidgetClass,
+    method: DiscoveredSetterMethod,
+) -> tuple[tuple[str, ...], bool]:
+    direct = _infer_pyside6_direct_source_props(widget, method)
+    if direct is not None:
+        return direct, True
+    return _infer_pyside6_prefixed_source_props(method), False
+
+
+def _infer_pyside6_direct_source_props(
+    widget: DiscoveredWidgetClass,
+    method: DiscoveredSetterMethod,
+) -> tuple[str, ...] | None:
+    author_settable_names = _pyside6_author_settable_names(widget)
+    candidate = _PYSIDE6_DIRECT_METHOD_PROP_CANDIDATES.get(method.name)
+    if candidate is None:
+        return None
+    if len(candidate) != len(method.parameters):
+        return None
+    if all(name in author_settable_names for name in candidate):
+        return candidate
+    return None
+
+
+def _pyside6_author_settable_names(widget: DiscoveredWidgetClass) -> set[str]:
+    author_settable = {parameter.name for parameter in widget.parameters}
+    author_settable.update(prop.name for prop in widget.properties if prop.writable)
+    return author_settable
+
+
+def _infer_pyside6_prefixed_source_props(
+    method: DiscoveredSetterMethod,
+) -> tuple[str, ...]:
+    prefix = _to_snake_case(method.name[3:] or method.name)
+    return tuple(
+        f"{prefix}_{_normalized_pyside6_method_param_name(parameter.name)}"
+        for parameter in method.parameters
+    )
+
+
+def _normalized_pyside6_method_param_name(name: str) -> str:
+    return _PYSIDE6_FALLBACK_PARAM_NAME_MAP.get(name, _to_snake_case(name))
+
+
+def generate_pyside6_learnings_source(
+    learnings: Mapping[str, UiWidgetLearning],
+) -> str:
+    lines = [
+        '"""Manual learnings for the PySide6 backend extraction pipeline."""',
+        "",
+        "from __future__ import annotations",
+        "",
+        "from frozendict import frozendict",
+        "",
+        "from pyrolyze.backends.model import FillPolicy, MethodMode, UiMethodLearning, UiWidgetLearning",
+        "",
+        "LEARNINGS: frozendict[str, UiWidgetLearning] = frozendict(",
+        "    {",
+    ]
+    for widget_name in sorted(learnings):
+        widget_learning = learnings[widget_name]
+        lines.extend(
+            [
+                f'        "{widget_name}": UiWidgetLearning(',
+                "            method_learnings=frozendict(",
+                "                {",
+            ]
+        )
+        for method_name in sorted(widget_learning.method_learnings):
+            learning = widget_learning.method_learnings[method_name]
+            lines.extend(
+                [
+                    f'                    "{method_name}": UiMethodLearning(',
+                    f"                        source_props={_render_string_tuple(learning.source_props or ())},",
+                    f"                        fill_policy=FillPolicy.{(learning.fill_policy or FillPolicy.RETAIN_EFFECTIVE).name},",
+                    f"                        mode=MethodMode.{(learning.mode or MethodMode.CREATE_UPDATE).name},",
+                    f"                        constructor_equivalent={(learning.constructor_equivalent if learning.constructor_equivalent is not None else False)!r},",
+                    "                    ),",
+                ]
+            )
+        lines.extend(
+            [
+                "                }",
+                "            )",
+                "        ),",
+            ]
+        )
+    lines.extend(
+        [
+            "    }",
+            ")",
+            "",
+        ]
+    )
+    return "\n".join(lines)
 
 
 def generate_library_source(
@@ -880,6 +1091,38 @@ def _public_parameters_for_widget(
             )
         )
         known_names.add(prop.name)
+    method_by_name = {method.name: method for method in widget.setter_methods}
+    for method_name, learning in widget.method_learnings.items():
+        method = method_by_name.get(method_name)
+        if method is None or learning.source_props is None:
+            continue
+        for index, source_prop in enumerate(learning.source_props):
+            prop_learning = widget.prop_learnings.get(source_prop)
+            if prop_learning is not None and prop_learning.public is False:
+                continue
+            if source_prop in known_names:
+                continue
+            method_parameter = method.parameters[index] if index < len(method.parameters) else None
+            parameters.append(
+                DiscoveredParameter(
+                    name=source_prop,
+                    kind=inspect.Parameter.KEYWORD_ONLY,
+                    annotation_source=(
+                        prop_learning.signature_annotation.expr
+                        if prop_learning is not None and prop_learning.signature_annotation is not None
+                        else _signature_annotation_for_omittable(
+                            method_parameter.annotation_source if method_parameter is not None else None
+                        )
+                    ),
+                    default_source=(
+                        prop_learning.signature_default_repr
+                        if prop_learning is not None and prop_learning.signature_default_repr is not None
+                        else "MISSING"
+                    ),
+                    coerced_expression=source_prop,
+                )
+            )
+            known_names.add(source_prop)
     return tuple(parameters)
 
 
@@ -913,6 +1156,14 @@ def _signature_annotation_for_property(
     if package_name == "PySide6":
         return f"{_qt_property_python_type(prop.type_name)} | MissingType"
     return "Any | MissingType"
+
+
+def _signature_annotation_for_omittable(annotation_source: str | None) -> str:
+    if annotation_source is None:
+        return "Any | MissingType"
+    if "MissingType" in annotation_source:
+        return annotation_source
+    return f"{annotation_source} | MissingType"
 
 
 def _qt_property_python_type(type_name: str) -> str:

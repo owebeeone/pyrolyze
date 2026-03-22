@@ -20,7 +20,9 @@ from pyrolyze_tools.generate_semantic_library import (
     _extract_qt_properties,
     discover_modules,
     discover_widget_classes,
+    generate_pyside6_learnings_source,
     generate_library_source,
+    infer_pyside6_learnings,
     main,
     write_generated_library,
 )
@@ -426,3 +428,116 @@ def test_apply_learnings_overrides_method_source_props_and_constructor_equivalen
     assert '"setRange": UiMethodSpec(' in source
     assert 'source_props=("minimum", "maximum")' in source
     assert 'constructor_equivalent=True' in source
+
+
+def test_learned_method_backed_source_props_become_public_parameters() -> None:
+    widgets = [
+        DiscoveredWidgetClass(
+            module_name="fakewidgets.widgets",
+            class_name="RangeOnlyWidget",
+            public_name="CRangeOnlyWidget",
+            parameters=(),
+            setter_methods=(
+                DiscoveredSetterMethod(
+                    owner_class_name="RangeOnlyWidget",
+                    name="setRange",
+                    parameters=(
+                        DiscoveredParameter(
+                            name="min",
+                            kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                            annotation_source="int",
+                            default_source=None,
+                            coerced_expression="int(min)",
+                        ),
+                        DiscoveredParameter(
+                            name="max",
+                            kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                            annotation_source="int",
+                            default_source=None,
+                            coerced_expression="int(max)",
+                        ),
+                    ),
+                ),
+            ),
+        )
+    ]
+
+    resolved = apply_learnings(
+        widgets,
+        frozendict(
+            {
+                "RangeOnlyWidget": UiWidgetLearning(
+                    method_learnings=frozendict(
+                        {
+                            "setRange": UiMethodLearning(
+                                source_props=("minimum", "maximum"),
+                                constructor_equivalent=True,
+                                fill_policy=FillPolicy.RETAIN_EFFECTIVE,
+                                mode=MethodMode.CREATE_UPDATE,
+                            ),
+                        }
+                    )
+                )
+            }
+        ),
+    )
+    source = generate_library_source("fakewidgets", resolved)
+
+    assert "def CRangeOnlyWidget(" in source
+    assert "minimum: int | MissingType = MISSING" in source
+    assert "maximum: int | MissingType = MISSING" in source
+    assert "minimum=minimum" in source
+    assert "maximum=maximum" in source
+
+
+def test_infer_pyside6_learnings_maps_common_method_families() -> None:
+    pytest.importorskip("PySide6.QtWidgets")
+
+    learnings = infer_pyside6_learnings(discover_widget_classes("PySide6"))
+
+    qpush = learnings["QPushButton"].method_learnings
+    assert qpush["setGeometry"].source_props == (
+        "geometry_x",
+        "geometry_y",
+        "geometry_width",
+        "geometry_height",
+    )
+    assert qpush["setMaximumSize"].source_props == ("maximumWidth", "maximumHeight")
+    assert qpush["setMaximumSize"].constructor_equivalent is True
+    assert qpush["setMinimumSize"].source_props == ("minimumWidth", "minimumHeight")
+    assert "setParent" not in qpush
+
+    qspin = learnings["QSpinBox"].method_learnings
+    assert qspin["setRange"].source_props == ("minimum", "maximum")
+    assert qspin["setRange"].constructor_equivalent is True
+
+
+def test_generate_pyside6_learnings_source_renders_module_constant() -> None:
+    source = generate_pyside6_learnings_source(
+        frozendict(
+            {
+                "QPushButton": UiWidgetLearning(
+                    method_learnings=frozendict(
+                        {
+                            "setGeometry": UiMethodLearning(
+                                source_props=(
+                                    "geometry_x",
+                                    "geometry_y",
+                                    "geometry_width",
+                                    "geometry_height",
+                                ),
+                                fill_policy=FillPolicy.RETAIN_EFFECTIVE,
+                                mode=MethodMode.CREATE_UPDATE,
+                                constructor_equivalent=False,
+                            )
+                        }
+                    )
+                )
+            }
+        )
+    )
+
+    assert "LEARNINGS: frozendict[str, UiWidgetLearning] = frozendict(" in source
+    assert '"QPushButton": UiWidgetLearning(' in source
+    assert '"setGeometry": UiMethodLearning(' in source
+    assert 'source_props=("geometry_x", "geometry_y", "geometry_width", "geometry_height")' in source

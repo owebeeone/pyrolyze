@@ -16,6 +16,13 @@ It treats widget handling as an independent problem:
 This document is intentionally about widget specs and backend behavior. It does
 not describe the author-facing `UiLibrary` API shape.
 
+This is a phase-1 specialization, not the final fully-generic model for all
+reactive native values. Deferred parameter content may later need to resolve to
+things other than widgets, for example menu-like native values or other backend
+objects with reactive lifecycle. When that happens, `UiWidgetSpec` should be
+treated as one concrete specialization under a broader backend-mounted-value
+model, not as the universal abstraction.
+
 
 ## Scope
 
@@ -34,6 +41,47 @@ not describe the author-facing `UiLibrary` API shape.
 - author-facing `@pyrolyse` callables
 - `UiLibrary` class grouping
 - compiler detection of public source APIs
+
+`UiWidgetSpec` is also **not** the right long-term abstraction for every
+deferred parameter result. It is the current abstraction for widget-backed
+mountable values.
+
+
+## Future Generalization Boundary
+
+The current backend implementation is explicitly widget-oriented:
+
+- mounted type resolution expects a widget class
+- create/update/remount/dispose logic is written in terms of widgets
+- placement and child attachment are written in terms of widget containers
+
+That is correct for the current PySide6 and tkinter work.
+
+However, the deferred-content design introduces a broader requirement:
+
+- a named parameter may eventually resolve to a reactive native value that is
+  not best modeled as a plain widget
+
+Examples include:
+
+- menus
+- menu bars
+- toolbars
+- other backend-native attachable objects
+
+So the intended layering is:
+
+- current iteration:
+  - `UiWidgetSpec`
+  - widget-specific engines
+  - widget-specific extraction/generation
+
+- future generalization:
+  - broader backend-mounted-value concept
+  - widget specs remain one specialization of that model
+
+This document still uses widget terminology because that is the concrete
+implementation target for the current iteration.
 
 
 ## Conceptual Layers

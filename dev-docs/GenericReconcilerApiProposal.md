@@ -7,8 +7,8 @@ UI-library system.
 
 It follows:
 
-- [GenericReconciler.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/GenericReconciler.md)
 - [GenericReconcilerRequirements.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/GenericReconcilerRequirements.md)
+- [MountPointComponentDesign.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/MountPointComponentDesign.md)
 - [ApiDesignRules.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/ApiDesignRules.md)
 - [SemanticUiLibraryDesignRules.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/SemanticUiLibraryDesignRules.md)
 - [PackageStructureRules.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/PackageStructureRules.md)
@@ -31,20 +31,30 @@ What is missing is the explicit API layer that ties together:
 - `UiLibrary` classes
 - backend support packages
 - per-root installed catalogs
-- backend-owned widget spec data
+- backend-owned mountable spec data
 - runtime compatibility checks
+
+The current implementation and some older notes still use widget-oriented names
+such as `UiWidgetSpec` and `UiWidgetEngine`. Those should now be treated as
+transition names only. The direction of travel is:
+
+- `UiWidgetSpec` -> `MountableSpec`
+- `UiWidgetEngine` -> `MountableEngine`
+- one implicit child list -> one built-in `standard` mount point
+- widget-only attachment -> generic mount-point attachment
 
 
 ## Design Summary
 
-The model should have six layers:
+The revised model should have seven layers:
 
 1. **Author-facing `UiLibrary` class callables**
 2. **Generated or hand-written `UIElement` emission helpers**
-3. **Backend-owned `UiLibraryAdapter` mappings**
-4. **Backend-owned `UiWidgetSpec` data**
-5. **Per-root `UiCatalog`**
-6. **One `UiBackend` per render root**
+3. **Produced component type metadata**
+4. **Backend-owned `UiLibraryAdapter` mappings**
+5. **Backend-owned `MountableSpec` and `MountPointSpec` data**
+6. **Per-root `UiCatalog`**
+7. **One `UiBackend` per render root**
 
 The most important rules are:
 
@@ -53,8 +63,9 @@ The most important rules are:
 - duplicate `kind` names are rejected during installation
 - `UIElement` does not need a separate library id if `kind` uniqueness is
   enforced per root
-- backend modules own widget and prop spec dataclasses
+- backend modules own mountable, mount-point, and prop spec dataclasses
 - the packed-`kwds` wrapper optimization is internal and source-triggered
+- current child handling is just the built-in `standard` mount point
 
 
 ## Terminology
@@ -86,16 +97,16 @@ selected backend.
 ### `UiCatalogEntry`
 
 A per-source-kind resolved catalog entry containing the adapter mapping and the
-target widget spec.
+target mountable spec.
 
 ### `UiLibraryAdapter`
 
 A backend-owned mapping layer from one source `UiLibrary` surface onto one
 backend-normalized widget surface.
 
-### `UiWidgetSpec`
+### `MountableSpec`
 
-An immutable backend-owned description of one installed widget kind.
+An immutable backend-owned description of one installed mountable kind.
 
 ### `UiPropSpec`
 
@@ -491,7 +502,7 @@ Proposed shape:
 class UiCatalogEntry:
     source_kind: str
     adapter: UiKindAdapter
-    widget_spec: UiWidgetSpec
+    mountable_spec: MountableSpec
 
 
 @dataclass(frozen=True, slots=True)
@@ -502,12 +513,22 @@ class UiCatalog:
 Notes:
 
 - keyed by source `UIElement.kind`
-- many source kinds may resolve to the same target `UiWidgetSpec`
+- many source kinds may resolve to the same target `MountableSpec`
 - built from installed UI libraries plus backend support
 - hot path uses this, not library reflection
 
 
 ## 9. Backend-Owned Spec Types
+
+The new primary backend abstractions are:
+
+- `MountableSpec`
+- `MountPointSpec`
+- `MountParamSpec`
+- `MountState`
+
+`UiWidgetSpec` should be treated as a transition name for the current codebase,
+not the long-term public abstraction.
 
 Widget metadata belongs to the backend module, not to generated library code.
 
@@ -551,16 +572,17 @@ class UiPropSpec:
 
 
 @dataclass(frozen=True, slots=True)
-class UiWidgetSpec:
+class MountableSpec:
     kind: str
     mounted_type_name: str
     props: frozendict[str, UiPropSpec]
-    child_policy: ChildPolicy
+    mount_points: frozendict[str, MountPointSpec]
 ```
 
 Notes:
 
-- `UiWidgetSpec` is the encompassing immutable spec for one widget kind
+- `MountableSpec` is the encompassing immutable spec for one produced mountable
+  kind
 - `UiPropSpec` is the per-prop rule set
 - `frozendict` keeps spec maps immutable and explicit
 - the backend may extend these types with future fields as needed
@@ -609,9 +631,9 @@ The generator should output:
 - enough backend-owned spec data to classify each prop correctly
 
 
-## 12. Composite Widgets
+## 12. Composite Mountables
 
-Composite widgets that are native-backend compatible but internally composed
+Composite mountables that are native-backend compatible but internally composed
 must still appear as one node to the reconciler.
 
 Required backend binding contract:
@@ -624,7 +646,7 @@ Required backend binding contract:
 
 This is sufficient for the current single child-region model.
 
-A custom composite Qt widget should therefore be able to:
+A custom composite Qt mountable should therefore be able to:
 
 - attach to the parent as one node
 - place children into whatever internal layout/host it actually uses
@@ -707,7 +729,8 @@ src/pyrolyze/backends/
         engine.py
         adapters.py
         bindings.py
-        widget_specs.py
+        mountables.py
+        mount_points.py
         generated_library.py
         learnings.py
     tkinter/
@@ -716,7 +739,8 @@ src/pyrolyze/backends/
         engine.py
         adapters.py
         bindings.py
-        widget_specs.py
+        mountables.py
+        mount_points.py
         generated_library.py
         learnings.py
 ```
@@ -739,9 +763,11 @@ Recommended responsibilities:
 - `adapters.py`
   - `CoreQtAdapter`, `CoreTkAdapter`, and any other portable-library adapters
 - `bindings.py`
-  - concrete mounted widget bindings
-- `widget_specs.py`
-  - backend-owned `UiWidgetSpec` / `UiPropSpec` / `UiMethodSpec` data
+  - concrete mounted-value bindings
+- `mountables.py`
+  - backend-owned `MountableSpec` / `UiPropSpec` / `UiMethodSpec` data
+- `mount_points.py`
+  - backend-owned `MountPointSpec` / `MountParamSpec` / `MountState` data
 - `generated_library.py`
   - generated `PySide6UiLibrary` / `TkinterUiLibrary`
 - `learnings.py`
@@ -769,10 +795,10 @@ Recommended rebuild flow:
 1. dump raw toolkit constructor/property/method surfaces
 2. apply `learnings.py`
 3. generate `generated_library.py`
-4. regenerate or verify `widget_specs.py`
+4. regenerate or verify `mountables.py`
 
 
-## 16. `UiWidgetEngine`
+## 16. `MountableEngine`
 
 The backend needs a dedicated engine layer that is separate from:
 
@@ -782,20 +808,22 @@ The backend needs a dedicated engine layer that is separate from:
 
 Recommended name:
 
-- `UiWidgetEngine`
+- `MountableEngine`
 
 Responsibility:
 
 - create mounted nodes from `UiCatalogEntry + UIElement + slot_id + call_site_id`
 - update existing nodes by applying prop and method diffs
-- remount when `UiWidgetSpec` requires it
+- remount when `MountableSpec` requires it
 - preserve the node's position in the parent graph during remount
 - hand child placement and disposal off to the binding layer
+- apply built-in `standard` child mounts
+- apply explicit mount-point state for non-child attachment
 
 The engine should be backend-specific in implementation:
 
-- `PySide6WidgetEngine`
-- `TkinterWidgetEngine`
+- `PySide6MountableEngine`
+- `TkinterMountableEngine`
 
 but share the same conceptual role.
 
@@ -820,14 +848,14 @@ Recommended layers:
    - verify `CoreQtAdapter` and `CoreTkAdapter` map source props correctly
    - verify unsupported props fail clearly
 
-4. `UiWidgetEngine` unit tests
+4. `MountableEngine` unit tests
    - create -> node + key
    - update -> setter/property path
    - remount -> preserve parent position and replace binding cleanly
    - grouped setter partial update behavior
 
-5. Widget-spec conformance tests
-   - for every widget kind:
+5. Mountable-spec conformance tests
+   - for every mountable kind:
      - every constructor input
      - every setter/property input
      - every readable getter/property
@@ -855,16 +883,16 @@ tests/backends/
     pyside6/
         test_adapter_mapping.py
         test_catalog_build.py
-        test_widget_engine.py
+        test_mountable_engine.py
         test_generated_library_surface.py
-        test_widget_spec_matrix.py
-        test_widget_spec_matrix_subprocess.py
+        test_mountable_spec_matrix.py
+        test_mountable_spec_matrix_subprocess.py
     tkinter/
         test_adapter_mapping.py
         test_catalog_build.py
-        test_widget_engine.py
+        test_mountable_engine.py
         test_generated_library_surface.py
-        test_widget_spec_matrix.py
+        test_mountable_spec_matrix.py
 ```
 
 For the crash-isolated matrix, a helper runner should emit one structured
@@ -891,8 +919,9 @@ classDiagram
     class UiKindAdapter
     class UiCatalog
     class UiCatalogEntry
-    class UiWidgetSpec
-    class UiWidgetEngine
+    class MountableSpec
+    class MountableEngine
+    class MountPointSpec
     class UiNodeBinding
 
     UiLibrary --> UIElement : emits
@@ -906,11 +935,12 @@ classDiagram
     UiLibraryAdapter --> UiKindAdapter : contains
     UiCatalog --> UiCatalogEntry : entries
     UiCatalogEntry --> UiKindAdapter : uses
-    UiCatalogEntry --> UiWidgetSpec : resolves to
-    UiWidgetEngine --> UiCatalogEntry : consumes
-    UiWidgetEngine --> UiNodeBinding : drives
-    UiWidgetEngine --> UiWidgetSpec : obeys
-    UiWidgetSpec --> UiNodeBinding : shapes
+    UiCatalogEntry --> MountableSpec : resolves to
+    MountableSpec --> MountPointSpec : exposes
+    MountableEngine --> UiCatalogEntry : consumes
+    MountableEngine --> UiNodeBinding : drives
+    MountableEngine --> MountableSpec : obeys
+    MountableSpec --> UiNodeBinding : shapes
 ```
 
 ### Instance Graph
@@ -930,17 +960,17 @@ flowchart LR
     backend --> catalog["UiCatalog"]
     backend --> engine["PySide6WidgetEngine"]
 
-    catalog --> entry1["entry: 'button' -> adapter + UiWidgetSpec('QPushButton')"]
-    catalog --> entry2["entry: 'QPushButton' -> identity adapter + UiWidgetSpec('QPushButton')"]
+    catalog --> entry1["entry: 'button' -> adapter + MountableSpec('QPushButton')"]
+    catalog --> entry2["entry: 'QPushButton' -> identity adapter + MountableSpec('QPushButton')"]
 
     adapter --> entry1
     e1 --> entry1
     e2 --> entry2
     e4 --> entry2
 
-    entry1 --> spec["UiWidgetSpec('QPushButton')"]
+    entry1 --> spec["MountableSpec('QPushButton')"]
     entry2 --> spec
-    engine --> entry1
+    engine["PySide6MountableEngine"] --> entry1
     engine --> entry2
     engine --> binding["Qt binding / mounted QPushButton"]
     spec --> binding
@@ -956,8 +986,8 @@ Instead:
 1. backend installs libraries
 2. backend resolves adapters and builds `UiCatalog`
 3. normalization resolves `UIElement.kind` to a `UiCatalogEntry`
-4. the catalog entry maps source props into the target widget surface
-5. reconciliation uses the resolved `UiWidgetSpec` and binding factories
+4. the catalog entry maps source props into the target mountable surface
+5. reconciliation uses the resolved `MountableSpec`, mount points, and binding factories
 
 So the flow is:
 
@@ -967,9 +997,105 @@ UiLibrary classes
     -> UiLibraryAdapter resolution
     -> UiCatalogEntry
     -> normalize UIElement(kind, props)
-    -> target widget props
-    -> reconcile using widget specs + bindings
+    -> target mountable props
+    -> reconcile using mountable specs + bindings + mount points
 ```
+
+
+## 19. Revised Direction
+
+The new working direction is:
+
+- `UiWidgetSpec` is no longer the primary abstraction
+- `MountableSpec` is the primary abstraction
+- the ordinary child list is the built-in `standard` mount point
+- explicit attachment APIs are modeled as `MountPointSpec`
+- produced component types are carried through `ComponentMetadata.emitted_type`
+- mount compatibility is checked against `MountPointSpec.accepted_produced_type`
+
+This lets the reconciler handle:
+
+- ordinary retained props
+- ordered children
+- single-object attachment
+- parameterized attachment sites
+- future non-widget produced native values
+
+
+## 20. Implementation Migration Plan
+
+The current implementation should be brought forward in this order.
+
+### Phase 1. Rename the core concepts
+
+- `UiWidgetSpec` -> `MountableSpec`
+- `UiWidgetEngine` -> `MountableEngine`
+- `widget_specs.py` -> `mountables.py`
+- widget-oriented doc language -> mountable-oriented doc language
+
+This is a breaking rename and should be done directly rather than via aliases.
+
+### Phase 2. Introduce produced type metadata
+
+- extend `ComponentMetadata` with `emitted_type: TypeRef | None`
+- change `pyrolyze` from a simple function to a decorator object supporting:
+  - bare `@pyrolyze`
+  - explicit `@pyrolyze[T]`
+- default bare emitted type becomes `WidgetResult` or the equivalent default
+  mountable type
+
+### Phase 3. Introduce mount-point model types
+
+- add `MountParamSpec`
+- add `MountPointSpec`
+- add `MountState`
+- add backend parent-type mount registries
+- define the built-in `standard` mount point for existing ordered children
+
+### Phase 4. Rework the engine around mount points
+
+- current child handling becomes the built-in `standard` mount point
+- engine applies mount-point state, not just `children`
+- canonical API becomes:
+  - `apply(parent, state)`
+  - optional batch `sync(parent, states)` fast path
+- keep `place/detach` as fallback primitives only
+
+### Phase 5. Rework the extraction/generation pipeline
+
+- current widget extraction becomes mountable extraction
+- keep ordinary prop/method extraction for value-like parameters
+- add mount-point discovery for object-attachment APIs
+- apply `learnings.py` to refine generated mount points
+- regenerate backend libraries and backend mountable specs
+
+### Phase 6. Migrate current backend packages
+
+- `src/pyrolyze/backends/pyside6/engine.py`
+  - rename/rework to `MountableEngine`
+- `src/pyrolyze/backends/model.py`
+  - rename widget terms to mountable terms
+- generated `pyside6` / `tkinter` libraries
+  - emit produced type metadata
+  - emit mount-point metadata
+
+### Phase 7. Update test names and coverage
+
+- rename widget-engine/spec tests to mountable-engine/spec tests
+- add tests for:
+  - produced type metadata
+  - mount-point registry lookup
+  - duplicate mount-instance rejection
+  - rollback on mount-point failure
+  - mount-point apply/sync behavior
+
+### Phase 8. Replace the older widget-spec note
+
+- replace the archived
+  [UiWidgetSpecModel.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/obsolete/UiWidgetSpecModel.md)
+  with:
+  - a generic `MountableSpec` model note
+  - optionally a widget-specific specialization note only if still useful
 
 
 ## Future Proposals

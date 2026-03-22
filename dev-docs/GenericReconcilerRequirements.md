@@ -2,9 +2,7 @@
 
 ## Purpose
 
-This document defines the requirements for the generic reconciler effort
-described in
-[GenericReconciler.md](py-rolyze/dev-docs/GenericReconciler.md).
+This document defines the requirements for the generic reconciler effort.
 
 The goal is to make the reconciler and UI API surface generic enough that:
 
@@ -69,8 +67,10 @@ The following names should be used consistently:
   - backend implementation for one toolkit family
 - `UiCatalog`
   - per-root flattened lookup table of installed UI element kinds
-- `UiWidgetSpec`
-  - backend-owned immutable description of one widget kind
+- `MountableSpec`
+  - backend-owned immutable description of one mountable kind
+- `MountPointSpec`
+  - backend-owned immutable description of one attachment site on a mountable
 - `UiPropSpec`
   - backend-owned immutable description of one prop
 
@@ -89,7 +89,7 @@ The following must be backend-agnostic:
 
 - node identity model
 - prop/event diffing rules at the abstract level
-- child placement semantics at the abstract level
+- mount-point semantics at the abstract level
 - owner commit state
 - reuse vs replace decisions at the abstract level
 - subtree disposal ordering
@@ -105,7 +105,7 @@ The following are inherently backend-specific:
 
 - how a widget/control/native node is created
 - what host object type represents the mounted node
-- how child placement is performed in that backend
+- how mount points are applied in that backend
 - how visibility, enablement, styling, and model hookup are expressed
 - which props are constructor-only vs dynamically updateable
 - event source wiring
@@ -167,7 +167,7 @@ A backend package must be able to provide:
 - reuse decisions
 - thread assertions
 - UI-thread posting
-- widget specs for the installed UI libraries
+- mountable specs and mount-point specs for the installed UI libraries
 
 without editing `py-rolyze` core.
 
@@ -234,13 +234,14 @@ the system must validate:
 - each installed `UiLibrary` has either:
   - an explicit backend adapter
   - or an identity mapping for direct toolkit kinds
-- each source `kind` resolves to a backend-known target widget kind
-- the backend can build a `UiWidgetSpec` for each resolved target widget kind
+- each source `kind` resolves to a backend-known target mountable kind
+- the backend can build a `MountableSpec` for each resolved target kind
 
 If not, installation must fail fast.
 
 This avoids needing a separate UI-library identity field on every `UIElement`
 as long as `kind` names remain unique inside the root.
+
 
 
 ## 8. Backend Adapters Must Bridge Abstract `UiLibrary` Kinds
@@ -258,8 +259,8 @@ Requirement:
 
 - a backend must be able to install an adapter for a `UiLibrary`
 - the adapter must map source `kind` and source props onto a target
-  backend-owned `UiWidgetSpec`
-- remount/update rules come from the target `UiWidgetSpec`, not the source
+  backend-owned `MountableSpec`
+- remount/update rules come from the target `MountableSpec`, not the source
   `UiLibrary`
 
 This is required so:
@@ -321,9 +322,9 @@ Requirement:
 At minimum the backend side should have:
 
 - `UiPropSpec`
-- `UiWidgetSpec`
+- `MountableSpec`
 
-`UiWidgetSpec` should encompass:
+`MountableSpec` should encompass:
 
 - kind
 - mounted widget type or backend binding key
@@ -461,7 +462,7 @@ Tension:
 Resolution:
 
 - keep core reconciler generic
-- let backends own `UiWidgetSpec` and binding logic
+- let backends own `MountableSpec`, `MountPointSpec`, and binding logic
 - let toolkit-specific `UiLibrary` classes live outside core when appropriate
 
 
