@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Annotated, Any, Callable, Generic, Iterable, ParamSpec, Protocol, TypeVar, cast
+from typing import Annotated, Any, Callable, Generic, Iterable, Literal, ParamSpec, Protocol, TypeVar, cast
 
 from frozendict import frozendict
 
@@ -76,6 +76,58 @@ class PyrolyzeEventParam:
 @dataclass(frozen=True, slots=True)
 class PyrolyzeSlottedParam:
     """Marker attached to slotted-helper callable annotations."""
+
+
+class SlotSelector:
+    """Base class for immutable runtime mount selector values."""
+
+    __slots__ = ()
+
+
+@dataclass(frozen=True, slots=True)
+class MountSelector(SlotSelector):
+    """Immutable runtime selector descriptor for future `mount(...)` support."""
+
+    kind: Literal["named", "default", "no_emit"]
+    name: str | None
+    values: frozendict[str, Any] = field(default_factory=frozendict)
+
+    @classmethod
+    def named(cls, name: str) -> "MountSelector":
+        return cls(kind="named", name=name)
+
+    @classmethod
+    def default_selector(cls) -> "MountSelector":
+        return cls(kind="default", name="default")
+
+    @classmethod
+    def no_emit_selector(cls) -> "MountSelector":
+        return cls(kind="no_emit", name=None)
+
+    def __call__(self, /, **values: Any) -> "MountSelector":
+        if self.kind != "named":
+            raise TypeError(f"{self.kind} selector does not accept parameters")
+        if not values:
+            return self
+        return MountSelector(kind=self.kind, name=self.name, values=frozendict(values))
+
+
+default = MountSelector.default_selector()
+no_emit = MountSelector.no_emit_selector()
+
+
+def validate_mount_selectors(*selectors: SlotSelector) -> tuple[SlotSelector, ...]:
+    """Validate a selector list for the future `mount(...)` special form."""
+
+    if not selectors:
+        raise ValueError("mount selector list cannot be empty")
+    for selector in selectors:
+        if not isinstance(selector, SlotSelector):
+            raise TypeError("mount selector terms must be SlotSelector values")
+    if any(isinstance(selector, MountSelector) and selector.kind == "no_emit" for selector in selectors):
+        if len(selectors) != 1:
+            raise ValueError("no_emit must be the sole mount selector term")
+    return selectors
 
 
 
@@ -156,12 +208,16 @@ __all__ = [
     "Label",
     "MISSING",
     "MissingType",
+    "MountSelector",
     "PyrolyzeHandler",
     "PyrolyzeEventParam",
     "PyrolyzeSlottedParam",
+    "SlotSelector",
     "SlotCallable",
     "UIElement",
+    "default",
     "keyed",
+    "no_emit",
     "pyrolyze",
     "pyrolyze_component_ref",
     "pyrolyze_slotted",
@@ -172,4 +228,5 @@ __all__ = [
     "use_mount",
     "use_state",
     "use_unmount",
+    "validate_mount_selectors",
 ]
