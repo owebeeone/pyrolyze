@@ -908,3 +908,33 @@ The following points should now be treated as decided:
 - backend learnings remain an overlay to refine, exclude, or rename discovered
   candidates rather than replacing discovery entirely
 - indexed mount points should support a batch `sync(...)` path in phase 1
+
+
+## Current Interface Delta
+
+To support the mount API as now designed, the backend mount interface should be
+updated in these specific ways:
+
+- keep `MountPointSpec` and `MountState` as the backend-facing core
+- add explicit replay-shape metadata to `MountPointSpec`
+  - index replay vs anchor-before replay
+  - optional append fast path
+  - batch-sync preference for indexed families
+- add first-class mount-point learnings/override support
+  - naming
+  - enable/disable
+  - keyed-param shaping
+  - default child/default attach ordering
+  - replay/sync preference overrides
+- keep `ResolvedMountOps`, but drive it from generated mount metadata instead
+  of runtime signature guessing where possible
+- add a new selector/directive flattening layer above `MountState`
+  - `mount(...)` lowers to retained `MountDirective`
+  - parent-side flattening resolves selector scopes
+  - flattening produces ordinary `MountState` payloads for the existing runtime
+
+So the implementation change is:
+
+- not a wholesale mount-runtime rewrite
+- but a concrete expansion of the mount metadata model plus one new
+  selector-to-`MountState` bridge layer

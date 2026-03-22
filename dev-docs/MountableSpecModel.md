@@ -762,6 +762,214 @@ Rules:
   fallback primitives
 
 
+## Required Change Against Current Code
+
+The current repository already has:
+
+- `MountPointSpec`
+- `MountState`
+- `ResolvedMountOps`
+- `apply/sync/place/detach` runtime behavior
+
+Those are close enough to keep, but not quite sufficient for the selector-based
+phase-1 mount design.
+
+The required change is **not** to replace the mount-point interface wholesale.
+It is to tighten it in three places:
+
+1. generated mount-point metadata
+2. mount-point learnings/overrides
+3. selector/directive flattening above the existing `MountState` apply path
+
+
+### 1. `MountPointSpec` Needs Explicit Op-Shape Metadata
+
+Today the runtime still infers some ordered mount behavior from method names and
+`inspect.signature(...)`.
+
+That is no longer the right long-term interface.
+
+The generated mount-point metadata should carry the shape explicitly.
+
+Conceptually:
+
+```python
+class MountReplayKind(StrEnum):
+    NONE = "none"
+    INDEX = "index"
+    ANCHOR_BEFORE = "anchor_before"
+
+
+@dataclass(frozen=True, slots=True)
+class MountPointSpec:
+    name: str
+    accepted_produced_type: TypeRef
+    params: tuple[MountParamSpec, ...] = ()
+    min_children: int = 0
+    max_children: int | None = None
+    apply_method_name: str | None = None
+    sync_method_name: str | None = None
+    place_method_name: str | None = None
+    append_method_name: str | None = None
+    detach_method_name: str | None = None
+    replay_kind: MountReplayKind = MountReplayKind.NONE
+    prefer_sync: bool = False
+```
+
+Meaning:
+
+- `replay_kind=NONE`
+  - no ordered replay contract is promised
+- `replay_kind=INDEX`
+  - ordered replay uses `place(index, value)`
+- `replay_kind=ANCHOR_BEFORE`
+  - ordered replay uses `place_before(value, before)`
+- `append_method_name`
+  - append fast path for anchor-based APIs when there is no `before` anchor
+- `prefer_sync`
+  - batch `sync(parent, states)` should be preferred over per-instance replay
+  - especially important for indexed/keyed mount families
+
+This change lets the runtime stop guessing ordered API shape from live methods.
+
+
+### 2. Learnings Need First-Class Mount-Point Overrides
+
+The current learnings model only shapes:
+
+- props
+- grouped methods
+- events
+
+To support the mount design cleanly, it also needs explicit mount-point
+learnings.
+
+Conceptually:
+
+```python
+@dataclass(frozen=True, slots=True)
+class UiMountParamLearning:
+    keyed: bool | None = None
+    annotation: TypeRef | None = None
+    default_repr: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class UiMountPointLearning:
+    public_name: str | None = None
+    enabled: bool | None = None
+    accepted_produced_type: TypeRef | None = None
+    param_learnings: frozendict[str, UiMountParamLearning] = frozendict()
+    default_child: bool | None = None
+    default_attach_rank: int | None = None
+    replay_kind: MountReplayKind | None = None
+    append_method_name: str | None = None
+    prefer_sync: bool | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class UiWidgetLearning:
+    ...
+    mount_point_learnings: frozendict[str, UiMountPointLearning] = frozendict()
+```
+
+This is needed for:
+
+- excluding bad discovered mount points
+- renaming mount points to stable public selector names
+- deciding keyed vs non-keyed params
+- declaring default child mount points
+- ordering default attach fallback
+- refining replay/sync strategy
+
+Tkinter almost certainly needs this. PySide6 will benefit from it too once the
+mount-point scan becomes exhaustive.
+
+
+### 3. Insert A Flattening Layer Above `MountState`
+
+The selector design does **not** replace `MountState`.
+
+Instead, it adds one retained structural layer above it:
+
+- emitted tree contains `MountDirective`
+- parent-side flattening resolves selector scopes
+- flattening produces the existing `dict[MountInstanceKey, MountState]`
+- the current mount runtime then applies those mount states
+
+Conceptually:
+
+```python
+def flatten_mount_directives(
+    *,
+    parent_spec: MountableSpec,
+    emitted_children: tuple[UIElement | MountDirective, ...],
+) -> dict[MountInstanceKey, MountState]: ...
+```
+
+Responsibilities:
+
+- walk nested `MountDirective` nodes
+- track nearest explicit selector list
+- resolve selectors left-to-right
+- reject `no_emit` violations
+- merge lexical contributions into concrete mount buckets
+- produce one `MountState` per concrete mount instance
+
+This is the missing bridge between:
+
+- source/compiler `mount(...)`
+- and runtime/backend `apply_mount_state(...)`
+
+
+### 4. `ResolvedMountOps` Stays, But Should Become Metadata-Driven
+
+`ResolvedMountOps` is still the right runtime shape:
+
+```python
+@dataclass(frozen=True, slots=True)
+class ResolvedMountOps:
+    apply: Callable[[object, MountState], None] | None = None
+    sync: Callable[[object, Sequence[MountState]], None] | None = None
+    place: Callable[[object, object, int], None] | None = None
+    place_before: Callable[[object, object, object | None], None] | None = None
+    detach: Callable[[object, object], None] | None = None
+    capture_snapshot: Callable[[object], object] | None = None
+    restore_snapshot: Callable[[object, object], None] | None = None
+```
+
+But resolution should primarily consume generated metadata from `MountPointSpec`
+instead of discovering call shape dynamically from runtime signatures.
+
+That means:
+
+- keep `ResolvedMountOps`
+- keep `apply/sync/place_before/detach`
+- remove the need for runtime signature guessing as mount specs improve
+
+
+### 5. Indexed Mounts Need Batch `sync(...)` Preference
+
+The design already decided this, but it should be treated as an interface
+constraint now.
+
+Indexed mount families such as:
+
+- `cell_widget(row, column)`
+- `widget(row, role)`
+
+often appear as many keyed single-child mount instances on one parent.
+
+Applying them one-by-one is correct but not ideal. So the mount interface
+should explicitly support:
+
+- `sync(parent, states)`
+- `prefer_sync=True` on those families
+
+The runtime may still fall back to per-instance `apply(...)`, but batch sync is
+the intended contract for that family.
+
+
 ## Resolved Mount Ops
 
 `MountPointSpec` describes the declarative surface of a mount point. The

@@ -196,6 +196,110 @@ So the checked-in Tkinter generated library is useful for:
 but not yet for a real discovered mount-point surface.
 
 
+## Tkinter: What Is Already Decided
+
+This section is here to make handoff work easier.
+
+For `tkinter`, the following points should be treated as current repository
+truth, not open design questions:
+
+- `TkinterUiLibrary` generation is currently breadth-first raw discovery, not a
+  curated author-facing quality surface.
+- The checked-in generated file may therefore include:
+  - `tkinter.tix` classes
+  - `_dummy*` helper classes
+- That output is acceptable as a discovery artifact today.
+- It is not yet evidence that those classes are endorsed as stable public
+  authoring surface.
+
+- Tkinter mount discovery is not implemented in the generator today.
+- Because of that, a “full generated tkinter interface” is currently only full
+  in the constructor/prop/method sense, not in the mount-point sense.
+
+- The checked-in backend artifact workflow is still two-form:
+  - raw generated source from `write_generated_library(...)`
+  - lowered/runtime-ready checked-in artifact after compiler lowering
+- Until that is unified, regeneration work should treat the lowering step as a
+  required explicit part of refreshing a checked-in backend library.
+
+
+## Tkinter: Remaining Decisions For A Real Full Interface
+
+If the goal is only “make the generator run and emit a broad tkinter library”,
+no major new design work is needed.
+
+If the goal is “ship a high-quality full generated tkinter interface”, the
+remaining decisions are these:
+
+### 1. Event policy
+
+Tk does not have a Qt-style signal model, so event generation must stay
+explicit.
+
+Current practical rule:
+
+- generated tkinter event props should be driven by explicit learnings
+- callback-like config parameters discovered at runtime should not
+  automatically become event props
+
+What still needs deciding in implementation terms:
+
+- which tkinter callback/config names are promoted into generated event props
+- which stay as ordinary config/callable props
+
+
+### 2. Mount-point override support in learnings
+
+The current learnings model covers:
+
+- props
+- grouped methods
+- events
+
+It does not yet provide a first-class mount-point override layer comparable to
+what the mountable design now expects.
+
+Tkinter will likely need manual shaping for:
+
+- mount-point naming
+- keyed vs non-keyed params
+- default child mount selection
+- default attach ordering
+
+So for tkinter mount support, discovery alone is not enough; the learnings
+model will need to grow.
+
+
+### 3. Scope of `tkinter.tix`
+
+The current checked-in library includes a large `tix`-driven surface and helper
+types such as `_dummy*`.
+
+This is the outstanding scope decision:
+
+- if the goal is exhaustive discovered breadth, keep them
+- if the goal is curated author-facing quality, trim or explicitly classify
+  them as secondary/legacy surface
+
+The current repository has not made that curation decision yet.
+
+
+### 4. Reproducible checked-in regeneration
+
+The two-step raw-then-lowered workflow is documented below, but not yet unified
+behind one clean command.
+
+For a serious tkinter refresh, do not assume:
+
+- `write_generated_library(...)` alone reproduces
+  `src/pyrolyze/backends/tkinter/generated_library.py`
+
+It does not. The lowering step is still part of the checked-in artifact path.
+
+So a maintainer touching tkinter generation should treat this as an explicit
+workflow boundary, not an implementation detail.
+
+
 ## Learnings
 
 `learnings.py` is the authoritative manual overlay for a backend.
@@ -285,6 +389,13 @@ At the moment that file exports an empty `LEARNINGS` map.
 
 That means Tkinter generation today is almost entirely raw-discovery driven,
 with much less shaping than PySide6.
+
+That emptiness should be read carefully:
+
+- it means tkinter generation currently has almost no manual shaping
+- it does not mean manual shaping is unnecessary
+- for mount points and event policy, more learnings support is still expected to
+  be needed
 
 
 ## Generated Output
@@ -378,6 +489,9 @@ The important current gaps are:
 
 - PySide6 mount discovery is still heuristic, not yet exhaustive
 - Tkinter mount discovery is not implemented in the generator yet
+- tkinter event promotion policy is not yet fully settled in generated metadata
+- learnings do not yet have first-class mount-point override support
+- the checked-in Tkinter generated surface is still breadth-first, not curated
 - raw vs lowered generated backend artifacts are still not unified under one
   clean command
 - model/runtime naming still mixes older `UiWidget*` names with newer
