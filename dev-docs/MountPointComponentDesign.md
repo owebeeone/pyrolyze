@@ -260,40 +260,116 @@ compatibility checks depend on knowing what produced type a component emits.
 ### Compile-time checked form
 
 ```python
-with mount[QTabWidget.setCornerWidget](corner=Qt.TopLeftCorner):
+with mount(menu, default, corner_widget(corner=Qt.TopLeftCorner)):
     CQMenu(text="Top Left")
 ```
 
 Meaning:
 
-- the bracket target must be a qualified mount-point reference expression
-  such as `QTabWidget.setCornerWidget`
-- the compiler resolves that expression from the transformed AST before runtime
-- emitted component type must be compatible with that mount point
-- mount parameters are evaluated normally at runtime
+- `mount(...)` accepts one or more selector terms
+- each selector term may carry its own runtime params
+- selectors are tried left-to-right for each emitted child
+- the first viable selector wins
+- later selectors are not materialized if an earlier selector succeeds
+- selector values are ordinary runtime values, not compile-time-only names
+
+Selector terms may be:
+
+- parent-relative selector symbols such as `menu` or `corner_widget`
+- selector factory calls such as `corner_widget(corner=Qt.TopLeftCorner)`
+- special symbols such as `default` and `no_emit`
+- optional discoverable/token forms such as
+  `Qt.mounts.corner_widget(corner=Qt.TopLeftCorner)`
+- runtime selector values held in state or variables
+- splatted selector sequences via `mount(*sels)`
 
 Phase-1 rule:
 
-- `mount[...]` accepts a qualified mount-point reference expression
-- a string-literal fallback may be added later if import-time resolution turns
-  out to be awkward, but it is not the primary design
+- the primary syntax is `mount(...)`, not `mount[...]`
+- selector params belong to each selector term, not to the outer `mount(...)`
+- multi-selector mount is supported in phase 1
+- selection is lazy and first-match wins
+- `no_emit` is only valid as the sole selector term
 
 Important note:
 
 - this is not driven by annotation string resolution
-- `from __future__ import annotations` does not control `mount[...]`
-- `mount[...]` is its own source form and compiler pass
+- `from __future__ import annotations` does not control `mount(...)`
+- `mount(...)` is its own source form and compiler pass
+
+Nested explicit mount scopes are valid:
+
+```python
+with mount(xyz):
+    foo()
+    with mount(abc):
+        bar()
+        with mount(xyz):
+            zoo()
+```
+
+Rules:
+
+- explicit selector scopes stack lexically
+- the innermost selector scope wins for directly emitted children
+- leaving an inner selector scope restores the previous selector scope
+- if no explicit selector scope is active, the parent falls back to its
+  generated default attach rules
+- `mount(default)` resets selection to generated default attach behavior
+- `mount(no_emit)` marks the subtree as non-emitting and should raise if
+  anything emits within that subtree
+- `mount(no_emit, menu)` is invalid
+
+Dynamic selector values are valid:
+
+```python
+sel, set_sel = use_state(default)
+
+with mount(sel, corner_widget(corner=Qt.TopLeftCorner)):
+    foo()
+```
+
+and:
+
+```python
+with mount(*sels):
+    foo()
+```
+
+Changing selector values across rerenders updates the same retained mount
+directive slot. If the winning selector changes, the subtree is detached from
+the old mount instance and reattached or remounted under the new one as
+required.
+
+Conceptually, source-level mount selectors should lower to retained structural
+`MountDirective` nodes in the emitted tree rather than relying on pure ambient
+runtime state. Parent-side flattening then resolves each emitted child against
+the nearest enclosing selector scope.
+
+Deferred sugar, not phase 1:
+
+- `mount(a).Widget(...)`
+- `mount(a | b | c)`
+- `mount(a) + mount(b)`
+
+Phase-1 surface:
+
+- `mount(selector)`
+- `mount(selector_a, selector_b, selector_c)`
+- `mount(*selectors)`
+- `mount(default)`
+- `mount(no_emit)`
 
 ### Runtime-checked form
 
 ```python
-with mount(mounter=mounter, corner=corner):
+with mount(*selector_terms):
     CQMenu(text="Dynamic")
 ```
 
 Meaning:
 
-- mount target is not known statically
+- one or more selector terms are not known statically
 - compatibility is checked at runtime
 - this is an escape hatch, not the preferred path
 

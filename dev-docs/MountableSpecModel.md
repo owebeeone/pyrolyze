@@ -30,7 +30,7 @@ It is the runtime-side contract for:
 - source-level `UiLibrary` grouping
 - backend installation or catalog building
 - reconciler slot identity
-- source syntax like `mount[...]`
+- source syntax like `mount(...)`
 
 
 ## Core Types
@@ -162,7 +162,7 @@ Each mount point describes:
 
 ## Unspecified Mount Rules
 
-When authored source does not use an explicit `mount[...]` form, the runtime
+When authored source does not use an explicit `mount(...)` form, the runtime
 uses generated default mount metadata instead of trying to infer the mount site
 from live toolkit APIs.
 
@@ -173,24 +173,345 @@ There are two separate defaults:
     enters `with SomeMountable(...):`
 - `default_attach_mount_point_names`
   - the ordered parent-side candidate list used when a child is attached
-    without an explicit `mount[...]`
+    without an explicit `mount(...)`
 
 Rules:
 
 1. Entering a mountable scope opens `default_child_mount_point_name`.
 2. If nested children are emitted and `default_child_mount_point_name` is
    `None`, that is a fatal error.
-3. When a child is attached without explicit `mount[...]`, the parent scans
+3. An explicit `mount(...)` scope overrides parent-side default attach
+   selection for directly emitted children.
+4. When no explicit `mount(...)` scope is active, the parent scans
    `default_attach_mount_point_names` in order.
-4. The first candidate that:
+5. The first candidate that:
    - accepts the child's produced type
    - requires no keyed mount params
    - has defaults for any optional non-keyed mount params
    is selected.
-5. If no candidate matches, that is a fatal error.
-6. Explicit `mount[...]` always overrides the generated defaults.
+6. If no candidate matches, that is a fatal error.
+7. Explicit `mount(...)` always overrides the generated defaults.
 
 This keeps unspecified behavior deterministic and generator-owned.
+
+
+## Explicit Mount Scope Rules
+
+Explicit mount scopes are parent-relative attachment selector lists.
+
+They are authored as lexical scopes, but they should not be modeled as naked
+ambient runtime state. The emitted tree should retain them as structural
+directive nodes until parent-side flattening resolves effective mount
+assignments for concrete children.
+
+Example:
+
+```python
+with mount(xyz):
+    foo()
+    with mount(abc):
+        bar()
+        with mount(xyz):
+            zoo()
+```
+
+Rules:
+
+1. Entering `mount(...)` creates a new explicit mount selector scope.
+2. The explicit selector list applies only to directly emitted children inside
+   block.
+3. Nested `mount(...)` blocks are allowed; the innermost selector list wins.
+4. Leaving an inner selector scope restores the previous selector scope.
+5. Leaving the outermost explicit selector scope restores ordinary generated
+   default attach behavior.
+6. Explicit mount selectors do not change the current parent mountable. They
+   only change which mount point on that parent receives directly emitted
+   children.
+7. Selector terms are tried left-to-right for each emitted child.
+8. The first viable selector wins.
+9. Unused later selectors are not materialized.
+10. If no selector in the list is viable for an emitted child, that is a fatal
+    error.
+11. `no_emit` is only valid as the sole selector term in a `mount(...)`
+    directive.
+12. `mount(no_emit, menu)` and any similar mixed form are invalid.
+
+Example:
+
+```python
+with mount(menu, default, corner(Qt.TopLeftCorner)):
+    emit()
+```
+
+means:
+
+1. try `menu`
+2. if `menu` is incompatible for that child, try `default`
+3. if `default` is also not viable, try `corner(Qt.TopLeftCorner)`
+4. the first viable selector wins
+
+This selection should be lazy:
+
+- selector descriptor objects may still be constructed eagerly by normal Python
+  argument evaluation rules
+- do not create or materialize mount instances for later selectors unless they
+  are actually selected
+- an incompatible selector is simply skipped
+- a selector that is never reached is never materialized
+- only the winning selector contributes to `MountState`
+
+
+## Runtime Selector Values
+
+Selectors are runtime values, not compile-time-only names.
+
+That means these are valid:
+
+```python
+sel, set_sel = use_state(default)
+
+with mount(sel):
+    foo()
+
+set_sel(menu)
+```
+
+```python
+sels = (sel, corner(Qt.TopLeftCorner))
+
+with mount(*sels):
+    foo()
+```
+
+Model:
+
+- `menu`, `default`, and `no_emit` are selector values
+- `corner(...)` is a selector factory that returns a selector value
+- `mount(...)` accepts selector values at runtime
+- `mount(*sels)` is valid and should be treated as runtime-only from the
+  compiler's point of view
+- static checking is strongest for literal/direct selector terms and weaker for
+  splatted dynamic selector collections
+
+Invalid:
+
+```python
+with mount(no_emit, menu):
+    foo()
+```
+
+because `no_emit` is a hard barrier, not a fallback selector
+
+Special selector forms:
+
+1. `mount(default)`
+   - resets selection to the parent's generated default attach behavior
+   - nested explicit mount selectors may override it
+2. `mount(no_emit)`
+   - declares a hard non-emitting barrier
+   - if anything emits anywhere inside that subtree, that is a fatal error
+   - nested named/default mount selectors inside it are invalid because the
+     subtree is explicitly non-emitting
+
+Recommended source forms:
+
+- `mount(corner_widget)`
+- `mount(widget)`
+- `mount(corner_widget(corner=Qt.TopLeftCorner))`
+- `mount(menu, default)`
+
+Optional discoverable/token form:
+
+- `mount(Qt.mounts.corner_widget)`
+- `mount(Qt.mounts.corner_widget(corner=Qt.TopLeftCorner), default)`
+
+Both resolve to the same parent-relative selector semantics.
+
+
+## Deferred Mount Syntax Sugar
+
+The following source forms are worth remembering as plausible sugar, but they
+should be treated as explicitly deferred or rejected for phase 1.
+
+Nice but no, for now:
+
+1. `mount(a).Widget(...)`
+   - plausible sugar for:
+     ```python
+     with mount(a):
+         with Widget(...):
+             ...
+     ```
+   - rejected for phase 1 because it conflates selector choice with mountable
+     construction and complicates lowering
+
+2. `mount(a | b | c)`
+   - syntactically attractive alternative to comma-separated selector lists
+   - deferred because plain Python argument lists already cover the behavior
+     and the extra operator form adds parser/compiler surface area
+
+3. `mount[pos](x, y).mount(menu)`
+   - rejected because chained selector composition is harder to reason about
+     than one selector scope at a time
+
+4. `mount(a) + mount(b)`
+   - rejected because operator composition is less readable than an explicit
+     selector form
+
+Phase-1 recommendation remains:
+
+- `mount(selector)`
+- `mount(selector_a, selector_b, selector_c)`
+- `mount(default)`
+- `mount(no_emit)`
+
+All other sugar should wait until the plain selector model is implemented and
+validated.
+
+
+## Retained Mount Directives
+
+At emission time, explicit mount selectors should remain in the emitted tree as
+structural directive nodes. They should not immediately mutate child
+`UIElement`s or rely on ambient mutable runtime flags.
+
+Conceptually:
+
+```python
+@dataclass(frozen=True, slots=True)
+class MountSelector:
+    kind: Literal["named", "default", "no_emit"]
+    name: str | None
+    values: frozendict[str, object]
+
+
+@dataclass(frozen=True, slots=True)
+class MountDirective:
+    slot_id: object
+    selectors: tuple[MountSelector, ...]
+    children: tuple[EmittedNode, ...]
+```
+
+Where:
+
+- `MountSelector(kind="no_emit", name=None, values={})`
+  - means the hard non-emitting barrier form `mount(no_emit)`
+- `MountSelector(kind="default", name="default", values={})`
+  - means reset to parent generated default attach behavior
+- `MountSelector(kind="named", name="corner_widget", values={...})`
+  - means explicit selection of that parent-relative mount point
+
+Each `MountDirective` may hold one or more selectors. Selectors are attempted
+left-to-right for each emitted child, and the first viable selector wins.
+
+`MountDirective` is a retained reactive node with its own slot identity.
+On rerender:
+
+- selector values are re-evaluated
+- the same mount-directive slot is updated in place
+- the winning selector may change across renders
+- if the winning selector changes to a different mount instance, the directive
+  detaches its children from the old mount instance and reattaches or remounts
+  them under the new one
+- if the winning selector remains the same concrete mount instance, ordinary
+  child reuse rules apply
+- if the selector becomes `no_emit`, the subtree must emit nothing
+- if the selector changes from `no_emit` to something else, the same directive
+  slot now permits emission and attaches through the newly selected mount
+
+`EmittedNode` is conceptually:
+
+```python
+UIElement | MountDirective
+```
+
+This keeps mount selection:
+
+- lexical in source
+- structural in the retained emitted tree
+- safe under rollback when a pass raises before commit
+
+
+## Effective Mount Resolution Walkthrough
+
+Given:
+
+```python
+with mount(xyz(x=1)):
+    foo()
+    with mount(abc(a=2)):
+        bar()
+        with mount(xyz(x=3)):
+            zoo()
+```
+
+The emitted tree is conceptually:
+
+```python
+MountDirective((MountSelector("named", "xyz", {"x": 1}),), children=[
+    UIElement("foo"),
+    MountDirective((MountSelector("named", "abc", {"a": 2}),), children=[
+        UIElement("bar"),
+        MountDirective((MountSelector("named", "xyz", {"x": 3}),), children=[
+            UIElement("zoo"),
+        ]),
+    ]),
+])
+```
+
+During parent-side flattening:
+
+1. Start with current selector = generated default attach behavior.
+2. Enter outer `MountDirective` containing selector `xyz(x=1)`.
+3. `foo()` resolves to effective mount assignment `xyz(x=1)`.
+4. Enter `MountDirective` containing selector `abc(a=2)`.
+5. `bar()` resolves to effective mount assignment `abc(a=2)`.
+6. Enter inner `MountDirective` containing selector `xyz(x=3)`.
+7. `zoo()` resolves to effective mount assignment `xyz(x=3)`.
+8. Exit inner `xyz`, restoring selector `abc(a=2)`.
+9. Exit `abc`, restoring selector `xyz(x=1)`.
+10. Exit outer `xyz`, restoring generated default attach behavior.
+
+So for the specific `zoo()` case:
+
+- `zoo()` itself emits a plain `UIElement`
+- the nearest enclosing `MountDirective` contains the selector `xyz(x=3)`
+- parent-side flattening resolves that directive against the current parent's
+  mount table
+- the resulting child is added to the concrete `MountState` for `xyz(x=3)`
+
+The mount therefore lives in two places by phase:
+
+1. before flattening: on the nearest enclosing `MountDirective`
+2. after flattening: in the effective `MountState` / mount assignment for that
+   child
+
+
+## Selector Change Across Rerenders
+
+Example:
+
+```python
+sel, set_sel = use_state(no_emit)
+
+with mount(sel):
+    helper_only()
+
+set_sel(default)
+```
+
+Rules:
+
+1. The `MountDirective` slot remains the same across rerenders.
+2. Its selector list is re-evaluated on each pass.
+3. If the winning selector changes, the directive updates the subtree's
+   effective mount assignment.
+4. This may require detaching and reattaching or remounting child state,
+   depending on compatibility and backend requirements.
+5. If the active selector is `no_emit`, any emitted child is a fatal error.
+6. If a later rerender switches from `no_emit` to a viable selector such as
+   `default`, the subtree may begin emitting normally under that same
+   directive slot.
 
 
 ## Mount Instance Keys
