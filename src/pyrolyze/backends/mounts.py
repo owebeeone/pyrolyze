@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import lru_cache
+from inspect import signature
 from typing import Any, Callable, Generic, Literal, Mapping, Sequence, TypeVar
 
 from frozendict import frozendict
@@ -70,6 +71,9 @@ class OrderedMountStateBuilder(Generic[T]):
         self._working.clear()
         self._ops.append(MountOp(kind="clear"))
 
+    def current_objects(self) -> tuple[MountedRef[T], ...]:
+        return tuple(self._working)
+
     def build(self) -> ImmutableOrderedMountState[T]:
         return ImmutableOrderedMountState(
             revision=self._base.revision + 1,
@@ -120,10 +124,25 @@ def resolve_mount_ops(parent_type: type[object], mount_point: MountPointSpec) ->
     place = None
     detach = None
     place_name, detach_name = _ordered_fallback_method_names(mount_point)
+    if place_name is None and mount_point.name == "standard":
+        place_name = "place_child" if hasattr(parent_type, "place_child") else None
+    if detach_name is None and mount_point.name == "standard":
+        detach_name = "detach_child" if hasattr(parent_type, "detach_child") else None
     if place_name and hasattr(parent_type, place_name):
+        call_shape = _ordered_place_call_shape(parent_type, place_name)
 
-        def place(parent: object, value: object, index: int, *, _method_name: str = place_name) -> None:
-            getattr(parent, _method_name)(index, value)
+        def place(
+            parent: object,
+            value: object,
+            index: int,
+            *,
+            _method_name: str = place_name,
+            _call_shape: Literal["index_first", "value_first"] = call_shape,
+        ) -> None:
+            if _call_shape == "index_first":
+                getattr(parent, _method_name)(index, value)
+                return
+            getattr(parent, _method_name)(value, index)
 
     if detach_name and hasattr(parent_type, detach_name):
 
@@ -272,6 +291,21 @@ def _singularize(name: str) -> str:
     if name.endswith("s"):
         return name[:-1]
     return name
+
+
+def _ordered_place_call_shape(
+    parent_type: type[object],
+    method_name: str,
+) -> Literal["index_first", "value_first"]:
+    method = getattr(parent_type, method_name)
+    parameters = tuple(signature(method).parameters.values())
+    non_self = [parameter for parameter in parameters if parameter.name != "self"]
+    if not non_self:
+        return "index_first"
+    first_name = non_self[0].name
+    if first_name in {"index", "position", "pos"}:
+        return "index_first"
+    return "value_first"
 
 
 def _is_small_replay_delta(

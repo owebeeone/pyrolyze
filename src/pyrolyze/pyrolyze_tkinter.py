@@ -13,6 +13,7 @@ from typing import Any, Callable, Mapping, Sequence
 
 from pyrolyze.api import UIElement
 from pyrolyze.runtime.context import ModuleRegistry, SlotId
+from pyrolyze.runtime.mount_reconciler import reconcile_owner
 from pyrolyze.runtime.trace import TraceChannel, emit_trace, trace_enabled
 from pyrolyze.runtime.ui_nodes import (
     UiBackendAdapter,
@@ -22,7 +23,6 @@ from pyrolyze.runtime.ui_nodes import (
     UiOwnerCommitState,
     mount_subtree,
     normalize_ui_inputs,
-    reconcile_owner,
 )
 
 

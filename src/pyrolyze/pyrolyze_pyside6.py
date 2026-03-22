@@ -8,6 +8,7 @@ from typing import Any, Callable, Mapping, Sequence, cast
 
 from pyrolyze.api import UIElement
 from pyrolyze.runtime.context import ModuleRegistry, SlotId
+from pyrolyze.runtime.mount_reconciler import reconcile_owner
 from pyrolyze.runtime.ui_nodes import (
     UiBackendAdapter,
     UiNode,
@@ -16,7 +17,6 @@ from pyrolyze.runtime.ui_nodes import (
     UiOwnerCommitState,
     mount_subtree,
     normalize_ui_inputs,
-    reconcile_owner,
 )
 from PySide6.QtCore import QSignalBlocker, QThread, QTimer
 from PySide6.QtWidgets import (
