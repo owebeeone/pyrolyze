@@ -44,3 +44,24 @@ def test_generated_backend_libraries_import() -> None:
     qspin_box_spec = pyside6_module.PySide6UiLibrary.WIDGET_SPECS["QSpinBox"]
     assert qspin_box_spec.methods["setRange"].source_props == ("minimum", "maximum")
     assert qspin_box_spec.methods["setRange"].constructor_equivalent is True
+
+    assert "QWidget" in pyside6_module.PySide6UiLibrary.WIDGET_SPECS
+    assert "QLayout" in pyside6_module.PySide6UiLibrary.WIDGET_SPECS
+    assert "QAction" in pyside6_module.PySide6UiLibrary.WIDGET_SPECS
+
+    qwidget_spec = pyside6_module.PySide6UiLibrary.WIDGET_SPECS["QWidget"]
+    assert "layout" in qwidget_spec.mount_points
+    assert qwidget_spec.mount_points["layout"].apply_method_name == "setLayout"
+
+    qmain_window_spec = pyside6_module.PySide6UiLibrary.WIDGET_SPECS["QMainWindow"]
+    assert "central_widget" in qmain_window_spec.mount_points
+    assert qmain_window_spec.mount_points["central_widget"].apply_method_name == "setCentralWidget"
+
+    qbox_layout_spec = pyside6_module.PySide6UiLibrary.WIDGET_SPECS["QBoxLayout"]
+    assert "widget" in qbox_layout_spec.mount_points
+    assert qbox_layout_spec.mount_points["widget"].place_method_name == "insertWidget"
+    assert qbox_layout_spec.mount_points["widget"].detach_method_name == "removeWidget"
+
+    qaction_spec = pyside6_module.PySide6UiLibrary.WIDGET_SPECS["QAction"]
+    assert "menu" in qaction_spec.mount_points
+    assert qaction_spec.mount_points["menu"].apply_method_name == "setMenu"

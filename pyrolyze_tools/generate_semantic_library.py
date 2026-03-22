@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-"""Widget-library extraction and code generation.
+"""Mountable-library extraction and code generation.
 
-This tool is intentionally widget-specific for the current iteration. It
-discovers widget classes, widget properties, and widget setter methods and emits
-`UiWidgetSpec`-backed UI libraries.
-
-It should not be treated as the final generic extractor for every reactive
-backend-native value. If deferred parameters later need to resolve to non-widget
-native values such as menus or other attachable objects, that should extend the
-backend extraction model rather than overloading this widget-only pipeline.
+This tool currently discovers PySide6/Tkinter mountable classes and emits
+`UiWidgetSpec`-backed UI libraries. The model type name is still widget-shaped
+in code, but the generated surface now includes broader mountable classes and
+mount-point metadata where the backend model can represent them.
 """
 
 import argparse
@@ -53,6 +49,19 @@ class DiscoveredSetterMethod:
 
 
 @dataclass(frozen=True, slots=True)
+class DiscoveredMountPoint:
+    name: str
+    accepted_type_name: str
+    params: tuple[DiscoveredParameter, ...] = ()
+    min_children: int = 0
+    max_children: int | None = None
+    apply_method_name: str | None = None
+    sync_method_name: str | None = None
+    place_method_name: str | None = None
+    detach_method_name: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class DiscoveredWidgetClass:
     module_name: str
     class_name: str
@@ -60,6 +69,7 @@ class DiscoveredWidgetClass:
     parameters: tuple[DiscoveredParameter, ...]
     properties: tuple[DiscoveredProperty, ...] = ()
     setter_methods: tuple[DiscoveredSetterMethod, ...] = ()
+    mount_points: tuple[DiscoveredMountPoint, ...] = ()
     omitted_variadic_arguments: bool = False
     prop_learnings: frozendict[str, UiPropLearning] = frozendict()
     method_learnings: frozendict[str, UiMethodLearning] = frozendict()
@@ -90,6 +100,7 @@ def discover_widget_classes(
             tuple[DiscoveredParameter, ...],
             tuple[DiscoveredProperty, ...],
             tuple[DiscoveredSetterMethod, ...],
+            tuple[DiscoveredMountPoint, ...],
             bool,
         ]
     ] = []
@@ -102,7 +113,7 @@ def discover_widget_classes(
         for _, candidate in inspect.getmembers(module, inspect.isclass):
             if candidate.__module__ != module.__name__:
                 continue
-            if candidate in base_classes:
+            if candidate in base_classes and root_module_name.split(".", 1)[0] != "PySide6":
                 continue
             if not any(issubclass(candidate, base_class) for base_class in base_classes):
                 continue
@@ -117,6 +128,7 @@ def discover_widget_classes(
                     _extract_parameters(root_module_name, candidate),
                     _extract_properties(root_module_name, candidate),
                     _extract_multiarg_setter_methods(root_module_name, candidate),
+                    _extract_mount_points(root_module_name, candidate),
                     _has_variadic_parameters(root_module_name, candidate),
                 )
             )
@@ -130,9 +142,10 @@ def discover_widget_classes(
             parameters=parameters,
             properties=properties,
             setter_methods=setter_methods,
+            mount_points=mount_points,
             omitted_variadic_arguments=omitted_variadic_arguments,
         )
-        for (module_name, class_name, parameters, properties, setter_methods, omitted_variadic_arguments), public_name in zip(
+        for (module_name, class_name, parameters, properties, setter_methods, mount_points, omitted_variadic_arguments), public_name in zip(
             ordered,
             public_names,
             strict=True,
@@ -246,6 +259,49 @@ _PYSIDE6_FALLBACK_PARAM_NAME_MAP = {
     "maxh": "max_height",
     "f": "flag",
 }
+
+_PYSIDE6_MOUNT_TYPE_QUALIFIERS = {
+    "QAction": "PySide6.QtGui.QAction",
+    "QLayout": "PySide6.QtWidgets.QLayout",
+    "QMenu": "PySide6.QtWidgets.QMenu",
+    "QMenuBar": "PySide6.QtWidgets.QMenuBar",
+    "QStatusBar": "PySide6.QtWidgets.QStatusBar",
+    "QWidget": "PySide6.QtWidgets.QWidget",
+}
+
+_PYSIDE6_SINGLE_MOUNT_METHODS = {
+    "setCentralWidget": ("central_widget", "PySide6.QtWidgets.QWidget"),
+    "setCornerWidget": ("corner_widget", "PySide6.QtWidgets.QWidget"),
+    "setLayout": ("layout", None),
+    "setMenu": ("menu", "PySide6.QtWidgets.QMenu"),
+    "setMenuBar": ("menu_bar", "PySide6.QtWidgets.QMenuBar"),
+    "setMenuWidget": ("menu_widget", "PySide6.QtWidgets.QWidget"),
+    "setStatusBar": ("status_bar", "PySide6.QtWidgets.QStatusBar"),
+    "setTitleBarWidget": ("title_bar_widget", "PySide6.QtWidgets.QWidget"),
+    "setViewport": ("viewport", "PySide6.QtWidgets.QWidget"),
+    "setWidget": ("widget", None),
+}
+
+_PYSIDE6_ORDERED_MOUNT_FAMILIES = (
+    ("action", "addAction", "insertAction", "removeAction", "PySide6.QtGui.QAction"),
+    ("layout", "addLayout", "insertLayout", "removeItem", "PySide6.QtWidgets.QLayout"),
+    ("widget", "addWidget", "insertWidget", "removeWidget", "PySide6.QtWidgets.QWidget"),
+)
+
+_PYSIDE6_KEYED_MOUNT_PARAM_NAMES = frozenset(
+    {
+        "area",
+        "column",
+        "corner",
+        "position",
+        "role",
+        "row",
+        "section",
+        "side",
+    }
+)
+
+_PYSIDE6_IGNORED_ORDERING_PARAM_NAMES = frozenset({"before", "index", "pos", "position"})
 
 
 def _infer_pyside6_method_learning(
@@ -394,6 +450,8 @@ def generate_library_source(
         "    ChildPolicy,",
         "    FillPolicy,",
         "    MethodMode,",
+        "    MountParamSpec,",
+        "    MountPointSpec,",
         "    PropMode,",
         "    TypeRef,",
         "    UiInterface,",
@@ -500,6 +558,13 @@ def _render_single_widget_spec(
     lines.extend(
         [
             "            }),",
+            "            mount_points=frozendict({",
+        ]
+    )
+    lines.extend(_render_mount_points(widget.mount_points))
+    lines.extend(
+        [
+            "            }),",
             "            child_policy=ChildPolicy.NONE,",
             "        ),",
         ]
@@ -594,6 +659,38 @@ def _render_widget_methods(
     return lines
 
 
+def _render_mount_points(mount_points: Sequence[DiscoveredMountPoint]) -> list[str]:
+    lines: list[str] = []
+    for mount_point in mount_points:
+        lines.append(f'                "{mount_point.name}": MountPointSpec(')
+        lines.append(f'                    name="{mount_point.name}",')
+        lines.append(
+            "                    "
+            f"accepted_produced_type={_render_type_ref(mount_point.accepted_type_name)},"
+        )
+        lines.append("                    params=(")
+        for parameter in mount_point.params:
+            keyed = parameter.name in _PYSIDE6_KEYED_MOUNT_PARAM_NAMES
+            lines.append(
+                "                        "
+                f'MountParamSpec(name="{parameter.name}", annotation={_render_type_ref(parameter.annotation_source)}, '
+                f"keyed={keyed!r}, default_repr={parameter.default_source!r}),"
+            )
+        lines.extend(
+            [
+                "                    ),",
+                f"                    min_children={mount_point.min_children!r},",
+                f"                    max_children={mount_point.max_children!r},",
+                f"                    apply_method_name={mount_point.apply_method_name!r},",
+                f"                    sync_method_name={mount_point.sync_method_name!r},",
+                f"                    place_method_name={mount_point.place_method_name!r},",
+                f"                    detach_method_name={mount_point.detach_method_name!r},",
+                "                ),",
+            ]
+        )
+    return lines
+
+
 def write_generated_library(
     root_module_name: str,
     widgets: Sequence[DiscoveredWidgetClass],
@@ -655,7 +752,11 @@ def _resolve_widget_bases(
 def _default_widget_base_specs(root_module_name: str) -> tuple[str, ...]:
     package_name = root_module_name.split(".", 1)[0]
     if package_name == "PySide6":
-        return ("PySide6.QtWidgets:QWidget",)
+        return (
+            "PySide6.QtWidgets:QWidget",
+            "PySide6.QtWidgets:QLayout",
+            "PySide6.QtGui:QAction",
+        )
     if package_name == "tkinter":
         return ("tkinter:Widget", "tkinter.ttk:Widget")
     raise ValueError(
@@ -765,6 +866,16 @@ def _extract_multiarg_setter_methods(
     return ()
 
 
+def _extract_mount_points(
+    root_module_name: str,
+    widget_class: type[Any],
+) -> tuple[DiscoveredMountPoint, ...]:
+    package_name = root_module_name.split(".", 1)[0]
+    if package_name == "PySide6":
+        return _extract_pyside6_mount_points(widget_class)
+    return ()
+
+
 def _has_variadic_parameters(
     root_module_name: str,
     widget_class: type[Any],
@@ -787,6 +898,165 @@ def _widget_signature(widget_class: type[Any]) -> inspect.Signature:
         return inspect.signature(widget_class)
     except (TypeError, ValueError):
         return inspect.signature(widget_class.__init__)
+
+
+def _extract_pyside6_mount_points(
+    widget_class: type[Any],
+) -> tuple[DiscoveredMountPoint, ...]:
+    named_methods = _extract_pyside6_named_methods(
+        widget_class,
+        tuple(
+            {
+                *tuple(_PYSIDE6_SINGLE_MOUNT_METHODS),
+                *(family[1] for family in _PYSIDE6_ORDERED_MOUNT_FAMILIES),
+                *(family[2] for family in _PYSIDE6_ORDERED_MOUNT_FAMILIES if family[2] is not None),
+            }
+        ),
+    )
+    discovered: dict[str, DiscoveredMountPoint] = {}
+    for method_name, (mount_name, accepted_type_name) in _PYSIDE6_SINGLE_MOUNT_METHODS.items():
+        parameters = named_methods.get(method_name)
+        if parameters is None:
+            continue
+        mount_point = _build_pyside6_single_mount_point(
+            method_name,
+            mount_name,
+            accepted_type_name,
+            parameters,
+        )
+        if mount_point is not None:
+            discovered.setdefault(mount_point.name, mount_point)
+    for family_name, add_name, insert_name, detach_name, accepted_type_name in _PYSIDE6_ORDERED_MOUNT_FAMILIES:
+        preferred_name = insert_name if insert_name in named_methods else add_name
+        parameters = named_methods.get(preferred_name)
+        if parameters is None:
+            continue
+        mount_point = _build_pyside6_family_mount_point(
+            family_name=family_name,
+            preferred_method_name=preferred_name,
+            add_method_name=add_name,
+            insert_method_name=insert_name,
+            detach_method_name=detach_name,
+            accepted_type_name=accepted_type_name,
+            parameters=parameters,
+        )
+        if mount_point is not None:
+            discovered.setdefault(mount_point.name, mount_point)
+    return tuple(discovered[name] for name in sorted(discovered))
+
+
+def _build_pyside6_single_mount_point(
+    method_name: str,
+    mount_name: str,
+    accepted_type_name: str | None,
+    parameters: tuple[DiscoveredParameter, ...],
+) -> DiscoveredMountPoint | None:
+    object_parameter = _find_mount_object_parameter(parameters, accepted_type_name)
+    if object_parameter is None:
+        return None
+    mount_params = tuple(
+        parameter
+        for parameter in parameters
+        if parameter.name != object_parameter.name and parameter.name not in _PYSIDE6_IGNORED_ORDERING_PARAM_NAMES
+    )
+    return DiscoveredMountPoint(
+        name=mount_name,
+        accepted_type_name=accepted_type_name or _normalized_mount_type_name(object_parameter.annotation_source),
+        params=mount_params,
+        max_children=1,
+        apply_method_name=method_name,
+    )
+
+
+def _build_pyside6_family_mount_point(
+    *,
+    family_name: str,
+    preferred_method_name: str,
+    add_method_name: str,
+    insert_method_name: str | None,
+    detach_method_name: str,
+    accepted_type_name: str,
+    parameters: tuple[DiscoveredParameter, ...],
+) -> DiscoveredMountPoint | None:
+    object_parameter = _find_mount_object_parameter(parameters, accepted_type_name)
+    if object_parameter is None:
+        return None
+    contextual_params = tuple(
+        parameter
+        for parameter in parameters
+        if parameter.name != object_parameter.name and parameter.name not in _PYSIDE6_IGNORED_ORDERING_PARAM_NAMES
+    )
+    if any(parameter.name in {"row", "column"} for parameter in contextual_params):
+        return DiscoveredMountPoint(
+            name=family_name,
+            accepted_type_name=accepted_type_name,
+            params=contextual_params,
+            max_children=1,
+            apply_method_name=add_method_name,
+        )
+    if preferred_method_name != insert_method_name:
+        return None
+    return DiscoveredMountPoint(
+        name=family_name,
+        accepted_type_name=accepted_type_name,
+        params=contextual_params,
+        max_children=None,
+        place_method_name=preferred_method_name,
+        detach_method_name=detach_method_name,
+    )
+
+
+def _find_mount_object_parameter(
+    parameters: Sequence[DiscoveredParameter],
+    accepted_type_name: str | None,
+) -> DiscoveredParameter | None:
+    target_fragments = (
+        (accepted_type_name.split(".")[-1],)
+        if accepted_type_name is not None
+        else tuple(_PYSIDE6_MOUNT_TYPE_QUALIFIERS)
+    )
+    for parameter in parameters:
+        annotation_source = parameter.annotation_source or ""
+        if any(fragment in annotation_source for fragment in target_fragments):
+            return parameter
+    if accepted_type_name is not None and len(parameters) == 1:
+        return parameters[0]
+    return None
+
+
+def _extract_pyside6_named_methods(
+    widget_class: type[Any],
+    method_names: tuple[str, ...],
+) -> dict[str, tuple[DiscoveredParameter, ...]]:
+    discovered: dict[str, tuple[DiscoveredParameter, ...]] = {}
+    wanted = set(method_names)
+    for base_class in widget_class.__mro__:
+        if not getattr(base_class, "__module__", "").startswith("PySide6."):
+            continue
+        class_node = _find_stub_class(base_class.__module__, base_class.__name__)
+        if class_node is None:
+            continue
+        grouped: dict[str, list[tuple[DiscoveredParameter, ...]]] = {}
+        for node in class_node.body:
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            if node.name not in wanted:
+                continue
+            grouped.setdefault(node.name, []).append(_ast_method_parameters_to_discovered(node.args))
+        for method_name, overloads in grouped.items():
+            if method_name in discovered:
+                continue
+            discovered[method_name] = max(overloads, key=_parameter_specificity)
+    return discovered
+
+
+def _normalized_mount_type_name(annotation_source: str | None) -> str:
+    if annotation_source is None:
+        return "object"
+    for fragment, qualified_name in _PYSIDE6_MOUNT_TYPE_QUALIFIERS.items():
+        if fragment in annotation_source:
+            return qualified_name
+    return annotation_source
 
 
 @lru_cache(maxsize=None)

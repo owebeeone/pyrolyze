@@ -276,6 +276,8 @@ def _mount_call_args(state: MountState) -> tuple[tuple[Any, ...], dict[str, Any]
 
 
 def _ordered_fallback_method_names(mount_point: MountPointSpec) -> tuple[str | None, str | None]:
+    if mount_point.place_method_name is not None or mount_point.detach_method_name is not None:
+        return mount_point.place_method_name, mount_point.detach_method_name
     if mount_point.sync_method_name is None or not mount_point.sync_method_name.startswith("sync_"):
         return None, None
     plural = mount_point.sync_method_name.removeprefix("sync_")

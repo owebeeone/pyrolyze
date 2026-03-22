@@ -10,6 +10,7 @@ from frozendict import frozendict
 from pyrolyze.backends.model import FillPolicy, MethodMode, TypeRef, UiMethodLearning, UiPropLearning, UiWidgetLearning
 
 from pyrolyze_tools.generate_semantic_library import (
+    DiscoveredMountPoint,
     DiscoveredParameter,
     DiscoveredProperty,
     DiscoveredSetterMethod,
@@ -220,6 +221,42 @@ def test_generate_library_source_renders_discovered_method_specs() -> None:
     assert 'constructor_equivalent=False' in source
 
 
+def test_generate_library_source_renders_mount_point_specs() -> None:
+    source = generate_library_source(
+        "fakewidgets",
+        [
+            DiscoveredWidgetClass(
+                module_name="fakewidgets.widgets",
+                class_name="LayoutWidget",
+                public_name="CLayoutWidget",
+                parameters=(),
+                mount_points=(
+                    DiscoveredMountPoint(
+                        name="standard",
+                        accepted_type_name="fakewidgets.widgets.LayoutWidget",
+                        params=(),
+                        min_children=0,
+                        max_children=None,
+                        apply_method_name=None,
+                        sync_method_name="sync_widgets",
+                        place_method_name="place_widget",
+                        detach_method_name="detach_widget",
+                    ),
+                ),
+            )
+        ],
+    )
+
+    assert "MountParamSpec," in source
+    assert "MountPointSpec," in source
+    assert "mount_points=frozendict({" in source
+    assert '"standard": MountPointSpec(' in source
+    assert 'accepted_produced_type=TypeRef(expr=\'fakewidgets.widgets.LayoutWidget\')' in source
+    assert "sync_method_name='sync_widgets'" in source
+    assert "place_method_name='place_widget'" in source
+    assert "detach_method_name='detach_widget'" in source
+
+
 def test_write_generated_library_uses_package_name_for_output(
     tmp_path: Path,
     monkeypatch,
@@ -315,6 +352,21 @@ def test_discover_widget_classes_captures_multiarg_setters_in_raw_phase() -> Non
     push_button = next(widget for widget in widgets if widget.class_name == "QPushButton")
 
     assert "setGeometry" in {method.name for method in push_button.setter_methods}
+
+
+def test_discover_widget_classes_includes_pyside6_mountable_base_classes_and_mount_points() -> None:
+    pytest.importorskip("PySide6.QtWidgets")
+
+    widgets = discover_widget_classes("PySide6")
+    by_name = {widget.class_name: widget for widget in widgets}
+
+    assert "QWidget" in by_name
+    assert "QLayout" in by_name
+    assert "QAction" in by_name
+
+    assert "layout" in {mount.name for mount in by_name["QWidget"].mount_points}
+    assert "central_widget" in {mount.name for mount in by_name["QMainWindow"].mount_points}
+    assert "widget" in {mount.name for mount in by_name["QBoxLayout"].mount_points}
 
 
 def test_apply_learnings_overrides_property_signature_defaults() -> None:

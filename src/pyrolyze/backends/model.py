@@ -95,6 +95,8 @@ class MountPointSpec:
     max_children: int | None = None
     apply_method_name: str | None = None
     sync_method_name: str | None = None
+    place_method_name: str | None = None
+    detach_method_name: str | None = None
 
     def instance_key(self, values: dict[str, Any]) -> tuple[object, ...]:
         return (self.name, *(values[param.name] for param in self.params if param.keyed))
