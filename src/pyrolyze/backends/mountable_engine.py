@@ -418,6 +418,11 @@ class MountableEngine:
     ) -> dict[tuple[object, ...], MountState]:
         mount_point = spec.mount_points.get("standard")
         if mount_point is not None:
+            for child in child_nodes:
+                if not self._mount_point_accepts_child(mount_point, self._mountable_type_for(child.spec)):
+                    raise ValueError(
+                        self._format_standard_mount_error(spec, child.spec, mount_point)
+                    )
             state = MountState(
                 mount_point=mount_point,
                 instance_key=mount_point.instance_key({}),
@@ -565,10 +570,25 @@ class MountableEngine:
             details.append(f"required params: {', '.join(required_params)}")
         return f"{mount_point.name} ({'; '.join(details)})"
 
+    def _format_standard_mount_error(
+        self,
+        parent_spec: UiWidgetSpec,
+        child_spec: UiWidgetSpec,
+        mount_point: MountPointSpec,
+    ) -> str:
+        return (
+            f"Cannot attach child kind {child_spec.kind!r} to parent {parent_spec.kind!r} "
+            f"through default mount point {mount_point.name!r}; it accepts "
+            f"{mount_point.accepted_produced_type.expr}."
+        )
+
     def _resolve_type_ref(self, type_ref: TypeRef) -> type[object] | None:
         expr = type_ref.expr.strip()
         if not expr or "|" in expr:
             return None
+        spec = self._mountable_specs.get(expr)
+        if spec is not None:
+            return self._mountable_type_for(spec)
         resolved = self._mountable_types.get(expr)
         if resolved is not None:
             return resolved
