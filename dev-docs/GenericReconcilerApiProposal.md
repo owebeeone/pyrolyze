@@ -9,6 +9,8 @@ It follows:
 
 - [GenericReconcilerRequirements.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/GenericReconcilerRequirements.md)
 - [MountPointComponentDesign.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/MountPointComponentDesign.md)
+- [MountableSpecModel.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/MountableSpecModel.md)
+- [MountableTestingPlan.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/MountableTestingPlan.md)
 - [ApiDesignRules.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/ApiDesignRules.md)
 - [SemanticUiLibraryDesignRules.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/SemanticUiLibraryDesignRules.md)
 - [PackageStructureRules.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/PackageStructureRules.md)
@@ -35,11 +37,11 @@ What is missing is the explicit API layer that ties together:
 - runtime compatibility checks
 
 The current implementation and some older notes still use widget-oriented names
-such as `UiWidgetSpec` and `UiWidgetEngine`. Those should now be treated as
-transition names only. The direction of travel is:
+such as `UiWidgetSpec` and `UiWidgetEngine`. Those are historical names in the
+current codebase only. The target model is:
 
-- `UiWidgetSpec` -> `MountableSpec`
-- `UiWidgetEngine` -> `MountableEngine`
+- `MountableSpec`
+- `MountableEngine`
 - one implicit child list -> one built-in `standard` mount point
 - widget-only attachment -> generic mount-point attachment
 
@@ -110,7 +112,7 @@ An immutable backend-owned description of one installed mountable kind.
 
 ### `UiPropSpec`
 
-An immutable backend-owned description of one prop on one widget kind.
+An immutable backend-owned description of one prop on one mountable kind.
 
 
 ## Core API Proposal
@@ -441,8 +443,8 @@ class UiLibraryAdapter:
 Rules:
 
 - adapters are backend-owned
-- adapters map source props into the target widget surface
-- the target `UiWidgetSpec` decides create/update/remount behavior
+- adapters map source props into the target mountable surface
+- the target `MountableSpec` decides create/update/remount behavior
 - direct toolkit libraries may use an identity adapter
 - portable/core libraries use explicit adapters
 
@@ -475,8 +477,8 @@ Installation-time validation must:
 - resolve one adapter per installed library:
   - explicit adapter for portable libraries
   - identity adapter for direct toolkit libraries
-- verify each source kind resolves to a known target widget kind
-- verify the backend can produce a widget spec for each resolved target kind
+- verify each source kind resolves to a known target mountable kind
+- verify the backend can produce a `MountableSpec` for each resolved target kind
 
 The backend does not assume that all installed `UiLibrary` classes are the
 same. It only requires that they can all be normalized into one coherent
@@ -487,7 +489,7 @@ That means:
 - `CoreUiLibrary.button` may resolve to `QPushButton`
 - `PySide6UiLibrary.CQPushButton` may also resolve to `QPushButton`
 - both are valid as long as their source kinds are distinct and both resolve to
-  backend-known widget specs
+  backend-known mountable specs
 
 
 ## 8. `UiCatalog`
@@ -527,10 +529,8 @@ The new primary backend abstractions are:
 - `MountParamSpec`
 - `MountState`
 
-`UiWidgetSpec` should be treated as a transition name for the current codebase,
-not the long-term public abstraction.
-
-Widget metadata belongs to the backend module, not to generated library code.
+Mountable metadata belongs to the backend module, not to generated library
+code.
 
 Proposed backend-side dataclasses:
 
@@ -638,7 +638,7 @@ must still appear as one node to the reconciler.
 
 Required backend binding contract:
 
-- expose one head widget for parent attachment
+- expose one head/native value for parent attachment
 - `update_props(...)`
 - `place_child(child, index)`
 - `detach_child(child)`
@@ -709,7 +709,7 @@ CoreQtAdapter = UiLibraryAdapter(
 Notes:
 
 - the adapter is responsible for prop-name translation
-- the target `UiWidgetSpec` is responsible for remount/update rules
+- the target `MountableSpec` is responsible for remount/update rules
 - unsupported source props must either be transformed, ignored intentionally,
   or fail installation explicitly
 - backend-specific composites may also be target kinds
@@ -830,7 +830,9 @@ but share the same conceptual role.
 
 ## 17. Testing Strategy
 
-Testing needs to be broader than ordinary wrapper tests.
+Testing needs to be broader than ordinary wrapper tests. The detailed plan now
+belongs in
+[MountableTestingPlan.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/MountableTestingPlan.md).
 
 Recommended layers:
 
@@ -931,7 +933,7 @@ classDiagram
     UiBackend --> UiLibrary : installs
     UiBackend --> UiLibraryAdapter : owns
     UiBackend --> UiCatalog : builds
-    UiBackend --> UiWidgetEngine : owns
+    UiBackend --> MountableEngine : owns
     UiLibraryAdapter --> UiKindAdapter : contains
     UiCatalog --> UiCatalogEntry : entries
     UiCatalogEntry --> UiKindAdapter : uses
@@ -958,7 +960,7 @@ flowchart LR
 
     backend["PySide6Backend"] --> adapter["CoreQtAdapter"]
     backend --> catalog["UiCatalog"]
-    backend --> engine["PySide6WidgetEngine"]
+    backend --> engine["PySide6MountableEngine"]
 
     catalog --> entry1["entry: 'button' -> adapter + MountableSpec('QPushButton')"]
     catalog --> entry2["entry: 'QPushButton' -> identity adapter + MountableSpec('QPushButton')"]
@@ -1006,7 +1008,6 @@ UiLibrary classes
 
 The new working direction is:
 
-- `UiWidgetSpec` is no longer the primary abstraction
 - `MountableSpec` is the primary abstraction
 - the ordinary child list is the built-in `standard` mount point
 - explicit attachment APIs are modeled as `MountPointSpec`
@@ -1030,7 +1031,8 @@ The current implementation should be brought forward in this order.
 
 - `UiWidgetSpec` -> `MountableSpec`
 - `UiWidgetEngine` -> `MountableEngine`
-- `widget_specs.py` -> `mountables.py`
+- `UiWidgetLearning` -> `MountableLearning`
+- `WIDGET_SPECS` -> `MOUNTABLE_SPECS`
 - widget-oriented doc language -> mountable-oriented doc language
 
 This is a breaking rename and should be done directly rather than via aliases.
@@ -1075,6 +1077,15 @@ This is a breaking rename and should be done directly rather than via aliases.
   - rename/rework to `MountableEngine`
 - `src/pyrolyze/backends/model.py`
   - rename widget terms to mountable terms
+  - move mount-point dataclasses into the shared backend model or a dedicated
+    mount-point model module
+- `src/pyrolyze/backends/pyside6/learnings.py`
+  - rename `UiWidgetLearning` usage to `MountableLearning`
+- `src/pyrolyze/backends/pyside6/generated_library.py`
+  - rename `WIDGET_SPECS` to `MOUNTABLE_SPECS`
+  - emit mountable terminology throughout generated constants and annotations
+- `pyrolyze_tools/generate_semantic_library.py`
+  - emit `MountableSpec` terminology and mount-point data
 - generated `pyside6` / `tkinter` libraries
   - emit produced type metadata
   - emit mount-point metadata
@@ -1089,13 +1100,14 @@ This is a breaking rename and should be done directly rather than via aliases.
   - rollback on mount-point failure
   - mount-point apply/sync behavior
 
-### Phase 8. Replace the older widget-spec note
+### Phase 8. Adopt the new mountable model note
 
-- replace the archived
+- use
+  [MountableSpecModel.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/MountableSpecModel.md)
+  as the lower-level runtime model note
+- keep
   [UiWidgetSpecModel.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/obsolete/UiWidgetSpecModel.md)
-  with:
-  - a generic `MountableSpec` model note
-  - optionally a widget-specific specialization note only if still useful
+  archived only as historical context
 
 
 ## Future Proposals

@@ -72,7 +72,7 @@ The following names should be used consistently:
 - `MountPointSpec`
   - backend-owned immutable description of one attachment site on a mountable
 - `UiPropSpec`
-  - backend-owned immutable description of one prop
+  - backend-owned immutable description of one prop on a mountable
 
 The older term "semantic library" is close, but `UiLibrary` is the preferred
 name going forward.
@@ -247,13 +247,13 @@ as long as `kind` names remain unique inside the root.
 ## 8. Backend Adapters Must Bridge Abstract `UiLibrary` Kinds
 
 Not every installed `UiLibrary` should be expected to expose backend-native
-widget kinds directly.
+mountable kinds directly.
 
 Example:
 
 - `CoreUiLibrary.button(label=..., on_press=...)`
 - `PySide6Backend` may actually mount that as a normalized `QPushButton`
-  widget spec using backend-native prop names like `text`
+  mountable using backend-native prop names like `text`
 
 Requirement:
 
@@ -275,7 +275,8 @@ The adapter layer should be explicit and backend-owned.
 
 ## 9. Prop Categories Must Be Explicit
 
-The backend-owned widget spec must distinguish at least three prop categories:
+The backend-owned mountable spec must distinguish at least three prop
+categories:
 
 - `dynamic`
   - valid at create and update time
@@ -308,14 +309,15 @@ Optional diagnostics may include:
 But the semantics should not diverge between debug and production.
 
 
-## 11. Widget Specs Must Be Frozen Dataclasses
+## 11. Mountable Specs Must Be Frozen Dataclasses
 
-Backend widget metadata must not be represented as ad hoc tuples or dicts of
+Backend mountable metadata must not be represented as ad hoc tuples or dicts of
 tuples.
 
 Requirement:
 
-- backend modules define frozen dataclasses for widget and prop specs
+- backend modules define frozen dataclasses for mountable, mount-point, and prop
+  specs
 - mapping fields should use `frozendict`
 - generated UI-library code should not embed these dataclass definitions
 
@@ -323,14 +325,17 @@ At minimum the backend side should have:
 
 - `UiPropSpec`
 - `MountableSpec`
+- `MountPointSpec`
+- `MountParamSpec`
+- `MountState`
 
 `MountableSpec` should encompass:
 
 - kind
-- mounted widget type or backend binding key
+- mounted native type or backend binding key
 - immutable prop spec map
-- child policy
-- any future backend rules needed for remount/update decisions
+- immutable mount-point spec map
+- any future backend rules needed for create/update/remount decisions
 
 
 ## 12. Generated UI Libraries Must Include Constructor And Setter Inputs
@@ -395,11 +400,11 @@ debug-friendly way to disable it for diagnosis and golden readability.
 This should be a compiler/transform flag, not an environment variable.
 
 
-## 15. Composite Widgets Must Appear As One Node
+## 15. Composite Mountables Must Appear As One Node
 
-The design must support backend-native composite widgets that:
+The design must support backend-native composite mountables that:
 
-- expose one head/native widget to the parent/backend
+- expose one head/native value to the parent/backend
 - internally manage child attachment at locations that are not the head widget
 - still appear to the reconciler as one node
 
@@ -408,7 +413,7 @@ while still fitting the reconciler model.
 
 The required backend binding contract is:
 
-- expose the head widget used for parent attachment
+- expose the head value used for parent attachment
 - `place_child(child, index)`
 - `detach_child(child)`
 - `dispose()`

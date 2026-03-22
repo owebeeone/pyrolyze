@@ -46,13 +46,13 @@ grouped by milestone priority.
   - The authoring guide describes local nested `@pyrolyse` lowering through private component ids with synthetic props.
   - The current structural rewrite still rejects nested component definitions.
 
-- [P2] Add the next integrated graph test scenarios from [AdvancedTestingPlan.md](../docs/AdvancedTestingPlan.md).
+- [P2] Add the next integrated graph test scenarios from [MountableTestingPlan.md](./dev-docs/MountableTestingPlan.md).
   - `integrated_use_effect_lifecycle`
   - `integrated_use_grip_store_refresh`
   - `integrated_nested_grid_reorder`
   - These are the highest-value missing confidence tests for rerender correctness before release.
 
-- [P2] Add the remaining helper assertions recommended by [AdvancedTestingPlan.md](../docs/AdvancedTestingPlan.md).
+- [P2] Add the remaining helper assertions recommended by [MountableTestingPlan.md](./dev-docs/MountableTestingPlan.md).
   - Keep small integrated-test helpers such as `assert_only_ui_changed(...)`, `assert_no_unexpected_context_churn(...)`, and `assert_ui_elements_present(...)` in the integrated graph test module so scenario expectations stay readable and deterministic.
 
 ### Can Defer Until After Initial Release
@@ -88,7 +88,7 @@ grouped by milestone priority.
   - The current runtime still uses the handwritten `FROZEN_V1_REGISTRY`.
   - This is a design-cleanliness issue more than a release blocker if the documented node set stays narrow.
 
-- [P3] Add the remaining lower-priority integrated graph test scenarios from [AdvancedTestingPlan.md](../docs/AdvancedTestingPlan.md).
+- [P3] Add the remaining lower-priority integrated graph test scenarios from [MountableTestingPlan.md](./dev-docs/MountableTestingPlan.md).
   - `integrated_conditional_branch_swap`
   - `integrated_component_method_dispatch`
   - `integrated_call_native_mixed_tree`
