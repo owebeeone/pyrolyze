@@ -146,6 +146,7 @@ class MountableEngine:
             spec,
             element.children,
             parent_slot_id=next_key.slot_id,
+            old_child_nodes=node.child_nodes,
             old_mount_states=node.mount_states,
         )
         node.child_nodes = child_nodes
@@ -462,15 +463,40 @@ class MountableEngine:
         children: tuple[UIElement, ...],
         *,
         parent_slot_id: Any | None,
+        old_child_nodes: list[MountedMountableNode] | None = None,
         old_mount_states: Mapping[tuple[object, ...], MountState] | None = None,
     ) -> tuple[list[MountedMountableNode], dict[tuple[object, ...], MountState]]:
-        if not children and not old_mount_states:
+        if not children and not old_mount_states and not old_child_nodes:
             return [], {}
-
-        child_nodes = [
-            self.mount(child, slot_id=_child_slot_id(parent_slot_id, index), call_site_id=child.call_site_id)
-            for index, child in enumerate(children)
-        ]
+        self._validate_child_mount_compatibility(spec, children)
+        reusable_children = _child_node_pool(old_child_nodes or [])
+        child_nodes: list[MountedMountableNode] = []
+        for index, child in enumerate(children):
+            child_slot_id = _resolved_child_slot_id(child, parent_slot_id, index)
+            child_call_site_id = child.call_site_id
+            current = _take_reusable_child(
+                reusable_children,
+                child,
+                slot_id=child_slot_id,
+                call_site_id=child_call_site_id,
+            )
+            if current is None:
+                child_nodes.append(
+                    self.mount(
+                        child,
+                        slot_id=child_slot_id,
+                        call_site_id=child_call_site_id,
+                    )
+                )
+                continue
+            child_nodes.append(
+                self.update(
+                    current,
+                    child,
+                    slot_id=child_slot_id,
+                    call_site_id=child_call_site_id,
+                )
+            )
         mount_states = self._build_mount_states(spec, child_nodes)
 
         for instance_key, state in mount_states.items():
@@ -493,7 +519,39 @@ class MountableEngine:
                         objects=(),
                     ),
                 )
+        for removed_child in _remaining_reusable_children(reusable_children):
+            self._dispose_node_subtree(removed_child)
         return child_nodes, mount_states
+
+    def _validate_child_mount_compatibility(
+        self,
+        parent_spec: UiWidgetSpec,
+        children: tuple[UIElement, ...],
+    ) -> None:
+        mount_point = parent_spec.mount_points.get("standard")
+        if mount_point is not None:
+            for child in children:
+                child_spec = self._spec_for(child.kind)
+                child_type = self._mountable_type_for(child_spec)
+                if self._mount_point_accepts_child(mount_point, child_type):
+                    continue
+                raise ValueError(
+                    self._format_standard_mount_error(parent_spec, child_spec, mount_point)
+                )
+            return
+        for child in children:
+            child_spec = self._spec_for(child.kind)
+            self._default_mount_point_for_child(parent_spec, child_spec)
+
+    def _dispose_node_subtree(self, node: MountedMountableNode) -> None:
+        for child in node.child_nodes:
+            self._dispose_node_subtree(child)
+        mountable = node.mountable
+        self._event_callbacks.pop(id(mountable), None)
+        for event_name in node.spec.events:
+            self._connected_events.discard((id(mountable), event_name))
+        if self._dispose_mountable is not None:
+            self._dispose_mountable(mountable)
 
     def _build_mount_states(
         self,
@@ -711,6 +769,65 @@ def _child_slot_id(parent_slot_id: Any | None, index: int) -> Any:
     if isinstance(parent_slot_id, tuple):
         return (*parent_slot_id, index)
     return (parent_slot_id, index)
+
+
+def _resolved_child_slot_id(child: UIElement, parent_slot_id: Any | None, index: int) -> Any:
+    if child.slot_id is not None:
+        return child.slot_id
+    return _child_slot_id(parent_slot_id, index)
+
+
+@dataclass(slots=True)
+class _ReusableChildPool:
+    explicit: dict[tuple[Any | None, int | str | None], list[MountedMountableNode]]
+    implicit: list[MountedMountableNode]
+
+
+def _child_node_pool(child_nodes: list[MountedMountableNode]) -> _ReusableChildPool:
+    explicit: dict[tuple[Any | None, int | str | None], list[MountedMountableNode]] = {}
+    implicit: list[MountedMountableNode] = []
+    for child_node in child_nodes:
+        element_slot_id = child_node.element.slot_id
+        element_call_site_id = child_node.element.call_site_id
+        if element_slot_id is None and element_call_site_id is None:
+            implicit.append(child_node)
+            continue
+        key = (element_slot_id, element_call_site_id)
+        explicit.setdefault(key, []).append(child_node)
+    return _ReusableChildPool(explicit=explicit, implicit=implicit)
+
+
+def _take_reusable_child(
+    pool: _ReusableChildPool,
+    child: UIElement,
+    *,
+    slot_id: Any | None,
+    call_site_id: int | str | None,
+) -> MountedMountableNode | None:
+    if child.slot_id is not None or call_site_id is not None:
+        bucket = pool.explicit.get((child.slot_id, call_site_id))
+        if bucket:
+            return bucket.pop(0)
+        bucket = pool.explicit.get((child.slot_id, None))
+        if bucket:
+            return bucket.pop(0)
+    for index, existing in enumerate(pool.implicit):
+        if existing.element == child:
+            return pool.implicit.pop(index)
+    if pool.implicit:
+        return pool.implicit.pop(0)
+    return None
+
+
+def _remaining_reusable_children(
+    pool: _ReusableChildPool,
+) -> list[MountedMountableNode]:
+    remaining = list(pool.implicit)
+    for bucket in pool.explicit.values():
+        remaining.extend(bucket)
+    return remaining
+
+
 def _is_positional_constructor_name(name: str) -> bool:
     return name.startswith("arg__")
 

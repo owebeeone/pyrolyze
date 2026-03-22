@@ -238,6 +238,64 @@ def test_mount_infers_default_layout_mount_from_generated_children(qapp: QApplic
     assert child_widget.text() == "Save"
 
 
+def test_update_preserves_layout_and_sibling_widgets_when_leaf_prop_changes(qapp: QApplication) -> None:
+    del qapp
+    engine = PySide6WidgetEngine(PySide6UiLibrary.WIDGET_SPECS)
+    node = engine.mount(
+        UIElement(
+            kind="QWidget",
+            props={"objectName": "root"},
+            children=(
+                UIElement(
+                    kind="QBoxLayout",
+                    props={"arg__1": QBoxLayout.Direction.TopToBottom},
+                    children=(
+                        UIElement(kind="QPushButton", props={"text": "Keep"}),
+                        UIElement(kind="QPushButton", props={"text": "Change"}),
+                    ),
+                ),
+            ),
+        ),
+        slot_id=("root", "widget", 3),
+        call_site_id=43,
+    )
+
+    assert node._mountable_node is not None
+    layout_node = node._mountable_node.child_nodes[0]
+    first_button_node = layout_node.child_nodes[0]
+    second_button_node = layout_node.child_nodes[1]
+    original_layout = layout_node.mountable
+    original_first_button = first_button_node.mountable
+    original_second_button = second_button_node.mountable
+
+    updated = engine.update(
+        node,
+        UIElement(
+            kind="QWidget",
+            props={"objectName": "root"},
+            children=(
+                UIElement(
+                    kind="QBoxLayout",
+                    props={"arg__1": QBoxLayout.Direction.TopToBottom},
+                    children=(
+                        UIElement(kind="QPushButton", props={"text": "Keep"}),
+                        UIElement(kind="QPushButton", props={"text": "Changed"}),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    assert updated is node
+    assert node._mountable_node is not None
+    assert node._mountable_node.child_nodes[0].mountable is original_layout
+    assert node._mountable_node.child_nodes[0].child_nodes[0].mountable is original_first_button
+    assert node._mountable_node.child_nodes[0].child_nodes[1].mountable is original_second_button
+    changed_button = node._mountable_node.child_nodes[0].child_nodes[1].mountable
+    assert isinstance(changed_button, QPushButton)
+    assert changed_button.text() == "Changed"
+
+
 def test_mount_raises_when_unspecified_child_has_no_compatible_default_attach_path(qapp: QApplication) -> None:
     del qapp
     engine = PySide6WidgetEngine(PySide6UiLibrary.WIDGET_SPECS)
