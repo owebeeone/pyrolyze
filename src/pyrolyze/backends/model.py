@@ -42,6 +42,12 @@ class FillPolicy(StrEnum):
     TOOLKIT_DEFAULT = "toolkit_default"
 
 
+class MountReplayKind(StrEnum):
+    NONE = "none"
+    INDEX = "index"
+    ANCHOR_BEFORE = "anchor_before"
+
+
 class ChildPolicy(StrEnum):
     NONE = "none"
     ORDERED = "ordered"
@@ -109,7 +115,10 @@ class MountPointSpec:
     apply_method_name: str | None = None
     sync_method_name: str | None = None
     place_method_name: str | None = None
+    append_method_name: str | None = None
     detach_method_name: str | None = None
+    replay_kind: MountReplayKind = MountReplayKind.NONE
+    prefer_sync: bool = False
 
     def instance_key(self, values: dict[str, Any]) -> tuple[object, ...]:
         return (self.name, *(values[param.name] for param in self.params if param.keyed))
@@ -162,11 +171,32 @@ class UiEventLearning:
 
 
 @dataclass(frozen=True, slots=True)
+class UiMountParamLearning:
+    keyed: bool | None = None
+    annotation: TypeRef | None = None
+    default_repr: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class UiMountPointLearning:
+    public_name: str | None = None
+    enabled: bool | None = None
+    accepted_produced_type: TypeRef | None = None
+    param_learnings: frozendict[str, UiMountParamLearning] = frozendict()
+    default_child: bool | None = None
+    default_attach_rank: int | None = None
+    replay_kind: MountReplayKind | None = None
+    append_method_name: str | None = None
+    prefer_sync: bool | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class UiWidgetLearning:
     public_name: str | None = None
     prop_learnings: frozendict[str, UiPropLearning] = frozendict()
     method_learnings: frozendict[str, UiMethodLearning] = frozendict()
     event_learnings: frozendict[str, UiEventLearning] = frozendict()
+    mount_point_learnings: frozendict[str, UiMountPointLearning] = frozendict()
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,6 +227,9 @@ __all__ = [
     "EventPayloadPolicy",
     "FillPolicy",
     "MethodMode",
+    "MountReplayKind",
+    "UiMountParamLearning",
+    "UiMountPointLearning",
     "MountParamSpec",
     "MountPointSpec",
     "MountState",

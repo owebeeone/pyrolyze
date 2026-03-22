@@ -26,8 +26,11 @@ from pyrolyze.backends.model import (
     EventPayloadPolicy,
     FillPolicy,
     MethodMode,
+    MountReplayKind,
     UiEventLearning,
     UiMethodLearning,
+    UiMountPointLearning,
+    UiMountParamLearning,
     UiPropLearning,
     UiWidgetLearning,
 )
@@ -62,12 +65,18 @@ class DiscoveredMountPoint:
     name: str
     accepted_type_name: str
     params: tuple[DiscoveredParameter, ...] = ()
+    keyed_param_names: frozenset[str] = frozenset()
     min_children: int = 0
     max_children: int | None = None
     apply_method_name: str | None = None
     sync_method_name: str | None = None
     place_method_name: str | None = None
+    append_method_name: str | None = None
     detach_method_name: str | None = None
+    replay_kind: MountReplayKind = MountReplayKind.NONE
+    prefer_sync: bool = False
+    default_child: bool | None = None
+    default_attach_rank: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -207,9 +216,80 @@ def apply_learnings(
                 prop_learnings=widget_learning.prop_learnings,
                 method_learnings=widget_learning.method_learnings,
                 event_learnings=widget_learning.event_learnings,
+                mount_points=_apply_mount_point_learnings(
+                    widget.mount_points,
+                    widget_learning.mount_point_learnings,
+                ),
             )
         )
     return resolved
+
+
+def _apply_mount_point_learnings(
+    mount_points: Sequence[DiscoveredMountPoint],
+    learnings: Mapping[str, UiMountPointLearning],
+) -> tuple[DiscoveredMountPoint, ...]:
+    resolved: list[DiscoveredMountPoint] = []
+    for mount_point in mount_points:
+        learning = learnings.get(mount_point.name)
+        if learning is None:
+            resolved.append(mount_point)
+            continue
+        if learning.enabled is False:
+            continue
+        keyed_param_names = set(mount_point.keyed_param_names)
+        updated_params: list[DiscoveredParameter] = []
+        for parameter in mount_point.params:
+            param_learning = learning.param_learnings.get(parameter.name)
+            if param_learning is None:
+                updated_params.append(parameter)
+                continue
+            if param_learning.keyed is True:
+                keyed_param_names.add(parameter.name)
+            elif param_learning.keyed is False:
+                keyed_param_names.discard(parameter.name)
+            updated_params.append(
+                replace(
+                    parameter,
+                    annotation_source=(
+                        param_learning.annotation.expr
+                        if param_learning.annotation is not None
+                        else parameter.annotation_source
+                    ),
+                    default_source=(
+                        param_learning.default_repr
+                        if param_learning.default_repr is not None
+                        else parameter.default_source
+                    ),
+                )
+            )
+        resolved.append(
+            replace(
+                mount_point,
+                name=learning.public_name or mount_point.name,
+                accepted_type_name=(
+                    learning.accepted_produced_type.expr
+                    if learning.accepted_produced_type is not None
+                    else mount_point.accepted_type_name
+                ),
+                params=tuple(updated_params),
+                keyed_param_names=frozenset(keyed_param_names),
+                append_method_name=(
+                    learning.append_method_name
+                    if learning.append_method_name is not None
+                    else mount_point.append_method_name
+                ),
+                replay_kind=learning.replay_kind or mount_point.replay_kind,
+                prefer_sync=(
+                    learning.prefer_sync
+                    if learning.prefer_sync is not None
+                    else mount_point.prefer_sync
+                ),
+                default_child=learning.default_child,
+                default_attach_rank=learning.default_attach_rank,
+            )
+        )
+    return tuple(resolved)
 
 
 def infer_pyside6_learnings(
@@ -411,7 +491,7 @@ def generate_pyside6_learnings_source(
         "",
         "from frozendict import frozendict",
         "",
-        "from pyrolyze.backends.model import EventPayloadPolicy, FillPolicy, MethodMode, UiEventLearning, UiMethodLearning, UiPropLearning, TypeRef, UiWidgetLearning",
+        "from pyrolyze.backends.model import EventPayloadPolicy, FillPolicy, MethodMode, MountReplayKind, UiEventLearning, UiMethodLearning, UiMountPointLearning, UiMountParamLearning, UiPropLearning, TypeRef, UiWidgetLearning",
         "",
         "LEARNINGS: frozendict[str, UiWidgetLearning] = frozendict(",
         "    {",
@@ -477,6 +557,49 @@ def generate_pyside6_learnings_source(
         lines.extend(
             [
                 "                }",
+                "            ),",
+                "            mount_point_learnings=frozendict(",
+                "                {",
+            ]
+        )
+        for mount_name in sorted(widget_learning.mount_point_learnings):
+            learning = widget_learning.mount_point_learnings[mount_name]
+            lines.extend(
+                [
+                    f'                    "{mount_name}": UiMountPointLearning(',
+                    f"                        public_name={learning.public_name!r},",
+                    f"                        enabled={learning.enabled!r},",
+                    f"                        accepted_produced_type={_render_type_ref(learning.accepted_produced_type.expr) if learning.accepted_produced_type is not None else 'None'},",
+                    "                        param_learnings=frozendict(",
+                    "                            {",
+                ]
+            )
+            for param_name in sorted(learning.param_learnings):
+                param_learning = learning.param_learnings[param_name]
+                lines.extend(
+                    [
+                        f'                                "{param_name}": UiMountParamLearning(',
+                        f"                                    keyed={param_learning.keyed!r},",
+                        f"                                    annotation={_render_type_ref(param_learning.annotation.expr) if param_learning.annotation is not None else 'None'},",
+                        f"                                    default_repr={param_learning.default_repr!r},",
+                        "                                ),",
+                    ]
+                )
+            lines.extend(
+                [
+                    "                            }",
+                    "                        ),",
+                    f"                        default_child={learning.default_child!r},",
+                    f"                        default_attach_rank={learning.default_attach_rank!r},",
+                    f"                        replay_kind={f'MountReplayKind.{learning.replay_kind.name}' if learning.replay_kind is not None else 'None'},",
+                    f"                        append_method_name={learning.append_method_name!r},",
+                    f"                        prefer_sync={learning.prefer_sync!r},",
+                    "                    ),",
+                ]
+            )
+        lines.extend(
+            [
+                "                }",
                 "            )",
                 "        ),",
             ]
@@ -517,6 +640,7 @@ def generate_library_source(
         "    EventPayloadPolicy,",
         "    FillPolicy,",
         "    MethodMode,",
+        "    MountReplayKind,",
         "    MountParamSpec,",
         "    MountPointSpec,",
         "    PropMode,",
@@ -694,6 +818,15 @@ def _infer_default_child_mount_point_name(
     package_name: str,
     mount_points: Sequence[DiscoveredMountPoint],
 ) -> str | None:
+    learned_defaults = sorted(
+        (mount_point for mount_point in mount_points if mount_point.default_child is True),
+        key=lambda mount_point: (
+            mount_point.default_attach_rank if mount_point.default_attach_rank is not None else 0,
+            mount_point.name,
+        ),
+    )
+    if learned_defaults:
+        return learned_defaults[0].name
     available = {mount_point.name for mount_point in mount_points}
     for candidate in _default_child_mount_priority(package_name):
         if candidate in available:
@@ -705,18 +838,29 @@ def _infer_default_attach_mount_point_names(
     package_name: str,
     mount_points: Sequence[DiscoveredMountPoint],
 ) -> tuple[str, ...]:
-    candidate_names = {
-        mount_point.name
+    candidate_mounts = [
+        mount_point
         for mount_point in mount_points
         if _mount_point_supports_unspecified_attach(mount_point)
-    }
+    ]
+    candidate_names = {mount_point.name for mount_point in candidate_mounts}
+    ranked_mounts = sorted(
+        (
+            mount_point
+            for mount_point in candidate_mounts
+            if mount_point.default_attach_rank is not None
+        ),
+        key=lambda mount_point: (mount_point.default_attach_rank, mount_point.name),
+    )
+    ranked_names = [mount_point.name for mount_point in ranked_mounts]
+    remaining = candidate_names.difference(ranked_names)
     ordered = [
         candidate
         for candidate in _default_attach_mount_priority(package_name)
-        if candidate in candidate_names
+        if candidate in remaining
     ]
-    extras = sorted(candidate_names.difference(ordered))
-    return tuple([*ordered, *extras])
+    extras = sorted(remaining.difference(ordered))
+    return tuple([*ranked_names, *ordered, *extras])
 
 
 def _mount_point_supports_unspecified_attach(mount_point: DiscoveredMountPoint) -> bool:
@@ -840,7 +984,7 @@ def _render_mount_points(mount_points: Sequence[DiscoveredMountPoint]) -> list[s
         )
         lines.append("                    params=(")
         for parameter in mount_point.params:
-            keyed = parameter.name in _PYSIDE6_KEYED_MOUNT_PARAM_NAMES
+            keyed = parameter.name in mount_point.keyed_param_names
             lines.append(
                 "                        "
                 f'MountParamSpec(name="{parameter.name}", annotation={_render_type_ref(parameter.annotation_source)}, '
@@ -854,7 +998,10 @@ def _render_mount_points(mount_points: Sequence[DiscoveredMountPoint]) -> list[s
                 f"                    apply_method_name={mount_point.apply_method_name!r},",
                 f"                    sync_method_name={mount_point.sync_method_name!r},",
                 f"                    place_method_name={mount_point.place_method_name!r},",
+                f"                    append_method_name={mount_point.append_method_name!r},",
                 f"                    detach_method_name={mount_point.detach_method_name!r},",
+                f"                    replay_kind=MountReplayKind.{mount_point.replay_kind.name},",
+                f"                    prefer_sync={mount_point.prefer_sync!r},",
                 "                ),",
             ]
         )
@@ -1151,6 +1298,11 @@ def _build_pyside6_single_mount_point(
         name=mount_name,
         accepted_type_name=accepted_type_name or _normalized_mount_type_name(object_parameter.annotation_source),
         params=mount_params,
+        keyed_param_names=frozenset(
+            parameter.name
+            for parameter in mount_params
+            if parameter.name in _PYSIDE6_KEYED_MOUNT_PARAM_NAMES
+        ),
         max_children=1,
         apply_method_name=method_name,
     )
@@ -1179,18 +1331,36 @@ def _build_pyside6_family_mount_point(
             name=family_name,
             accepted_type_name=accepted_type_name,
             params=contextual_params,
+            keyed_param_names=frozenset(
+                parameter.name
+                for parameter in contextual_params
+                if parameter.name in _PYSIDE6_KEYED_MOUNT_PARAM_NAMES
+            ),
             max_children=1,
             apply_method_name=add_method_name,
+            prefer_sync=True,
         )
     if preferred_method_name != insert_method_name:
         return None
+    replay_kind = (
+        MountReplayKind.ANCHOR_BEFORE
+        if preferred_method_name == "insertAction"
+        else MountReplayKind.INDEX
+    )
     return DiscoveredMountPoint(
         name=family_name,
         accepted_type_name=accepted_type_name,
         params=contextual_params,
+        keyed_param_names=frozenset(
+            parameter.name
+            for parameter in contextual_params
+            if parameter.name in _PYSIDE6_KEYED_MOUNT_PARAM_NAMES
+        ),
         max_children=None,
         place_method_name=preferred_method_name,
+        append_method_name=add_method_name,
         detach_method_name=detach_method_name,
+        replay_kind=replay_kind,
     )
 
 

@@ -455,7 +455,7 @@ Phase 1 should be considered complete when:
 
 | Step | Area | Status | Notes |
 | --- | --- | --- | --- |
-| 1 | Expand backend model metadata and learnings model | Pending | Add replay-shape metadata and mount-point learnings support |
+| 1 | Expand backend model metadata and learnings model | Done | Added replay-shape metadata, mount-point learnings, and generator support |
 | 2 | Add selector runtime artifacts | Pending | `SlotSelector`, `default`, `no_emit`, generated selector artifacts |
 | 3 | Add slot-backed directive context | Pending | `open_directive(...)` and retained directive slot behavior |
 | 4 | Add compiler lowering for `mount(...)` | Pending | Detection, lowering, goldens, splat support |

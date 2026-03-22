@@ -7,7 +7,18 @@ import sys
 import pytest
 from frozendict import frozendict
 
-from pyrolyze.backends.model import EventPayloadPolicy, FillPolicy, MethodMode, TypeRef, UiMethodLearning, UiPropLearning, UiWidgetLearning
+from pyrolyze.backends.model import (
+    EventPayloadPolicy,
+    FillPolicy,
+    MethodMode,
+    MountReplayKind,
+    TypeRef,
+    UiMethodLearning,
+    UiMountPointLearning,
+    UiMountParamLearning,
+    UiPropLearning,
+    UiWidgetLearning,
+)
 from pyrolyze.backends.pyside6.generated_library import PySide6UiLibrary
 
 from pyrolyze_tools.generate_semantic_library import (
@@ -266,7 +277,10 @@ def test_generate_library_source_renders_mount_point_specs() -> None:
                         apply_method_name=None,
                         sync_method_name="sync_widgets",
                         place_method_name="place_widget",
+                        append_method_name="append_widget",
                         detach_method_name="detach_widget",
+                        replay_kind=MountReplayKind.INDEX,
+                        prefer_sync=True,
                     ),
                 ),
             )
@@ -282,7 +296,10 @@ def test_generate_library_source_renders_mount_point_specs() -> None:
     assert "default_attach_mount_point_names=('standard',)" in source
     assert "sync_method_name='sync_widgets'" in source
     assert "place_method_name='place_widget'" in source
+    assert "append_method_name='append_widget'" in source
     assert "detach_method_name='detach_widget'" in source
+    assert "replay_kind=MountReplayKind.INDEX" in source
+    assert "prefer_sync=True" in source
 
 
 def test_write_generated_library_uses_package_name_for_output(
@@ -533,6 +550,78 @@ def test_apply_learnings_overrides_method_source_props_and_constructor_equivalen
     assert 'constructor_equivalent=True' in source
 
 
+def test_apply_learnings_overrides_mount_point_shape_and_defaults() -> None:
+    widgets = [
+        DiscoveredWidgetClass(
+            module_name="fakewidgets.widgets",
+            class_name="PanelWidget",
+            public_name="CPanelWidget",
+            parameters=(),
+            mount_points=(
+                DiscoveredMountPoint(
+                    name="widget",
+                    accepted_type_name="fakewidgets.widgets.PanelWidget",
+                    params=(
+                        DiscoveredParameter(
+                            name="column",
+                            kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                            annotation_source="int",
+                            default_source="0",
+                            coerced_expression="int(column)",
+                        ),
+                    ),
+                    min_children=0,
+                    max_children=None,
+                    place_method_name="insert_widget",
+                    detach_method_name="detach_widget",
+                    replay_kind=MountReplayKind.INDEX,
+                ),
+            ),
+        )
+    ]
+
+    resolved = apply_learnings(
+        widgets,
+        frozendict(
+            {
+                "PanelWidget": UiWidgetLearning(
+                    mount_point_learnings=frozendict(
+                        {
+                            "widget": UiMountPointLearning(
+                                public_name="panel_widget",
+                                param_learnings=frozendict(
+                                    {
+                                        "column": UiMountParamLearning(
+                                            keyed=True,
+                                            annotation=TypeRef("int | None"),
+                                            default_repr="1",
+                                        )
+                                    }
+                                ),
+                                default_child=True,
+                                default_attach_rank=0,
+                                replay_kind=MountReplayKind.ANCHOR_BEFORE,
+                                append_method_name="append_widget",
+                                prefer_sync=True,
+                            )
+                        }
+                    )
+                )
+            }
+        ),
+    )
+
+    source = generate_library_source("fakewidgets", resolved)
+
+    assert '"panel_widget": MountPointSpec(' in source
+    assert 'MountParamSpec(name="column", annotation=TypeRef(expr=\'int | None\'), keyed=True, default_repr=\'1\')' in source
+    assert "default_child_mount_point_name='panel_widget'" in source
+    assert "default_attach_mount_point_names=('panel_widget',)" in source
+    assert "append_method_name='append_widget'" in source
+    assert "replay_kind=MountReplayKind.ANCHOR_BEFORE" in source
+    assert "prefer_sync=True" in source
+
+
 def test_learned_method_backed_source_props_become_public_parameters() -> None:
     widgets = [
         DiscoveredWidgetClass(
@@ -635,7 +724,19 @@ def test_generate_pyside6_learnings_source_renders_module_constant() -> None:
                             )
                         }
                     )
-                )
+                ),
+                "QWidget": UiWidgetLearning(
+                    mount_point_learnings=frozendict(
+                        {
+                            "layout": UiMountPointLearning(
+                                public_name="layout",
+                                default_child=True,
+                                replay_kind=MountReplayKind.INDEX,
+                                prefer_sync=True,
+                            )
+                        }
+                    )
+                ),
             }
         )
     )
@@ -644,3 +745,6 @@ def test_generate_pyside6_learnings_source_renders_module_constant() -> None:
     assert '"QPushButton": UiWidgetLearning(' in source
     assert '"setGeometry": UiMethodLearning(' in source
     assert 'source_props=("geometry_x", "geometry_y", "geometry_width", "geometry_height")' in source
+    assert "UiMountPointLearning" in source
+    assert '"layout": UiMountPointLearning(' in source
+    assert "replay_kind=MountReplayKind.INDEX" in source
