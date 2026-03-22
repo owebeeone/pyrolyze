@@ -6,7 +6,7 @@ import inspect
 from frozendict import frozendict
 
 from pyrolyze.api import MISSING
-from pyrolyze.backends.model import UiInterface, UiMethodSpec, UiWidgetSpec
+from pyrolyze.backends.model import UiEventSpec, UiInterface, UiMethodSpec, UiWidgetSpec
 
 
 def test_generated_backend_libraries_import() -> None:
@@ -28,8 +28,16 @@ def test_generated_backend_libraries_import() -> None:
     assert qlabel_signature.parameters["enabled"].default is MISSING
 
     qpush_signature = inspect.signature(pyside6_module.PySide6UiLibrary.CQPushButton)
+    assert "icon" not in qpush_signature.parameters
+    assert "text" in qpush_signature.parameters
     assert "geometry_x" in qpush_signature.parameters
     assert "geometry_height" in qpush_signature.parameters
+
+    qhbox_signature = inspect.signature(pyside6_module.PySide6UiLibrary.CQHBoxLayout)
+    assert qhbox_signature.parameters["parent"].default is Ellipsis
+
+    qvbox_signature = inspect.signature(pyside6_module.PySide6UiLibrary.CQVBoxLayout)
+    assert qvbox_signature.parameters["parent"].default is Ellipsis
 
     qpush_button_spec = pyside6_module.PySide6UiLibrary.WIDGET_SPECS["QPushButton"]
     assert "setGeometry" in qpush_button_spec.methods
@@ -40,6 +48,9 @@ def test_generated_backend_libraries_import() -> None:
         "geometry_width",
         "geometry_height",
     )
+    assert "on_clicked" in qpush_button_spec.events
+    assert isinstance(qpush_button_spec.events["on_clicked"], UiEventSpec)
+    assert qpush_button_spec.events["on_clicked"].signal_name == "clicked"
 
     qspin_box_spec = pyside6_module.PySide6UiLibrary.WIDGET_SPECS["QSpinBox"]
     assert qspin_box_spec.methods["setRange"].source_props == ("minimum", "maximum")

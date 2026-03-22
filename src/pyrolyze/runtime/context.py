@@ -788,6 +788,8 @@ class ContextBase:
                 args=raw_args,
                 kwargs=raw_kwargs,
                 dirty_state=dirty_state or dirtyof(),
+                packed_kwargs=bool(getattr(metadata, "packed_kwargs", False)),
+                packed_kwarg_param_names=tuple(getattr(metadata, "packed_kwarg_param_names", ())),
             )
         native_context_param = _native_context_param_name(cast(Callable[..., Any], raw_container_fn))
         if native_context_param is not None:
@@ -1710,21 +1712,43 @@ class _PyrolyzeContainerCallHandle(AbstractContextManager[ContainerSlotContext])
     args: tuple[Any, ...]
     kwargs: dict[str, Any]
     dirty_state: DirtyStateContext
+    packed_kwargs: bool = False
+    packed_kwarg_param_names: tuple[str, ...] = ()
 
     def __enter__(self) -> ContainerSlotContext:
         self.slot.expects_native_root = True
         self.slot._begin_scope_pass()
         try:
-            if self.bound_receiver is _BOUND_METHOD_SELF_MISSING:
-                result = self.runtime_func(self.slot, self.dirty_state, *self.args, **self.kwargs)
-            else:
-                result = self.runtime_func(
-                    self.bound_receiver,
-                    self.slot,
-                    self.dirty_state,
-                    *self.args,
-                    **self.kwargs,
+            if self.packed_kwargs:
+                packed_kwargs = _pack_component_kwargs(
+                    self.packed_kwarg_param_names,
+                    self.args,
+                    self.kwargs,
                 )
+                if self.bound_receiver is _BOUND_METHOD_SELF_MISSING:
+                    result = self.runtime_func(
+                        self.slot,
+                        self.dirty_state,
+                        **packed_kwargs,
+                    )
+                else:
+                    result = self.runtime_func(
+                        self.bound_receiver,
+                        self.slot,
+                        self.dirty_state,
+                        **packed_kwargs,
+                    )
+            else:
+                if self.bound_receiver is _BOUND_METHOD_SELF_MISSING:
+                    result = self.runtime_func(self.slot, self.dirty_state, *self.args, **self.kwargs)
+                else:
+                    result = self.runtime_func(
+                        self.bound_receiver,
+                        self.slot,
+                        self.dirty_state,
+                        *self.args,
+                        **self.kwargs,
+                    )
             if result is not None:
                 raise TypeError("@pyrolyse functions must return None")
             if len(self.slot._staged_ui) != 1:

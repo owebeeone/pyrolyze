@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from PySide6.QtWidgets import QApplication, QLayout, QWidget
 
 from pyrolyze.api import MISSING, UIElement
-from pyrolyze.backends.model import AccessorKind, UiWidgetSpec
+from pyrolyze.backends.model import AccessorKind, UiEventSpec, UiWidgetSpec
 from pyrolyze.backends.mountable_engine import MountableEngine, MountedMountableNode, MountableNodeKey
 
 
@@ -41,6 +41,7 @@ class PySide6WidgetEngine:
         self._engine = MountableEngine(
             widget_specs,
             read_current_prop_value=self._read_current_prop_value,
+            connect_event_signal=self._connect_event_signal,
             capture_placement=_capture_widget_placement,
             restore_placement=_restore_widget_placement,
             dispose_mountable=_dispose_widget,
@@ -137,6 +138,19 @@ class PySide6WidgetEngine:
                 return MISSING
             return getattr(mountable, prop.getter_name)()
         return MISSING
+
+    def _connect_event_signal(
+        self,
+        mountable: object,
+        event_spec: UiEventSpec,
+        callback: Callable[..., None],
+    ) -> None:
+        signal = getattr(mountable, event_spec.signal_name, None)
+        if signal is None or not hasattr(signal, "connect"):
+            raise AttributeError(
+                f"{type(mountable).__name__} has no connectable signal {event_spec.signal_name!r}"
+            )
+        signal.connect(callback)
 
 
 def _capture_widget_placement(widget: object) -> _WidgetPlacement:

@@ -31,6 +31,12 @@ class MethodMode(StrEnum):
     CREATE_UPDATE = "create_update"
 
 
+class EventPayloadPolicy(StrEnum):
+    NONE = "none"
+    FIRST_ARG = "first_arg"
+    ALL_ARGS = "all_args"
+
+
 class FillPolicy(StrEnum):
     RETAIN_EFFECTIVE = "retain_effective"
     TOOLKIT_DEFAULT = "toolkit_default"
@@ -79,6 +85,13 @@ class UiMethodSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class UiEventSpec:
+    name: str
+    signal_name: str
+    payload_policy: EventPayloadPolicy = EventPayloadPolicy.NONE
+
+
+@dataclass(frozen=True, slots=True)
 class MountParamSpec:
     name: str
     annotation: TypeRef | None
@@ -121,6 +134,7 @@ class UiWidgetSpec:
     props: frozendict[str, UiPropSpec]
     methods: frozendict[str, UiMethodSpec]
     child_policy: ChildPolicy
+    events: frozendict[str, UiEventSpec] = frozendict()
     mount_points: frozendict[str, MountPointSpec] = frozendict()
     default_child_mount_point_name: str | None = None
     default_attach_mount_point_names: tuple[str, ...] = ()
@@ -142,10 +156,17 @@ class UiMethodLearning:
 
 
 @dataclass(frozen=True, slots=True)
+class UiEventLearning:
+    signal_name: str
+    payload_policy: EventPayloadPolicy = EventPayloadPolicy.NONE
+
+
+@dataclass(frozen=True, slots=True)
 class UiWidgetLearning:
     public_name: str | None = None
     prop_learnings: frozendict[str, UiPropLearning] = frozendict()
     method_learnings: frozendict[str, UiMethodLearning] = frozendict()
+    event_learnings: frozendict[str, UiEventLearning] = frozendict()
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,6 +194,7 @@ class UiInterface:
 __all__ = [
     "AccessorKind",
     "ChildPolicy",
+    "EventPayloadPolicy",
     "FillPolicy",
     "MethodMode",
     "MountParamSpec",
@@ -180,6 +202,8 @@ __all__ = [
     "MountState",
     "PropMode",
     "TypeRef",
+    "UiEventLearning",
+    "UiEventSpec",
     "UiInterface",
     "UiInterfaceEntry",
     "UiMethodLearning",

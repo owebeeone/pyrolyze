@@ -147,7 +147,11 @@ def test_generate_library_source_renders_qt_property_metadata() -> None:
     )
 
     assert "class PySide6UiLibrary:" in source
-    assert "from pyrolyze.api import MISSING, MissingType, UIElement, call_native, pyrolyse, ui_interface" in source
+    assert "import PySide6" in source
+    assert (
+        "from pyrolyze.api import MISSING, MissingType, PyrolyzeHandler, UIElement, call_native, "
+        "pyrolyse, ui_interface" in source
+    )
     assert 'QT_PROPERTY_GETTER: ClassVar[str] = "property"' in source
     assert 'QT_PROPERTY_SETTER: ClassVar[str] = "setProperty"' in source
     assert 'WIDGET_SPECS: ClassVar[frozendict[str, UiWidgetSpec]]' in source

@@ -13,6 +13,7 @@ import ast
 from dataclasses import dataclass, replace
 from functools import lru_cache
 import importlib
+import importlib.util
 import inspect
 import pkgutil
 from pathlib import Path
@@ -21,7 +22,16 @@ from typing import Any, Mapping, Sequence
 
 from frozendict import frozendict
 
-from pyrolyze.backends.model import FillPolicy, MethodMode, UiMethodLearning, UiPropLearning, UiWidgetLearning
+from pyrolyze.backends.model import (
+    EventPayloadPolicy,
+    FillPolicy,
+    MethodMode,
+    UiEventLearning,
+    UiMethodLearning,
+    UiPropLearning,
+    UiWidgetLearning,
+)
+from pyrolyze.compiler import emit_transformed_source
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +83,7 @@ class DiscoveredWidgetClass:
     omitted_variadic_arguments: bool = False
     prop_learnings: frozendict[str, UiPropLearning] = frozendict()
     method_learnings: frozendict[str, UiMethodLearning] = frozendict()
+    event_learnings: frozendict[str, UiEventLearning] = frozendict()
 
 
 def discover_modules(root_module_name: str) -> list[str]:
@@ -158,8 +169,22 @@ def load_learnings(root_module_name: str) -> frozendict[str, UiWidgetLearning]:
     module_name = f"pyrolyze.backends.{backend_package}.learnings"
     try:
         module = importlib.import_module(module_name)
-    except ModuleNotFoundError:
-        return frozendict()
+    except Exception:
+        learnings_path = (
+            Path(__file__).resolve().parents[1]
+            / "src"
+            / "pyrolyze"
+            / "backends"
+            / backend_package
+            / "learnings.py"
+        )
+        if not learnings_path.exists():
+            return frozendict()
+        spec = importlib.util.spec_from_file_location(module_name, learnings_path)
+        if spec is None or spec.loader is None:
+            return frozendict()
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
     learnings = getattr(module, "LEARNINGS", frozendict())
     if isinstance(learnings, frozendict):
         return learnings
@@ -182,6 +207,7 @@ def apply_learnings(
                 public_name=widget_learning.public_name or widget.public_name,
                 prop_learnings=widget_learning.prop_learnings,
                 method_learnings=widget_learning.method_learnings,
+                event_learnings=widget_learning.event_learnings,
             )
         )
     return resolved
@@ -386,7 +412,7 @@ def generate_pyside6_learnings_source(
         "",
         "from frozendict import frozendict",
         "",
-        "from pyrolyze.backends.model import FillPolicy, MethodMode, UiMethodLearning, UiWidgetLearning",
+        "from pyrolyze.backends.model import EventPayloadPolicy, FillPolicy, MethodMode, UiEventLearning, UiMethodLearning, UiPropLearning, TypeRef, UiWidgetLearning",
         "",
         "LEARNINGS: frozendict[str, UiWidgetLearning] = frozendict(",
         "    {",
@@ -396,6 +422,25 @@ def generate_pyside6_learnings_source(
         lines.extend(
             [
                 f'        "{widget_name}": UiWidgetLearning(',
+                "            prop_learnings=frozendict(",
+                "                {",
+            ]
+        )
+        for prop_name in sorted(widget_learning.prop_learnings):
+            learning = widget_learning.prop_learnings[prop_name]
+            lines.extend(
+                [
+                    f'                    "{prop_name}": UiPropLearning(',
+                    f"                        public={learning.public!r},",
+                    f"                        signature_annotation={_render_type_ref(learning.signature_annotation.expr) if learning.signature_annotation is not None else 'None'},",
+                    f"                        signature_default_repr={learning.signature_default_repr!r},",
+                    "                    ),",
+                ]
+            )
+        lines.extend(
+            [
+                "                }",
+                "            ),",
                 "            method_learnings=frozendict(",
                 "                {",
             ]
@@ -409,6 +454,24 @@ def generate_pyside6_learnings_source(
                     f"                        fill_policy=FillPolicy.{(learning.fill_policy or FillPolicy.RETAIN_EFFECTIVE).name},",
                     f"                        mode=MethodMode.{(learning.mode or MethodMode.CREATE_UPDATE).name},",
                     f"                        constructor_equivalent={(learning.constructor_equivalent if learning.constructor_equivalent is not None else False)!r},",
+                    "                    ),",
+                ]
+            )
+        lines.extend(
+            [
+                "                }",
+                "            ),",
+                "            event_learnings=frozendict(",
+                "                {",
+            ]
+        )
+        for event_name in sorted(widget_learning.event_learnings):
+            learning = widget_learning.event_learnings[event_name]
+            lines.extend(
+                [
+                    f'                    "{event_name}": UiEventLearning(',
+                    f'                        signal_name="{learning.signal_name}",',
+                    f"                        payload_policy=EventPayloadPolicy.{learning.payload_policy.name},",
                     "                    ),",
                 ]
             )
@@ -440,20 +503,24 @@ def generate_library_source(
         "",
         "from __future__ import annotations",
         "",
+        f"import {package_name}",
+        "",
         "from typing import Any, ClassVar",
         "",
         "from frozendict import frozendict",
         "",
-        "from pyrolyze.api import MISSING, MissingType, UIElement, call_native, pyrolyse, ui_interface",
+        "from pyrolyze.api import MISSING, MissingType, PyrolyzeHandler, UIElement, call_native, pyrolyse, ui_interface",
         "from pyrolyze.backends.model import (",
         "    AccessorKind,",
         "    ChildPolicy,",
+        "    EventPayloadPolicy,",
         "    FillPolicy,",
         "    MethodMode,",
         "    MountParamSpec,",
         "    MountPointSpec,",
         "    PropMode,",
         "    TypeRef,",
+        "    UiEventSpec,",
         "    UiInterface,",
         "    UiInterfaceEntry,",
         "    UiMethodSpec,",
@@ -557,6 +624,13 @@ def _render_single_widget_spec(
         ]
     )
     lines.extend(_render_widget_methods(widget.setter_methods, widget.method_learnings))
+    lines.extend(
+        [
+            "            }),",
+            "            events=frozendict({",
+        ]
+    )
+    lines.extend(_render_widget_events(widget.event_learnings))
     lines.extend(
         [
             "            }),",
@@ -786,6 +860,24 @@ def _render_mount_points(mount_points: Sequence[DiscoveredMountPoint]) -> list[s
     return lines
 
 
+def _render_widget_events(
+    event_learnings: Mapping[str, UiEventLearning],
+) -> list[str]:
+    lines: list[str] = []
+    for event_name in sorted(event_learnings):
+        learning = event_learnings[event_name]
+        lines.extend(
+            [
+                f'                "{event_name}": UiEventSpec(',
+                f'                    name="{event_name}",',
+                f'                    signal_name="{learning.signal_name}",',
+                f"                    payload_policy=EventPayloadPolicy.{learning.payload_policy.name},",
+                "                ),",
+            ]
+        )
+    return lines
+
+
 def write_generated_library(
     root_module_name: str,
     widgets: Sequence[DiscoveredWidgetClass],
@@ -798,7 +890,13 @@ def write_generated_library(
     package_name = root_module_name.split(".", 1)[0]
     output_file = output_dir / (output_name or f"{package_name.lower()}.py")
     resolved_widgets = apply_learnings(widgets, learnings or load_learnings(root_module_name))
-    output_file.write_text(generate_library_source(root_module_name, resolved_widgets))
+    source = generate_library_source(root_module_name, resolved_widgets)
+    transformed = emit_transformed_source(
+        source,
+        module_name=root_module_name,
+        filename=str(output_file),
+    )
+    output_file.write_text(transformed)
     return output_file
 
 
@@ -1488,7 +1586,29 @@ def _public_parameters_for_widget(
                 )
             )
             known_names.add(source_prop)
+    for event_name in sorted(widget.event_learnings):
+        if event_name in known_names:
+            continue
+        learning = widget.event_learnings[event_name]
+        parameters.append(
+            DiscoveredParameter(
+                name=event_name,
+                kind=inspect.Parameter.KEYWORD_ONLY,
+                annotation_source=_signature_annotation_for_event(learning),
+                default_source="MISSING",
+                coerced_expression=event_name,
+            )
+        )
+        known_names.add(event_name)
     return tuple(parameters)
+
+
+def _signature_annotation_for_event(learning: UiEventLearning) -> str:
+    if learning.payload_policy is EventPayloadPolicy.NONE:
+        return "PyrolyzeHandler[[], None] | MissingType"
+    if learning.payload_policy is EventPayloadPolicy.FIRST_ARG:
+        return "PyrolyzeHandler[[Any], None] | MissingType"
+    return "PyrolyzeHandler[..., None] | MissingType"
 
 
 def _apply_parameter_learning(

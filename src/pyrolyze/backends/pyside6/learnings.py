@@ -4,7 +4,16 @@ from __future__ import annotations
 
 from frozendict import frozendict
 
-from pyrolyze.backends.model import FillPolicy, MethodMode, UiMethodLearning, UiWidgetLearning
+from pyrolyze.backends.model import (
+    EventPayloadPolicy,
+    FillPolicy,
+    MethodMode,
+    TypeRef,
+    UiEventLearning,
+    UiMethodLearning,
+    UiPropLearning,
+    UiWidgetLearning,
+)
 
 LEARNINGS: frozendict[str, UiWidgetLearning] = frozendict(
     {
@@ -2474,6 +2483,16 @@ LEARNINGS: frozendict[str, UiWidgetLearning] = frozendict(
                 }
             )
         ),
+        "QHBoxLayout": UiWidgetLearning(
+            prop_learnings=frozendict(
+                {
+                    "parent": UiPropLearning(
+                        signature_annotation=TypeRef(expr="PySide6.QtWidgets.QWidget | None"),
+                        signature_default_repr="...",
+                    ),
+                }
+            )
+        ),
         "QHeaderView": UiWidgetLearning(
             method_learnings=frozendict(
                 {
@@ -4575,6 +4594,11 @@ LEARNINGS: frozendict[str, UiWidgetLearning] = frozendict(
             )
         ),
         "QPushButton": UiWidgetLearning(
+            prop_learnings=frozendict(
+                {
+                    "icon": UiPropLearning(public=False),
+                }
+            ),
             method_learnings=frozendict(
                 {
                     "setBaseSize": UiMethodLearning(
@@ -4638,7 +4662,15 @@ LEARNINGS: frozendict[str, UiWidgetLearning] = frozendict(
                         constructor_equivalent=False,
                     ),
                 }
-            )
+            ),
+            event_learnings=frozendict(
+                {
+                    "on_clicked": UiEventLearning(
+                        signal_name="clicked",
+                        payload_policy=EventPayloadPolicy.NONE,
+                    ),
+                }
+            ),
         ),
         "QQuickWidget": UiWidgetLearning(
             method_learnings=frozendict(
@@ -6832,6 +6864,16 @@ LEARNINGS: frozendict[str, UiWidgetLearning] = frozendict(
                         fill_policy=FillPolicy.RETAIN_EFFECTIVE,
                         mode=MethodMode.CREATE_UPDATE,
                         constructor_equivalent=False,
+                    ),
+                }
+            )
+        ),
+        "QVBoxLayout": UiWidgetLearning(
+            prop_learnings=frozendict(
+                {
+                    "parent": UiPropLearning(
+                        signature_annotation=TypeRef(expr="PySide6.QtWidgets.QWidget | None"),
+                        signature_default_repr="...",
                     ),
                 }
             )

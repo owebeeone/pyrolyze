@@ -18,6 +18,7 @@ from pyrolyze.backends.model import (
     MountState,
     PropMode,
     TypeRef,
+    UiEventSpec,
     UiMethodSpec,
     UiPropSpec,
     UiWidgetSpec,
@@ -48,6 +49,7 @@ class MountableEngine:
         mountable_specs: Mapping[str, UiWidgetSpec],
         *,
         read_current_prop_value: Callable[[object, UiWidgetSpec, str], Any] | None = None,
+        connect_event_signal: Callable[[object, UiEventSpec, Callable[..., None]], None] | None = None,
         capture_placement: Callable[[object], object | None] | None = None,
         restore_placement: Callable[[object, object | None], None] | None = None,
         dispose_mountable: Callable[[object], None] | None = None,
@@ -55,9 +57,12 @@ class MountableEngine:
         self._mountable_specs = mountable_specs
         self._mountable_types: dict[str, type[object]] = {}
         self._read_current_prop_value = read_current_prop_value
+        self._connect_event_signal = connect_event_signal
         self._capture_placement = capture_placement
         self._restore_placement = restore_placement
         self._dispose_mountable = dispose_mountable
+        self._event_callbacks: dict[int, dict[str, Callable[..., None] | None]] = {}
+        self._connected_events: set[tuple[int, str]] = set()
 
     def mount(
         self,
@@ -105,6 +110,12 @@ class MountableEngine:
         for name, value in element.props.items():
             if value is MISSING:
                 continue
+            if name in spec.events:
+                if next_effective.get(name, MISSING) == value:
+                    continue
+                next_effective[name] = value
+                changed_props[name] = value
+                continue
             prop = self._prop_for(spec, name)
             if prop.mode is PropMode.READONLY:
                 raise ValueError(f"readonly prop {name!r} may not be updated")
@@ -129,6 +140,7 @@ class MountableEngine:
 
         self._apply_changed_props(node.mountable, spec, changed_props)
         self._apply_changed_methods(node.mountable, spec, next_effective, changed_props)
+        self._apply_mount_events(node.mountable, spec, next_effective)
         child_nodes, mount_states = self._mount_children(
             node.mountable,
             spec,
@@ -175,6 +187,7 @@ class MountableEngine:
         replacement: MountedMountableNode,
     ) -> None:
         old_mountable = node.mountable
+        old_event_names = tuple(node.spec.events)
         placement = (
             None if self._capture_placement is None else self._capture_placement(old_mountable)
         )
@@ -188,6 +201,9 @@ class MountableEngine:
             self._restore_placement(node.mountable, placement)
         if self._dispose_mountable is not None:
             self._dispose_mountable(old_mountable)
+        self._event_callbacks.pop(id(old_mountable), None)
+        for event_name in old_event_names:
+            self._connected_events.discard((id(old_mountable), event_name))
 
     def _spec_for(self, kind: str) -> UiWidgetSpec:
         spec = self._mountable_specs.get(kind)
@@ -205,6 +221,9 @@ class MountableEngine:
         effective: dict[str, Any] = {}
         for name, value in element.props.items():
             if value is MISSING:
+                continue
+            if name in spec.events:
+                effective[name] = value
                 continue
             prop = self._prop_for(spec, name)
             if prop.mode is PropMode.READONLY:
@@ -239,6 +258,7 @@ class MountableEngine:
         )
         self._apply_mount_props(mountable, spec, effective_props)
         self._apply_mount_methods(mountable, spec, effective_props)
+        self._apply_mount_events(mountable, spec, effective_props)
         return mountable
 
     def _mountable_type_for(self, spec: UiWidgetSpec) -> type[object]:
@@ -329,6 +349,56 @@ class MountableEngine:
             if backfilled:
                 effective_props.update(backfilled)
             self._apply_method(mountable, method, args)
+
+    def _apply_mount_events(
+        self,
+        mountable: object,
+        spec: UiWidgetSpec,
+        effective_props: Mapping[str, Any],
+    ) -> None:
+        if not spec.events:
+            return
+        callbacks = self._event_callbacks.setdefault(id(mountable), {})
+        for event_name, event_spec in spec.events.items():
+            callback = effective_props.get(event_name)
+            callbacks[event_name] = callback if callable(callback) else None
+            self._ensure_event_connected(mountable, event_spec)
+
+    def _ensure_event_connected(
+        self,
+        mountable: object,
+        event_spec: UiEventSpec,
+    ) -> None:
+        if self._connect_event_signal is None:
+            return
+        event_key = (id(mountable), event_spec.name)
+        if event_key in self._connected_events:
+            return
+        self._connect_event_signal(
+            mountable,
+            event_spec,
+            self._event_dispatcher(mountable, event_spec),
+        )
+        self._connected_events.add(event_key)
+
+    def _event_dispatcher(
+        self,
+        mountable: object,
+        event_spec: UiEventSpec,
+    ) -> Callable[..., None]:
+        def dispatch(*args: Any) -> None:
+            callback = self._event_callbacks.get(id(mountable), {}).get(event_spec.name)
+            if callback is None:
+                return
+            if event_spec.payload_policy.value == "none":
+                callback()
+                return
+            if event_spec.payload_policy.value == "first_arg":
+                callback(args[0] if args else None)
+                return
+            callback(*args)
+
+        return dispatch
 
     def _resolve_method_args(
         self,

@@ -1187,6 +1187,8 @@ def _inject_module_scaffold(
         return body
 
     insert_at = 1 if _is_module_docstring(body[0]) else 0
+    while insert_at < len(body) and _is_future_import(body[insert_at]):
+        insert_at += 1
     scaffold = [
         ast.ImportFrom(
             module="pyrolyze.api",
@@ -1220,6 +1222,10 @@ def _inject_module_scaffold(
         ),
     ]
     return [*body[:insert_at], *scaffold, *slot_declarations, *body[insert_at:]]
+
+
+def _is_future_import(statement: ast.stmt) -> bool:
+    return isinstance(statement, ast.ImportFrom) and statement.module == "__future__"
 
 
 def _private_args_for_component(
@@ -1790,37 +1796,80 @@ def _collect_imported_annotated_symbols(
                 )
                 if callable_kind is not None:
                     return_kinds[local_name] = callable_kind
-                continue
+            else:
+                component_names.add(local_name)
+                try:
+                    signature = inspect.signature(imported_value)
+                except (TypeError, ValueError):
+                    signature = None
 
-            component_names.add(local_name)
-            try:
-                signature = inspect.signature(imported_value)
-            except (TypeError, ValueError):
-                continue
+                if signature is not None:
+                    component_param_names[local_name] = tuple(
+                        parameter.name
+                        for parameter in signature.parameters.values()
+                        if parameter.kind
+                        in {
+                            inspect.Parameter.POSITIONAL_ONLY,
+                            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                            inspect.Parameter.KEYWORD_ONLY,
+                        }
+                    )
+                    component_event_params[local_name] = frozenset(
+                        parameter.name
+                        for parameter in signature.parameters.values()
+                        if parameter.kind
+                        in {
+                            inspect.Parameter.POSITIONAL_ONLY,
+                            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                            inspect.Parameter.KEYWORD_ONLY,
+                        }
+                        and _runtime_annotation_is_event_handler(
+                            resolved_hints.get(parameter.name, parameter.annotation)
+                        )
+                    )
 
-            component_param_names[local_name] = tuple(
-                parameter.name
-                for parameter in signature.parameters.values()
-                if parameter.kind
-                in {
-                    inspect.Parameter.POSITIONAL_ONLY,
-                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                    inspect.Parameter.KEYWORD_ONLY,
-                }
-            )
-            component_event_params[local_name] = frozenset(
-                parameter.name
-                for parameter in signature.parameters.values()
-                if parameter.kind
-                in {
-                    inspect.Parameter.POSITIONAL_ONLY,
-                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                    inspect.Parameter.KEYWORD_ONLY,
-                }
-                and _runtime_annotation_is_event_handler(
-                    resolved_hints.get(parameter.name, parameter.annotation)
-                )
-            )
+            if inspect.isclass(imported_value):
+                ui_interface = getattr(imported_value, "UI_INTERFACE", None)
+                if ui_interface is not None:
+                    for public_name in ui_interface.entries:
+                        attribute_value = getattr(imported_value, public_name, None)
+                        if attribute_value is None:
+                            continue
+                        qualified_name = f"{local_name}.{public_name}"
+                        component_names.add(qualified_name)
+                        component_names.add(public_name)
+                        try:
+                            attribute_signature = inspect.signature(attribute_value)
+                        except (TypeError, ValueError):
+                            continue
+                        attribute_hints = _resolve_runtime_type_hints(attribute_value)
+                        param_names = tuple(
+                            parameter.name
+                            for parameter in attribute_signature.parameters.values()
+                            if parameter.kind
+                            in {
+                                inspect.Parameter.POSITIONAL_ONLY,
+                                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                                inspect.Parameter.KEYWORD_ONLY,
+                            }
+                        )
+                        event_names = frozenset(
+                            parameter.name
+                            for parameter in attribute_signature.parameters.values()
+                            if parameter.kind
+                            in {
+                                inspect.Parameter.POSITIONAL_ONLY,
+                                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                                inspect.Parameter.KEYWORD_ONLY,
+                            }
+                            and _runtime_annotation_is_event_handler(
+                                attribute_hints.get(parameter.name, parameter.annotation)
+                            )
+                        )
+                        component_param_names[qualified_name] = param_names
+                        component_param_names[public_name] = param_names
+                        component_event_params[qualified_name] = event_names
+                        component_event_params[public_name] = event_names
 
     return slotted_names, component_names, component_param_names, component_event_params, return_kinds
 
