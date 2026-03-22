@@ -1,8 +1,8 @@
 #@pyrolyte
 #@pyrolyze
-from pyrolyze.api import Label, call_native, pyrolyse
+from pyrolyze.api import Label, call_native, pyrolyze
 
 
-@pyrolyse
+@pyrolyze
 def label_panel(text: str) -> None:
     call_native(Label)(text=text)

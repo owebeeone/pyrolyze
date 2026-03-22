@@ -1,6 +1,6 @@
 #@pyrolyte
 #@pyrolyze
-from pyrolyze.api import pyrolyse, pyrolyze_slotted
+from pyrolyze.api import pyrolyze, pyrolyze_slotted
 
 
 @pyrolyze_slotted
@@ -15,19 +15,19 @@ def record(value: str) -> str:
 class Panel:
     prefix: str
 
-    @pyrolyse
+    @pyrolyze
     def show(self, label: str) -> None:
         value = upper(label)
         record(self.prefix + ":" + value)
 
     @classmethod
-    @pyrolyse
+    @pyrolyze
     def build(cls, label: str) -> None:
         value = upper(label)
         record(cls.__name__ + ":" + value)
 
     @staticmethod
-    @pyrolyse
+    @pyrolyze
     def static(label: str) -> None:
         value = upper(label)
         record("static:" + value)

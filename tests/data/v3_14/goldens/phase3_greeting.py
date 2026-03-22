@@ -2,7 +2,7 @@ from pyrolyze.api import CallFromNonPyrolyzeContext as __pyr_CallFromNonPyrolyze
 from pyrolyze.runtime import SlotId as __pyr_SlotId, dirtyof as __pyr_dirtyof, module_registry as __pyr_module_registry
 __pyr_module_id = __pyr_module_registry.module_id(__name__)
 __pyr_slot_1 = __pyr_SlotId(__pyr_module_id, 1, line_no=17, is_top_level=True)
-from pyrolyze.api import pyrolyse, pyrolyze_slotted
+from pyrolyze.api import pyrolyze, pyrolyze_slotted
 
 @pyrolyze_slotted
 def format_title(name: str) -> str:

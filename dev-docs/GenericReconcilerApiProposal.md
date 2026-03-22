@@ -74,7 +74,7 @@ The most important rules are:
 
 ### `UiLibrary`
 
-An author-facing class namespace containing `@pyrolyse` UI callables.
+An author-facing class namespace containing `@pyrolyze` UI callables.
 
 Examples:
 
@@ -152,7 +152,7 @@ Example:
 ```python
 class PySide6UiLibrary:
     @classmethod
-    @pyrolyse
+    @pyrolyze
     def CQPushButton(
         cls,
         text: str,
@@ -168,7 +168,7 @@ class PySide6UiLibrary:
 
 Rules:
 
-- one public `@pyrolyse` callable per UI element
+- one public `@pyrolyze` callable per UI element
 - explicit parameters for IDE support
 - the class is the author-facing grouping mechanism
 - the class may be generated for toolkit-backed surfaces
@@ -238,7 +238,7 @@ class PySide6UiLibrary:
         return UIElement(kind=kind, props=dict(kwds))
 
     @classmethod
-    @pyrolyse
+    @pyrolyze
     def CQPushButton(
         cls,
         text: str,
@@ -254,7 +254,7 @@ class PySide6UiLibrary:
         )
 
     @classmethod
-    @pyrolyse
+    @pyrolyze
     def CQLabel(
         cls,
         text: str,
@@ -352,7 +352,7 @@ Trigger rule:
 - the authored helper is `cls.__element(...)`
 - the helper has a trailing keyword-only parameter named `kwds`
 - any named parameters before `kwds` remain explicit
-- the matching `@pyrolyse` wrapper is a thin native wrapper around that helper
+- the matching `@pyrolyze` wrapper is a thin native wrapper around that helper
 
 Then the compiler may lower the private runtime function to use packed keyword
 forwarding.

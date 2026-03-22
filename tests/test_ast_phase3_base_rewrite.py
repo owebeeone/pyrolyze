@@ -19,7 +19,7 @@ from pyrolyze.runtime import RenderContext, SlotId, dirtyof
 
 def test_phase3_emits_private_wrapper_and_lowered_straight_line_body() -> None:
     source = """
-from pyrolyze.api import pyrolyse, pyrolyze_slotted
+from pyrolyze.api import pyrolyze, pyrolyze_slotted
 
 @pyrolyze_slotted
 def format_title(name):
@@ -28,7 +28,7 @@ def format_title(name):
 def record(value):
     return value
 
-@pyrolyse
+@pyrolyze
 def greeting(name):
     title = format_title(name)
     label = title + "!"
@@ -53,7 +53,7 @@ def greeting(name):
 
 def test_phase3_runtime_bridge_executes_generated_component_and_reuses_clean_pass() -> None:
     source = """
-from pyrolyze.api import pyrolyse, pyrolyze_slotted
+from pyrolyze.api import pyrolyze, pyrolyze_slotted
 
 log = []
 
@@ -65,7 +65,7 @@ def format_title(name):
 def record(value):
     log.append(("record", value))
 
-@pyrolyse
+@pyrolyze
 def greeting(name):
     title = format_title(name)
     label = title + "!"
@@ -99,7 +99,7 @@ def greeting(name):
 
 def test_phase3_lowers_tuple_destructuring_with_result_shape() -> None:
     source = """
-from pyrolyze.api import pyrolyse, pyrolyze_slotted
+from pyrolyze.api import pyrolyze, pyrolyze_slotted
 
 log = []
 
@@ -111,7 +111,7 @@ def use_pair(label):
 def record_pair(value, setter):
     log.append(("record_pair", value, setter))
 
-@pyrolyse
+@pyrolyze
 def pair_panel(label):
     value, setter = use_pair(label)
     record_pair(value, setter)
@@ -151,7 +151,7 @@ def test_phase3_lowers_slot_callable_parameters_and_return_typed_locals() -> Non
     source = """
 from typing import Callable
 
-from pyrolyze.api import SlotCallable, pyrolyse, pyrolyze_slotted
+from pyrolyze.api import SlotCallable, pyrolyze, pyrolyze_slotted
 
 log = []
 
@@ -165,7 +165,7 @@ def format_with_prefix(label: str) -> str:
 def record(value: str) -> None:
     log.append(("record", value))
 
-@pyrolyse
+@pyrolyze
 def panel(prefix: str, formatter: SlotCallable[[str], str], plain: Callable[[str], str]) -> None:
     selected = choose_formatter(prefix)
     value = formatter(prefix)
@@ -200,7 +200,7 @@ def panel(prefix: str, formatter: SlotCallable[[str], str], plain: Callable[[str
 
 def test_phase3_preserves_instance_class_and_static_wrapper_semantics() -> None:
     source = """
-from pyrolyze.api import pyrolyse, pyrolyze_slotted
+from pyrolyze.api import pyrolyze, pyrolyze_slotted
 
 log = []
 
@@ -216,19 +216,19 @@ class Panel:
     def __init__(self, prefix):
         self.prefix = prefix
 
-    @pyrolyse
+    @pyrolyze
     def show(self, label):
         value = upper(label)
         record(self.prefix + ":" + value)
 
     @classmethod
-    @pyrolyse
+    @pyrolyze
     def build(cls, label):
         value = upper(label)
         record(cls.__name__ + ":" + value)
 
     @staticmethod
-    @pyrolyse
+    @pyrolyze
     def static(label):
         value = upper(label)
         record("static:" + value)
@@ -266,7 +266,7 @@ class Panel:
 
 def test_phase3_component_call_binds_classmethod_and_staticmethod_from_class_and_instance() -> None:
     source = """
-from pyrolyze.api import pyrolyse
+from pyrolyze.api import pyrolyze
 
 log = []
 
@@ -275,12 +275,12 @@ class Panel:
         self.prefix = prefix
 
     @classmethod
-    @pyrolyse
+    @pyrolyze
     def build(cls, label):
         log.append(("class", cls.__name__, label))
 
     @staticmethod
-    @pyrolyse
+    @pyrolyze
     def static(label):
         log.append(("static", label))
 """
@@ -330,7 +330,7 @@ class Panel:
 
 def test_phase3_rewrites_nested_components_inside_plain_factories() -> None:
     source = """
-from pyrolyze.api import ComponentRef, pyrolyse, pyrolyze_slotted
+from pyrolyze.api import ComponentRef, pyrolyze, pyrolyze_slotted
 
 log = []
 
@@ -343,7 +343,7 @@ def record(value):
     log.append(("record", value))
 
 def make_panel(prefix) -> ComponentRef[[str]]:
-    @pyrolyse
+    @pyrolyze
     def panel(label):
         value = upper(label)
         record(prefix + ":" + value)
@@ -385,10 +385,10 @@ def test_phase3_warns_when_factory_return_annotation_is_not_component_ref() -> N
     source = """
 from collections.abc import Callable
 
-from pyrolyze.api import pyrolyse
+from pyrolyze.api import pyrolyze
 
 def make_panel(prefix: str) -> Callable[[str], None]:
-    @pyrolyse
+    @pyrolyze
     def panel(label: str) -> None:
         print(prefix, label)
 
@@ -420,10 +420,10 @@ def test_phase3_can_promote_component_return_type_warning_to_error() -> None:
     source = """
 from collections.abc import Callable
 
-from pyrolyze.api import pyrolyse
+from pyrolyze.api import pyrolyze
 
 def make_panel(prefix: str) -> Callable[[str], None]:
-    @pyrolyse
+    @pyrolyze
     def panel(label: str) -> None:
         print(prefix, label)
 
@@ -441,7 +441,7 @@ def make_panel(prefix: str) -> Callable[[str], None]:
 
 def test_phase3_rewrites_nested_components_inside_class_factories() -> None:
     source = """
-from pyrolyze.api import ComponentRef, pyrolyse, pyrolyze_slotted
+from pyrolyze.api import ComponentRef, pyrolyze, pyrolyze_slotted
 
 log = []
 
@@ -458,7 +458,7 @@ class PanelFactory:
         self.prefix = prefix
 
     def make(self) -> ComponentRef[[str]]:
-        @pyrolyse
+        @pyrolyze
         def panel(label):
             value = upper(label)
             record(self.prefix + ":" + value)
@@ -501,7 +501,7 @@ class PanelFactory:
 
 def test_phase3_supports_imported_pyrolyze_decorator_aliases() -> None:
     source = """
-from pyrolyze.api import pyrolyse as component, pyrolyze_slotted as slotted
+from pyrolyze.api import pyrolyze as component, pyrolyze_slotted as slotted
 
 log = []
 
@@ -551,12 +551,12 @@ def panel(label):
 
 def test_phase4_still_rejects_unsupported_control_flow() -> None:
     source = """
-from pyrolyze.api import pyrolyse
+from pyrolyze.api import pyrolyze
 
 def record(value):
     return value
 
-@pyrolyse
+@pyrolyze
 def conditional_panel(flag, label):
     while flag:
         record(label)
@@ -572,7 +572,7 @@ def conditional_panel(flag, label):
 
 def test_phase3_copies_source_locations_to_generated_dirty_assignments() -> None:
     source = """
-from pyrolyze.api import pyrolyse, pyrolyze_slotted
+from pyrolyze.api import pyrolyze, pyrolyze_slotted
 
 @pyrolyze_slotted
 def format_title(name):
@@ -581,7 +581,7 @@ def format_title(name):
 def record(value):
     return value
 
-@pyrolyse
+@pyrolyze
 def greeting(name):
     title = format_title(name)
     label = title + "!"

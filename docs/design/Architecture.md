@@ -24,7 +24,7 @@ The package is split into five layers:
   - `examples/`
   - `tests/`
 
-The author writes source using `#@pyrolyze`, `@pyrolyse`, and related
+The author writes source using `#@pyrolyze`, `@pyrolyze`, and related
 annotations. The compiler lowers that source into generated helper functions and
 runtime calls. The runtime manages slot ownership, invalidation, and committed
 UI. Backend adapters reconcile committed UI into native widgets.

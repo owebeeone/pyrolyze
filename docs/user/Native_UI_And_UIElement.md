@@ -13,7 +13,7 @@ UIElement(kind: str, props: dict[str, Any], children: tuple[UIElement, ...] = ()
 
 ## `call_native(...)`
 
-Use it inside `@pyrolyse` bodies:
+Use it inside `@pyrolyze` bodies:
 
 ```python
 call_native(UIElement)(kind="badge", props={"text": text, "visible": True})

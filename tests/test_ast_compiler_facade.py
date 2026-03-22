@@ -13,11 +13,11 @@ from pyrolyze.compiler import (
 from pyrolyze.compiler.debug import write_debug_artifacts
 
 
-def test_analyze_source_returns_component_plan_for_pyrolyse_function() -> None:
+def test_analyze_source_returns_component_plan_for_pyrolyze_function() -> None:
     source = """
-from pyrolyze.api import pyrolyse, pyrolyze_slotted
+from pyrolyze.api import pyrolyze, pyrolyze_slotted
 
-@pyrolyse
+@pyrolyze
 def profile_form():
     pass
 
@@ -35,9 +35,9 @@ def helper(value):
 
 def test_emit_transformed_source_returns_helper_mode_python() -> None:
     source = """
-from pyrolyze.api import pyrolyse
+from pyrolyze.api import pyrolyze
 
-@pyrolyse
+@pyrolyze
 def profile_form():
     pass
 """
@@ -48,7 +48,7 @@ def profile_form():
     )
 
     assert "def profile_form" in transformed
-    assert "pyrolyse" in transformed
+    assert "pyrolyze" in transformed
 
 
 def test_load_transformed_namespace_executes_module_source() -> None:
@@ -72,9 +72,9 @@ def plus_one(value):
 
 def test_write_debug_artifacts_preserves_module_path_structure(tmp_path: Path) -> None:
     source = """
-from pyrolyze.api import pyrolyse
+from pyrolyze.api import pyrolyze
 
-@pyrolyse
+@pyrolyze
 def profile_form():
     pass
 """
@@ -107,9 +107,9 @@ def test_compile_source_dump_preserves_package_init_layout(
     tmp_path: Path,
 ) -> None:
     source = """
-from pyrolyze.api import pyrolyse
+from pyrolyze.api import pyrolyze
 
-@pyrolyse
+@pyrolyze
 def init_component():
     pass
 """
@@ -139,9 +139,9 @@ def test_compile_source_raw_fallback_still_writes_debug_artifacts(
     tmp_path: Path,
 ) -> None:
     source = """
-from pyrolyze.api import pyrolyse
+from pyrolyze.api import pyrolyze
 
-@pyrolyse
+@pyrolyze
 def unsupported_panel():
     exec("print('boom')")
 """

@@ -12,7 +12,7 @@ machinery.
 
 ## Why PyRolyze
 
-- Declarative source authoring with explicit opt-in (`#@pyrolyze`, `@pyrolyse`)
+- Declarative source authoring with explicit opt-in (`#@pyrolyze`, `@pyrolyze`)
 - Compiler output that is inspectable and testable
 - Runtime model based on explicit context-graph ownership and invalidation
 - Version-aware AST kernel strategy for Python interpreter changes
@@ -60,10 +60,10 @@ uv run --with pytest --with pytest-cov pytest tests/test_examples_grid_app.py -q
 
 ```python
 #@pyrolyze
-from pyrolyze.api import UIElement, call_native, pyrolyse, use_state
+from pyrolyze.api import UIElement, call_native, pyrolyze, use_state
 
 
-@pyrolyse
+@pyrolyze
 def counter() -> None:
     count, set_count = use_state(0)
     call_native(UIElement)(
@@ -84,7 +84,7 @@ decides what reruns and what committed UI changes.
 ## What Works Today
 
 - Source opt-in with `#@pyrolyze`
-- Component lowering with `@pyrolyse`
+- Component lowering with `@pyrolyze`
 - Slotted helper lowering with `@pyrolyze_slotted`
 - Versioned AST compiler kernels
 - Helper-source emission and checked-in golden tests

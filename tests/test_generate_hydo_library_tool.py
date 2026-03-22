@@ -13,6 +13,7 @@ from pyrolyze_tools.generate_hydo_library import (
 def test_generate_hydo_library_source_renders_mountable_specs_and_ui_interface() -> None:
     source = generate_hydo_library_source()
 
+    assert source.startswith("#@pyrolyze\n")
     assert "@ui_interface" in source
     assert "class HydoUiLibrary:" in source
     assert "MOUNTABLE_SPECS: ClassVar[frozendict[str, UiWidgetSpec]]" in source

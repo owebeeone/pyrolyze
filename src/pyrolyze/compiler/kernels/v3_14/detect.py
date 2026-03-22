@@ -14,7 +14,7 @@ from ...artifacts import (
 from ...diagnostics import error_from_node
 
 
-_REACTIVE_DECORATORS = {"pyrolyse", "reactive_component"}
+_REACTIVE_DECORATORS = {"pyrolyze", "reactive_component"}
 _SLOTTED_DECORATORS = {"pyrolyze_slotted"}
 _EVENT_HANDLER_TYPES = {"PyrolyzeHandler", "PyrolyteHandler"}
 
@@ -265,7 +265,7 @@ def _component_return_type_warnings_for_function(
             CompileWarning(
                 code="PYR-W-COMPONENT-RETURN-TYPE",
                 message=(
-                    f"Function '{function_name}' returns nested @pyrolyse component "
+                    f"Function '{function_name}' returns nested @pyrolyze component "
                     f"'{value.id}'; annotate its return type as {expected}"
                 ),
                 path=module_name,

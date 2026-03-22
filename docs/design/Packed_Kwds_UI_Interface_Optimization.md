@@ -18,7 +18,7 @@ def __element(cls, *, kind: str, kwds: dict[str, Any]) -> UIElement:
 the trailing keyword-only parameter named `kwds` is a source-level signal to
 the PyRolyze compiler.
 
-If a matching `@pyrolyse` method is a thin native wrapper around
+If a matching `@pyrolyze` method is a thin native wrapper around
 `call_native(cls.__element)(...)`, the compiler lowers the private `__pyr_*`
 runtime helper to accept `**kwds` and forward that packed keyword payload into
 `__element(...)`.
@@ -62,7 +62,7 @@ If the caller explicitly passes `flat=None`, then `flat` should appear in
 
 This optimization is intentionally narrow.
 
-It applies only when the compiler can prove the `@pyrolyse` method is a pure
+It applies only when the compiler can prove the `@pyrolyze` method is a pure
 native wrapper around the internal `__element(...)` helper.
 
 More complex component bodies continue to use the normal lowered calling

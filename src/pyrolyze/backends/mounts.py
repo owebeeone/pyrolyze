@@ -278,9 +278,10 @@ def _validate_mount_state(state: MountState) -> None:
 
 def _apply_single_mount(parent: object, state: MountState, method_name: str) -> None:
     args, kwargs = _mount_call_args(state)
-    if len(state.objects) != 1:
-        raise ValueError(f"single mount point {state.mount_point.name!r} requires exactly one object")
-    getattr(parent, method_name)(*args, state.objects[0].value, **kwargs)
+    if len(state.objects) > 1:
+        raise ValueError(f"single mount point {state.mount_point.name!r} requires at most one object")
+    value = None if not state.objects else state.objects[0].value
+    getattr(parent, method_name)(*args, value, **kwargs)
 
 
 def _mount_call_args(state: MountState) -> tuple[tuple[Any, ...], dict[str, Any]]:

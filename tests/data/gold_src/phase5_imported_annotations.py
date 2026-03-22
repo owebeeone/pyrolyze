@@ -1,6 +1,6 @@
 #@pyrolyte
 #@pyrolyze
-from pyrolyze.api import pyrolyse
+from pyrolyze.api import pyrolyze
 from pyrolyze_testsupport.imported_annotations import imported_child, imported_upper
 
 
@@ -11,7 +11,7 @@ def record(value: str) -> None:
     log.append(("record", value))
 
 
-@pyrolyse
+@pyrolyze
 def imported_panel(text: str) -> None:
     value = imported_upper(text)
     record(value)

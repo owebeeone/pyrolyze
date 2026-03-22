@@ -2,7 +2,7 @@
 #@pyrolyze
 from typing import Any
 
-from pyrolyze.api import UIElement, call_native, pyrolyse, ui_interface
+from pyrolyze.api import UIElement, call_native, pyrolyze, ui_interface
 
 
 @ui_interface
@@ -12,7 +12,7 @@ class PySide6UiLibrary:
         return UIElement(kind=kind, props=dict(kwds))
 
     @classmethod
-    @pyrolyse
+    @pyrolyze
     def CQPushButton(
         cls,
         text: str,
@@ -28,7 +28,7 @@ class PySide6UiLibrary:
         )
 
     @classmethod
-    @pyrolyse
+    @pyrolyze
     def CQLabel(
         cls,
         text: str,

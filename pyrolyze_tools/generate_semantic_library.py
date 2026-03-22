@@ -31,7 +31,6 @@ from pyrolyze.backends.model import (
     UiPropLearning,
     UiWidgetLearning,
 )
-from pyrolyze.compiler import emit_transformed_source
 
 
 @dataclass(frozen=True, slots=True)
@@ -499,6 +498,8 @@ def generate_library_source(
     package_name = root_module_name.split(".", 1)[0]
     class_name = _library_class_name(package_name)
     lines = [
+        "#@pyrolyze",
+        "",
         '"""Generated UI interface stubs for discovered widgets."""',
         "",
         "from __future__ import annotations",
@@ -509,7 +510,7 @@ def generate_library_source(
         "",
         "from frozendict import frozendict",
         "",
-        "from pyrolyze.api import MISSING, MissingType, PyrolyzeHandler, UIElement, call_native, pyrolyse, ui_interface",
+        "from pyrolyze.api import MISSING, MissingType, PyrolyzeHandler, UIElement, call_native, pyrolyze, ui_interface",
         "from pyrolyze.backends.model import (",
         "    AccessorKind,",
         "    ChildPolicy,",
@@ -890,13 +891,7 @@ def write_generated_library(
     package_name = root_module_name.split(".", 1)[0]
     output_file = output_dir / (output_name or f"{package_name.lower()}.py")
     resolved_widgets = apply_learnings(widgets, learnings or load_learnings(root_module_name))
-    source = generate_library_source(root_module_name, resolved_widgets)
-    transformed = emit_transformed_source(
-        source,
-        module_name=root_module_name,
-        filename=str(output_file),
-    )
-    output_file.write_text(transformed)
+    output_file.write_text(generate_library_source(root_module_name, resolved_widgets))
     return output_file
 
 
@@ -1475,7 +1470,7 @@ def _render_widget_method(
     lines = [
         "",
         "    @classmethod",
-        "    @pyrolyse",
+        "    @pyrolyze",
     ]
     if widget.omitted_variadic_arguments:
         lines.append(

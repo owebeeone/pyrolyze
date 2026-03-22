@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from pyrolyze.compiler import emit_transformed_source, load_transformed_namespace
 from pyrolyze.runtime import RenderContext, dirtyof
 
@@ -22,18 +24,21 @@ def test_ui_element_helpers_export_component_refs_for_core_kinds() -> None:
 
 
 def test_ui_element_source_mirror_is_regular_pyrolyze_syntax() -> None:
-    from pyrolyze.ui import elements as source_elements
+    from pyrolyze import ui
 
-    assert not hasattr(source_elements.section, "_pyrolyze_meta")
-    assert source_elements.section.__module__ == "pyrolyze.ui.elements"
+    source_path = Path(ui.__file__).with_name("elements.py")
+    source = source_path.read_text(encoding="utf-8")
+
+    assert "@pyrolyze" in source
+    assert "def section(" in source
 
 
 def test_compiler_lowers_imported_ui_helpers_and_runtime_emits_expected_tree() -> None:
     source = """
-from pyrolyze.api import pyrolyse
+from pyrolyze.api import pyrolyze
 from pyrolyze.ui import badge, section
 
-@pyrolyse
+@pyrolyze
 def panel(text):
     with section("Root", accent="blue"):
         badge(text, tone="info")

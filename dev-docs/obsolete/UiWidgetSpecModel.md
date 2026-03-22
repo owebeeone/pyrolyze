@@ -38,7 +38,7 @@ model, not as the universal abstraction.
 
 `UiWidgetSpec` is **not** responsible for:
 
-- author-facing `@pyrolyse` callables
+- author-facing `@pyrolyze` callables
 - `UiLibrary` class grouping
 - compiler detection of public source APIs
 

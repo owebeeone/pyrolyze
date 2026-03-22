@@ -21,6 +21,11 @@ grouped by milestone priority.
   - Current tests validate correctness but do not enforce scaling expectations for reorder/replace-heavy updates.
   - Add benchmark-style guard tests for large owner regions and event-driven update storms to catch UX-freeze regressions early.
 
+- [P2] Add Monte Carlo mount API stress tests for mount-point lifecycle and unsubscribe correctness.
+  - Randomly exercise supported mount API shapes, mount replacements, removals, and reorder paths across the fake toolkit and real backends where practical.
+  - Verify that detached/removed objects are fully unsubscribed and do not continue receiving events or retain backend-owned attachments.
+  - This is the main confidence test still missing before pushing deeper into multi-mount support.
+
 - [P2] Enforce UI-thread checks for the Tkinter backend.
   - `reconcile_owner(...)` expects backend thread assertions.
   - `_TkBackend.assert_ui_thread(...)` is currently a no-op.
@@ -42,8 +47,8 @@ grouped by milestone priority.
   - The public/runtime implementation does not currently expose this hook.
   - If this is not in scope for the first release, remove it from the documented API for now.
 
-- [P2] Lower nested `@pyrolyse` definitions directly inside render scope.
-  - The authoring guide describes local nested `@pyrolyse` lowering through private component ids with synthetic props.
+- [P2] Lower nested `@pyrolyze` definitions directly inside render scope.
+  - The authoring guide describes local nested `@pyrolyze` lowering through private component ids with synthetic props.
   - The current structural rewrite still rejects nested component definitions.
 
 - [P2] Add the next integrated graph test scenarios from [MountableTestingPlan.md](./dev-docs/MountableTestingPlan.md).
@@ -66,7 +71,7 @@ grouped by milestone priority.
   - `use_state()` currently stores under fixed local keys inside one `PlainCallRuntimeContext`.
   - Custom helper composition currently has to use a tuple state or another manual aggregation strategy.
 
-- [P3] Lower async `@pyrolyse` functions.
+- [P3] Lower async `@pyrolyze` functions.
 
 - [P3] Lower the remaining unsupported render-scope control-flow forms:
   - `async for`

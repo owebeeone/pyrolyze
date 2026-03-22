@@ -1,12 +1,12 @@
 #@pyrolyte
 #@pyrolyze
-from pyrolyze.api import UIElement, call_native, keyed, pyrolyse
+from pyrolyze.api import UIElement, call_native, keyed, pyrolyze
 
 
 log: list[tuple[object, ...]] = []
 
 
-@pyrolyse
+@pyrolyze
 def group(name: str) -> None:
     log.append(("group", name))
     call_native(UIElement)(kind="group", props={"name": name})
@@ -21,21 +21,21 @@ def label(value: str) -> None:
 
 
 class Panels:
-    @pyrolyse
+    @pyrolyze
     def instance(self, prefix: str, items: list[str]) -> None:
         with group("instance"):
             for item in keyed(items, key=lambda x: x):
                 text(prefix + item)
 
     @classmethod
-    @pyrolyse
+    @pyrolyze
     def build(cls, prefix: str, items: list[str]) -> None:
         with group("class"):
             for item in keyed(items, key=lambda x: x):
                 label(prefix + item)
 
     @staticmethod
-    @pyrolyse
+    @pyrolyze
     def static(prefix: str, items: list[str]) -> None:
         with group("static"):
             for item in keyed(items, key=lambda x: x):

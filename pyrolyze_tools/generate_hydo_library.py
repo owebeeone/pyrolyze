@@ -18,12 +18,15 @@ from pyrolyze.backends.model import (
     UiPropSpec,
     UiWidgetSpec,
 )
+from pyrolyze.compiler import emit_transformed_source
 from pyrolyze.testing.hydo import HYDO_MOUNTABLE_SPECS
 
 
 def generate_hydo_library_source() -> str:
     specs = [HYDO_MOUNTABLE_SPECS[kind] for kind in sorted(HYDO_MOUNTABLE_SPECS)]
     lines = [
+        "#@pyrolyze",
+        "",
         '"""Generated UI interface for the Hydo testing toolkit."""',
         "",
         "from __future__ import annotations",
@@ -32,7 +35,7 @@ def generate_hydo_library_source() -> str:
         "",
         "from frozendict import frozendict",
         "",
-        "from pyrolyze.api import MISSING, MissingType, UIElement, call_native, pyrolyse, ui_interface",
+        "from pyrolyze.api import MISSING, MissingType, UIElement, call_native, pyrolyze, ui_interface",
         "from pyrolyze.backends.model import (",
         "    AccessorKind,",
         "    ChildPolicy,",
@@ -97,7 +100,13 @@ def generate_hydo_library_source() -> str:
 def write_generated_hydo_library(*, output_dir: Path) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     output_file = output_dir / "generated_hydo_library.py"
-    output_file.write_text(generate_hydo_library_source())
+    source = generate_hydo_library_source()
+    transformed = emit_transformed_source(
+        source,
+        module_name="pyrolyze.testing.generated_hydo_library",
+        filename=str(output_file),
+    )
+    output_file.write_text(transformed)
     return output_file
 
 
@@ -244,7 +253,7 @@ def _render_component_method(spec: UiWidgetSpec) -> list[str]:
     lines = [
         "",
         "    @classmethod",
-        "    @pyrolyse",
+        "    @pyrolyze",
         f"    def {public_name}(",
         "        cls,",
     ]

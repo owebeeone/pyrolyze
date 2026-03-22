@@ -5,7 +5,7 @@ __pyr_slot_1 = __pyr_SlotId(__pyr_module_id, 1, line_no=21, is_top_level=True)
 __pyr_slot_2 = __pyr_SlotId(__pyr_module_id, 2, line_no=22, is_top_level=True)
 __pyr_slot_3 = __pyr_SlotId(__pyr_module_id, 3, line_no=23, is_top_level=True)
 __pyr_slot_4 = __pyr_SlotId(__pyr_module_id, 4, line_no=24, is_top_level=True)
-from pyrolyze.api import UIElement, call_native, keyed, pyrolyse
+from pyrolyze.api import UIElement, call_native, keyed, pyrolyze
 log: list[tuple[object, ...]] = []
 
 def __pyr_row(__pyr_ctx, __pyr_dirty_state, title: str):

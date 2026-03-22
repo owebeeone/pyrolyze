@@ -6,7 +6,9 @@ import pytest
 
 from pyrolyze.compiler import compile_source
 from pyrolyze.compiler import PyRolyzeCompileError, emit_transformed_source
+from pyrolyze.compiler import load_transformed_namespace
 from pyrolyze.importer import should_transform
+from pyrolyze.runtime import RenderContext, dirtyof
 
 
 def test_should_transform_when_marker_is_first_line(tmp_path: Path) -> None:
@@ -45,11 +47,11 @@ def test_should_not_transform_when_marker_is_not_in_first_two_lines(tmp_path: Pa
     )
 
 
-def test_compile_source_discovers_pyrolyse_decorated_components() -> None:
+def test_compile_source_discovers_pyrolyze_decorated_components() -> None:
     source = """
-from pyrolyze.api import pyrolyse, use_state
+from pyrolyze.api import pyrolyze, use_state
 
-@pyrolyse
+@pyrolyze
 def profile_form():
     name, set_name = use_state("")
     return {"name": name, "set_name": set_name}
@@ -63,23 +65,23 @@ def profile_form():
 
 def test_compile_source_discovers_class_members_and_explicit_nested_pyrolyze_functions() -> None:
     source = """
-from pyrolyze.api import pyrolyse, pyrolyze_slotted, use_state
+from pyrolyze.api import pyrolyze, pyrolyze_slotted, use_state
 
 class Panel:
-    @pyrolyse
+    @pyrolyze
     def render(self):
-        @pyrolyse
+        @pyrolyze
         def inner():
             count, set_count = use_state(0)
         inner()
 
     @classmethod
-    @pyrolyse
+    @pyrolyze
     def build(cls):
         pass
 
     @staticmethod
-    @pyrolyse
+    @pyrolyze
     def show():
         pass
 
@@ -111,3 +113,31 @@ from demo.widgets import badge
             module_name="late_import_example",
             filename="/virtual/late_import_example.py",
         )
+
+
+def test_imported_ui_library_alias_does_not_capture_same_named_local_helper() -> None:
+    source = """
+#@pyrolyze
+from pyrolyze.api import pyrolyze
+from pyrolyze.backends.pyside6.generated_library import PySide6UiLibrary as Qt
+
+CALLS = []
+
+def CQPushButton():
+    CALLS.append("plain-helper")
+
+@pyrolyze
+def demo():
+    CQPushButton()
+"""
+
+    namespace = load_transformed_namespace(
+        source,
+        module_name="collision_example",
+        filename="/virtual/collision_example.py",
+    )
+    ctx = RenderContext()
+
+    namespace["demo"]._pyrolyze_meta._func(ctx, dirtyof())
+
+    assert namespace["CALLS"] == ["plain-helper"]

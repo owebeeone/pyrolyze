@@ -2,7 +2,7 @@
 
 ## Core decorators
 
-- `@pyrolyse`
+- `@pyrolyze`
   - marks a reactive component or emitter
 - `@pyrolyze_slotted`
   - marks a slotted value helper lowered through `call_plain(...)`
@@ -25,7 +25,7 @@ from the definition site.
 
 Typical cases:
 
-- returning a nested `@pyrolyse` component from a factory
+- returning a nested `@pyrolyze` component from a factory
 - passing around a slotted helper as a value
 - making it explicit that a callable should remain plain Python
 

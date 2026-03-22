@@ -12,7 +12,7 @@ from ...diagnostics import error_from_node
 from .builders import copy_reason_location
 
 
-_REACTIVE_DECORATORS = {"pyrolyse", "reactive_component"}
+_REACTIVE_DECORATORS = {"pyrolyze", "reactive_component"}
 _SLOTTED_DECORATORS = {"pyrolyze_slotted"}
 _EVENT_HANDLER_TYPES = {"PyrolyzeHandler", "PyrolyteHandler"}
 _CALLABLE_KIND_COMPONENT_REF = "component_ref"
@@ -313,7 +313,7 @@ def lower_component(plan: ComponentTransformPlan) -> ast.FunctionDef | ast.Async
         raise error_from_node(
             plan.node,
             code="PYR-E-ASYNC-UNSUPPORTED",
-            message="Phase 03 does not yet lower async @pyrolyse functions",
+            message="Phase 03 does not yet lower async @pyrolyze functions",
             module_name=plan.public_name,
             suggested_fix="rewrite_as_sync_phase3",
         )
@@ -461,7 +461,7 @@ def _lower_component_definition(
         raise error_from_node(
             original,
             code="PYR-E-ASYNC-UNSUPPORTED",
-            message="Phase 03 does not yet lower async @pyrolyse functions",
+            message="Phase 03 does not yet lower async @pyrolyze functions",
             module_name=module_name,
             suggested_fix="rewrite_as_sync_phase3",
         )
@@ -615,7 +615,7 @@ def _lower_statement(statement: ast.stmt, *, state: _LoweringState) -> list[ast.
         raise error_from_node(
             statement,
             code="PYR-E-PHASE4-NESTED-COMPONENT",
-            message="Phase 04 does not yet lower nested @pyrolyse definitions",
+            message="Phase 04 does not yet lower nested @pyrolyze definitions",
             module_name=state.module_name,
             suggested_fix="defer_to_later_phase",
         )
@@ -1837,7 +1837,6 @@ def _collect_imported_annotated_symbols(
                             continue
                         qualified_name = f"{local_name}.{public_name}"
                         component_names.add(qualified_name)
-                        component_names.add(public_name)
                         try:
                             attribute_signature = inspect.signature(attribute_value)
                         except (TypeError, ValueError):
@@ -1867,9 +1866,7 @@ def _collect_imported_annotated_symbols(
                             )
                         )
                         component_param_names[qualified_name] = param_names
-                        component_param_names[public_name] = param_names
                         component_event_params[qualified_name] = event_names
-                        component_event_params[public_name] = event_names
 
     return slotted_names, component_names, component_param_names, component_event_params, return_kinds
 
@@ -2086,10 +2083,17 @@ def _decorator_name(node: ast.AST) -> str | None:
 def _call_name(node: ast.AST) -> str | None:
     if not isinstance(node, ast.Call):
         return None
-    if isinstance(node.func, ast.Name):
-        return node.func.id
-    if isinstance(node.func, ast.Attribute):
-        return node.func.attr
+    return _call_qualified_name(node.func)
+
+
+def _call_qualified_name(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        parent = _call_qualified_name(node.value)
+        if parent is None:
+            return None
+        return f"{parent}.{node.attr}"
     return None
 
 

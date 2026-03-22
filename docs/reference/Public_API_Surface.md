@@ -4,7 +4,7 @@
 
 Defined in `src/pyrolyze/api.py`:
 
-- `pyrolyse`
+- `pyrolyze`
 - `reactive_component`
 - `pyrolyze_slotted`
 - `pyrolyze_component_ref`

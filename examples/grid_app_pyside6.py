@@ -1,7 +1,7 @@
 #@pyrolyze
 from PySide6.QtWidgets import QBoxLayout
 
-from pyrolyze.api import keyed, pyrolyse, use_state
+from pyrolyze.api import keyed, pyrolyze, use_state
 from pyrolyze.backends.pyside6.generated_library import PySide6UiLibrary as Qt
 
 
@@ -9,7 +9,7 @@ def _decrement(value: int) -> int:
     return max(1, value - 1)
 
 
-@pyrolyse
+@pyrolyze
 def value_stepper(
     title: str,
     value: int,
@@ -27,7 +27,7 @@ def value_stepper(
             Qt.CQPushButton("+", objectName=increment_name, on_clicked=on_increment)
 
 
-@pyrolyse
+@pyrolyze
 def header(
     cols: int,
     set_cols,
@@ -56,7 +56,7 @@ def header(
             )
 
 
-@pyrolyse
+@pyrolyze
 def cell(row_index: int, col_index: int) -> None:
     count, set_count = use_state(0)
     with Qt.CQGroupBox(f"R{row_index + 1} C{col_index + 1}", objectName=f"cell:{row_index}:{col_index}:group"):
@@ -69,7 +69,7 @@ def cell(row_index: int, col_index: int) -> None:
             )
 
 
-@pyrolyse
+@pyrolyze
 def grid(cols: int, rows: int) -> None:
     with Qt.CQGroupBox("Grid", objectName="grid:group"):
         with Qt.CQVBoxLayout():
@@ -80,7 +80,7 @@ def grid(cols: int, rows: int) -> None:
                             cell(row_index, col_index)
 
 
-@pyrolyse
+@pyrolyze
 def grid_app_pyside6() -> None:
     cols, set_cols = use_state(2)
     rows, set_rows = use_state(2)

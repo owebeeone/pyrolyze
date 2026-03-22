@@ -7,18 +7,18 @@ from pyrolyze_testsupport import imported_annotations as imported_support
 
 def test_phase5_lowers_direct_component_calls_to_component_call() -> None:
     source = """
-from pyrolyze.api import pyrolyse
+from pyrolyze.api import pyrolyze
 
 log = []
 
 def badge(text, *, tone):
     log.append(("badge", text, tone))
 
-@pyrolyse
+@pyrolyze
 def child_badge(text):
     badge(text, tone="info")
 
-@pyrolyse
+@pyrolyze
 def parent_panel(text):
     child_badge(text)
 """
@@ -57,7 +57,7 @@ def parent_panel(text):
 
 def test_phase5_lowers_imported_annotated_functions_correctly() -> None:
     source = """
-from pyrolyze.api import pyrolyse
+from pyrolyze.api import pyrolyze
 from pyrolyze_testsupport.imported_annotations import imported_child, imported_upper
 
 log = []
@@ -65,7 +65,7 @@ log = []
 def record(value):
     log.append(("record", value))
 
-@pyrolyse
+@pyrolyze
 def imported_panel(text):
     value = imported_upper(text)
     record(value)
@@ -113,11 +113,11 @@ def test_phase5_lowers_pyrolyze_handler_event_params_and_keeps_plain_callables_p
     source = """
 from typing import Callable
 
-from pyrolyze.api import PyrolyzeHandler as ClickHandler, UIElement, call_native, pyrolyse
+from pyrolyze.api import PyrolyzeHandler as ClickHandler, UIElement, call_native, pyrolyze
 
 log = []
 
-@pyrolyse
+@pyrolyze
 def button(
     label: str,
     *,
@@ -130,7 +130,7 @@ def button(
         props={"label": display, "on_press": on_press},
     )
 
-@pyrolyse
+@pyrolyze
 def panel(name: str) -> None:
     button(
         "Save",
@@ -183,7 +183,7 @@ def test_phase5_lowers_qualified_pyrolyze_handler_annotations() -> None:
     source = """
 import pyrolyze.api as pyr
 
-@pyr.pyrolyse
+@pyr.pyrolyze
 def button(
     label: str,
     *,
@@ -194,7 +194,7 @@ def button(
         props={"label": label, "on_press": on_press},
     )
 
-@pyr.pyrolyse
+@pyr.pyrolyze
 def panel(name: str) -> None:
     button("Save", on_press=lambda: print(name))
 """
@@ -211,12 +211,12 @@ def panel(name: str) -> None:
 
 def test_phase5_lowers_imported_component_event_params_from_runtime_annotations() -> None:
     source = """
-from pyrolyze.api import pyrolyse
+from pyrolyze.api import pyrolyze
 from pyrolyze_testsupport.imported_annotations import imported_button
 
 log = []
 
-@pyrolyse
+@pyrolyze
 def panel(name: str) -> None:
     imported_button("Save", on_press=lambda: log.append(name))
 """

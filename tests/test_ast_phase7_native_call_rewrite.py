@@ -7,9 +7,9 @@ from pyrolyze.runtime import RenderContext, SlotId, dirtyof
 
 def test_phase7_lowers_call_native_factory_calls() -> None:
     source = """
-from pyrolyze.api import Label, call_native, pyrolyse
+from pyrolyze.api import Label, call_native, pyrolyze
 
-@pyrolyse
+@pyrolyze
 def label_panel(text):
     call_native(Label)(text=text)
 """
@@ -47,7 +47,7 @@ def test_phase7_packs_native_wrapper_kwargs_for_kwds_element_helpers() -> None:
     source = """
 from typing import Any
 
-from pyrolyze.api import UIElement, call_native, pyrolyse, ui_interface
+from pyrolyze.api import UIElement, call_native, pyrolyze, ui_interface
 
 @ui_interface
 class PySide6UiLibrary:
@@ -56,7 +56,7 @@ class PySide6UiLibrary:
         return UIElement(kind=kind, props=dict(kwds))
 
     @classmethod
-    @pyrolyse
+    @pyrolyze
     def CQPushButton(cls, text: str, *, flat: bool | None = None, enabled: bool | None = None) -> None:
         call_native(cls.__element)(kind="QPushButton", text=text, flat=flat, enabled=enabled)
 
@@ -98,7 +98,7 @@ def test_phase7_packed_native_wrapper_only_emits_explicit_call_arguments() -> No
     source = """
 from typing import Any
 
-from pyrolyze.api import UIElement, call_native, pyrolyse, ui_interface
+from pyrolyze.api import UIElement, call_native, pyrolyze, ui_interface
 
 @ui_interface
 class PySide6UiLibrary:
@@ -107,7 +107,7 @@ class PySide6UiLibrary:
         return UIElement(kind=kind, props=dict(kwds))
 
     @classmethod
-    @pyrolyse
+    @pyrolyze
     def CQPushButton(cls, text: str, *, flat: bool | None = None, enabled: bool | None = None) -> None:
         call_native(cls.__element)(kind="QPushButton", text=text, flat=flat, enabled=enabled)
 

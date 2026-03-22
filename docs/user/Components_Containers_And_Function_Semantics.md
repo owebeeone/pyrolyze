@@ -5,7 +5,7 @@ PyRolyze cares about how a function is meant to be used.
 ## Three important callable kinds
 
 - component
-  - marked with `@pyrolyse`
+  - marked with `@pyrolyze`
   - lowered to a component runtime entry point
 - slotted helper
   - marked with `@pyrolyze_slotted`
@@ -47,7 +47,7 @@ This matters because the compiler needs to preserve the right calling semantics.
 
 `call_native(...)` is not a function kind.
 
-It is a compiler intrinsic used inside `@pyrolyse` bodies. It lowers to
+It is a compiler intrinsic used inside `@pyrolyze` bodies. It lowers to
 `ctx.call_native(...)` and hands native UI values to the current runtime
 context. Treat it as syntax-level emission machinery, not as a callable type.
 

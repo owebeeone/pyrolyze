@@ -102,6 +102,7 @@ def test_generate_library_source_renders_explicit_parameters_and_coercions(
     )
     source = generate_library_source("fakewidgets", widgets)
 
+    assert source.startswith("#@pyrolyze\n")
     assert "@ui_interface" in source
     assert "class FakewidgetsUiLibrary:" in source
     assert "def __element(cls, *, kind: str, kwds: dict[str, Any]) -> UIElement:" in source
@@ -146,11 +147,12 @@ def test_generate_library_source_renders_qt_property_metadata() -> None:
         ],
     )
 
+    assert source.startswith("#@pyrolyze\n")
     assert "class PySide6UiLibrary:" in source
     assert "import PySide6" in source
     assert (
         "from pyrolyze.api import MISSING, MissingType, PyrolyzeHandler, UIElement, call_native, "
-        "pyrolyse, ui_interface" in source
+        "pyrolyze, ui_interface" in source
     )
     assert 'QT_PROPERTY_GETTER: ClassVar[str] = "property"' in source
     assert 'QT_PROPERTY_SETTER: ClassVar[str] = "setProperty"' in source
@@ -284,6 +286,29 @@ def test_write_generated_library_uses_package_name_for_output(
     assert out_file.name == "fakewidgets.py"
     assert out_file.exists()
     assert "class FakewidgetsUiLibrary:" in out_file.read_text()
+
+
+def test_write_generated_library_writes_raw_source_not_lowered_module(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _write_fake_widget_package(tmp_path)
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    widgets = discover_widget_classes(
+        "fakewidgets",
+        widget_base_specs=("fakewidgets.base:WidgetBase",),
+    )
+
+    out_file = write_generated_library(
+        "fakewidgets",
+        widgets,
+        output_dir=tmp_path / "out",
+    )
+
+    source = out_file.read_text()
+    assert "@pyrolyze" in source
+    assert "__pyr_component_ref" not in source
 
 
 def test_main_generates_file_from_module_name(tmp_path: Path, monkeypatch) -> None:

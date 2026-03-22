@@ -11,7 +11,7 @@ Use more than one test layer.
 - backend tests
   - verify native widget reconciliation
 - integrated source-backed tests
-  - verify real `@pyrolyse` source through compile + runtime
+  - verify real `@pyrolyze` source through compile + runtime
 
 ## Useful places in this repo
 

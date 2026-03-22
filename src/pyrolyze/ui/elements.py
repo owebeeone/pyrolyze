@@ -13,10 +13,10 @@ from __future__ import annotations
 # Use `from pyrolyze.ui import ...` in application code.
 #
 
-from pyrolyze.api import PyrolyzeHandler, UIElement, call_native, pyrolyse
+from pyrolyze.api import PyrolyzeHandler, UIElement, call_native, pyrolyze
 
 
-@pyrolyse
+@pyrolyze
 def section(
     title: str,
     *,
@@ -33,7 +33,7 @@ def section(
     )
 
 
-@pyrolyse
+@pyrolyze
 def row(
     row_id: str,
     *,
@@ -50,7 +50,7 @@ def row(
     )
 
 
-@pyrolyse
+@pyrolyze
 def badge(
     text: str,
     *,
@@ -67,7 +67,7 @@ def badge(
     )
 
 
-@pyrolyse
+@pyrolyze
 def button(
     label: str,
     *,
@@ -88,7 +88,7 @@ def button(
     )
 
 
-@pyrolyse
+@pyrolyze
 def text_field(
     field_id: str,
     label: str,
@@ -115,7 +115,7 @@ def text_field(
     )
 
 
-@pyrolyse
+@pyrolyze
 def toggle(
     field_id: str,
     label: str,
@@ -138,7 +138,7 @@ def toggle(
     )
 
 
-@pyrolyse
+@pyrolyze
 def select_field(
     field_id: str,
     label: str,

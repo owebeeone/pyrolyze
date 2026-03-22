@@ -12,11 +12,11 @@ from pyrolyze.runtime import RenderContext, dirtyof
 
 def test_phase4_lowers_container_and_branching_regions() -> None:
     source = """
-from pyrolyze.api import UIElement, call_native, pyrolyse
+from pyrolyze.api import UIElement, call_native, pyrolyze
 
 log = []
 
-@pyrolyse
+@pyrolyze
 def section(title, *, accent):
     log.append(("section", title, accent))
     call_native(UIElement)(kind="section", props={"title": title, "accent": accent})
@@ -24,7 +24,7 @@ def section(title, *, accent):
 def badge(text, *, tone):
     log.append(("badge", text, tone))
 
-@pyrolyse
+@pyrolyze
 def stats_panel(show_extra, count):
     with section("Stats", accent="green"):
         badge(f"Count: {count}", tone="info")
@@ -83,7 +83,7 @@ def stats_panel(show_extra, count):
 
 def test_phase4_lowers_keyed_loops_and_reuses_item_contexts_on_reorder() -> None:
     source = """
-from pyrolyze.api import keyed, pyrolyse, pyrolyze_slotted
+from pyrolyze.api import keyed, pyrolyze, pyrolyze_slotted
 
 log = []
 
@@ -98,7 +98,7 @@ def use_value(item):
 def badge(text, *, tone):
     log.append(("badge", text, tone))
 
-@pyrolyse
+@pyrolyze
 def values_panel(items):
     for item in keyed(items, key=identity_key):
         value = use_value(item)
@@ -143,11 +143,11 @@ def values_panel(items):
 
 def test_phase4_lowers_nested_keyed_loops_and_nested_containers() -> None:
     source = """
-from pyrolyze.api import UIElement, call_native, keyed, pyrolyse
+from pyrolyze.api import UIElement, call_native, keyed, pyrolyze
 
 log = []
 
-@pyrolyse
+@pyrolyze
 def row(title):
     log.append(("row", title))
     call_native(UIElement)(kind="row", props={"title": title})
@@ -155,7 +155,7 @@ def row(title):
 def button(label, *, value):
     log.append(("button", label, value))
 
-@pyrolyse
+@pyrolyze
 def grid_panel(labels, values):
     for label in keyed(labels, key=lambda x: x):
         with row(label):
@@ -208,14 +208,14 @@ def grid_panel(labels, values):
 
 def test_phase4_lowers_destructured_keyed_targets_with_structured_dirty_projection() -> None:
     source = """
-from pyrolyze.api import keyed, pyrolyse
+from pyrolyze.api import keyed, pyrolyze
 
 log = []
 
 def button(label, *, value):
     log.append((label, value))
 
-@pyrolyse
+@pyrolyze
 def list_render(items):
     for (index, (x, y)) in keyed(enumerate(items), key=lambda element: element[0]):
         button(f"{index}:{x}", value=y)
@@ -250,7 +250,7 @@ def test_phase4_preserves_plain_python_with_as_context_managers() -> None:
     source = """
 from contextlib import contextmanager
 
-from pyrolyze.api import pyrolyse
+from pyrolyze.api import pyrolyze
 
 log = []
 
@@ -265,7 +265,7 @@ def openfoo(name):
 def record(value):
     log.append(("record", value))
 
-@pyrolyse
+@pyrolyze
 def panel(name):
     with openfoo(name) as current:
         record(current)
@@ -298,12 +298,12 @@ def panel(name):
 
 def test_phase4_still_rejects_non_keyed_render_loops() -> None:
     source = """
-from pyrolyze.api import pyrolyse
+from pyrolyze.api import pyrolyze
 
 def badge(text):
     return text
 
-@pyrolyse
+@pyrolyze
 def bad_panel(items):
     for item in items:
         badge(item)
@@ -322,14 +322,14 @@ def bad_panel(items):
 
 def test_phase4_rejects_with_as_in_render_scope() -> None:
     source = """
-from pyrolyze.api import pyrolyse
+from pyrolyze.api import pyrolyze
 from pyrolyze.api import call_native, UIElement
 
-@pyrolyse
+@pyrolyze
 def row(name):
     call_native(UIElement)(kind="row", props={"name": name})
 
-@pyrolyse
+@pyrolyze
 def bad_panel():
     with row("outer") as current:
         print(current)
@@ -345,12 +345,12 @@ def bad_panel():
 
 def test_phase4_rejects_plain_python_with_without_as_in_render_scope() -> None:
     source = """
-from pyrolyze.api import pyrolyse
+from pyrolyze.api import pyrolyze
 
 def openfoo(name):
     return name
 
-@pyrolyse
+@pyrolyze
 def bad_panel(name):
     with openfoo(name):
         print(name)
@@ -368,13 +368,13 @@ def test_phase4_rejects_legacy_contextmanager_container_syntax() -> None:
     source = """
 from contextlib import contextmanager
 
-from pyrolyze.api import pyrolyse
+from pyrolyze.api import pyrolyze
 
 @contextmanager
 def row(name):
     yield
 
-@pyrolyse
+@pyrolyze
 def bad_panel(name):
     with row(name):
         print(name)
@@ -390,12 +390,12 @@ def bad_panel(name):
 
 def test_phase4_allows_use_state_inside_keyed_loop() -> None:
     source = """
-from pyrolyze.api import keyed, pyrolyse, use_state
+from pyrolyze.api import keyed, pyrolyze, use_state
 
 def button(label, *, on):
     return (label, on)
 
-@pyrolyse
+@pyrolyze
 def panel(items):
     for item in keyed(items, key=lambda x: x):
         on, set_on = use_state(False)

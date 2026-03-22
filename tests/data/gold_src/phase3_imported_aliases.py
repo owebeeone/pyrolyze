@@ -1,6 +1,6 @@
 #@pyrolyte
 #@pyrolyze
-from pyrolyze.api import pyrolyse as component, pyrolyze_slotted as slotted
+from pyrolyze.api import pyrolyze as component, pyrolyze_slotted as slotted
 
 
 @slotted

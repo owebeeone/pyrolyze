@@ -6,7 +6,7 @@ __pyr_module_id = __pyr_module_registry.module_id(__name__)
 import tkinter
 from typing import Any, ClassVar
 from frozendict import frozendict
-from pyrolyze.api import MISSING, MissingType, PyrolyzeHandler, UIElement, call_native, pyrolyse, ui_interface
+from pyrolyze.api import MISSING, MissingType, PyrolyzeHandler, UIElement, call_native, pyrolyze, ui_interface
 from pyrolyze.backends.model import AccessorKind, ChildPolicy, EventPayloadPolicy, FillPolicy, MethodMode, MountParamSpec, MountPointSpec, PropMode, TypeRef, UiEventSpec, UiInterface, UiInterfaceEntry, UiMethodSpec, UiParamSpec, UiPropSpec, UiWidgetSpec
 
 @ui_interface

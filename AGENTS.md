@@ -11,7 +11,7 @@ This file defines repository-specific coding instructions for `py-rolyze`.
 ## PyRolyze Source Rules
 - In hand-written PyRolyze source, never write compiler-internal names such as `__pyr_*`.
 - `__pyr_*` symbols are compiler-emitted implementation details only.
-- Hand-written PyRolyze examples, UI libraries, and helper surfaces must use public source forms such as `@pyrolyse`, `call_native(...)`, `PyrolyzeHandler[...]`, and public function/class names.
+- Hand-written PyRolyze examples, UI libraries, and helper surfaces must use public source forms such as `@pyrolyze`, `call_native(...)`, `PyrolyzeHandler[...]`, and public function/class names.
 - If a source example or proposed library API requires `__pyr_*` names, rewrite it into author-facing PyRolyze source form instead of showing lowered code.
 - Preserve the distinction between:
   - author-facing reactive callables

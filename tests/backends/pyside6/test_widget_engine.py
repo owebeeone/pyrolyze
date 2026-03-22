@@ -323,3 +323,46 @@ def test_mount_infers_default_main_window_mounts_from_generated_children(qapp: Q
     central = node.widget.centralWidget()
     assert isinstance(central, QWidget)
     assert central.objectName() == "central"
+
+
+def test_update_detaches_removed_default_main_window_mounts(qapp: QApplication) -> None:
+    del qapp
+    engine = PySide6WidgetEngine(PySide6UiLibrary.WIDGET_SPECS)
+
+    node = engine.mount(
+        UIElement(
+            kind="QMainWindow",
+            props={"windowTitle": "Workspace"},
+            children=(
+                UIElement(
+                    kind="QMenuBar",
+                    props={"objectName": "main-menu"},
+                ),
+                UIElement(
+                    kind="QWidget",
+                    props={"objectName": "central"},
+                ),
+            ),
+        ),
+        slot_id=("root", "window", 2),
+        call_site_id=44,
+    )
+
+    assert isinstance(node.widget, QMainWindow)
+    original_menu_bar = node.widget.menuBar()
+    assert isinstance(original_menu_bar, QMenuBar)
+    assert isinstance(node.widget.centralWidget(), QWidget)
+
+    engine.update(
+        node,
+        UIElement(
+            kind="QMainWindow",
+            props={"windowTitle": "Workspace"},
+            children=(),
+        ),
+    )
+
+    assert node.widget.centralWidget() is None
+    replacement_menu_bar = node.widget.menuBar()
+    assert replacement_menu_bar is not original_menu_bar
+    assert replacement_menu_bar.objectName() != "main-menu"

@@ -1,6 +1,6 @@
 #@pyrolyte
 #@pyrolyze
-from pyrolyze.api import pyrolyse, pyrolyze_slotted
+from pyrolyze.api import pyrolyze, pyrolyze_slotted
 
 
 @pyrolyze_slotted
@@ -12,7 +12,7 @@ def record(value: str) -> str:
     return value
 
 
-@pyrolyse
+@pyrolyze
 def greeting(name: str) -> None:
     title = format_title(name)
     label = title + "!"

@@ -2,7 +2,7 @@ from pyrolyze.api import CallFromNonPyrolyzeContext as __pyr_CallFromNonPyrolyze
 from pyrolyze.runtime import SlotId as __pyr_SlotId, dirtyof as __pyr_dirtyof, module_registry as __pyr_module_registry
 __pyr_module_id = __pyr_module_registry.module_id(__name__)
 from typing import Any
-from pyrolyze.api import UIElement, call_native, pyrolyse, ui_interface
+from pyrolyze.api import UIElement, call_native, pyrolyze, ui_interface
 
 @ui_interface
 class PySide6UiLibrary:

@@ -20,11 +20,11 @@ SOURCE = """
 #@pyrolyze
 from PySide6.QtWidgets import QBoxLayout
 
-from pyrolyze.api import pyrolyse, use_state
+from pyrolyze.api import pyrolyze, use_state
 from pyrolyze.backends.pyside6.generated_library import PySide6UiLibrary as Qt
 
 
-@pyrolyse
+@pyrolyze
 def native_counter() -> None:
     count, set_count = use_state(0)
 

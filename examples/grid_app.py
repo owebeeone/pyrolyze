@@ -1,7 +1,7 @@
 #@pyrolyze
 from typing import Callable
 
-from pyrolyze.api import keyed, pyrolyse, use_state
+from pyrolyze.api import keyed, pyrolyze, use_state
 from pyrolyze.ui import button, row, section, text_field
 
 
@@ -12,7 +12,7 @@ def _coerce_count(raw_value: str) -> int:
         return 0
 
 
-@pyrolyse
+@pyrolyze
 def counter(
     label: str,
     field_id: str,
@@ -39,7 +39,7 @@ def counter(
             )
 
 
-@pyrolyse
+@pyrolyze
 def header(
     cols: int,
     set_cols: Callable[[int | Callable[[int], int]], None],
@@ -52,7 +52,7 @@ def header(
             counter("Rows", "header:rows", rows, set_rows)
 
 
-@pyrolyse
+@pyrolyze
 def grid_counter(row_index: int, col_index: int) -> None:
     count, set_count = use_state(0)
     counter(
@@ -63,7 +63,7 @@ def grid_counter(row_index: int, col_index: int) -> None:
     )
 
 
-@pyrolyse
+@pyrolyze
 def dyna_grid(cols: int, rows: int) -> None:
     with section("Grid", accent="green"):
         for row_index in keyed(range(rows), key=lambda value: value):
@@ -72,7 +72,7 @@ def dyna_grid(cols: int, rows: int) -> None:
                     grid_counter(row_index, col_index)
 
 
-@pyrolyse
+@pyrolyze
 def grid_app() -> None:
     cols, set_cols = use_state(2)
     rows, set_rows = use_state(2)

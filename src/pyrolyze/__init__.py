@@ -1,6 +1,6 @@
 ﻿"""Public package surface for the PyRolyze prototype implementation."""
 
-from .api import pyrolyse
+from .api import pyrolyze
 from .compiler import (
     CompileArtifact,
     ComponentFactory,
@@ -23,5 +23,5 @@ __all__ = [
     "TransformFlags",
     "compile_source",
     "compile_source_with_env",
-    "pyrolyse",
+    "pyrolyze",
 ]

@@ -22,10 +22,10 @@ The host runner is:
 
 ```python
 #@pyrolyze
-from pyrolyze.api import UIElement, call_native, pyrolyse
+from pyrolyze.api import UIElement, call_native, pyrolyze
 
 
-@pyrolyse
+@pyrolyze
 def badge(text: str) -> None:
     call_native(UIElement)(
         kind="badge",

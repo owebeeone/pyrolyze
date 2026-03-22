@@ -1,20 +1,20 @@
 #@pyrolyte
 #@pyrolyze
 
-from pyrolyze.api import UIElement, call_native, keyed, pyrolyse
+from pyrolyze.api import UIElement, call_native, keyed, pyrolyze
 
 
-@pyrolyse
+@pyrolyze
 def panel(title: str) -> None:
     call_native(UIElement)(kind="panel", props={"title": title})
 
 
-@pyrolyse
+@pyrolyze
 def badge(text: str) -> None:
     call_native(UIElement)(kind="badge", props={"text": text})
 
 
-@pyrolyse
+@pyrolyze
 def board(labels: list[str]) -> None:
     with panel("Board"):
         for label in keyed(labels, key=lambda item: item):

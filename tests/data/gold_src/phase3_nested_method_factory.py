@@ -1,6 +1,6 @@
 #@pyrolyte
 #@pyrolyze
-from pyrolyze.api import ComponentRef, pyrolyse, pyrolyze_slotted
+from pyrolyze.api import ComponentRef, pyrolyze, pyrolyze_slotted
 
 
 @pyrolyze_slotted
@@ -16,7 +16,7 @@ class PanelFactory:
     prefix: str
 
     def make(self) -> ComponentRef[[str]]:
-        @pyrolyse
+        @pyrolyze
         def panel(label: str) -> None:
             value = upper(label)
             record(self.prefix + ":" + value)

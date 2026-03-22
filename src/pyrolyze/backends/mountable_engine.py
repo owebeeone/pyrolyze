@@ -479,6 +479,20 @@ class MountableEngine:
                 old_state=None if old_mount_states is None else old_mount_states.get(instance_key),
                 new_state=state,
             )
+        if old_mount_states is not None:
+            for instance_key, old_state in old_mount_states.items():
+                if instance_key in mount_states:
+                    continue
+                apply_mount_state(
+                    parent,
+                    old_state=old_state,
+                    new_state=MountState(
+                        mount_point=old_state.mount_point,
+                        instance_key=old_state.instance_key,
+                        values=old_state.values,
+                        objects=(),
+                    ),
+                )
         return child_nodes, mount_states
 
     def _build_mount_states(

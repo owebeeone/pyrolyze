@@ -6,7 +6,7 @@ from pyrolyze.runtime import RenderContext, dirtyof
 
 def test_phase5_lowers_imported_use_state_by_runtime_context_signature() -> None:
     source = """
-from pyrolyze.api import pyrolyse, pyrolyze_slotted, use_state
+from pyrolyze.api import pyrolyze, pyrolyze_slotted, use_state
 
 log = []
 setters = []
@@ -15,7 +15,7 @@ setters = []
 def record(value):
     log.append(("record", value))
 
-@pyrolyse
+@pyrolyze
 def panel():
     count, set_count = use_state(0)
     setters[:] = [set_count]
@@ -57,7 +57,7 @@ def panel():
 
 def test_phase5_lowers_aliased_use_state_by_runtime_context_signature() -> None:
     source = """
-from pyrolyze.api import pyrolyse, pyrolyze_slotted, use_state as my_us_state
+from pyrolyze.api import pyrolyze, pyrolyze_slotted, use_state as my_us_state
 
 log = []
 setters = []
@@ -66,7 +66,7 @@ setters = []
 def record(value):
     log.append(("record", value))
 
-@pyrolyse
+@pyrolyze
 def panel():
     count, set_count = my_us_state(0)
     setters[:] = [set_count]
@@ -108,7 +108,7 @@ def test_phase5_lowers_custom_named_state_helper_with_three_value_destructure() 
     source = """
 from typing import Any, Callable, cast
 
-from pyrolyze.api import pyrolyse, pyrolyze_slotted, use_state
+from pyrolyze.api import pyrolyze, pyrolyze_slotted, use_state
 from pyrolyze.runtime import PlainCallRuntimeContext
 
 log = []
@@ -136,7 +136,7 @@ def my_us_state(
 
     return left, right, set_both
 
-@pyrolyse
+@pyrolyze
 def panel():
     left, right, set_both = my_us_state(1, 2)
     setters[:] = [set_both]
@@ -179,7 +179,7 @@ def panel():
 
 def test_phase5_lowers_imported_use_grip_by_return_contract() -> None:
     source = """
-from pyrolyze.api import pyrolyse, use_grip
+from pyrolyze.api import pyrolyze, use_grip
 from pyrolyze.runtime import ExternalStoreRef
 
 log = []
@@ -196,7 +196,7 @@ STORE = ExternalStoreRef(identity="weather", subscribe=subscribe, get=get_value)
 def record(value):
     log.append(("record", value))
 
-@pyrolyse
+@pyrolyze
 def panel():
     value = use_grip(STORE)
     record(value)
@@ -231,11 +231,11 @@ def panel():
 
 def test_phase5_lowers_imported_use_effect_statement_call() -> None:
     source = """
-from pyrolyze.api import pyrolyse, use_effect
+from pyrolyze.api import pyrolyze, use_effect
 
 log = []
 
-@pyrolyse
+@pyrolyze
 def panel(label):
     def effect():
         log.append(("setup", label))

@@ -2,7 +2,7 @@
 
 PyRolyze is a compile-time reactive Python package.
 
-It lets authors write declarative Python functions marked with `@pyrolyse`,
+It lets authors write declarative Python functions marked with `@pyrolyze`,
 then lowers those functions into runtime-aware component entry points. The
 runtime tracks slot ownership, keyed loop identity, state/effect bindings,
 invalidations, committed UI, and backend reconciliation.
@@ -31,7 +31,7 @@ What it does not try to be:
 The compiler and runtime are explicit about their boundaries:
 
 - source files opt in with `#@pyrolyze`
-- components opt in with `@pyrolyse`
+- components opt in with `@pyrolyze`
 - slotted value helpers opt in with `@pyrolyze_slotted`
 - AST kernels are versioned under `src/pyrolyze/compiler/kernels/`
 

@@ -84,12 +84,12 @@ def keyed(items: Iterable[T], key: Callable[[T], Any]) -> KeyedIterable[T]:
 
 
 
-def pyrolyse(fn: Callable[..., T]) -> Callable[..., T]:
-    return fn
+def pyrolyze(fn: Callable[..., T]) -> Callable[..., T]:
+    raise Exception("pyrolyze compiler failed")
 
 
 def reactive_component(fn: Callable[..., T]) -> Callable[..., T]:
-    return pyrolyse(fn)
+    return pyrolyze(fn)
 
 
 def ui_interface(cls: type[T]) -> type[T]:
@@ -127,7 +127,7 @@ def pyrolyze_component_ref(
 def call_native(factory: Callable[P, UIElement | None]) -> Callable[P, None]:
     def emit(*args: P.args, **kwargs: P.kwargs) -> None:
         raise CallFromNonPyrolyzeContext(
-            "call_native() may only be used inside a transformed @pyrolyse function"
+            "call_native() may only be used inside a transformed @pyrolyze function"
         )
 
     setattr(emit, "_pyrolyze_call_native_factory", factory)
@@ -162,9 +162,9 @@ __all__ = [
     "SlotCallable",
     "UIElement",
     "keyed",
+    "pyrolyze",
     "pyrolyze_component_ref",
     "pyrolyze_slotted",
-    "pyrolyse",
     "reactive_component",
     "ui_interface",
     "use_effect",

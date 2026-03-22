@@ -1630,7 +1630,7 @@ class LeafSlotContext(RerunnableSlotContext):
             _ = context_param
             result = leaf_fn(self, *args, **kwargs)
             if result is not None:
-                raise TypeError("@pyrolyse functions must return None")
+                raise TypeError("@pyrolyze functions must return None")
         except BaseException:
             self._rollback_scope_pass()
             raise
@@ -1684,7 +1684,7 @@ class _NativeContainerCallHandle(AbstractContextManager[ContainerSlotContext]):
             _ = self.context_param
             result = self.container_fn(self.slot, *self.args, **self.kwargs)
             if result is not None:
-                raise TypeError("@pyrolyse functions must return None")
+                raise TypeError("@pyrolyze functions must return None")
             if len(self.slot._staged_ui) != 1:
                 raise RuntimeError("native container helpers must emit exactly one root UIElement")
         except BaseException:
@@ -1750,7 +1750,7 @@ class _PyrolyzeContainerCallHandle(AbstractContextManager[ContainerSlotContext])
                         **self.kwargs,
                     )
             if result is not None:
-                raise TypeError("@pyrolyse functions must return None")
+                raise TypeError("@pyrolyze functions must return None")
             if len(self.slot._staged_ui) != 1:
                 raise RuntimeError("native container helpers must emit exactly one root UIElement")
         except BaseException:

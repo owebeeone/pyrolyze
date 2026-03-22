@@ -4,7 +4,7 @@ This is the current package shape.
 
 ```mermaid
 flowchart TD
-    A["Author Source\n#@pyrolyze + @pyrolyse"] --> B["Compiler Facade\nsrc/pyrolyze/compiler/facade.py"]
+    A["Author Source\n#@pyrolyze + @pyrolyze"] --> B["Compiler Facade\nsrc/pyrolyze/compiler/facade.py"]
     B --> C["Kernel Loader\nselect exact or fallback AST kernel"]
     C --> D["Versioned Kernel\nsrc/pyrolyze/compiler/kernels/v3_14/"]
     D --> E["Transformed Python / AST / Debug Artifacts"]

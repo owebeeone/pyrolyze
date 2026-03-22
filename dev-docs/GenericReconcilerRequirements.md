@@ -62,7 +62,7 @@ This explicitly does **not** require:
 The following names should be used consistently:
 
 - `UiLibrary`
-  - author-facing class namespace containing `@pyrolyse` UI callables
+  - author-facing class namespace containing `@pyrolyze` UI callables
 - `UiBackend`
   - backend implementation for one toolkit family
 - `UiCatalog`
@@ -146,7 +146,7 @@ It must be possible to provide a `UiLibrary` as a separate package.
 
 That package must be able to define:
 
-- its own `@pyrolyse` UI callables
+- its own `@pyrolyze` UI callables
 - its own generated or hand-written widget set
 - its own backend-specific or portable API surface
 

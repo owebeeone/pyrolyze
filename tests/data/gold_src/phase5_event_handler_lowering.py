@@ -1,12 +1,12 @@
 #@pyrolyte
 #@pyrolyze
-from pyrolyze.api import PyrolyzeHandler, UIElement, call_native, pyrolyse
+from pyrolyze.api import PyrolyzeHandler, UIElement, call_native, pyrolyze
 
 
 log: list[str] = []
 
 
-@pyrolyse
+@pyrolyze
 def button(
     label: str,
     *,
@@ -18,6 +18,6 @@ def button(
     )
 
 
-@pyrolyse
+@pyrolyze
 def panel(name: str) -> None:
     button("Save", on_press=lambda: log.append(name))

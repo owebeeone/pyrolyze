@@ -1,12 +1,12 @@
 #@pyrolyte
 #@pyrolyze
-from pyrolyze.api import UIElement, call_native, keyed, pyrolyse
+from pyrolyze.api import UIElement, call_native, keyed, pyrolyze
 
 
 log: list[tuple[object, ...]] = []
 
 
-@pyrolyse
+@pyrolyze
 def row(title: str) -> None:
     log.append(("row", title))
     call_native(UIElement)(kind="row", props={"title": title})
@@ -16,7 +16,7 @@ def button(label: str, *, value: int) -> None:
     log.append(("button", label, value))
 
 
-@pyrolyse
+@pyrolyze
 def grid_panel(labels: list[str], values: list[int]) -> None:
     for label in keyed(labels, key=lambda x: x):
         with row(label):

@@ -44,6 +44,7 @@ class _PyRolyzeLoader(importlib.abc.Loader):
     def exec_module(self, module: Any) -> None:
         source = _get_source_from_loader(self._delegate, self._fullname)
         file_path = getattr(module, "__file__", None) or self._path
+        artifact: Any | None = None
 
         if source is not None and should_transform(
             module_name=self._fullname,
@@ -70,6 +71,12 @@ class _PyRolyzeLoader(importlib.abc.Loader):
                 self._cache.put(module_name=self._fullname, cache_key=cache_key, payload=artifact)
 
             setattr(module, "__pyrolyze_artifact__", artifact)
+
+            transformed_source = getattr(artifact, "transformed_source", None)
+            if isinstance(transformed_source, str):
+                code = compile(transformed_source, str(file_path), "exec")
+                exec(code, module.__dict__)
+                return
 
         if hasattr(self._delegate, "exec_module"):
             self._delegate.exec_module(module)  # type: ignore[call-arg]
@@ -216,6 +223,5 @@ def _invoke_compiler(
 
 
 __all__ = ["PyRolyzeFinder", "install_import_hook", "uninstall_import_hook"]
-
 
 
