@@ -1,18 +1,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any, Callable
 
 from frozendict import frozendict
 import pytest
 
-from pyrolyze.api import MountDirective, MountSelector, UIElement, default
+from pyrolyze.api import MISSING, MountDirective, MountSelector, UIElement, default
 from pyrolyze.backends.model import (
+    AccessorKind,
     ChildPolicy,
+    EventPayloadPolicy,
     FillPolicy,
     MethodMode,
     MountPointSpec,
     PropMode,
     TypeRef,
+    UiEventSpec,
     UiMethodSpec,
     UiParamSpec,
     UiPropSpec,
@@ -375,6 +379,98 @@ def test_mountable_engine_uses_hooks_for_create_only_remount() -> None:
     assert len(captured) == 2
     assert captured[0][0] == "restore"
     assert captured[1] == ("dispose", first_mountable)
+
+
+class _FakeEventValueWidget:
+    """Minimal mountable with a value read via the engine ``read_current_prop_value`` hook."""
+
+    def __init__(self, default_value: str = "") -> None:
+        self._value = default_value
+
+
+def test_mountable_engine_second_arg_backfills_value_when_app_data_missing() -> None:
+    """DearPyGui sometimes invokes ``callback`` with no ``app_data``; read live ``value`` when possible."""
+
+    spec = UiWidgetSpec(
+        kind="FakeEventValueWidget",
+        mounted_type_name="tests.test_mountable_engine_generic._FakeEventValueWidget",
+        constructor_params=frozendict(
+            {"value": UiParamSpec(name="value", annotation=TypeRef("str"), default_repr="''")}
+        ),
+        props=frozendict(
+            {
+                "value": UiPropSpec(
+                    name="value",
+                    annotation=TypeRef("str"),
+                    mode=PropMode.CREATE_UPDATE,
+                    constructor_name="default_value",
+                    setter_kind=None,
+                    getter_kind=AccessorKind.DPG_VALUE,
+                ),
+            }
+        ),
+        methods=frozendict(),
+        child_policy=ChildPolicy.NONE,
+        events=frozendict(
+            {
+                "on_change": UiEventSpec(
+                    name="on_change",
+                    signal_name="callback",
+                    payload_policy=EventPayloadPolicy.SECOND_ARG,
+                ),
+            }
+        ),
+        mount_points=frozendict(),
+        default_child_mount_point_name=None,
+        default_attach_mount_point_names=(),
+    )
+
+    received: list[Any] = []
+
+    def read_current(mountable: object, _spec: UiWidgetSpec, prop_name: str) -> object:
+        if prop_name == "value":
+            return getattr(mountable, "_value", MISSING)
+        return MISSING
+
+    dispatch_holder: list[Callable[..., None]] = []
+
+    def connect_event(
+        _mountable: object,
+        _event_spec: UiEventSpec,
+        dispatcher: Callable[..., None],
+    ) -> None:
+        dispatch_holder.append(dispatcher)
+
+    engine = MountableEngine(
+        {"FakeEventValueWidget": spec},
+        read_current_prop_value=read_current,
+        connect_event_signal=connect_event,
+    )
+    node = engine.mount(
+        UIElement(
+            kind="FakeEventValueWidget",
+            props={
+                "value": "live",
+                "on_change": lambda v: received.append(v),
+            },
+        ),
+        slot_id=("root", "event_value", 1),
+        call_site_id=901,
+    )
+    dispatch = dispatch_holder[0]
+    mountable = node.mountable
+    assert isinstance(mountable, _FakeEventValueWidget)
+    mountable._value = "from_host"
+
+    dispatch(999)
+    assert received == ["from_host"]
+
+    dispatch(999, "typed")
+    assert received[-1] == "typed"
+
+    mountable._value = "after_none"
+    dispatch(999, None)
+    assert received[-1] == "after_none"
 
 
 def test_mountable_engine_uses_read_hook_for_retain_effective_method_backfill() -> None:

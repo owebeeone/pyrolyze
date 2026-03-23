@@ -224,10 +224,7 @@ def build_table_counter_grid(
             )
         )
 
-    table = C.Table(
-        slot_id=f"{prefix}:table",
-        children=cols + tuple(rows),
-    )
+    table = C.TableOrdered(slot_id=f"{prefix}:table").columns(*cols).rows(*rows)
 
     header_row = C.Group(
         horizontal=True,

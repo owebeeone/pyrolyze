@@ -72,6 +72,7 @@ class MountableEngine:
         self._restore_placement = restore_placement
         self._dispose_mountable = dispose_mountable
         self._event_callbacks: dict[int, dict[str, Callable[..., None] | None]] = {}
+        self._event_widget_specs: dict[int, UiWidgetSpec] = {}
         self._connected_events: set[tuple[int, str]] = set()
 
     def mount(
@@ -222,6 +223,7 @@ class MountableEngine:
         if self._dispose_mountable is not None:
             self._dispose_mountable(old_mountable)
         self._event_callbacks.pop(id(old_mountable), None)
+        self._event_widget_specs.pop(id(old_mountable), None)
         for event_name in old_event_names:
             self._connected_events.discard((id(old_mountable), event_name))
 
@@ -391,6 +393,7 @@ class MountableEngine:
             callback = effective_props.get(event_name)
             callbacks[event_name] = callback if callable(callback) else None
             self._ensure_event_connected(mountable, event_spec)
+        self._event_widget_specs[id(mountable)] = spec
 
     def _ensure_event_connected(
         self,
@@ -425,7 +428,15 @@ class MountableEngine:
                 callback(args[0] if args else None)
                 return
             if event_spec.payload_policy.value == "second_arg":
-                callback(args[1] if len(args) > 1 else None)
+                payload: Any = args[1] if len(args) > 1 else None
+                if payload is None and self._read_current_prop_value is not None:
+                    wspec = self._event_widget_specs.get(id(mountable))
+                    value_prop = None if wspec is None else wspec.props.get("value")
+                    if value_prop is not None and value_prop.getter_kind is not None:
+                        read = self._read_current_prop_value(mountable, wspec, "value")
+                        if read is not MISSING:
+                            payload = read
+                callback(payload)
                 return
             callback(*args)
 
@@ -675,6 +686,7 @@ class MountableEngine:
             self._dispose_node_subtree(child)
         mountable = node.mountable
         self._event_callbacks.pop(id(mountable), None)
+        self._event_widget_specs.pop(id(mountable), None)
         for event_name in node.spec.events:
             self._connected_events.discard((id(mountable), event_name))
         if self._dispose_mountable is not None:

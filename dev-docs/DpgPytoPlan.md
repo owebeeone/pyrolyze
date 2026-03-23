@@ -4,6 +4,8 @@
 
 This document turns the DearPyGui design into an implementation plan.
 
+**Follow-up backlog (external review vs this repo):** see [`PyrolyzeDearPyGuiTodos.md`](PyrolyzeDearPyGuiTodos.md).
+
 It is intentionally phased:
 
 - establish the scratch and discovery baseline

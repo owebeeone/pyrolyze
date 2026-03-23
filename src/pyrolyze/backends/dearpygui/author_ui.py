@@ -3,13 +3,47 @@
 Mirrors the role of generated ``CQ*`` helpers for PySide6: call ``C.Window(...)`` instead of
 hand-assembling ``UIElement(kind=\"DpgWindow\", ...)``. Only common widgets are covered; extend
 this module as examples need more kinds.
+
+For :class:`DearPyGuiUiLibrary` tables, child kinds ``DpgTableColumn`` / ``DpgTableRow`` are routed
+to the correct mount points; DearPyGui still expects a sensible creation order. Use
+:meth:`DearPyGuiC.TableOrdered` when you want a **typed workflow** that only allows ``.rows(...)``
+after ``.columns(...)`` so column nodes always precede row nodes in the emitted ``children`` tuple.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Any
 
 from pyrolyze.api import UIElement
+
+
+@dataclass(slots=True)
+class DearPyGuiTableColumnPhase:
+    """First step of :meth:`DearPyGuiC.TableOrdered`; there is no ``rows`` method here."""
+
+    _slot_id: str | None = None
+    _props: dict[str, Any] = field(default_factory=dict)
+
+    def columns(self, *cols: UIElement) -> DearPyGuiTableRowPhase:
+        return DearPyGuiTableRowPhase(_slot_id=self._slot_id, _props=self._props, _columns=cols)
+
+
+@dataclass(slots=True)
+class DearPyGuiTableRowPhase:
+    """Second step: call ``rows`` to finish the table (columns are fixed for this instance)."""
+
+    _slot_id: str | None = None
+    _props: dict[str, Any] = field(default_factory=dict)
+    _columns: tuple[UIElement, ...] = ()
+
+    def rows(self, *rows: UIElement) -> UIElement:
+        return UIElement(
+            kind="DpgTable",
+            props=dict(self._props),
+            children=self._columns + rows,
+            slot_id=self._slot_id,
+        )
 
 
 class DearPyGuiC:
@@ -161,6 +195,16 @@ class DearPyGuiC:
         return UIElement(kind="DpgButton", props=p, children=children, slot_id=slot_id)
 
     @staticmethod
+    def TableOrdered(
+        *,
+        slot_id: str | None = None,
+        **props: Any,
+    ) -> DearPyGuiTableColumnPhase:
+        """Build a ``DpgTable`` in two steps: ``.columns(...).rows(...)`` (columns always first)."""
+
+        return DearPyGuiTableColumnPhase(_slot_id=slot_id, _props=dict(props))
+
+    @staticmethod
     def Table(
         *,
         slot_id: str | None = None,
@@ -196,4 +240,9 @@ def _attach_c_namespace() -> None:
 
 _attach_c_namespace()
 
-__all__ = ["DearPyGuiC", "_attach_c_namespace"]
+__all__ = [
+    "DearPyGuiC",
+    "DearPyGuiTableColumnPhase",
+    "DearPyGuiTableRowPhase",
+    "_attach_c_namespace",
+]
