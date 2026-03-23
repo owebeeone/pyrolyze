@@ -1,6 +1,6 @@
 """Run the native ``@pyrolyze`` DearPyGui grid example (``CDpg*`` + ``pyrolyze_native_dearpygui``).
 
-``uv run --extra dpg python examples/run_grid_app_dearpygui_pyrolyze.py``
+``uv run python examples/run_grid_app_dearpygui_pyrolyze.py``
 """
 
 from __future__ import annotations

@@ -8,6 +8,9 @@ This file defines repository-specific coding instructions for `py-rolyze`.
 - Keep transport clients small and explicit; protocol conversion should be easy to inspect.
 - Keep type annotations complete and precise so IDE inference remains strong.
 
+## Paths in version control
+- Do not store absolute filesystem paths in any committed file; use paths relative to this repository (the `pyrolyze` submodule root). If a path would cross into a parent monorepo checkout, truncate to the closest submodule root instead of embedding machine-specific prefixes.
+
 ## PyRolyze Source Rules
 - In hand-written PyRolyze source, never write compiler-internal names such as `__pyr_*`.
 - `__pyr_*` symbols are compiler-emitted implementation details only.
