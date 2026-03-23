@@ -1,9 +1,18 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QTimer
+
+# Monorepo checkout: `grip_pyrolyze` (and its `grip-py` dependency) on sys.path
+# so compile-time import analysis and runtime imports succeed without installs.
+_WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
+for _rel in ("grip-pyrolyze/src", "grip-py/src"):
+    _src = _WORKSPACE_ROOT / _rel
+    if _src.is_dir():
+        sys.path.insert(0, str(_src))
 
 from pyrolyze.compiler import load_transformed_namespace
 from pyrolyze.pyrolyze_native_pyside6 import create_host, reconcile_window_content

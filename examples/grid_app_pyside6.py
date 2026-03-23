@@ -1,7 +1,8 @@
 #@pyrolyze
 from PySide6.QtWidgets import QBoxLayout
 
-from pyrolyze.api import keyed, mount, pyrolyze, use_state
+from grip_pyrolyze import use_grip
+from pyrolyze.api import keyed, mount, pyrolyze
 from pyrolyze.backends.pyside6.generated_library import PySide6UiLibrary as Qt
 
 
@@ -102,7 +103,7 @@ def app_menu_bar(set_use_grid) -> None:
 
 @pyrolyze
 def cell(row_index: int, col_index: int) -> None:
-    count, set_count = use_state(0)
+    count, set_count = use_grip(0)
     counter(
         f"R{row_index + 1} C{col_index + 1}",
         f"cell:{row_index}:{col_index}",
@@ -141,18 +142,29 @@ def grid(cols: int, rows: int, use_grid: bool) -> None:
 
 @pyrolyze
 def grid_app_pyside6() -> None:
-    cols, set_cols = use_state(2)
-    rows, set_rows = use_state(2)
-    use_grid, set_use_grid = use_state(False)
+    cols, set_cols = use_grip(2)
+    rows, set_rows = use_grip(2)
+    use_grid, set_use_grid = use_grip(False)
 
     with Qt.CQMainWindow(
-        windowTitle="Native Grid App",
+        windowTitle="Grip PyRolyze Grid",
         minimumWidth=960,
         minimumHeight=640,
     ):
         app_menu_bar(set_use_grid)
         with Qt.CQWidget(objectName="central_widget"):
             with Qt.CQBoxLayout(QBoxLayout.Direction.TopToBottom):
+                with Qt.CQHBoxLayout(objectName="app:header:row"):
+                    Qt.CQLabel(
+                        "Grip PyRolyze — reactive grid (use_grip)",
+                        objectName="app:title",
+                        styleSheet="font-weight: bold; font-size: 16px;",
+                    )
+                    Qt.CQLabel(
+                        "PySide6 · PyRolyze · grip-py atom taps",
+                        objectName="app:subtitle",
+                        styleSheet="color: #555;",
+                    )
                 header(cols, set_cols, rows, set_rows, use_grid, set_use_grid)
                 with Qt.CQScrollArea(objectName="grid:scroll", widgetResizable=True):
                     with Qt.CQWidget(objectName="grid:content"):
