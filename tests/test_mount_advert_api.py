@@ -4,6 +4,7 @@ from pyrolyze.api import (
     MountSelector,
     PyrolyzeMountAdvertisement,
     PyrolyzeMountAdvertisementRequest,
+    UIElement,
     advertise_mount,
 )
 from pyrolyze.compiler import emit_transformed_source, load_transformed_namespace
@@ -24,13 +25,18 @@ def test_advertise_mount_returns_public_request_shape() -> None:
 
 def test_imported_advertise_mount_lowers_to_call_plain_and_publishes() -> None:
     source = """
-from pyrolyze.api import MountSelector, advertise_mount, pyrolyze
+from pyrolyze.api import MountSelector, UIElement, advertise_mount, call_native, pyrolyze
 
 menu = MountSelector.named("menu")
 
 @pyrolyze
+def section():
+    call_native(UIElement)(kind="section", props={"title": "Wrapper"})
+
+@pyrolyze
 def panel():
-    advertise_mount("body", menu, default=True)
+    with section():
+        advertise_mount("body", target=menu, default=True)
 """
 
     transformed = emit_transformed_source(
@@ -61,16 +67,29 @@ def panel():
         ),
     )
     assert advertisements[0].source_slot_id is not None
+    assert advertisements[0].surface_owner_id is not None
+    assert ctx.debug_ui() == (
+        UIElement(
+            kind="section",
+            props={"title": "Wrapper"},
+            children=(advertisements[0],),
+        ),
+    )
 
 
 def test_imported_return_typed_mount_advert_helper_is_detected_without_slotted_decorator() -> None:
     source = """
-from pyrolyze.api import pyrolyze
+from pyrolyze.api import UIElement, call_native, pyrolyze
 from pyrolyze_testsupport.imported_annotations import imported_advert_request, reset_logs, LOG
 
 @pyrolyze
+def section():
+    call_native(UIElement)(kind="section", props={"title": "Wrapper"})
+
+@pyrolyze
 def panel():
-    imported_advert_request("body")
+    with section():
+        imported_advert_request("body")
 """
 
     transformed = emit_transformed_source(
@@ -105,3 +124,4 @@ def panel():
     )
     assert len(advertisements[0].selectors) == 1
     assert advertisements[0].selectors[0].name == "imported_menu"
+    assert advertisements[0].surface_owner_id is not None

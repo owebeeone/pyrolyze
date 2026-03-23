@@ -121,9 +121,6 @@ class MountDirective:
     slot_id: Any | None = field(default=None, compare=False)
 
 
-EmittedNode = UIElement | MountDirective
-
-
 @dataclass(frozen=True, slots=True)
 class PyrolyzeMountAdvertisementRequest:
     """Plain-call carrier describing one advertised public mount entry."""
@@ -142,6 +139,10 @@ class PyrolyzeMountAdvertisement:
     default: bool = False
     source_slot_id: Any | None = field(default=None, compare=False)
     surface_owner_id: Any | None = field(default=None, compare=False)
+    mount_owner_id: Any | None = field(default=None, compare=False)
+
+
+EmittedNode = UIElement | MountDirective | PyrolyzeMountAdvertisement
 
 
 default = MountSelector.default_selector()
@@ -218,6 +219,7 @@ def advertise_mount(
     key: object | None = None,
     *selectors: SlotSelector,
     name: object | None = None,
+    target: SlotSelector | None = None,
     default: bool = False,
     runtime: "PlainCallRuntimeContext" = None,
 ) -> PyrolyzeMountAdvertisementRequest:
@@ -229,9 +231,14 @@ def advertise_mount(
     resolved_key = key if key is not None else name
     if resolved_key is None:
         raise TypeError("advertise_mount() requires a key or name")
+    if selectors and target is not None:
+        raise TypeError("advertise_mount() received both positional selectors and target")
+    resolved_selectors = selectors
+    if target is not None:
+        resolved_selectors = (target,)
     return PyrolyzeMountAdvertisementRequest(
         key=resolved_key,
-        selectors=_normalize_mount_advertisement_selectors(*selectors),
+        selectors=_normalize_mount_advertisement_selectors(*resolved_selectors),
         default=bool(default),
     )
 

@@ -117,6 +117,10 @@ class DuplicateMountAdvertisementError(RuntimeError):
     """Raised when one mount advert surface publishes an illegal public shape."""
 
 
+class MountAdvertisementContextError(RuntimeError):
+    """Raised when an advert is published outside a valid structural container."""
+
+
 def _dirty_state_truthy(value: Any) -> bool:
     if isinstance(value, bool):
         return value
@@ -518,6 +522,7 @@ class PyrolyzeMountAdvertisementBinding(PlainCallBinding):
     slot: PlainCallSlotContext
     request: PyrolyzeMountAdvertisementRequest | None = None
     staged_request: PyrolyzeMountAdvertisementRequest | None = None
+    advertisement: PyrolyzeMountAdvertisement | None = None
 
     @classmethod
     def bind(
@@ -541,7 +546,10 @@ class PyrolyzeMountAdvertisementBinding(PlainCallBinding):
         request = self.staged_request
         if request is None:
             return
-        self.slot.render_context._publish_mount_advertisement(self.slot, request)
+        self.advertisement = self.slot.render_context._publish_mount_advertisement(
+            self.slot,
+            request,
+        )
         self.request = request
         self.staged_request = None
 
@@ -551,7 +559,11 @@ class PyrolyzeMountAdvertisementBinding(PlainCallBinding):
     def deactivate(self) -> None:
         self.staged_request = None
         self.request = None
+        self.advertisement = None
         self.slot.render_context._withdraw_mount_advertisement(self.slot.slot_id)
+
+    def retained_advertisement(self) -> PyrolyzeMountAdvertisement | None:
+        return self.advertisement
 
 
 class PyrolyzeMountAdvertisementHandler(PlainCallSemanticsHandler):
@@ -1515,18 +1527,33 @@ class PlainCallSlotContext(RerunnableSlotContext):
         binding = self.binding
         if binding is not None:
             binding.commit()
+        self._sync_binding_committed_ui()
 
     def rollback_binding(self) -> None:
         binding = self.binding
         if binding is not None:
             binding.rollback()
+        self._sync_binding_committed_ui()
 
     def deactivate(self) -> None:
         binding = self.binding
         self.binding = None
         if binding is not None:
             binding.deactivate()
+        self._committed_ui = ()
         super(PlainCallSlotContext, self).deactivate()
+
+    def _build_committed_ui(self) -> tuple[object, ...]:
+        binding = self.binding
+        if isinstance(binding, PyrolyzeMountAdvertisementBinding):
+            advertisement = binding.retained_advertisement()
+            if advertisement is None:
+                return ()
+            return (advertisement,)
+        return super(PlainCallSlotContext, self)._build_committed_ui()
+
+    def _sync_binding_committed_ui(self) -> None:
+        self._committed_ui = self._build_committed_ui()
 
 
 @dataclass(slots=True)
@@ -2425,13 +2452,28 @@ class RenderContext(ContextBase):
         self,
         slot: PlainCallSlotContext,
         request: PyrolyzeMountAdvertisementRequest,
-    ) -> None:
+    ) -> PyrolyzeMountAdvertisement:
+        parent = slot.parent
+        if not isinstance(parent, ContainerSlotContext):
+            raise MountAdvertisementContextError(
+                "advertise_mount() requires a native container owner"
+            )
+        if not (parent.expects_native_root or parent.committed_native_root):
+            raise MountAdvertisementContextError(
+                "advertise_mount() requires a native container node owner"
+            )
+        mount_owner_id = parent.current_slot_id()
+        if mount_owner_id is None:
+            raise MountAdvertisementContextError(
+                "advertise_mount() could not resolve a container slot owner"
+            )
         advertisement = PyrolyzeMountAdvertisement(
             key=request.key,
             selectors=request.selectors,
             default=request.default,
             source_slot_id=slot.slot_id,
-            surface_owner_id=slot.parent.current_slot_id(),
+            surface_owner_id=mount_owner_id,
+            mount_owner_id=mount_owner_id,
         )
         next_entries = dict(self._mount_advertisements_by_slot)
         next_entries[slot.slot_id] = advertisement
@@ -2440,6 +2482,7 @@ class RenderContext(ContextBase):
             surface_owner_id=advertisement.surface_owner_id,
         )
         self._mount_advertisements_by_slot = next_entries
+        return advertisement
 
     def _withdraw_mount_advertisement(self, slot_id: SlotId) -> None:
         if slot_id not in self._mount_advertisements_by_slot:
@@ -2513,6 +2556,7 @@ __all__ = [
     "LoopItemSlotContext",
     "ModuleId",
     "ModuleRegistry",
+    "MountAdvertisementContextError",
     "PlainCallResult",
     "PlainCallRuntimeContext",
     "PlainCallSlotContext",

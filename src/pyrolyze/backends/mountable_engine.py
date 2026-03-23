@@ -9,7 +9,15 @@ from typing import Any, Callable, Mapping
 
 from frozendict import frozendict
 
-from pyrolyze.api import MISSING, EmittedNode, MountDirective, MountSelector, SlotSelector, UIElement
+from pyrolyze.api import (
+    MISSING,
+    EmittedNode,
+    MountDirective,
+    MountSelector,
+    PyrolyzeMountAdvertisement,
+    SlotSelector,
+    UIElement,
+)
 from pyrolyze.backends.mounts import MountedRef, apply_mount_state
 from pyrolyze.backends.model import (
     AccessorKind,
@@ -603,6 +611,8 @@ class MountableEngine:
     ) -> list[_NaturalMountInput]:
         inputs: list[_NaturalMountInput] = []
         for child in children:
+            if isinstance(child, PyrolyzeMountAdvertisement):
+                continue
             if isinstance(child, MountDirective):
                 directive_selectors = child.selectors
                 if any(
