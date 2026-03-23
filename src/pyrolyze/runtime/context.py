@@ -9,7 +9,13 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from typing import Any, Callable, Generic, Iterator, Protocol, TypeVar, cast
 
-from pyrolyze.api import MountDirective, SlotSelector, UIElement
+from pyrolyze.api import (
+    MountDirective,
+    PyrolyzeMountAdvertisement,
+    PyrolyzeMountAdvertisementRequest,
+    SlotSelector,
+    UIElement,
+)
 
 from .app_context import AppContextKey, AppContextStore, GENERATION_TRACKER_KEY
 from .trace import TraceChannel, emit_trace, trace_enabled
@@ -105,6 +111,10 @@ class SlotOwnershipError(RuntimeError):
 
 class DuplicateKeyError(RuntimeError):
     """Raised when a keyed loop encounters the same key more than once in one pass."""
+
+
+class DuplicateMountAdvertisementError(RuntimeError):
+    """Raised when one mount advert surface publishes an illegal public shape."""
 
 
 def _dirty_state_truthy(value: Any) -> bool:
@@ -503,9 +513,75 @@ class ExternalStoreHandler(PlainCallSemanticsHandler):
         return ExternalStoreBinding.bind(slot, ref)
 
 
+@dataclass(slots=True)
+class PyrolyzeMountAdvertisementBinding(PlainCallBinding):
+    slot: PlainCallSlotContext
+    request: PyrolyzeMountAdvertisementRequest | None = None
+    staged_request: PyrolyzeMountAdvertisementRequest | None = None
+
+    @classmethod
+    def bind(
+        cls,
+        slot: PlainCallSlotContext,
+        request: PyrolyzeMountAdvertisementRequest,
+    ) -> PyrolyzeMountAdvertisementBinding:
+        binding = cls(slot=slot)
+        binding.stage(request)
+        return binding
+
+    def exposed_value(self) -> PyrolyzeMountAdvertisementRequest | None:
+        if self.staged_request is not None:
+            return self.staged_request
+        return self.request
+
+    def stage(self, request: PyrolyzeMountAdvertisementRequest) -> None:
+        self.staged_request = request
+
+    def commit(self) -> None:
+        request = self.staged_request
+        if request is None:
+            return
+        self.slot.render_context._publish_mount_advertisement(self.slot, request)
+        self.request = request
+        self.staged_request = None
+
+    def rollback(self) -> None:
+        self.staged_request = None
+
+    def deactivate(self) -> None:
+        self.staged_request = None
+        self.request = None
+        self.slot.render_context._withdraw_mount_advertisement(self.slot.slot_id)
+
+
+class PyrolyzeMountAdvertisementHandler(PlainCallSemanticsHandler):
+    def can_handle(self, result: object) -> bool:
+        return isinstance(result, PyrolyzeMountAdvertisementRequest)
+
+    def bind(
+        self,
+        slot: PlainCallSlotContext,
+        result: object,
+        previous: PlainCallBinding | None,
+    ) -> PlainCallBinding:
+        request = cast(PyrolyzeMountAdvertisementRequest, result)
+        if isinstance(previous, PyrolyzeMountAdvertisementBinding):
+            previous.stage(request)
+            return previous
+        return PyrolyzeMountAdvertisementBinding.bind(slot, request)
+
+
 class PlainValueHandler(PlainCallSemanticsHandler):
     def can_handle(self, result: object) -> bool:
-        return not isinstance(result, (ExternalStoreRef, UseEffectRequest, UseEffectAsyncRequest))
+        return not isinstance(
+            result,
+            (
+                ExternalStoreRef,
+                PyrolyzeMountAdvertisementRequest,
+                UseEffectRequest,
+                UseEffectAsyncRequest,
+            ),
+        )
 
     def bind(
         self,
@@ -555,6 +631,7 @@ class UseEffectAsyncHandler(PlainCallSemanticsHandler):
 
 _PLAIN_CALL_HANDLERS: tuple[PlainCallSemanticsHandler, ...] = (
     ExternalStoreHandler(),
+    PyrolyzeMountAdvertisementHandler(),
     UseEffectAsyncHandler(),
     UseEffectHandler(),
     PlainValueHandler(),
@@ -1863,10 +1940,7 @@ class _ContainerCallHandle(AbstractContextManager[ContainerSlotContext]):
     def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
         suppress = False
         try:
-            if exc_type is None:
-                self.slot._commit_scope_pass()
-            else:
-                self.slot._rollback_scope_pass()
+            _finish_context_pass(self.slot, commit=exc_type is None)
         finally:
             host_exit = getattr(self._host_context, "__exit__", None)
             if callable(host_exit):
@@ -1896,7 +1970,7 @@ class _DirectiveCallHandle(AbstractContextManager[DirectiveSlotContext]):
 
     def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
         if exc_type is not None:
-            self.slot._rollback_scope_pass()
+            _finish_context_pass(self.slot, commit=False)
             return False
         try:
             selectors = self.slot.pending_selectors()
@@ -1906,9 +1980,10 @@ class _DirectiveCallHandle(AbstractContextManager[DirectiveSlotContext]):
                 and self.slot.has_pending_emitted_children()
             ):
                 raise RuntimeError("mount(no_emit) does not allow emitted children")
-            self.slot._commit_scope_pass()
+            _finish_context_pass(self.slot, commit=True)
         except BaseException:
-            self.slot._rollback_scope_pass()
+            if getattr(self.slot, "_scope_active", False):
+                _finish_context_pass(self.slot, commit=False)
             raise
         return False
 
@@ -1944,10 +2019,7 @@ class _NativeContainerCallHandle(AbstractContextManager[ContainerSlotContext]):
 
     def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
         try:
-            if exc_type is None:
-                self.slot._commit_scope_pass()
-            else:
-                self.slot._rollback_scope_pass()
+            _finish_context_pass(self.slot, commit=exc_type is None)
         finally:
             self.slot.expects_native_root = False
         return False
@@ -2020,10 +2092,7 @@ class _PyrolyzeContainerCallHandle(AbstractContextManager[ContainerSlotContext])
 
     def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
         try:
-            if exc_type is None:
-                self.slot._commit_scope_pass()
-            else:
-                self.slot._rollback_scope_pass()
+            _finish_context_pass(self.slot, commit=exc_type is None)
         finally:
             self.slot.expects_native_root = False
         return False
@@ -2041,11 +2110,20 @@ class _PassScopeHandle(AbstractContextManager[None]):
 
     def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
         if self.activate:
-            if exc_type is None:
-                self.context.end_pass()
-            else:
-                self.context.rollback_pass()
+            _finish_context_pass(self.context, commit=exc_type is None)
         return False
+
+
+def _finish_context_pass(context: ContextBase, *, commit: bool) -> None:
+    if not commit:
+        context.rollback_pass()
+        return
+    try:
+        context.end_pass()
+    except BaseException:
+        if getattr(context, "_scope_active", False):
+            context.rollback_pass()
+        raise
 
 
 def _structured_dirty_projection(
@@ -2112,6 +2190,7 @@ class RenderContext(ContextBase):
         app_context_store: AppContextStore | None = None,
     ) -> None:
         self._slots_by_id: dict[SlotId, SlotContext] = {}
+        self._mount_advertisements_by_slot: dict[SlotId, PyrolyzeMountAdvertisement] = {}
         self._owner_slot = owner_slot
         self._mounted_callback: Callable[[], None] | None = None
         self._post_commit_callbacks: list[Callable[[], None]] = []
@@ -2195,6 +2274,9 @@ class RenderContext(ContextBase):
     def debug_pending_boundaries(self) -> tuple[SlotId | None, ...]:
         scheduler_root = self._scheduler_root
         return tuple(boundary._debug_boundary_id() for boundary in scheduler_root._scheduler.queue)
+
+    def debug_mount_advertisements(self) -> tuple[PyrolyzeMountAdvertisement, ...]:
+        return tuple(self._mount_advertisements_by_slot.values())
 
     def debug_ui(self, slot_id: SlotId | None = None) -> tuple[UIElement | MountDirective, ...]:
         if slot_id is None:
@@ -2339,6 +2421,59 @@ class RenderContext(ContextBase):
         scheduler_root._flush_posted = True
         scheduler_root._flush_poster(scheduler_root.run_pending_invalidations)
 
+    def _publish_mount_advertisement(
+        self,
+        slot: PlainCallSlotContext,
+        request: PyrolyzeMountAdvertisementRequest,
+    ) -> None:
+        advertisement = PyrolyzeMountAdvertisement(
+            key=request.key,
+            selectors=request.selectors,
+            default=request.default,
+            source_slot_id=slot.slot_id,
+            surface_owner_id=slot.parent.current_slot_id(),
+        )
+        next_entries = dict(self._mount_advertisements_by_slot)
+        next_entries[slot.slot_id] = advertisement
+        self._validate_mount_advertisement_surface(
+            next_entries,
+            surface_owner_id=advertisement.surface_owner_id,
+        )
+        self._mount_advertisements_by_slot = next_entries
+
+    def _withdraw_mount_advertisement(self, slot_id: SlotId) -> None:
+        if slot_id not in self._mount_advertisements_by_slot:
+            return
+        next_entries = dict(self._mount_advertisements_by_slot)
+        next_entries.pop(slot_id, None)
+        self._mount_advertisements_by_slot = next_entries
+
+    def _validate_mount_advertisement_surface(
+        self,
+        advertisements_by_slot: dict[SlotId, PyrolyzeMountAdvertisement],
+        *,
+        surface_owner_id: SlotId | None,
+    ) -> None:
+        surface_entries = [
+            advertisement
+            for advertisement in advertisements_by_slot.values()
+            if advertisement.surface_owner_id == surface_owner_id
+        ]
+        seen_keys: list[object] = []
+        seen_default = False
+        for advertisement in surface_entries:
+            if any(advertisement.key == existing_key for existing_key in seen_keys):
+                raise DuplicateMountAdvertisementError(
+                    f"duplicate mount advertisement key {advertisement.key!r}"
+                )
+            seen_keys.append(advertisement.key)
+            if advertisement.default:
+                if seen_default:
+                    raise DuplicateMountAdvertisementError(
+                        "duplicate default mount advertisement"
+                    )
+                seen_default = True
+
 
 def _context_kind(context: object) -> str:
     if isinstance(context, RenderContext):
@@ -2369,6 +2504,7 @@ __all__ = [
     "ContainerSlotContext",
     "DirtyStateContext",
     "DuplicateKeyError",
+    "DuplicateMountAdvertisementError",
     "EventHandlerSlotContext",
     "ExternalStoreBinding",
     "ExternalStoreRef",
@@ -2381,6 +2517,7 @@ __all__ = [
     "PlainCallRuntimeContext",
     "PlainCallSlotContext",
     "PlainValueBinding",
+    "PyrolyzeMountAdvertisementBinding",
     "RenderContext",
     "RerunnableSlotContext",
     "SlotContext",

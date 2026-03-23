@@ -53,6 +53,12 @@ class _FlattenedMountAttachment:
     values: frozendict[str, Any]
 
 
+@dataclass(frozen=True, slots=True)
+class _NaturalMountInput:
+    element: UIElement
+    selectors: tuple[SlotSelector, ...] | None
+
+
 class MountableEngine:
     def __init__(
         self,
@@ -516,7 +522,9 @@ class MountableEngine:
     ) -> tuple[list[MountedMountableNode], dict[tuple[object, ...], MountState]]:
         if not children and not old_mount_states and not old_child_nodes:
             return [], {}
-        flattened_children = self._flatten_child_attachments(spec, children)
+        natural_inputs = self._build_natural_mount_inputs(children)
+        routed_inputs = self._build_mount_advert_dag(spec, natural_inputs)
+        flattened_children = self._flatten_native_mount_attachments(spec, routed_inputs)
         reusable_children = _child_node_pool(old_child_nodes or [])
         child_nodes: list[MountedMountableNode] = []
         for index, attachment in enumerate(flattened_children):
@@ -583,7 +591,17 @@ class MountableEngine:
         *,
         selectors: tuple[SlotSelector, ...] | None = None,
     ) -> list[_FlattenedMountAttachment]:
-        attachments: list[_FlattenedMountAttachment] = []
+        natural_inputs = self._build_natural_mount_inputs(children, selectors=selectors)
+        routed_inputs = self._build_mount_advert_dag(parent_spec, natural_inputs)
+        return self._flatten_native_mount_attachments(parent_spec, routed_inputs)
+
+    def _build_natural_mount_inputs(
+        self,
+        children: tuple[EmittedNode, ...],
+        *,
+        selectors: tuple[SlotSelector, ...] | None = None,
+    ) -> list[_NaturalMountInput]:
+        inputs: list[_NaturalMountInput] = []
         for child in children:
             if isinstance(child, MountDirective):
                 directive_selectors = child.selectors
@@ -594,18 +612,38 @@ class MountableEngine:
                     if child.children:
                         raise RuntimeError("mount(no_emit) does not allow emitted children")
                     continue
-                attachments.extend(
-                    self._flatten_child_attachments(
-                        parent_spec,
+                inputs.extend(
+                    self._build_natural_mount_inputs(
                         child.children,
                         selectors=directive_selectors,
                     )
                 )
                 continue
-            mount_point, values = self._resolve_child_mount(parent_spec, child, selectors)
+            inputs.append(_NaturalMountInput(element=child, selectors=selectors))
+        return inputs
+
+    def _build_mount_advert_dag(
+        self,
+        _parent_spec: UiWidgetSpec,
+        mount_inputs: list[_NaturalMountInput],
+    ) -> list[_NaturalMountInput]:
+        return list(mount_inputs)
+
+    def _flatten_native_mount_attachments(
+        self,
+        parent_spec: UiWidgetSpec,
+        mount_inputs: list[_NaturalMountInput],
+    ) -> list[_FlattenedMountAttachment]:
+        attachments: list[_FlattenedMountAttachment] = []
+        for mount_input in mount_inputs:
+            mount_point, values = self._resolve_child_mount(
+                parent_spec,
+                mount_input.element,
+                mount_input.selectors,
+            )
             attachments.append(
                 _FlattenedMountAttachment(
-                    element=child,
+                    element=mount_input.element,
                     mount_point=mount_point,
                     values=frozendict(values),
                 )

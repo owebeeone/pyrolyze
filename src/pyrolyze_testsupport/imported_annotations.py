@@ -3,6 +3,8 @@ from __future__ import annotations
 from pyrolyze.api import (
     CallFromNonPyrolyzeContext,
     ComponentMetadata,
+    MountSelector,
+    PyrolyzeMountAdvertisementRequest,
     PyrolyzeHandler,
     UIElement,
     pyrolyze_component_ref,
@@ -11,6 +13,7 @@ from pyrolyze.api import (
 
 
 LOG: list[tuple[object, ...]] = []
+IMPORTED_MENU = MountSelector.named("imported_menu")
 
 
 def reset_logs() -> None:
@@ -25,6 +28,14 @@ def imported_upper(label: str) -> str:
 
 def imported_badge(text: str, *, tone: str) -> None:
     LOG.append(("badge", text, tone))
+
+
+def imported_advert_request(key: object) -> PyrolyzeMountAdvertisementRequest:
+    LOG.append(("advert_request", key))
+    return PyrolyzeMountAdvertisementRequest(
+        key=key,
+        selectors=(IMPORTED_MENU,),
+    )
 
 
 def __pyr_imported_child(__pyr_ctx, __pyr_dirty_state, text: str) -> None:

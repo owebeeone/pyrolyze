@@ -124,6 +124,26 @@ class MountDirective:
 EmittedNode = UIElement | MountDirective
 
 
+@dataclass(frozen=True, slots=True)
+class PyrolyzeMountAdvertisementRequest:
+    """Plain-call carrier describing one advertised public mount entry."""
+
+    key: object
+    selectors: tuple[SlotSelector, ...] = ()
+    default: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class PyrolyzeMountAdvertisement:
+    """Committed mount advert published by one slotted advert call site."""
+
+    key: object
+    selectors: tuple[SlotSelector, ...] = ()
+    default: bool = False
+    source_slot_id: Any | None = field(default=None, compare=False)
+    surface_owner_id: Any | None = field(default=None, compare=False)
+
+
 default = MountSelector.default_selector()
 no_emit = MountSelector.no_emit_selector()
 
@@ -147,6 +167,14 @@ def mount(*selectors: SlotSelector) -> object:
     raise CallFromNonPyrolyzeContext(
         "mount() may only be used inside a transformed @pyrolyze function"
     )
+
+
+def _normalize_mount_advertisement_selectors(
+    *selectors: SlotSelector,
+) -> tuple[SlotSelector, ...]:
+    if not selectors:
+        return ()
+    return validate_mount_selectors(*selectors)
 
 
 
@@ -185,6 +213,29 @@ def pyrolyze_slotted(fn: Callable[..., T]) -> Callable[..., T]:
     return fn
 
 
+@pyrolyze_slotted
+def advertise_mount(
+    key: object | None = None,
+    *selectors: SlotSelector,
+    name: object | None = None,
+    default: bool = False,
+    runtime: "PlainCallRuntimeContext" = None,
+) -> PyrolyzeMountAdvertisementRequest:
+    """Declare a public mount advert for the current component surface."""
+
+    _ = runtime
+    if key is not None and name is not None:
+        raise TypeError("advertise_mount() received both key and name")
+    resolved_key = key if key is not None else name
+    if resolved_key is None:
+        raise TypeError("advertise_mount() requires a key or name")
+    return PyrolyzeMountAdvertisementRequest(
+        key=resolved_key,
+        selectors=_normalize_mount_advertisement_selectors(*selectors),
+        default=bool(default),
+    )
+
+
 def pyrolyze_component_ref(
     meta: ComponentMetadata[P],
 ) -> Callable[[Callable[P, None]], ComponentRef[P]]:
@@ -220,6 +271,7 @@ from .hooks import use_effect, use_grip, use_mount, use_state, use_unmount
 
 __all__ = [
     "CallFromNonPyrolyzeContext",
+    "advertise_mount",
     "call_native",
     "ComponentMetadata",
     "ComponentRef",
@@ -229,6 +281,8 @@ __all__ = [
     "MissingType",
     "MountDirective",
     "MountSelector",
+    "PyrolyzeMountAdvertisement",
+    "PyrolyzeMountAdvertisementRequest",
     "PyrolyzeHandler",
     "PyrolyzeEventParam",
     "PyrolyzeSlottedParam",

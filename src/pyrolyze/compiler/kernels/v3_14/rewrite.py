@@ -2041,6 +2041,7 @@ def _is_plain_call_carrier_annotation(annotation: Any) -> bool:
         annotation,
         {
             "ExternalStoreRef",
+            "PyrolyzeMountAdvertisementRequest",
             "UseEffectRequest",
             "UseEffectAsyncRequest",
         },
