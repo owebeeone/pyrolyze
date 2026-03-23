@@ -24,9 +24,11 @@ The current end-to-end generated native mount coverage lives in tests:
 
 - `tests/test_pyside6_native_host.py`
 - `tests/test_tkinter_native_host.py`
+- DearPyGui: `tests/test_examples_grid_app_dearpygui_native.py` (requires
+  `dearpygui` / the `dpg` extra)
 
 Those are the best current source examples for authored `mount(...)` with
-generated backend libraries.
+generated backend libraries (where applicable per backend).
 
 ## Simple native emitter
 

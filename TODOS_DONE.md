@@ -1,6 +1,6 @@
 # Completed TODOs
 
-Completed backlog items moved out of [TODOS.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/TODOS.md) to keep the active list focused.
+Completed backlog items moved out of [TODOS.md](TODOS.md) to keep the active list focused.
 
 ## Milestone: Initial Release (PyPI)
 

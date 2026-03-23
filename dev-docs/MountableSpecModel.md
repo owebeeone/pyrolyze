@@ -1512,9 +1512,9 @@ Required binding surface:
 
 This model is the lower-level runtime companion to:
 
-- [GenericReconcilerRequirements.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/GenericReconcilerRequirements.md)
-- [GenericReconcilerApiProposal.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/GenericReconcilerApiProposal.md)
-- [MountPointComponentDesign.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/MountPointComponentDesign.md)
+- [GenericReconcilerRequirements.md](GenericReconcilerRequirements.md)
+- [GenericReconcilerApiProposal.md](GenericReconcilerApiProposal.md)
+- [MountPointComponentDesign.md](MountPointComponentDesign.md)
 
 Those documents define:
 

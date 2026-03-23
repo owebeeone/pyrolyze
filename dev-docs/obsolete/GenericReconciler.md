@@ -9,8 +9,8 @@ without hard-coding the semantic node set in backend adapters.
 The detailed terminology and API direction in this plan have been partially
 superseded by:
 
-- [GenericReconcilerRequirements.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/GenericReconcilerRequirements.md)
-- [GenericReconcilerApiProposal.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/GenericReconcilerApiProposal.md)
+- [GenericReconcilerRequirements.md](../GenericReconcilerRequirements.md)
+- [GenericReconcilerApiProposal.md](../GenericReconcilerApiProposal.md)
 
 Those two documents should be treated as the authoritative current direction
 for naming and public API shape.
@@ -26,7 +26,7 @@ The current implementation is already partly generic.
 ### What is already generic
 
 The normalized node layer in
-[/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/runtime/ui_nodes.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/runtime/ui_nodes.py)
+[../../src/pyrolyze/runtime/ui_nodes.py](../../src/pyrolyze/runtime/ui_nodes.py)
 already has the right shape for a generic reconciler:
 
 - `UiNodeDescriptor`
@@ -51,7 +51,7 @@ That is the correct architectural direction.
 ### What is still fixed to the built-in node set
 
 The shipped registry in
-[/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/runtime/ui_nodes.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/runtime/ui_nodes.py)
+[../../src/pyrolyze/runtime/ui_nodes.py](../../src/pyrolyze/runtime/ui_nodes.py)
 is still a frozen built-in registry:
 
 - `section`
@@ -64,8 +64,8 @@ is still a frozen built-in registry:
 
 The shipped backends still hard-code binding logic by `spec.kind`:
 
-- [pyrolyze_pyside6.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/pyrolyze_pyside6.py)
-- [pyrolyze_tkinter.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/pyrolyze_tkinter.py)
+- [pyrolyze_pyside6.py](../../src/pyrolyze/pyrolyze_pyside6.py)
+- [pyrolyze_tkinter.py](../../src/pyrolyze/pyrolyze_tkinter.py)
 
 That means the reconciler core is generic, but the end-to-end system is not yet
 library-generic.
@@ -134,7 +134,7 @@ Those may be revisited later, but they are outside this plan.
 ## Current `UIElement` Assessment
 
 `UIElement` currently lives in
-[/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/api.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/api.py)
+[../../src/pyrolyze/api.py](../../src/pyrolyze/api.py)
 and has:
 
 - `kind`

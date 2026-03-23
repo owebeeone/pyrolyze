@@ -4,6 +4,14 @@
 
 Explain the current test layers and how golden-source testing is organized.
 
+## Module opt-in tag in `gold_src`
+
+Author-facing modules should use `#@pyrolyze` on line 1 or 2. The **checked-in
+golden corpus** (`tests/data/gold_src/*.py`) intentionally keeps the historical
+first-line marker `#@pyrolyte`; `tests/test_ast_goldens.py` asserts that
+convention so the fixture set stays stable. New application or example code
+should use `#@pyrolyze`.
+
 ## Current implementation
 
 PyRolyze uses several test layers:

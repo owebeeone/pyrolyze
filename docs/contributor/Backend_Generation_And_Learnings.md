@@ -7,7 +7,8 @@ Explain how the generated backend UI libraries are produced for:
 - `PySide6`
 - `tkinter`
 
-and what the backend `learnings.py` files actually do.
+what the backend `learnings.py` files do, and where the **DearPyGui** pipeline
+fits (separate generator entry point from semantic-library extraction).
 
 This is an operational maintainer document. It describes the current pipeline
 as it exists in the repository today, including the parts that are still
@@ -19,22 +20,45 @@ transitional.
 Primary files:
 
 - generator:
-  - [pyrolyze_tools/generate_semantic_library.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/pyrolyze_tools/generate_semantic_library.py)
+  - [pyrolyze_tools/generate_semantic_library.py](../../pyrolyze_tools/generate_semantic_library.py)
 - backend model types:
-  - [src/pyrolyze/backends/model.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/backends/model.py)
+  - [src/pyrolyze/backends/model.py](../../src/pyrolyze/backends/model.py)
 - PySide6 learnings:
-  - [src/pyrolyze/backends/pyside6/learnings.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/backends/pyside6/learnings.py)
+  - [src/pyrolyze/backends/pyside6/learnings.py](../../src/pyrolyze/backends/pyside6/learnings.py)
 - tkinter learnings:
-  - [src/pyrolyze/backends/tkinter/learnings.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/backends/tkinter/learnings.py)
+  - [src/pyrolyze/backends/tkinter/learnings.py](../../src/pyrolyze/backends/tkinter/learnings.py)
 - checked-in generated libraries:
-  - [src/pyrolyze/backends/pyside6/generated_library.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/backends/pyside6/generated_library.py)
-  - [src/pyrolyze/backends/tkinter/generated_library.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/backends/tkinter/generated_library.py)
+  - [src/pyrolyze/backends/pyside6/generated_library.py](../../src/pyrolyze/backends/pyside6/generated_library.py)
+  - [src/pyrolyze/backends/tkinter/generated_library.py](../../src/pyrolyze/backends/tkinter/generated_library.py)
+- DearPyGui (separate toolchain; not `generate_semantic_library.py`):
+  - CLI / driver: [pyrolyze_tools/generate_dearpygui_library.py](../../pyrolyze_tools/generate_dearpygui_library.py)
+  - emitter implementation: [pyrolyze_tools/dearpygui_emit_library.py](../../pyrolyze_tools/dearpygui_emit_library.py)
+  - learnings overlay: [src/pyrolyze/backends/dearpygui/learnings.py](../../src/pyrolyze/backends/dearpygui/learnings.py)
+  - checked-in artifact: [src/pyrolyze/backends/dearpygui/generated_library.py](../../src/pyrolyze/backends/dearpygui/generated_library.py)
 
 Primary tests:
 
-- [tests/test_generate_semantic_library_tool.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/tests/test_generate_semantic_library_tool.py)
-- [tests/test_generated_backend_libraries.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/tests/test_generated_backend_libraries.py)
-- [tests/backends/pyside6/test_widget_engine.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/tests/backends/pyside6/test_widget_engine.py)
+- [tests/test_generate_semantic_library_tool.py](../../tests/test_generate_semantic_library_tool.py)
+- [tests/test_generated_backend_libraries.py](../../tests/test_generated_backend_libraries.py)
+- [tests/backends/pyside6/test_widget_engine.py](../../tests/backends/pyside6/test_widget_engine.py)
+- [tests/test_dearpygui_generated_library.py](../../tests/test_dearpygui_generated_library.py)
+
+
+## DearPyGui generation
+
+DearPyGui uses **discovery against the installed `dearpygui` package** and a
+dedicated emitter ([dearpygui_emit_library.py](../../pyrolyze_tools/dearpygui_emit_library.py)),
+not the PySide6/tkinter semantic discovery pipeline above.
+
+Typical maintainer flow:
+
+```bash
+uv run --extra dpg python pyrolyze_tools/generate_dearpygui_library.py --emit
+```
+
+Author-facing helpers for a subset of kinds live in
+[src/pyrolyze/backends/dearpygui/author_ui.py](../../src/pyrolyze/backends/dearpygui/author_ui.py)
+and are evolved alongside examples.
 
 
 ## High-Level Pipeline
@@ -85,7 +109,7 @@ The generator chooses default base classes by package:
   - `tkinter.ttk.Widget`
 
 This logic lives in `_default_widget_base_specs(...)` in
-[generate_semantic_library.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/pyrolyze_tools/generate_semantic_library.py).
+[generate_semantic_library.py](../../pyrolyze_tools/generate_semantic_library.py).
 
 
 ### What Gets Extracted
@@ -310,7 +334,7 @@ The generator loads it with:
 - `apply_learnings(...)`
 
 The learnings model is defined in
-[model.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/backends/model.py):
+[model.py](../../src/pyrolyze/backends/model.py):
 
 - `UiWidgetLearning`
 - `UiPropLearning`
@@ -383,7 +407,7 @@ Important caveat:
 
 Current Tkinter learnings are intentionally minimal:
 
-- [src/pyrolyze/backends/tkinter/learnings.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/backends/tkinter/learnings.py)
+- [src/pyrolyze/backends/tkinter/learnings.py](../../src/pyrolyze/backends/tkinter/learnings.py)
 
 At the moment that file exports an empty `LEARNINGS` map.
 
@@ -460,8 +484,8 @@ If you want to refresh the checked-in runtime-ready generated backend library,
 the raw generated source must currently also be lowered through the compiler
 before writing back to:
 
-- [src/pyrolyze/backends/pyside6/generated_library.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/backends/pyside6/generated_library.py)
-- [src/pyrolyze/backends/tkinter/generated_library.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/backends/tkinter/generated_library.py)
+- [src/pyrolyze/backends/pyside6/generated_library.py](../../src/pyrolyze/backends/pyside6/generated_library.py)
+- [src/pyrolyze/backends/tkinter/generated_library.py](../../src/pyrolyze/backends/tkinter/generated_library.py)
 
 If you are touching this path, verify which artifact form the relevant tests
 expect before committing.
@@ -500,7 +524,7 @@ The important current gaps are:
 
 ## Related Docs
 
-- [UI_Libraries_And_Backend_Adapters.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/docs/design/UI_Libraries_And_Backend_Adapters.md)
-- [MountPointComponentDesign.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/MountPointComponentDesign.md)
-- [MountableSpecModel.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/MountableSpecModel.md)
-- [MountableTestingPlan.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/MountableTestingPlan.md)
+- [UI_Libraries_And_Backend_Adapters.md](../../docs/design/UI_Libraries_And_Backend_Adapters.md)
+- [MountPointComponentDesign.md](../../dev-docs/MountPointComponentDesign.md)
+- [MountableSpecModel.md](../../dev-docs/MountableSpecModel.md)
+- [MountableTestingPlan.md](../../dev-docs/MountableTestingPlan.md)

@@ -24,9 +24,9 @@ This file defines repository-specific coding instructions for `py-rolyze`.
   3. the runtime-only helper surface
 - If one proposal mixes those layers, rewrite it before presenting it.
 - Preserve explicit semantic coercions at API boundaries. Do not remove conversions such as `bool(...)`, `int(...)`, or `tuple(...)` when they are part of the intended source/runtime contract.
-- See `/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/ApiDesignRules.md` for generic API design rules.
-- See `/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/SemanticUiLibraryDesignRules.md` for semantic UI library rules.
-- See `/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/PackageStructureRules.md` for package and example layout rules.
+- See `dev-docs/ApiDesignRules.md` for generic API design rules.
+- See `dev-docs/SemanticUiLibraryDesignRules.md` for semantic UI library rules.
+- See `dev-docs/PackageStructureRules.md` for package and example layout rules.
 
 ## Development Process (TDD)
 Use a strict red/green/refactor workflow for all behavior changes.

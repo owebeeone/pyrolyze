@@ -15,8 +15,12 @@
   - use for slotted helper values
 - `Callable[...]`
   - use when a callable should stay plain Python
+- `PyrolyzeHandler[...]`
+  - reserved callback typing surface for explicit event-boundary use (canonical
+    spelling in `pyrolyze.api`)
 - `PyrolyteHandler[...]`
-  - reserved callback typing surface for explicit event-boundary use
+  - compatibility alias for the same annotation (older spelling); the compiler
+    accepts both names when matching imports
 
 ## When you must annotate
 

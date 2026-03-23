@@ -2,7 +2,9 @@
 
 PyRolyze source starts with two opt-ins:
 
-1. module opt-in with `#@pyrolyze` on line 1 or 2
+1. module opt-in with `#@pyrolyze` on line 1 or 2 (golden fixtures under
+   `tests/data/gold_src/` still use the legacy first-line tag `#@pyrolyte`; see
+   [../contributor/Testing_And_Goldens.md](../contributor/Testing_And_Goldens.md))
 2. component opt-in with `@pyrolyze`
 
 Typical author flow:

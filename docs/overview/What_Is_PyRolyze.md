@@ -12,7 +12,8 @@ In the current package, PyRolyze includes:
 - a source API in `src/pyrolyze/api.py`
 - a versioned AST compiler in `src/pyrolyze/compiler/`
 - a context-graph runtime in `src/pyrolyze/runtime/`
-- backend adapters for PySide6 and Tkinter
+- backend adapters for PySide6, Tkinter, and DearPyGui (optional `dearpygui`
+  extra; see `pyproject.toml`)
 - source-backed golden tests and versioned Python test runs
 
 What it is good for:

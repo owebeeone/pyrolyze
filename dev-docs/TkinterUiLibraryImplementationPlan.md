@@ -17,7 +17,7 @@ It is intentionally phased:
 
 This plan covers the work required to make `TkinterUiLibrary` usable as a real
 author-facing backend surface for applications like
-[grid_app_tkinter.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/examples/grid_app_tkinter.py).
+[grid_app_tkinter.py](../examples/grid_app_tkinter.py).
 
 It includes:
 
@@ -39,11 +39,11 @@ It does **not** attempt to finish:
 
 The current tkinter stack already has some important pieces:
 
-- [src/pyrolyze/backends/tkinter/engine.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/backends/tkinter/engine.py)
+- [src/pyrolyze/backends/tkinter/engine.py](../src/pyrolyze/backends/tkinter/engine.py)
   - the runtime already supports `AccessorKind.TK_CONFIG`
-- [src/pyrolyze/backends/model.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/backends/model.py)
+- [src/pyrolyze/backends/model.py](../src/pyrolyze/backends/model.py)
   - the shared model already has `TK_CONFIG`, events, and mount-point metadata
-- [pyrolyze_tools/generate_semantic_library.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/pyrolyze_tools/generate_semantic_library.py)
+- [pyrolyze_tools/generate_semantic_library.py](../pyrolyze_tools/generate_semantic_library.py)
   - tkinter widget discovery exists
   - tkinter setter discovery exists
   - narrow tkinter mount discovery exists for:
@@ -114,8 +114,8 @@ Goal:
 
 Files:
 
-- [pyrolyze_tools/generate_semantic_library.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/pyrolyze_tools/generate_semantic_library.py)
-- [src/pyrolyze/backends/tkinter/learnings.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/backends/tkinter/learnings.py)
+- [pyrolyze_tools/generate_semantic_library.py](../pyrolyze_tools/generate_semantic_library.py)
+- [src/pyrolyze/backends/tkinter/learnings.py](../src/pyrolyze/backends/tkinter/learnings.py)
 
 Required work:
 
@@ -156,9 +156,9 @@ Goal:
 
 Files:
 
-- [src/pyrolyze/backends/tkinter/learnings.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/backends/tkinter/learnings.py)
+- [src/pyrolyze/backends/tkinter/learnings.py](../src/pyrolyze/backends/tkinter/learnings.py)
 - generator shaping code in
-  [pyrolyze_tools/generate_semantic_library.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/pyrolyze_tools/generate_semantic_library.py)
+  [pyrolyze_tools/generate_semantic_library.py](../pyrolyze_tools/generate_semantic_library.py)
 
 Required work:
 
@@ -186,10 +186,10 @@ Goal:
 
 Files:
 
-- [src/pyrolyze/backends/tkinter/learnings.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/backends/tkinter/learnings.py)
+- [src/pyrolyze/backends/tkinter/learnings.py](../src/pyrolyze/backends/tkinter/learnings.py)
 - generator event shaping in
-  [pyrolyze_tools/generate_semantic_library.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/pyrolyze_tools/generate_semantic_library.py)
-- possibly [src/pyrolyze/backends/tkinter/engine.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/backends/tkinter/engine.py)
+  [pyrolyze_tools/generate_semantic_library.py](../pyrolyze_tools/generate_semantic_library.py)
+- possibly [src/pyrolyze/backends/tkinter/engine.py](../src/pyrolyze/backends/tkinter/engine.py)
   if runtime hookup needs to grow
 
 Required work:
@@ -220,7 +220,7 @@ Goal:
 
 Files:
 
-- [pyrolyze_tools/generate_semantic_library.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/pyrolyze_tools/generate_semantic_library.py)
+- [pyrolyze_tools/generate_semantic_library.py](../pyrolyze_tools/generate_semantic_library.py)
 
 Required work:
 
@@ -250,8 +250,8 @@ Goal:
 
 Files:
 
-- [pyrolyze_tools/generate_semantic_library.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/pyrolyze_tools/generate_semantic_library.py)
-- [src/pyrolyze/backends/tkinter/learnings.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/backends/tkinter/learnings.py)
+- [pyrolyze_tools/generate_semantic_library.py](../pyrolyze_tools/generate_semantic_library.py)
+- [src/pyrolyze/backends/tkinter/learnings.py](../src/pyrolyze/backends/tkinter/learnings.py)
 
 Required decision:
 
@@ -291,7 +291,7 @@ Goal:
 
 Files:
 
-- [src/pyrolyze/backends/tkinter/generated_library.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/backends/tkinter/generated_library.py)
+- [src/pyrolyze/backends/tkinter/generated_library.py](../src/pyrolyze/backends/tkinter/generated_library.py)
 
 Audit targets:
 
@@ -324,7 +324,7 @@ Goal:
 
 Files:
 
-- [examples/grid_app_tkinter.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/examples/grid_app_tkinter.py)
+- [examples/grid_app_tkinter.py](../examples/grid_app_tkinter.py)
 - relevant native/generated host files if needed
 
 Required outcome:

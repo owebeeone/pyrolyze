@@ -7,13 +7,13 @@ UI-library system.
 
 It follows:
 
-- [GenericReconcilerRequirements.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/GenericReconcilerRequirements.md)
-- [MountPointComponentDesign.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/MountPointComponentDesign.md)
-- [MountableSpecModel.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/MountableSpecModel.md)
-- [MountableTestingPlan.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/MountableTestingPlan.md)
-- [ApiDesignRules.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/ApiDesignRules.md)
-- [SemanticUiLibraryDesignRules.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/SemanticUiLibraryDesignRules.md)
-- [PackageStructureRules.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/PackageStructureRules.md)
+- [GenericReconcilerRequirements.md](GenericReconcilerRequirements.md)
+- [MountPointComponentDesign.md](MountPointComponentDesign.md)
+- [MountableSpecModel.md](MountableSpecModel.md)
+- [MountableTestingPlan.md](MountableTestingPlan.md)
+- [ApiDesignRules.md](ApiDesignRules.md)
+- [SemanticUiLibraryDesignRules.md](SemanticUiLibraryDesignRules.md)
+- [PackageStructureRules.md](PackageStructureRules.md)
 
 This is a proposal for the intended API shape. It is not the current
 implementation.
@@ -775,8 +775,8 @@ Recommended responsibilities:
 
 The existing files:
 
-- [pyrolyze_pyside6.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/pyrolyze_pyside6.py)
-- [pyrolyze_tkinter.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/pyrolyze_tkinter.py)
+- [pyrolyze_pyside6.py](../src/pyrolyze/pyrolyze_pyside6.py)
+- [pyrolyze_tkinter.py](../src/pyrolyze/pyrolyze_tkinter.py)
 
 should be replaced by the new backend packages once the new layout is adopted.
 Backward compatibility is not a design constraint for this refactor because the
@@ -832,7 +832,7 @@ but share the same conceptual role.
 
 Testing needs to be broader than ordinary wrapper tests. The detailed plan now
 belongs in
-[MountableTestingPlan.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/MountableTestingPlan.md).
+[MountableTestingPlan.md](MountableTestingPlan.md).
 
 Recommended layers:
 
@@ -1103,10 +1103,10 @@ This is a breaking rename and should be done directly rather than via aliases.
 ### Phase 8. Adopt the new mountable model note
 
 - use
-  [MountableSpecModel.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/MountableSpecModel.md)
+  [MountableSpecModel.md](MountableSpecModel.md)
   as the lower-level runtime model note
 - keep
-  [UiWidgetSpecModel.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/dev-docs/obsolete/UiWidgetSpecModel.md)
+  [UiWidgetSpecModel.md](obsolete/UiWidgetSpecModel.md)
   archived only as historical context
 
 

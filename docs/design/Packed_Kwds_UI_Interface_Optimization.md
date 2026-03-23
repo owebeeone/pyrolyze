@@ -70,6 +70,6 @@ convention.
 
 ## Related Files
 
-- [src/pyrolyze/compiler/kernels/v3_14/rewrite.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/compiler/kernels/v3_14/rewrite.py)
-- [src/pyrolyze/runtime/context.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/runtime/context.py)
-- [tests/test_ast_phase7_native_call_rewrite.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/tests/test_ast_phase7_native_call_rewrite.py)
+- [src/pyrolyze/compiler/kernels/v3_14/rewrite.py](../../src/pyrolyze/compiler/kernels/v3_14/rewrite.py)
+- [src/pyrolyze/runtime/context.py](../../src/pyrolyze/runtime/context.py)
+- [tests/test_ast_phase7_native_call_rewrite.py](../../tests/test_ast_phase7_native_call_rewrite.py)

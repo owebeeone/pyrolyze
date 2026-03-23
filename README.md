@@ -28,8 +28,14 @@ machinery.
 
 ```bash
 git clone https://github.com/owebeeone/py-rolyze-wip.git
-cd py-rolyze-wip
+cd py-rolyze-wip   # use your actual checkout directory name if different
 uv pip install -e .
+```
+
+Optional DearPyGui support (for `--backend dearpygui` and DPG-focused tests):
+
+```bash
+uv pip install -e ".[dpg]"
 ```
 
 ### Run the Example App
@@ -38,11 +44,14 @@ uv pip install -e .
 uv run python examples/run_grid_app.py
 ```
 
-Optional backend:
+Optional backends:
 
 ```bash
 uv run python examples/run_grid_app.py --backend tkinter
+uv run python examples/run_grid_app.py --backend dearpygui
 ```
+
+(`dearpygui` requires the `dpg` extra, as in the install section above.)
 
 ### Run Tests
 
@@ -96,7 +105,7 @@ decides what reruns and what committed UI changes.
   - effect and external-store bindings
   - invalidation scheduling
   - committed UI tracking
-- Backend adapters for PySide6 and Tkinter
+- Backend adapters for PySide6, Tkinter, and DearPyGui (optional `dpg` extra)
 - Graph capture and diff tooling for integrated tests
 - Versioned Python test runs through a uv-based harness
 

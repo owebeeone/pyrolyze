@@ -15,6 +15,7 @@ Current backend examples:
 
 - `src/pyrolyze/pyrolyze_pyside6.py`
 - `src/pyrolyze/pyrolyze_tkinter.py`
+- `src/pyrolyze/pyrolyze_dearpygui.py` (optional `dearpygui` dependency)
 
 ## Minimum pieces
 

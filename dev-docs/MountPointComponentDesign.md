@@ -835,7 +835,7 @@ manageable groups:
   - models and related service objects later
 
 The full raw list is in
-[pyside6_non_fundamental_api_report.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/scratch/pyside6_non_fundamental_api_report.md).
+[pyside6_non_fundamental_api_report.md](../scratch/pyside6_non_fundamental_api_report.md).
 
 
 ## tkinter Fit
@@ -851,7 +851,7 @@ The tkinter scan is smaller and fits the mount model even more directly:
 - `ttk.OptionMenu.set_menu(...)`
 
 The raw list is in
-[tkinter_non_fundamental_api_report.md](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/scratch/tkinter_non_fundamental_api_report.md).
+[tkinter_non_fundamental_api_report.md](../scratch/tkinter_non_fundamental_api_report.md).
 
 
 ## Explicit Exclusions

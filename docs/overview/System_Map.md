@@ -11,11 +11,11 @@ flowchart TD
     E --> F["Runtime Context Graph\nsrc/pyrolyze/runtime/context.py"]
     F --> G["Committed UI\nUIElement tuples"]
     G --> H["Reconciler\nsrc/pyrolyze/runtime/ui_nodes.py"]
-    H --> I["Backend Adapters\nPySide6 / Tkinter"]
+    H --> I["Backend Adapters\nPySide6 / Tkinter / DearPyGui"]
 
     F --> J["App Context Store\nGeneration tracking, app-scoped values"]
     F --> K["Visitor Tools\nCommitted graph capture and diff"]
-    B --> L["Golden Tests and Version Harness\nsrc/pyrolyze/tests/"]
+    B --> L["Golden Tests and Version Harness\ntests/"]
     M["Import Hook\nsrc/pyrolyze/import_hook.py"] --> B
     M --> N["Artifact Cache\nsrc/pyrolyze/importer.py"]
 ```
@@ -33,6 +33,7 @@ flowchart TD
 - Backends
   - `src/pyrolyze/pyrolyze_pyside6.py`
   - `src/pyrolyze/pyrolyze_tkinter.py`
+  - `src/pyrolyze/pyrolyze_dearpygui.py` (optional dependency)
 - Examples
   - `examples/grid_app.py`
   - `examples/run_grid_app.py`

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from pyrolyze.backends.dearpygui.author_shape import shape_canonical_mountable
@@ -59,6 +60,18 @@ def main(argv: list[str] | None = None) -> int:
         metavar="PATH",
         help="With --emit, write generated library to PATH instead of the default package path.",
     )
+    parser.add_argument(
+        "--gen-docs",
+        action="store_true",
+        help="Emit entities.md and properties.md from checked-in DearPyGuiUiLibrary.WIDGET_SPECS.",
+    )
+    parser.add_argument(
+        "--docs-out",
+        type=Path,
+        default=None,
+        metavar="DIR",
+        help="Directory for reference Markdown (default: py-rolyze/docs/reference/generated/dearpygui).",
+    )
     args = parser.parse_args(argv)
 
     loaded = load_dearpygui_dump(dump_path=args.dump_path)
@@ -85,8 +98,22 @@ def main(argv: list[str] | None = None) -> int:
         out = write_generated_library(output_path=args.emit_to)
         print(f"Wrote {out}")
 
+    if args.gen_docs:
+        try:
+            from pyrolyze_tools.dearpygui_spec_reference_docs import write_dearpygui_reference_docs
+        except ModuleNotFoundError:  # pragma: no cover - script cwd = pyrolyze_tools/
+            from dearpygui_spec_reference_docs import write_dearpygui_reference_docs
+
+        docs_root = Path(__file__).resolve().parents[1]
+        docs_out = args.docs_out or (docs_root / "docs" / "reference" / "generated" / "dearpygui")
+        ent, prop = write_dearpygui_reference_docs(docs_out)
+        print(f"Wrote {ent} and {prop}")
+
     return 0
 
 
 if __name__ == "__main__":
+    _pkg_root = Path(__file__).resolve().parent.parent
+    if str(_pkg_root) not in sys.path:
+        sys.path.insert(0, str(_pkg_root))
     raise SystemExit(main())

@@ -3,11 +3,15 @@
 ## Purpose
 
 This document specifies how to recreate the imperative
-[studio_app.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/examples/studio_app.py)
+[studio_app.py](../examples/studio_app.py)
 example as a new `examples/studio` application using the current
 `PySide6UiLibrary` surface where possible.
 
 This is a design and feasibility document only.
+
+See also
+[PySide6StudioClassSupportPlan.md](PySide6StudioClassSupportPlan.md)
+for the concrete class-support and multi-window-root plan.
 
 
 ## Short Answer
@@ -437,5 +441,5 @@ We should proceed on this basis:
 - imperative/native bridges for custom behavior and non-widget services
 
 That is the correct mapping of
-[studio_app.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/examples/studio_app.py)
+[studio_app.py](../examples/studio_app.py)
 onto the current `PySide6UiInterface` surface.

@@ -10,6 +10,7 @@ mount-point metadata where the backend model can represent them.
 
 import argparse
 import ast
+import sys
 from dataclasses import dataclass, replace
 from functools import lru_cache
 import importlib
@@ -1192,12 +1193,51 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=Path.cwd(),
         help="Directory to place the generated <package>.py file.",
     )
+    parser.add_argument(
+        "--gen-docs",
+        action="store_true",
+        help="Also emit entities.md and properties.md (PySide6 or tkinter). README is not generated.",
+    )
+    parser.add_argument(
+        "--docs-out",
+        type=Path,
+        default=None,
+        help=(
+            "Directory for reference Markdown (defaults: "
+            "…/generated/pyside6 or …/generated/tkinter by root module)."
+        ),
+    )
     args = parser.parse_args(list(argv) if argv is not None else None)
+    _docs_root_pkg = Path(__file__).resolve().parents[1]
+    _gen_docs_roots = {"PySide6", "tkinter"}
+    if args.gen_docs and args.module.split(".", 1)[0] not in _gen_docs_roots:
+        parser.error(
+            "--gen-docs requires MODULE under PySide6.* or tkinter.* "
+            "(e.g. PySide6.QtWidgets, tkinter, tkinter.ttk)"
+        )
     widgets = discover_widget_classes(
         args.module,
         widget_base_specs=tuple(args.widget_bases) if args.widget_bases else None,
     )
     write_generated_library(args.module, widgets, output_dir=args.output_dir)
+    if args.gen_docs:
+        learnings = load_learnings(args.module)
+        resolved = apply_learnings(widgets, learnings)
+        root_mod = args.module.split(".", 1)[0]
+        if root_mod == "PySide6":
+            from pyrolyze_tools.ui_library_reference_docs import write_pyside6_reference_docs
+
+            docs_out = args.docs_out or (
+                _docs_root_pkg / "docs" / "reference" / "generated" / "pyside6"
+            )
+            write_pyside6_reference_docs(args.module, resolved, docs_out)
+        else:
+            from pyrolyze_tools.ui_library_reference_docs import write_tkinter_reference_docs
+
+            docs_out = args.docs_out or (
+                _docs_root_pkg / "docs" / "reference" / "generated" / "tkinter"
+            )
+            write_tkinter_reference_docs(args.module, resolved, docs_out)
     return 0
 
 
@@ -2434,4 +2474,9 @@ def _capitalize_segment(segment: str) -> str:
 
 
 if __name__ == "__main__":
+    # Allow `python pyrolyze_tools/generate_semantic_library.py` (cwd = package root);
+    # otherwise `pyrolyze_tools` is not on sys.path.
+    _pkg_root = Path(__file__).resolve().parent.parent
+    if str(_pkg_root) not in sys.path:
+        sys.path.insert(0, str(_pkg_root))
     raise SystemExit(main())

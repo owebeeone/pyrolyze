@@ -20,9 +20,9 @@ kernel boundaries.
 ## Current Policy
 
 - The package floor is Python `3.12`, declared in
-  [pyproject.toml](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/pyproject.toml).
+  [pyproject.toml](../pyproject.toml).
 - The only checked-in AST kernel today is
-  [src/pyrolyze/compiler/kernels/v3_14/](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/compiler/kernels/v3_14/__init__.py).
+  [src/pyrolyze/compiler/kernels/v3_14/](../src/pyrolyze/compiler/kernels/v3_14/__init__.py).
 - `kernel_loader` prefers an exact kernel match for the running interpreter and
   otherwise falls back to the latest available kernel.
 - Because only `v3_14` exists today, all currently tested runtimes use that same
@@ -42,11 +42,11 @@ existing `v3_14` kernel.
 ## Test Data Layout
 
 - Shared source fixtures live in
-  [tests/data/gold_src/](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/tests/data/gold_src).
+  [tests/data/gold_src/](data/gold_src).
 - The source-to-module mapping lives in
-  [tests/data/gold_cases.toml](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/tests/data/gold_cases.toml).
+  [tests/data/gold_cases.toml](data/gold_cases.toml).
 - Checked-in expected transformed output is versioned by kernel:
-  - [tests/data/v3_14/goldens/](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/tests/data/v3_14/goldens)
+  - [tests/data/v3_14/goldens/](data/v3_14/goldens)
 - Untracked actual outputs from local runs go to:
   - `tests/actual_test_results/<runtime>/<kernel>/goldens/`
   - `tests/actual_test_results/<runtime>/<kernel>/pytest.xml`
@@ -69,7 +69,7 @@ You need [uv](https://docs.astral.sh/uv/) installed. The harness uses:
 - `uv` interpreter downloads when a requested Python is not already present
 
 The harness reads dependency installation requirements from
-  [pyproject.toml](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/pyproject.toml),
+  [pyproject.toml](../pyproject.toml),
 including the `test` optional dependency group.
 
 The default runtime matrix for multi-version runs also lives there under:
@@ -152,7 +152,7 @@ environment under:
 
 Inside that environment, the package is installed in editable mode and tests are
 run using that interpreter. The AST kernel is then selected by
-  [src/pyrolyze/compiler/kernel_loader.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/compiler/kernel_loader.py):
+  [src/pyrolyze/compiler/kernel_loader.py](../src/pyrolyze/compiler/kernel_loader.py):
 
 - exact `v<major>_<minor>` match if present
 - otherwise latest available kernel
@@ -164,7 +164,7 @@ Examples today:
 - Python `3.12` -> falls back to kernel `v3_14`
 
 For `run-tests-all`, the default runtime list comes from
-  [pyproject.toml](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/pyproject.toml)
+  [pyproject.toml](../pyproject.toml)
 under `[tool.pyrolyze.test-matrix]`. Each selected runtime is launched as a
 separate harness subprocess, so the runs proceed in parallel and each child run
 still writes its own versioned artifacts under `tests/actual_test_results/`.
@@ -172,7 +172,7 @@ still writes its own versioned artifacts under `tests/actual_test_results/`.
 ## Golden Testing Behavior
 
 The active golden test is
-  [tests/test_ast_goldens.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/tests/test_ast_goldens.py).
+  [tests/test_ast_goldens.py](test_ast_goldens.py).
 
 It does the following:
 
@@ -197,7 +197,7 @@ directory rather than branching all over the shared compiler code.
 Minimum steps:
 
 1. Add a new kernel directory such as
-   [src/pyrolyze/compiler/kernels/v3_15/](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/compiler/kernels).
+   [src/pyrolyze/compiler/kernels/v3_15/](../src/pyrolyze/compiler/kernels).
 2. Implement the same module surface currently exposed by `v3_14`:
    - `kernel.py`
    - `eligibility.py`
@@ -250,5 +250,5 @@ over making shared logic increasingly conditional on interpreter checks.
 - Keep the shared source corpus stable. Prefer adding a new checked-in golden
   directory before duplicating source fixtures.
 - Use the manifest in
-  [tests/data/gold_cases.toml](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/tests/data/gold_cases.toml)
+  [tests/data/gold_cases.toml](data/gold_cases.toml)
   to add or remove canonical golden cases.

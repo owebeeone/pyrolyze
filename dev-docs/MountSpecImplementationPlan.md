@@ -39,14 +39,14 @@ This plan does **not** attempt to finish:
 
 The repository already has the backend-side core:
 
-- [src/pyrolyze/backends/model.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/backends/model.py)
+- [src/pyrolyze/backends/model.py](../src/pyrolyze/backends/model.py)
   - `MountPointSpec`
   - `MountState`
-- [src/pyrolyze/backends/mounts.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/backends/mounts.py)
+- [src/pyrolyze/backends/mounts.py](../src/pyrolyze/backends/mounts.py)
   - `ResolvedMountOps`
   - `apply_mount_state(...)`
   - ordered replay / rebuild logic
-- [src/pyrolyze/backends/mountable_engine.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/backends/mountable_engine.py)
+- [src/pyrolyze/backends/mountable_engine.py](../src/pyrolyze/backends/mountable_engine.py)
   - default attach behavior
   - compatibility checks
 
@@ -88,7 +88,7 @@ implementation:
 
 Files:
 
-- [src/pyrolyze/backends/model.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/backends/model.py)
+- [src/pyrolyze/backends/model.py](../src/pyrolyze/backends/model.py)
 
 Required additions:
 
@@ -118,8 +118,8 @@ Red tests first:
 
 Files:
 
-- likely [src/pyrolyze/api.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/api.py)
-- likely [src/pyrolyze/runtime/context.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/runtime/context.py)
+- likely [src/pyrolyze/api.py](../src/pyrolyze/api.py)
+- likely [src/pyrolyze/runtime/context.py](../src/pyrolyze/runtime/context.py)
 - possibly a new runtime module for directive types
 
 Required artifacts:
@@ -150,7 +150,7 @@ Red tests first:
 
 Files:
 
-- [src/pyrolyze/runtime/context.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/runtime/context.py)
+- [src/pyrolyze/runtime/context.py](../src/pyrolyze/runtime/context.py)
 - compiler/runtime glue files as needed
 
 Required runtime additions:
@@ -187,7 +187,7 @@ Red tests first:
 Files:
 
 - compiler detection/lowering under
-  [src/pyrolyze/compiler/kernels/v3_14/](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/compiler/kernels/v3_14)
+  [src/pyrolyze/compiler/kernels/v3_14/](../src/pyrolyze/compiler/kernels/v3_14)
 
 Required behavior:
 
@@ -225,8 +225,8 @@ Red tests first:
 Files:
 
 - runtime emitted-node handling
-- likely [src/pyrolyze/api.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/api.py)
-- likely [src/pyrolyze/runtime/context.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/runtime/context.py)
+- likely [src/pyrolyze/api.py](../src/pyrolyze/api.py)
+- likely [src/pyrolyze/runtime/context.py](../src/pyrolyze/runtime/context.py)
 
 Required change:
 
@@ -256,7 +256,7 @@ Red tests first:
 Files:
 
 - likely new runtime/backends helper module
-- possibly [src/pyrolyze/backends/mountable_engine.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/backends/mountable_engine.py)
+- possibly [src/pyrolyze/backends/mountable_engine.py](../src/pyrolyze/backends/mountable_engine.py)
 
 Required function:
 
@@ -297,8 +297,8 @@ Red tests first:
 
 Files:
 
-- [src/pyrolyze/backends/mounts.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/backends/mounts.py)
-- [src/pyrolyze/backends/mountable_engine.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/backends/mountable_engine.py)
+- [src/pyrolyze/backends/mounts.py](../src/pyrolyze/backends/mounts.py)
+- [src/pyrolyze/backends/mountable_engine.py](../src/pyrolyze/backends/mountable_engine.py)
 
 Required changes:
 
@@ -325,7 +325,7 @@ Red tests first:
 
 Files:
 
-- [pyrolyze_tools/generate_semantic_library.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/pyrolyze_tools/generate_semantic_library.py)
+- [pyrolyze_tools/generate_semantic_library.py](../pyrolyze_tools/generate_semantic_library.py)
 - backend `learnings.py` files
 
 Required changes:

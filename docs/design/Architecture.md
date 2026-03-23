@@ -20,6 +20,7 @@ The package is split into five layers:
 - backend adapters
   - `src/pyrolyze/pyrolyze_pyside6.py`
   - `src/pyrolyze/pyrolyze_tkinter.py`
+  - `src/pyrolyze/pyrolyze_dearpygui.py` (requires optional `dpg` / `dearpygui`)
 - verification
   - `examples/`
   - `tests/`
@@ -66,6 +67,6 @@ UI. Backend adapters reconcile committed UI into native widgets.
 
 ## Future proposals
 
-- more backend adapters
+- additional native backends beyond the current three
 - additional AST kernels when version-specific behavior diverges
 - broader source-level diagnostics and richer emitted debug artifacts

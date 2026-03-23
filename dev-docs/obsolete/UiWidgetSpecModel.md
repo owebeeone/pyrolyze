@@ -275,7 +275,7 @@ Two different identities matter here.
 ### 1. Node identity
 
 The reconciler tracks mounted nodes using a node id. The current runtime model
-already does this in [ui_nodes.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/runtime/ui_nodes.py).
+already does this in [ui_nodes.py](../../src/pyrolyze/runtime/ui_nodes.py).
 
 Conceptually a node id comes from:
 
@@ -602,8 +602,8 @@ The current runtime already separates:
 
 See:
 
-- [ui_nodes.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/runtime/ui_nodes.py)
-- [pyrolyze_pyside6.py](/Users/owebeeone/limbo/py-rolyze-dev2/py-rolyze/src/pyrolyze/pyrolyze_pyside6.py)
+- [ui_nodes.py](../../src/pyrolyze/runtime/ui_nodes.py)
+- [pyrolyze_pyside6.py](../../src/pyrolyze/pyrolyze_pyside6.py)
 
 This document proposes how to formalize the backend-owned spec layer beneath
 that runtime shape.

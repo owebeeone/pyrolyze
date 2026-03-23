@@ -890,3 +890,90 @@ def test_generate_pyside6_learnings_source_renders_module_constant() -> None:
     assert "UiMountPointLearning" in source
     assert '"layout": UiMountPointLearning(' in source
     assert "replay_kind=MountReplayKind.INDEX" in source
+
+
+def test_write_pyside6_reference_docs_minimal_widget(tmp_path: Path) -> None:
+    from pyrolyze_tools.ui_library_reference_docs import write_pyside6_reference_docs
+
+    widget = DiscoveredWidgetClass(
+        module_name="PySide6.QtWidgets",
+        class_name="QPushButton",
+        public_name="CQPushButton",
+        parameters=(
+            DiscoveredParameter(
+                name="text",
+                kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                annotation_source="str",
+                default_source="None",
+                coerced_expression="text",
+            ),
+        ),
+        properties=(
+            DiscoveredProperty(
+                name="hidden",
+                type_name="bool",
+                readable=True,
+                writable=True,
+            ),
+        ),
+        setter_methods=(),
+        mount_points=(),
+        omitted_variadic_arguments=False,
+        prop_learnings=frozendict({"hidden": UiPropLearning(public=False)}),
+        method_learnings=frozendict(),
+        event_learnings=frozendict(),
+    )
+    ent_path, prop_path = write_pyside6_reference_docs(
+        "PySide6.QtWidgets",
+        [widget],
+        tmp_path,
+    )
+    assert ent_path.exists() and prop_path.exists()
+    entities = ent_path.read_text(encoding="utf-8")
+    properties = prop_path.read_text(encoding="utf-8")
+    assert "CQPushButton" in entities
+    assert "entity-cqpushbutton" in entities
+    assert "`text`" in entities
+    assert "Unmapped native properties" in properties
+    assert "| `hidden` |" in properties
+
+
+def test_write_tkinter_reference_docs_minimal_widget(tmp_path: Path) -> None:
+    from pyrolyze_tools.ui_library_reference_docs import write_tkinter_reference_docs
+
+    widget = DiscoveredWidgetClass(
+        module_name="tkinter",
+        class_name="Button",
+        public_name="CButton",
+        parameters=(
+            DiscoveredParameter(
+                name="text",
+                kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                annotation_source="str",
+                default_source="None",
+                coerced_expression="text",
+            ),
+        ),
+        properties=(
+            DiscoveredProperty(
+                name="relief",
+                type_name="str",
+                readable=True,
+                writable=True,
+            ),
+        ),
+        setter_methods=(),
+        mount_points=(),
+        omitted_variadic_arguments=False,
+        prop_learnings=frozendict(),
+        method_learnings=frozendict(),
+        event_learnings=frozendict(),
+    )
+    ent_path, prop_path = write_tkinter_reference_docs("tkinter", [widget], tmp_path)
+    assert ent_path.exists() and prop_path.exists()
+    entities = ent_path.read_text(encoding="utf-8")
+    properties = prop_path.read_text(encoding="utf-8")
+    assert "CButton" in entities
+    assert "entity-cbutton" in entities
+    assert "widget.configure({'relief': value})" in entities
+    assert "Unmapped native options" in properties

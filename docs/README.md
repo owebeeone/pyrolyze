@@ -16,7 +16,7 @@ It is organized by reader and task:
   - compiler, runtime, backends, tests
 - [design/UI_Interface_Schema.md](design/UI_Interface_Schema.md)
   - `UiInterface` and `UiInterfaceEntry`
-  - common, PySide6, tkinter, and Hydo interface families
+  - common, PySide6, tkinter, DearPyGui, and Hydo interface families
 - [user/README.md](user/README.md)
   - authoring guide entry point
   - decorators, annotations, hooks, native UI, testing
@@ -35,5 +35,5 @@ Recommended reading order:
 5. [design/Architecture.md](design/Architecture.md) for maintainers
 6. [contributor/Versioned_Test_Runs.md](contributor/Versioned_Test_Runs.md) for AST and version work
 
-For the plan that created this tree, see
+For a short note on how this tree is maintained, see
 [DocumentationPlan.md](DocumentationPlan.md).
