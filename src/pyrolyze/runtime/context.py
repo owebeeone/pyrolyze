@@ -51,6 +51,13 @@ class PlainCallResult(Generic[T]):
 
 
 @dataclass(frozen=True, slots=True)
+class PendingEventHandlerBinding:
+    slot_id: SlotId
+    dirty: bool
+    callback: Callable[..., Any]
+
+
+@dataclass(frozen=True, slots=True)
 class _CommittedUiEntry:
     generation_id: int
     element: UIElement | MountDirective
@@ -874,6 +881,20 @@ class ContextBase:
         slot = self._ensure_slot(slot_id, EventHandlerSlotContext)
         return slot.stage_callback(callback=callback, dirty=dirty)
 
+    def event_handler_binding(
+        self,
+        slot_id: SlotId,
+        *,
+        dirty: bool,
+        callback: Callable[..., Any],
+    ) -> PendingEventHandlerBinding:
+        self._require_active_scope()
+        return PendingEventHandlerBinding(
+            slot_id=self._resolve_slot_id(slot_id),
+            dirty=dirty,
+            callback=callback,
+        )
+
     def _begin_scope_pass(self) -> None:
         if self._scope_active:
             raise RuntimeError("scope already active")
@@ -909,6 +930,8 @@ class ContextBase:
                 child.commit_binding()
             elif isinstance(child, EventHandlerSlotContext):
                 child.commit_handler()
+            elif isinstance(child, ComponentCallSlotContext):
+                child.commit_owned_event_handlers()
 
         self._own_committed_ui_entries = tuple(self._staged_ui_entries)
         self._own_committed_ui = tuple(entry.element for entry in self._own_committed_ui_entries)
@@ -942,6 +965,8 @@ class ContextBase:
                 child.rollback_binding()
             elif isinstance(child, EventHandlerSlotContext):
                 child.rollback_handler()
+            elif isinstance(child, ComponentCallSlotContext):
+                child.rollback_owned_event_handlers()
             child.invoke_dirty = self._pass_child_dirty.get(slot_id, child.invoke_dirty)
             child.seen_in_pass = True
 
@@ -968,6 +993,10 @@ class ContextBase:
 
     def _ensure_slot(self, slot_id: SlotId, slot_type: type[S]) -> S:
         resolved_slot_id = self._resolve_slot_id(slot_id)
+        return self._ensure_resolved_slot(resolved_slot_id, slot_type)
+
+    def _ensure_resolved_slot(self, slot_id: SlotId, slot_type: type[S]) -> S:
+        resolved_slot_id = slot_id
         existing = self.root_context._slots_by_id.get(resolved_slot_id)
         if existing is not None and existing.parent is not self:
             raise SlotOwnershipError(
@@ -989,6 +1018,13 @@ class ContextBase:
 
         existing.seen_in_pass = True
         return cast(S, existing)
+
+    def _materialize_pending_event_handler(
+        self,
+        binding: PendingEventHandlerBinding,
+    ) -> Callable[..., None]:
+        slot = self._ensure_resolved_slot(binding.slot_id, EventHandlerSlotContext)
+        return slot.stage_callback(callback=binding.callback, dirty=binding.dirty)
 
     def _require_active_scope(self) -> None:
         if not self._scope_active:
@@ -1093,7 +1129,6 @@ class ContextBase:
         parent = getattr(self, "parent", None)
         if isinstance(parent, ContextBase):
             parent._refresh_committed_ui_from_children()
-
 
 _NATIVE_CONTEXT_PARAM_ATTR = "_pyrolyze_native_context_param"
 _NATIVE_CONTEXT_ANNOTATIONS = {
@@ -1206,6 +1241,21 @@ def _native_emission_slot_identity(context: ContextBase) -> object | None:
     if isinstance(current_slot_id, SlotId):
         return current_slot_id
     return None
+
+
+def _bind_pending_event_plain_value(owner: ContextBase, value: Any) -> Any:
+    if isinstance(value, PendingEventHandlerBinding):
+        return owner._materialize_pending_event_handler(value)
+    return value
+
+
+def _bind_pending_event_comp_value(owner: ContextBase, value: CompValue[Any]) -> CompValue[Any]:
+    if isinstance(value.value, PendingEventHandlerBinding):
+        return CompValue(
+            value=owner._materialize_pending_event_handler(value.value),
+            dirty=value.dirty,
+        )
+    return value
 
 
 @dataclass(slots=True)
@@ -1492,6 +1542,7 @@ class ComponentCallSlotContext(RerunnableSlotContext):
     uses_dirty_state_api: bool = False
     packed_kwargs: bool = False
     packed_kwarg_param_names: tuple[str, ...] = ()
+    _pass_owned_event_handler_order: tuple[SlotId, ...] = ()
 
     def invoke(
         self,
@@ -1527,33 +1578,99 @@ class ComponentCallSlotContext(RerunnableSlotContext):
             self.component_identity = identity_key
             self.schema = schema
 
-        self.last_runtime_func = runtime_func
-        self.last_bound_receiver = bound_receiver
-        self.packed_kwargs = bool(getattr(metadata, "packed_kwargs", False))
-        self.packed_kwarg_param_names = tuple(
-            getattr(metadata, "packed_kwarg_param_names", ())
-        )
-        if dirty_state is None:
-            normalized_args = tuple(_wrap_comp_value(arg) for arg in args)
-            normalized_kwargs = {key: _wrap_comp_value(value) for key, value in kwargs.items()}
-            self.last_args = normalized_args
-            self.last_kwargs = normalized_kwargs
-            self.last_plain_args = ()
-            self.last_plain_kwargs = {}
-            self.last_dirty_state = None
-            self.pending_dirty_state = None
-            self.uses_dirty_state_api = False
-        else:
-            self.last_plain_args = tuple(_unwrap(arg)[0] for arg in args)
-            self.last_plain_kwargs = {key: _unwrap(value)[0] for key, value in kwargs.items()}
-            self.last_dirty_state = dirty_state
-            self.pending_dirty_state = dirty_state
-            self.last_args = ()
-            self.last_kwargs = {}
-            self.uses_dirty_state_api = True
-        self.child_context._mounted_callback = self._rerun_child
-        self.child_context._run_boundary()
+        self._begin_owned_event_handler_pass()
+        try:
+            self.last_runtime_func = runtime_func
+            self.last_bound_receiver = bound_receiver
+            self.packed_kwargs = bool(getattr(metadata, "packed_kwargs", False))
+            self.packed_kwarg_param_names = tuple(
+                getattr(metadata, "packed_kwarg_param_names", ())
+            )
+            if dirty_state is None:
+                normalized_args = tuple(
+                    _bind_pending_event_comp_value(self, _wrap_comp_value(arg))
+                    for arg in args
+                )
+                normalized_kwargs = {
+                    key: _bind_pending_event_comp_value(self, _wrap_comp_value(value))
+                    for key, value in kwargs.items()
+                }
+                self.last_args = normalized_args
+                self.last_kwargs = normalized_kwargs
+                self.last_plain_args = ()
+                self.last_plain_kwargs = {}
+                self.last_dirty_state = None
+                self.pending_dirty_state = None
+                self.uses_dirty_state_api = False
+            else:
+                self.last_plain_args = tuple(
+                    _bind_pending_event_plain_value(self, _unwrap(arg)[0])
+                    for arg in args
+                )
+                self.last_plain_kwargs = {
+                    key: _bind_pending_event_plain_value(self, _unwrap(value)[0])
+                    for key, value in kwargs.items()
+                }
+                self.last_dirty_state = dirty_state
+                self.pending_dirty_state = dirty_state
+                self.last_args = ()
+                self.last_kwargs = {}
+                self.uses_dirty_state_api = True
+            self.child_context._mounted_callback = self._rerun_child
+            self.child_context._run_boundary()
+        except BaseException:
+            self.rollback_owned_event_handlers()
+            raise
         self._committed_ui = self.child_context._committed_ui
+
+    def _begin_owned_event_handler_pass(self) -> None:
+        self._pass_owned_event_handler_order = tuple(
+            slot_id
+            for slot_id, child in self._children.items()
+            if isinstance(child, EventHandlerSlotContext)
+        )
+        for child in self._children.values():
+            if isinstance(child, EventHandlerSlotContext):
+                child.seen_in_pass = False
+
+    def commit_owned_event_handlers(self) -> None:
+        if not self._pass_owned_event_handler_order and not any(
+            isinstance(child, EventHandlerSlotContext) and child.seen_in_pass
+            for child in self._children.values()
+        ):
+            return
+        unseen_slots = [
+            slot_id
+            for slot_id, child in self._children.items()
+            if isinstance(child, EventHandlerSlotContext) and not child.seen_in_pass
+        ]
+        for slot_id in unseen_slots:
+            child = self._children.get(slot_id)
+            if child is not None:
+                child.deactivate()
+
+        for child in self._children.values():
+            if isinstance(child, EventHandlerSlotContext):
+                child.commit_handler()
+
+        self._pass_owned_event_handler_order = ()
+
+    def rollback_owned_event_handlers(self) -> None:
+        if not self._pass_owned_event_handler_order and not any(
+            isinstance(child, EventHandlerSlotContext) and child.seen_in_pass
+            for child in self._children.values()
+        ):
+            return
+        committed_ids = set(self._pass_owned_event_handler_order)
+        for slot_id, child in list(self._children.items()):
+            if not isinstance(child, EventHandlerSlotContext):
+                continue
+            if slot_id not in committed_ids:
+                child.deactivate()
+                continue
+            child.rollback_handler()
+            child.seen_in_pass = True
+        self._pass_owned_event_handler_order = ()
 
     def _rerun_child(self) -> None:
         child_context = self.child_context
@@ -1730,7 +1847,12 @@ class _ContainerCallHandle(AbstractContextManager[ContainerSlotContext]):
     _host_context: Any = None
 
     def __enter__(self) -> ContainerSlotContext:
-        self._host_context = self.container_fn(*self.args, **self.kwargs)
+        bound_args = tuple(_bind_pending_event_plain_value(self.slot, value) for value in self.args)
+        bound_kwargs = {
+            key: _bind_pending_event_plain_value(self.slot, value)
+            for key, value in self.kwargs.items()
+        }
+        self._host_context = self.container_fn(*bound_args, **bound_kwargs)
         host_enter = getattr(self._host_context, "__enter__", None)
         if callable(host_enter):
             host_enter()
@@ -1803,8 +1925,13 @@ class _NativeContainerCallHandle(AbstractContextManager[ContainerSlotContext]):
         self.slot.expects_native_root = True
         self.slot._begin_scope_pass()
         try:
+            bound_args = tuple(_bind_pending_event_plain_value(self.slot, value) for value in self.args)
+            bound_kwargs = {
+                key: _bind_pending_event_plain_value(self.slot, value)
+                for key, value in self.kwargs.items()
+            }
             _ = self.context_param
-            result = self.container_fn(self.slot, *self.args, **self.kwargs)
+            result = self.container_fn(self.slot, *bound_args, **bound_kwargs)
             if result is not None:
                 raise TypeError("@pyrolyze functions must return None")
             if len(self.slot._staged_ui) != 1:
@@ -1841,11 +1968,16 @@ class _PyrolyzeContainerCallHandle(AbstractContextManager[ContainerSlotContext])
         self.slot.expects_native_root = True
         self.slot._begin_scope_pass()
         try:
+            bound_args = tuple(_bind_pending_event_plain_value(self.slot, value) for value in self.args)
+            bound_kwargs = {
+                key: _bind_pending_event_plain_value(self.slot, value)
+                for key, value in self.kwargs.items()
+            }
             if self.packed_kwargs:
                 packed_kwargs = _pack_component_kwargs(
                     self.packed_kwarg_param_names,
-                    self.args,
-                    self.kwargs,
+                    bound_args,
+                    bound_kwargs,
                 )
                 if self.bound_receiver is _BOUND_METHOD_SELF_MISSING:
                     result = self.runtime_func(
@@ -1862,14 +1994,19 @@ class _PyrolyzeContainerCallHandle(AbstractContextManager[ContainerSlotContext])
                     )
             else:
                 if self.bound_receiver is _BOUND_METHOD_SELF_MISSING:
-                    result = self.runtime_func(self.slot, self.dirty_state, *self.args, **self.kwargs)
+                    result = self.runtime_func(
+                        self.slot,
+                        self.dirty_state,
+                        *bound_args,
+                        **bound_kwargs,
+                    )
                 else:
                     result = self.runtime_func(
                         self.bound_receiver,
                         self.slot,
                         self.dirty_state,
-                        *self.args,
-                        **self.kwargs,
+                        *bound_args,
+                        **bound_kwargs,
                     )
             if result is not None:
                 raise TypeError("@pyrolyze functions must return None")

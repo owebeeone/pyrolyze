@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""DearPyGui UI library generator entrypoint (phases 1–2: discovery + learnings shaping)."""
+"""DearPyGui UI library generator (discovery, shaping, fixture spec listing)."""
 
 from __future__ import annotations
 
@@ -12,6 +12,12 @@ from pyrolyze.backends.dearpygui.discovery import (
     iter_canonical_mountables,
     load_dearpygui_dump,
 )
+from pyrolyze.backends.dearpygui.specs import FIXTURE_WIDGET_SPECS
+
+try:
+    from pyrolyze_tools.dearpygui_emit_library import write_generated_library
+except ModuleNotFoundError:  # pragma: no cover - script run with cwd = pyrolyze_tools/
+    from dearpygui_emit_library import write_generated_library
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -36,6 +42,23 @@ def main(argv: list[str] | None = None) -> int:
         metavar="N",
         help="Print first N shaped mountables (kind + prop/event counts).",
     )
+    parser.add_argument(
+        "--list-fixture-spec-kinds",
+        action="store_true",
+        help="Print UiWidgetSpec kind keys from backends/dearpygui/specs.py (phase 3–5 harness).",
+    )
+    parser.add_argument(
+        "--emit",
+        action="store_true",
+        help="Regenerate src/pyrolyze/backends/dearpygui/generated_library.py from the API dump.",
+    )
+    parser.add_argument(
+        "--emit-to",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="With --emit, write generated library to PATH instead of the default package path.",
+    )
     args = parser.parse_args(argv)
 
     loaded = load_dearpygui_dump(dump_path=args.dump_path)
@@ -53,6 +76,14 @@ def main(argv: list[str] | None = None) -> int:
                 f"{len(shaped.props)} props, {len(shaped.events)} events, "
                 f"mounts={shaped.mount_point_names or '—'}",
             )
+
+    if args.list_fixture_spec_kinds:
+        for name in sorted(FIXTURE_WIDGET_SPECS.keys()):
+            print(name)
+
+    if args.emit:
+        out = write_generated_library(output_path=args.emit_to)
+        print(f"Wrote {out}")
 
     return 0
 

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 from runpy import run_path
+import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -53,6 +55,21 @@ def _pump_events(root) -> None:
         root.update()
 
 
+def _dispatch_entry_key_release(host, entry, *, keysym: str) -> None:
+    callback = host.engine._engine._event_callbacks[id(entry)]["on_key_release"]
+    assert callable(callback)
+    callback(SimpleNamespace(widget=entry, keysym=keysym))
+
+
+def _pump_events_until(root, predicate, *, max_steps: int = 400) -> None:
+    for _ in range(max_steps):
+        root.update_idletasks()
+        root.update()
+        if predicate():
+            return
+    raise AssertionError("timed out waiting for tkinter example UI to settle")
+
+
 def test_native_tkinter_grid_app_example_mounts_and_rerenders() -> None:
     assert GRID_APP_PATH.exists()
     assert RUNNER_PATH.exists()
@@ -63,8 +80,8 @@ def test_native_tkinter_grid_app_example_mounts_and_rerenders() -> None:
 
     try:
         assert isinstance(host.root_widget, ttk.Frame)
-        host.show()
         _pump_events(host.root)
+        assert not bool(host.root.winfo_viewable())
 
         texts = _label_texts(host.root)
         assert "Grid App" in texts
@@ -80,16 +97,12 @@ def test_native_tkinter_grid_app_example_mounts_and_rerenders() -> None:
         assert _count_manager(host.root, "pack") > 0
         assert _count_manager(host.root, "grid") == 0
 
-        entries[0].focus_force()
-        _pump_events(host.root)
         entries[0].delete(0, "end")
         entries[0].insert(0, "3")
-        entries[0].event_generate("<KeyRelease>", keysym="3")
-        entries[1].focus_force()
-        _pump_events(host.root)
+        _dispatch_entry_key_release(host, entries[0], keysym="3")
         entries[1].delete(0, "end")
         entries[1].insert(0, "1")
-        entries[1].event_generate("<KeyRelease>", keysym="1")
+        _dispatch_entry_key_release(host, entries[1], keysym="1")
         _pump_events(host.root)
 
         texts = _label_texts(host.root)
@@ -119,6 +132,52 @@ def test_native_tkinter_grid_app_example_mounts_and_rerenders() -> None:
         assert "R1 C4" in texts
         assert "R2 C1" in texts
         assert _count_manager(host.root, "grid") >= 8
+    finally:
+        ctx.close_app_contexts()
+        host.close()
+
+
+def test_native_tkinter_grid_app_large_layout_toggle_stays_within_time_budget() -> None:
+    namespace = run_path(str(RUNNER_PATH))
+    build_app_host = namespace["build_app_host"]
+    host, ctx = build_app_host()
+
+    try:
+        _pump_events(host.root)
+
+        entries = _find_entries(host.root)
+        assert len(entries) == 2
+        entries[0].delete(0, "end")
+        entries[0].insert(0, "20")
+        _dispatch_entry_key_release(host, entries[0], keysym="2")
+        entries[1].delete(0, "end")
+        entries[1].insert(0, "20")
+        _dispatch_entry_key_release(host, entries[1], keysym="2")
+        _pump_events_until(
+            host.root,
+            lambda: "R20 C20" in _label_texts(host.root),
+        )
+
+        toggle_buttons = _find_buttons_by_text(host.root, "Use Grid Layout")
+        assert len(toggle_buttons) == 1
+
+        started_at = time.perf_counter()
+        toggle_buttons[0].invoke()
+        _pump_events_until(
+            host.root,
+            lambda: _count_manager(host.root, "grid") >= 400,
+        )
+
+        toggle_buttons = _find_buttons_by_text(host.root, "Use Row Layout")
+        assert len(toggle_buttons) == 1
+        toggle_buttons[0].invoke()
+        _pump_events_until(
+            host.root,
+            lambda: _find_buttons_by_text(host.root, "Use Grid Layout") and "R20 C20" in _label_texts(host.root),
+        )
+        elapsed_s = time.perf_counter() - started_at
+
+        assert elapsed_s <= 8.0
     finally:
         ctx.close_app_contexts()
         host.close()

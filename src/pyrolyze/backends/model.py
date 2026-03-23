@@ -14,6 +14,8 @@ class AccessorKind(StrEnum):
     QT_PROPERTY = "qt_property"
     TK_CONFIG = "tk_config"
     PYTHON_PROPERTY = "python_property"
+    DPG_CONFIG = "dpg_config"
+    DPG_VALUE = "dpg_value"
 
 
 class PropMode(StrEnum):
@@ -34,6 +36,8 @@ class MethodMode(StrEnum):
 class EventPayloadPolicy(StrEnum):
     NONE = "none"
     FIRST_ARG = "first_arg"
+    # DearPyGui item ``callback`` is ``(sender, app_data, user_data)``; use ``app_data`` only.
+    SECOND_ARG = "second_arg"
     ALL_ARGS = "all_args"
 
 

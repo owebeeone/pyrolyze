@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any, Literal, TextIO
 
 from pyrolyze.compiler import load_transformed_namespace
+from pyrolyze.pyrolyze_dearpygui import create_window as create_dpg_window
+from pyrolyze.pyrolyze_dearpygui import reconcile_window_content as reconcile_dpg_content
 from pyrolyze.pyrolyze_pyside6 import create_window as create_pyside_window
 from pyrolyze.pyrolyze_pyside6 import reconcile_window_content as reconcile_pyside_content
 from pyrolyze.pyrolyze_tkinter import create_window as create_tk_window
@@ -21,7 +23,7 @@ from pyrolyze.runtime import (
 )
 
 
-BackendName = Literal["pyside6", "tkinter"]
+BackendName = Literal["pyside6", "tkinter", "dearpygui"]
 SOURCE_PATH = Path(__file__).with_name("grid_app.py")
 
 
@@ -29,7 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the PyRolyze dynamic grid example.")
     parser.add_argument(
         "--backend",
-        choices=("pyside6", "tkinter"),
+        choices=("pyside6", "tkinter", "dearpygui"),
         default="pyside6",
         help="Select the native UI backend.",
     )
@@ -61,6 +63,10 @@ def _post_flush(host: Any, backend: BackendName, callback: Any) -> None:
         from PySide6.QtCore import QTimer
 
         QTimer.singleShot(0, callback)
+        return
+
+    if backend == "dearpygui":
+        callback()
         return
 
     host.root.after(0, callback)
@@ -113,6 +119,9 @@ def build_app_host(backend: BackendName) -> tuple[Any, RenderContext]:
     if backend == "pyside6":
         host = create_pyside_window("PyRolyze Dynamic Grid")
         reconcile_content = reconcile_pyside_content
+    elif backend == "dearpygui":
+        host = create_dpg_window("PyRolyze Dynamic Grid")
+        reconcile_content = reconcile_dpg_content
     else:
         host = create_tk_window("PyRolyze Dynamic Grid")
         reconcile_content = reconcile_tk_content

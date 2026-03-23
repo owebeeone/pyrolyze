@@ -20,6 +20,10 @@ _MODULE_ID = module_registry.module_id("tests.context_graph_phase1")
 _TITLE_SLOT = SlotId(_MODULE_ID, 1, line_no=10)
 _SECTION_SLOT = SlotId(_MODULE_ID, 2, line_no=11)
 _BADGE_SLOT = SlotId(_MODULE_ID, 3, line_no=12)
+_PANEL_SLOT = SlotId(_MODULE_ID, 4, line_no=13)
+_COUNTER_SLOT = SlotId(_MODULE_ID, 5, line_no=14)
+_BUTTON_SLOT = SlotId(_MODULE_ID, 6, line_no=15)
+_BUTTON_EVENT_SLOT = SlotId(_MODULE_ID, 7, line_no=16)
 
 
 def _make_welcome_program(log: list[tuple[object, ...]]):
@@ -266,3 +270,44 @@ def test_child_visitation_must_use_the_owning_container_context() -> None:
             "Ada",
             "violet",
         )
+
+
+def test_skipped_clean_subtree_preserves_event_handler_slots() -> None:
+    ctx = RenderContext()
+    events: list[str] = []
+    captured_dispatch: dict[str, object] = {}
+
+    @contextmanager
+    def _panel():
+        yield
+
+    @contextmanager
+    def _button():
+        yield
+
+    def _render(counter_dirty: bool, button_dirty: bool) -> None:
+        with ctx.pass_scope():
+            if counter_dirty or button_dirty or ctx.visit_slot_and_dirty(_PANEL_SLOT):
+                with ctx.container_call(_PANEL_SLOT, _panel) as panel_ctx:
+                    if counter_dirty or panel_ctx.visit_slot_and_dirty(_COUNTER_SLOT):
+                        panel_ctx.leaf_call(_COUNTER_SLOT, lambda: None)
+                    if button_dirty or panel_ctx.visit_slot_and_dirty(_BUTTON_SLOT):
+                        with panel_ctx.container_call(_BUTTON_SLOT, _button) as button_ctx:
+                            captured_dispatch["value"] = button_ctx.event_handler(
+                                _BUTTON_EVENT_SLOT,
+                                dirty=button_dirty,
+                                callback=lambda: events.append("clicked"),
+                            )
+
+    _render(counter_dirty=True, button_dirty=True)
+    dispatch = captured_dispatch["value"]
+    assert callable(dispatch)
+    dispatch()
+    assert events == ["clicked"]
+
+    _render(counter_dirty=True, button_dirty=False)
+
+    dispatch = captured_dispatch["value"]
+    assert callable(dispatch)
+    dispatch()
+    assert events == ["clicked", "clicked"]

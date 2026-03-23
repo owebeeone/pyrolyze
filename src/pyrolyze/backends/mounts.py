@@ -414,6 +414,12 @@ def _sync_child_geometry_mount(
     method_name: str,
     detach_name: str | None,
 ) -> None:
+    if method_name == "pack":
+        _sync_child_pack_mount(parent, states, detach_name)
+        return
+    if method_name == "grid":
+        _sync_child_grid_mount(parent, states, detach_name)
+        return
     if detach_name is not None:
         manager_query_name = f"{method_name}_slaves"
         manager_query = getattr(parent, manager_query_name, None)
@@ -426,6 +432,117 @@ def _sync_child_geometry_mount(
             resolved_values["in_"] = parent
         for ref in state.objects:
             getattr(ref.value, method_name)(**resolved_values)
+
+
+def _sync_child_pack_mount(
+    parent: object,
+    states: Sequence[MountState],
+    detach_name: str | None,
+) -> None:
+    desired = _flatten_child_geometry_entries(parent, states)
+    desired_ids = {id(widget) for widget, _values in desired}
+    manager_query = getattr(parent, "pack_slaves", None)
+    current_children = tuple(manager_query()) if callable(manager_query) else ()
+    if detach_name is not None:
+        for child in current_children:
+            if id(child) in desired_ids:
+                continue
+            if getattr(child, "winfo_manager", lambda: "")() != "pack":
+                continue
+            getattr(child, detach_name)()
+
+    anchor: object | None = None
+    for child, values in reversed(desired):
+        if getattr(child, "winfo_manager", lambda: "")() == "pack":
+            if _pack_geometry_matches(parent, child, before=anchor, values=values):
+                anchor = child
+                continue
+            configure_values = {
+                key: value
+                for key, value in values.items()
+                if key not in {"in", "in_"}
+            }
+            if anchor is not None:
+                configure_values["before"] = anchor
+            getattr(child, "pack_configure")(**configure_values)
+        else:
+            place_values = dict(values)
+            if anchor is not None:
+                place_values["before"] = anchor
+            getattr(child, "pack")(**place_values)
+        anchor = child
+
+
+def _sync_child_grid_mount(
+    parent: object,
+    states: Sequence[MountState],
+    detach_name: str | None,
+) -> None:
+    desired = _flatten_child_geometry_entries(parent, states)
+    desired_ids = {id(widget) for widget, _values in desired}
+    manager_query = getattr(parent, "grid_slaves", None)
+    current_children = tuple(manager_query()) if callable(manager_query) else ()
+    if detach_name is not None:
+        for child in current_children:
+            if id(child) in desired_ids:
+                continue
+            if getattr(child, "winfo_manager", lambda: "")() != "grid":
+                continue
+            getattr(child, detach_name)()
+
+    for child, values in desired:
+        if getattr(child, "winfo_manager", lambda: "")() == "grid":
+            configure_values = {
+                key: value
+                for key, value in values.items()
+                if key not in {"in", "in_"}
+            }
+            getattr(child, "grid_configure")(**configure_values)
+            continue
+        getattr(child, "grid")(**values)
+
+
+def _flatten_child_geometry_entries(
+    parent: object,
+    states: Sequence[MountState],
+) -> list[tuple[object, dict[str, Any]]]:
+    entries: list[tuple[object, dict[str, Any]]] = []
+    for state in states:
+        resolved_values = _mount_resolved_values(state)
+        if "in" not in resolved_values and "in_" not in resolved_values:
+            resolved_values["in_"] = parent
+        for ref in state.objects:
+            entries.append((ref.value, dict(resolved_values)))
+    return entries
+
+
+def _pack_geometry_matches(
+    parent: object,
+    child: object,
+    *,
+    before: object | None,
+    values: Mapping[str, Any],
+) -> bool:
+    manager_query = getattr(parent, "pack_slaves", None)
+    current_children = tuple(manager_query()) if callable(manager_query) else ()
+    try:
+        index = current_children.index(child)
+    except ValueError:
+        return False
+    current_before = current_children[index + 1] if index + 1 < len(current_children) else None
+    if current_before is not before:
+        return False
+    pack_info = getattr(child, "pack_info", None)
+    if not callable(pack_info):
+        return False
+    current_values = pack_info()
+    for key, desired in values.items():
+        if key in {"in", "in_"}:
+            continue
+        actual = current_values.get(key)
+        if str(actual) != str(desired):
+            return False
+    return True
 
 
 def _child_geometry_forget_method_name(method_name: str) -> str | None:

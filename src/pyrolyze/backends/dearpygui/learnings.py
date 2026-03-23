@@ -126,7 +126,7 @@ LEARNINGS: frozendict[str, UiWidgetLearning] = frozendict(
                         public_name="standard",
                         default_child=True,
                         default_attach_rank=1,
-                        accepted_produced_type=TypeRef(expr='"DpgContainerItem"'),
+                        accepted_produced_type=TypeRef(expr='"DpgItem"'),
                         replay_kind=MountReplayKind.ANCHOR_BEFORE,
                         prefer_sync=True,
                     ),
@@ -166,7 +166,27 @@ LEARNINGS: frozendict[str, UiWidgetLearning] = frozendict(
                 }
             ),
         ),
+        dearpygui_learning_key("Node"): UiWidgetLearning(
+            mount_point_learnings=frozendict(
+                {
+                    "standard": UiMountPointLearning(
+                        public_name="standard",
+                        default_child=True,
+                        default_attach_rank=0,
+                        accepted_produced_type=TypeRef(expr='"DpgItem"'),
+                    ),
+                }
+            ),
+        ),
         dearpygui_learning_key("NodeEditor"): UiWidgetLearning(
+            event_learnings=frozendict(
+                {
+                    "on_delink": UiEventLearning(
+                        signal_name="delink_callback",
+                        payload_policy=EventPayloadPolicy.ALL_ARGS,
+                    ),
+                }
+            ),
             mount_point_learnings=frozendict(
                 {
                     "node": UiMountPointLearning(
@@ -182,6 +202,78 @@ LEARNINGS: frozendict[str, UiWidgetLearning] = frozendict(
                         default_attach_rank=1,
                         accepted_produced_type=TypeRef(expr='"DpgNodeLinkItem"'),
                         replay_kind=MountReplayKind.ANCHOR_BEFORE,
+                    ),
+                }
+            ),
+        ),
+        dearpygui_learning_key("MenuBar"): UiWidgetLearning(
+            mount_point_learnings=frozendict(
+                {
+                    "standard": UiMountPointLearning(
+                        public_name="standard",
+                        default_child=True,
+                        default_attach_rank=0,
+                        accepted_produced_type=TypeRef(expr='"DpgMenuItem"'),
+                    ),
+                }
+            ),
+        ),
+        dearpygui_learning_key("Menu"): UiWidgetLearning(
+            mount_point_learnings=frozendict(
+                {
+                    "standard": UiMountPointLearning(
+                        public_name="standard",
+                        default_child=True,
+                        default_attach_rank=0,
+                        accepted_produced_type=TypeRef(expr='"DpgItem"'),
+                    ),
+                }
+            ),
+        ),
+        dearpygui_learning_key("TableRow"): UiWidgetLearning(
+            mount_point_learnings=frozendict(
+                {
+                    "cell": UiMountPointLearning(
+                        public_name="cell",
+                        default_child=True,
+                        default_attach_rank=0,
+                        accepted_produced_type=TypeRef(expr='"DpgItem"'),
+                    ),
+                }
+            ),
+        ),
+        dearpygui_learning_key("Theme"): UiWidgetLearning(
+            mount_point_learnings=frozendict(
+                {
+                    "component": UiMountPointLearning(
+                        public_name="component",
+                        default_child=True,
+                        default_attach_rank=0,
+                        accepted_produced_type=TypeRef(expr='"DpgThemeComponentItem"'),
+                    ),
+                }
+            ),
+        ),
+        dearpygui_learning_key("ThemeComponent"): UiWidgetLearning(
+            mount_point_learnings=frozendict(
+                {
+                    "entry": UiMountPointLearning(
+                        public_name="entry",
+                        default_child=True,
+                        default_attach_rank=0,
+                        accepted_produced_type=TypeRef(expr='"DpgItem"'),
+                    ),
+                }
+            ),
+        ),
+        dearpygui_learning_key("FontRegistry"): UiWidgetLearning(
+            mount_point_learnings=frozendict(
+                {
+                    "standard": UiMountPointLearning(
+                        public_name="standard",
+                        default_child=True,
+                        default_attach_rank=0,
+                        accepted_produced_type=TypeRef(expr='"DpgItem"'),
                     ),
                 }
             ),

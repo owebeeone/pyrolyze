@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import ast
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import importlib
 from typing import Any, Callable, Mapping
 
@@ -24,6 +24,8 @@ from pyrolyze.backends.model import (
     UiPropSpec,
     UiWidgetSpec,
 )
+
+_TK_CHILD_GEOMETRY_METHOD_NAMES = frozenset({"pack", "grid", "place"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,7 +124,18 @@ class MountableEngine:
                 next_effective[name] = value
                 changed_props[name] = value
                 continue
-            prop = self._prop_for(spec, name)
+            prop = spec.props.get(name)
+            if prop is None:
+                if name not in spec.constructor_params:
+                    raise ValueError(
+                        f"unsupported prop {name!r} for mountable kind {spec.kind!r}"
+                    )
+                if next_effective.get(name, MISSING) == value:
+                    continue
+                next_effective[name] = value
+                changed_props[name] = value
+                remount_required = True
+                continue
             if prop.mode is PropMode.READONLY:
                 raise ValueError(f"readonly prop {name!r} may not be updated")
             if prop.mode is PropMode.CREATE_ONLY:
@@ -232,7 +245,14 @@ class MountableEngine:
             if name in spec.events:
                 effective[name] = value
                 continue
-            prop = self._prop_for(spec, name)
+            prop = spec.props.get(name)
+            if prop is None:
+                if name not in spec.constructor_params:
+                    raise ValueError(
+                        f"unsupported prop {name!r} for mountable kind {spec.kind!r}"
+                    )
+                effective[name] = value
+                continue
             if prop.mode is PropMode.READONLY:
                 raise ValueError(f"readonly prop {name!r} may not be mounted")
             effective[name] = value
@@ -248,17 +268,18 @@ class MountableEngine:
                 continue
             value = effective_props[name]
             prop = spec.props.get(name)
-            if prop is None or prop.constructor_name is None:
+            constructor_name = name if prop is None else prop.constructor_name
+            if constructor_name is None:
                 continue
             if name in method_backed_source_props:
                 continue
-            if _is_positional_constructor_name(prop.constructor_name):
-                position = _constructor_position(prop.constructor_name)
+            if _is_positional_constructor_name(constructor_name):
+                position = _constructor_position(constructor_name)
                 while len(constructor_args) <= position:
                     constructor_args.append(MISSING)
                 constructor_args[position] = value
                 continue
-            constructor_kwargs[prop.constructor_name] = value
+            constructor_kwargs[constructor_name] = value
         mountable = mountable_type(
             *[value for value in constructor_args if value is not MISSING],
             **constructor_kwargs,
@@ -403,6 +424,9 @@ class MountableEngine:
             if event_spec.payload_policy.value == "first_arg":
                 callback(args[0] if args else None)
                 return
+            if event_spec.payload_policy.value == "second_arg":
+                callback(args[1] if len(args) > 1 else None)
+                return
             callback(*args)
 
         return dispatch
@@ -453,6 +477,13 @@ class MountableEngine:
                 raise ValueError(f"missing setter_name for tk_config prop {prop.name!r}")
             getattr(mountable, prop.setter_name)(**{prop.name: value})
             return
+        if prop.setter_kind is AccessorKind.DPG_CONFIG:
+            setter_name = prop.setter_name or prop.name
+            getattr(mountable, "apply_dpg_config_key")(setter_name, value)
+            return
+        if prop.setter_kind is AccessorKind.DPG_VALUE:
+            getattr(mountable, "apply_dpg_value")(value)
+            return
         raise NotImplementedError(f"unsupported setter kind {prop.setter_kind!r}")
 
     def _apply_method(self, mountable: object, method: UiMethodSpec, args: tuple[Any, ...]) -> None:
@@ -478,7 +509,11 @@ class MountableEngine:
         reusable_children = _child_node_pool(old_child_nodes or [])
         child_nodes: list[MountedMountableNode] = []
         for index, attachment in enumerate(flattened_children):
-            child = attachment.element
+            child = self._with_implicit_parent_constructor_props(
+                attachment.element,
+                parent=parent,
+                mount_point=attachment.mount_point,
+            )
             child_slot_id = _resolved_child_slot_id(child, parent_slot_id, index)
             child_call_site_id = child.call_site_id
             current = _take_reusable_child(
@@ -679,6 +714,30 @@ class MountableEngine:
             )
             for instance_key, bucket in grouped.items()
         }
+
+    def _with_implicit_parent_constructor_props(
+        self,
+        element: UIElement,
+        *,
+        parent: object,
+        mount_point: MountPointSpec,
+    ) -> UIElement:
+        spec = self._spec_for(element.kind)
+        if "master" in element.props:
+            return element
+        if "master" not in spec.constructor_params:
+            return element
+        geometry_method_names = {
+            mount_point.apply_method_name,
+            mount_point.sync_method_name,
+            mount_point.place_method_name,
+            mount_point.append_method_name,
+        }
+        if not geometry_method_names & _TK_CHILD_GEOMETRY_METHOD_NAMES:
+            return element
+        next_props = dict(element.props)
+        next_props["master"] = parent
+        return replace(element, props=next_props)
 
     def _default_mount_point_for_child(
         self,

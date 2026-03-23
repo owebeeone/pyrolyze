@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 from io import StringIO
 from pathlib import Path
 from runpy import run_path
@@ -196,6 +198,7 @@ def test_run_grid_app_parser_selects_backend_and_builds_pyside_host() -> None:
 
     assert parser.parse_args([]).backend == "pyside6"
     assert parser.parse_args(["--backend", "tkinter"]).backend == "tkinter"
+    assert parser.parse_args(["--backend", "dearpygui"]).backend == "dearpygui"
     assert parser.parse_args(["--trace", "invalidation,boundary"]).trace == ["invalidation,boundary"]
     assert parser.parse_args(["--trace", "reconcile", "--trace", "flush"]).trace == ["reconcile", "flush"]
     assert parser.parse_args(["--trace-stdout"]).trace_stdout is True
@@ -305,3 +308,23 @@ def test_run_grid_app_builds_tkinter_host(tk_runtime) -> None:
     finally:
         ctx.close_app_contexts()
         host.close()
+
+
+def test_run_grid_app_builds_dearpygui_host() -> None:
+    """Run in a subprocess: loading ``dearpygui`` in-process breaks later Tk tests (GL/Tk clash)."""
+
+    pytest.importorskip("dearpygui")
+    runner = str(RUNNER_PATH)
+    repo = str(REPO_ROOT)
+    code = (
+        "import sys\n"
+        f"sys.path.insert(0, {repo!r})\n"
+        "from runpy import run_path\n"
+        f"ns = run_path({runner!r})\n"
+        'host, ctx = ns["build_app_host"]("dearpygui")\n'
+        "assert host.owner_state is not None\n"
+        "assert len(host.owner_state.mounted_nodes) == 1\n"
+        "ctx.close_app_contexts()\n"
+        "host.close()\n"
+    )
+    subprocess.check_call([sys.executable, "-c", code], cwd=repo)

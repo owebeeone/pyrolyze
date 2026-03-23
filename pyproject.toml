@@ -18,6 +18,9 @@ test = [
   "pytest>=8,<10",
   "pytest-cov>=5,<7",
 ]
+dpg = [
+  "dearpygui>=2.0,<3",
+]
 
 [tool.pyrolyze.test-matrix]
 python = ["3.12", "3.13", "3.14", "3.15"]

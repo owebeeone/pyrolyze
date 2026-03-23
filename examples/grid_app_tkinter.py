@@ -16,19 +16,19 @@ def _decrement(value: int) -> int:
     return max(0, value - 1)
 
 
-def _request_decrement(_keepalive: object, set_count) -> None:
+def _request_decrement(set_count) -> None:
     set_count(lambda current: _decrement(int(current)))
 
 
-def _request_increment(_keepalive: object, set_count) -> None:
+def _request_increment(set_count) -> None:
     set_count(lambda current: int(current) + 1)
 
 
-def _request_count_update(event, _keepalive: object, set_count) -> None:
+def _request_count_update(event, set_count) -> None:
     set_count(_coerce_count(event.widget.get()))
 
 
-def _toggle_layout(_keepalive: object, set_use_grid) -> None:
+def _toggle_layout(set_use_grid) -> None:
     set_use_grid(lambda current: not bool(current))
 
 
@@ -40,27 +40,22 @@ def counter(
     *,
     decrement_text: str = "-",
     increment_text: str = "+",
-    keepalive_token: object | None = None,
 ) -> None:
     with Tk.CTtkFrame():
         with mount(Tk.mounts.pack(side="left", padx=4, pady=4)):
             Tk.CTtkLabel(text=title)
             Tk.CTtkButton(
                 text=decrement_text,
-                on_command=lambda: _request_decrement((keepalive_token, count), set_count),
+                on_command=lambda: _request_decrement(set_count),
             )
             Tk.CTtkEntry(
                 textvariable=StringVar(value=str(count)),
                 width=5,
-                on_key_release=lambda event: _request_count_update(
-                    event,
-                    (keepalive_token, count),
-                    set_count,
-                ),
+                on_key_release=lambda event: _request_count_update(event, set_count),
             )
             Tk.CTtkButton(
                 text=increment_text,
-                on_command=lambda: _request_increment((keepalive_token, count), set_count),
+                on_command=lambda: _request_increment(set_count),
             )
 
 
@@ -82,7 +77,6 @@ def header(
                 set_cols,
                 decrement_text="Cols -",
                 increment_text="Cols +",
-                keepalive_token=(rows, use_grid),
             )
             counter(
                 "Rows",
@@ -90,11 +84,10 @@ def header(
                 set_rows,
                 decrement_text="Rows -",
                 increment_text="Rows +",
-                keepalive_token=(cols, use_grid),
             )
             Tk.CTtkButton(
                 text="Use Row Layout" if use_grid else "Use Grid Layout",
-                on_command=lambda: _toggle_layout((cols, rows, use_grid), set_use_grid),
+                on_command=lambda: _toggle_layout(set_use_grid),
             )
 
 
@@ -106,12 +99,12 @@ def cell(row_index: int, col_index: int) -> None:
             Tk.CTtkLabel(text=f"R{row_index + 1} C{col_index + 1}")
             Tk.CTtkButton(
                 text="-",
-                on_command=lambda: _request_decrement(count, set_count),
+                on_command=lambda: _request_decrement(set_count),
             )
             Tk.CTtkLabel(text=str(count))
             Tk.CTtkButton(
                 text="+",
-                on_command=lambda: _request_increment(count, set_count),
+                on_command=lambda: _request_increment(set_count),
             )
 
 

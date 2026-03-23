@@ -17,7 +17,7 @@ def button(label: str, *, on_press: PyrolyzeHandler[[], None] | None=None) -> No
 def __pyr_panel(__pyr_ctx, __pyr_dirty_state, name: str):
     with __pyr_ctx.pass_scope():
         if __pyr_dirty_state.name or __pyr_ctx.visit_slot_and_dirty(__pyr_slot_1):
-            __pyr_ctx.component_call(__pyr_slot_1, button, 'Save', on_press=__pyr_ctx.event_handler(__pyr_slot_2, dirty=__pyr_dirty_state.name, callback=lambda: log.append(name)), dirty_state=__pyr_dirtyof(label=False, on_press=__pyr_dirty_state.name))
+            __pyr_ctx.component_call(__pyr_slot_1, button, 'Save', on_press=__pyr_ctx.event_handler_binding(__pyr_slot_2, dirty=__pyr_dirty_state.name, callback=lambda: log.append(name)), dirty_state=__pyr_dirtyof(label=False, on_press=__pyr_dirty_state.name))
 
 @__pyr_component_ref(__pyr_ComponentMetadata('panel', __pyr_panel))
 def panel(name: str) -> None:

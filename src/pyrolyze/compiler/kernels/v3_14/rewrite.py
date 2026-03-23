@@ -1541,7 +1541,7 @@ def _event_handler_expression(
     return ast.Call(
         func=ast.Attribute(
             value=state.context_ref(),
-            attr="event_handler",
+            attr="event_handler_binding",
             ctx=ast.Load(),
         ),
         args=[slot_ref],
@@ -1576,7 +1576,11 @@ def _lower_eventful_call_arguments(
             slot_setup.extend(event_slot_setup)
             lowered_args.append(
                 copy_reason_location(
-                    _event_handler_expression(arg, slot_ref=event_slot_ref, state=state),
+                    _event_handler_expression(
+                        arg,
+                        slot_ref=event_slot_ref,
+                        state=state,
+                    ),
                     arg,
                 )
             )
@@ -1592,7 +1596,11 @@ def _lower_eventful_call_arguments(
                 ast.keyword(
                     arg=keyword.arg,
                     value=copy_reason_location(
-                        _event_handler_expression(keyword.value, slot_ref=event_slot_ref, state=state),
+                        _event_handler_expression(
+                            keyword.value,
+                            slot_ref=event_slot_ref,
+                            state=state,
+                        ),
                         keyword.value,
                     ),
                 )

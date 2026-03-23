@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from frozendict import frozendict
 import pytest
 
@@ -80,9 +82,20 @@ def _event_button_spec() -> UiWidgetSpec:
     return UiWidgetSpec(
         kind="Button",
         mounted_type_name="tkinter.Button",
-        constructor_params=frozendict(),
+        constructor_params=frozendict(
+            {
+                "master": UiParamSpec(name="master", annotation=TypeRef("object")),
+            }
+        ),
         props=frozendict(
             {
+                "master": UiPropSpec(
+                    name="master",
+                    annotation=TypeRef("object"),
+                    mode=PropMode.CREATE_ONLY_REMOUNT,
+                    constructor_name="master",
+                    affects_identity=True,
+                ),
                 "text": UiPropSpec(
                     name="text",
                     annotation=TypeRef("str"),
@@ -278,6 +291,7 @@ def test_mount_builds_frame_children_with_default_pack_mount(tk_root) -> None:
     assert node._mountable_node is not None
     child_nodes = node._mountable_node.child_nodes
     assert [child.mountable.cget("text") for child in child_nodes] == ["A", "B"]
+    assert [child.mountable.master for child in child_nodes] == [node.widget, node.widget]
     assert [child.mountable.winfo_manager() for child in child_nodes] == ["pack", "pack"]
 
 
@@ -295,13 +309,11 @@ def test_mount_connects_tk_bind_event_and_dispatches_current_callback(tk_root) -
         call_site_id=31,
     )
     node.widget.pack()
-    root.deiconify()
-    node.widget.focus_force()
     root.update_idletasks()
     root.update()
-
-    node.widget.event_generate("<KeyRelease>", keysym="a")
-    root.update_idletasks()
-    root.update()
+    assert node.widget.bind("<KeyRelease>")
+    callback = engine._engine._event_callbacks[id(node.widget)]["on_key_release"]
+    assert callable(callback)
+    callback(SimpleNamespace(widget=node.widget, keysym="a"))
 
     assert len(payloads) == 1

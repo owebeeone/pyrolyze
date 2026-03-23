@@ -4,14 +4,14 @@ from frozendict import frozendict
 
 from pyrolyze.backends.mounts import (
     ImmutableOrderedMountState,
-    OrderedMountStateBuilder,
     MountOp,
     MountedRef,
+    OrderedMountStateBuilder,
     apply_mount_state,
     choose_mount_applier,
     resolve_mount_ops,
 )
-from pyrolyze.backends.model import MountPointSpec, MountReplayKind, MountState, TypeRef
+from pyrolyze.backends.model import MountParamSpec, MountPointSpec, MountReplayKind, MountState, TypeRef
 from pyrolyze.testing.hydo import (
     HYDO_MOUNTABLE_SPECS,
     HydoGridLayout,
@@ -64,6 +64,65 @@ class _AppendOnlyParent:
         self.operations.append(("remove", (child,)))
 
 
+class _FakePackParent:
+    def __init__(self) -> None:
+        self.children: list[_FakePackChild] = []
+
+    def pack_slaves(self) -> tuple[_FakePackChild, ...]:
+        return tuple(self.children)
+
+
+class _FakePackChild:
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.parent: _FakePackParent | None = None
+        self.manager = ""
+        self.pack_kwargs: dict[str, object] = {}
+        self.operations: list[tuple[str, dict[str, object]]] = []
+
+    def winfo_manager(self) -> str:
+        return self.manager
+
+    def pack(self, **kwargs: object) -> None:
+        self.operations.append(("pack", dict(kwargs)))
+        self._apply_pack(kwargs)
+
+    def pack_configure(self, **kwargs: object) -> None:
+        self.operations.append(("pack_configure", dict(kwargs)))
+        self._apply_pack(kwargs)
+
+    def pack_forget(self) -> None:
+        self.operations.append(("pack_forget", {}))
+        if self.parent is not None and self in self.parent.children:
+            self.parent.children.remove(self)
+        self.parent = None
+        self.manager = ""
+        self.pack_kwargs = {}
+
+    def pack_info(self) -> dict[str, object]:
+        return dict(self.pack_kwargs)
+
+    def _apply_pack(self, kwargs: dict[str, object]) -> None:
+        values = dict(kwargs)
+        parent = values.pop("in_", values.pop("in", self.parent))
+        before = values.pop("before", None)
+        after = values.pop("after", None)
+        if not isinstance(parent, _FakePackParent):
+            raise TypeError(f"expected _FakePackParent, got {type(parent).__name__}")
+        if self.parent is not None and self in self.parent.children:
+            self.parent.children.remove(self)
+        self.parent = parent
+        self.manager = "pack"
+        self.pack_kwargs = values
+        if before is not None:
+            index = parent.children.index(before)
+        elif after is not None:
+            index = parent.children.index(after) + 1
+        else:
+            index = len(parent.children)
+        parent.children.insert(index, self)
+
+
 def _anchor_mount_point() -> MountPointSpec:
     return MountPointSpec(
         name="action",
@@ -82,6 +141,22 @@ def _append_only_mount_point() -> MountPointSpec:
         append_method_name="add",
         detach_method_name="remove",
         replay_kind=MountReplayKind.INDEX,
+    )
+
+
+def _tk_pack_mount_point() -> MountPointSpec:
+    return MountPointSpec(
+        name="pack",
+        accepted_produced_type=TypeRef("tkinter.Widget"),
+        params=(
+            MountParamSpec(name="side", annotation=TypeRef("str")),
+            MountParamSpec(name="fill", annotation=TypeRef("str")),
+        ),
+        max_children=None,
+        sync_method_name="pack",
+        append_method_name="pack",
+        detach_method_name="pack_forget",
+        prefer_sync=True,
     )
 
 
@@ -372,3 +447,92 @@ def test_apply_mount_state_enforces_single_mount_limits() -> None:
         assert "max_children" in str(exc)
     else:
         raise AssertionError("expected single-mount validation failure")
+
+
+def test_apply_mount_state_reorders_tk_pack_mount_without_full_forget_rebuild() -> None:
+    parent = _FakePackParent()
+    mount_point = _tk_pack_mount_point()
+    first = _FakePackChild("first")
+    second = _FakePackChild("second")
+
+    old_order = ImmutableOrderedMountState(
+        revision=1,
+        objects=(
+            MountedRef(node_id=("node", 1), value=first),
+            MountedRef(node_id=("node", 2), value=second),
+        ),
+    )
+    old_state = MountState(
+        mount_point=mount_point,
+        instance_key=mount_point.instance_key({}),
+        values=frozendict({"side": "left", "fill": "x"}),
+        objects=old_order.objects,
+    )
+    apply_mount_state(parent, old_state=None, new_state=old_state)
+    assert [child.name for child in parent.children] == ["first", "second"]
+    first.operations.clear()
+    second.operations.clear()
+
+    builder = OrderedMountStateBuilder.from_state(old_order)
+    builder.place(0, old_order.objects[1])
+    new_order = builder.build()
+    new_state = MountState(
+        mount_point=mount_point,
+        instance_key=mount_point.instance_key({}),
+        values=frozendict({"side": "left", "fill": "x"}),
+        objects=new_order.objects,
+    )
+
+    apply_mount_state(parent, old_state=old_state, new_state=new_state, ordered_state=new_order)
+
+    assert [child.name for child in parent.children] == ["second", "first"]
+    assert [op[0] for op in first.operations] == ["pack_configure"]
+    assert second.operations == []
+
+
+def test_apply_mount_state_detaches_removed_tk_pack_child_without_repacking_survivors() -> None:
+    parent = _FakePackParent()
+    mount_point = _tk_pack_mount_point()
+    first = _FakePackChild("first")
+    second = _FakePackChild("second")
+    third = _FakePackChild("third")
+
+    old_order = ImmutableOrderedMountState(
+        revision=1,
+        objects=(
+            MountedRef(node_id=("node", 1), value=first),
+            MountedRef(node_id=("node", 2), value=second),
+            MountedRef(node_id=("node", 3), value=third),
+        ),
+    )
+    old_state = MountState(
+        mount_point=mount_point,
+        instance_key=mount_point.instance_key({}),
+        values=frozendict({"side": "left", "fill": "x"}),
+        objects=old_order.objects,
+    )
+    apply_mount_state(parent, old_state=None, new_state=old_state)
+    first.operations.clear()
+    second.operations.clear()
+    third.operations.clear()
+
+    new_order = ImmutableOrderedMountState(
+        revision=2,
+        objects=(
+            old_order.objects[1],
+            old_order.objects[2],
+        ),
+    )
+    new_state = MountState(
+        mount_point=mount_point,
+        instance_key=mount_point.instance_key({}),
+        values=frozendict({"side": "left", "fill": "x"}),
+        objects=new_order.objects,
+    )
+
+    apply_mount_state(parent, old_state=old_state, new_state=new_state, ordered_state=new_order)
+
+    assert [child.name for child in parent.children] == ["second", "third"]
+    assert [op[0] for op in first.operations] == ["pack_forget"]
+    assert second.operations == []
+    assert third.operations == []

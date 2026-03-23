@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from pyrolyze.compiler import emit_transformed_source, load_transformed_namespace
 from pyrolyze.runtime import RenderContext, dirtyof
 from pyrolyze_testsupport import imported_annotations as imported_support
@@ -145,11 +147,12 @@ def panel(name: str) -> None:
         filename="/virtual/example/phase5/event_handler_local.py",
     )
 
-    assert ".event_handler(" in transformed
-    assert "on_press=__pyr_ctx.event_handler(" in transformed
+    assert ".event_handler_binding(" in transformed
+    assert "on_press=__pyr_ctx.event_handler_binding(" in transformed
+    assert "owner_slot_id" not in transformed
     assert "callback=lambda: log.append(name)" in transformed
     assert "formatter=lambda value: f'[{value}]'" in transformed
-    assert "formatter=__pyr_ctx.event_handler(" not in transformed
+    assert "formatter=__pyr_ctx.event_handler_binding(" not in transformed
 
     namespace = load_transformed_namespace(
         source,
@@ -205,7 +208,8 @@ def panel(name: str) -> None:
         filename="/virtual/example/phase5/event_handler_qualified.py",
     )
 
-    assert "on_press=__pyr_ctx.event_handler(" in transformed
+    assert "on_press=__pyr_ctx.event_handler_binding(" in transformed
+    assert "owner_slot_id" not in transformed
     assert "callback=lambda: print(name)" in transformed
 
 
@@ -228,7 +232,8 @@ def panel(name: str) -> None:
     )
 
     assert "imported_button" in transformed
-    assert "on_press=__pyr_ctx.event_handler(" in transformed
+    assert "on_press=__pyr_ctx.event_handler_binding(" in transformed
+    assert "owner_slot_id" not in transformed
 
     imported_support.reset_logs()
     namespace = load_transformed_namespace(
@@ -256,3 +261,50 @@ def panel(name: str) -> None:
 
     updated_dispatch()
     assert namespace["log"] == ["Ada", "Bea"]
+
+
+def test_phase5_component_owned_event_handlers_rollback_with_parent_pass_failure() -> None:
+    source = """
+from pyrolyze.api import PyrolyzeHandler, UIElement, call_native, pyrolyze
+
+log = []
+
+@pyrolyze
+def button(
+    label: str,
+    *,
+    on_press: PyrolyzeHandler[[], None] | None = None,
+) -> None:
+    call_native(UIElement)(
+        kind="button",
+        props={"label": label, "on_press": on_press},
+    )
+
+@pyrolyze
+def panel(name: str, fail_after: bool = False) -> None:
+    button("Save", on_press=lambda: log.append(name))
+    if fail_after:
+        raise RuntimeError("boom")
+"""
+
+    namespace = load_transformed_namespace(
+        source,
+        module_name="example.phase5.event_handler_parent_rollback",
+        filename="/virtual/example/phase5/event_handler_parent_rollback.py",
+    )
+    panel = namespace["panel"]
+    ctx = RenderContext()
+
+    panel._pyrolyze_meta._func(ctx, dirtyof(name=True, fail_after=True), "Ada", False)
+    (button_node,) = ctx.committed_ui()
+    dispatch = button_node.props["on_press"]
+    assert callable(dispatch)
+
+    dispatch()
+    assert namespace["log"] == ["Ada"]
+
+    with pytest.raises(RuntimeError, match="boom"):
+        panel._pyrolyze_meta._func(ctx, dirtyof(name=True, fail_after=True), "Bea", True)
+
+    dispatch()
+    assert namespace["log"] == ["Ada", "Ada"]
