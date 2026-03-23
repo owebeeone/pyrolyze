@@ -13,6 +13,7 @@ from pyrolyze.api import (
     MISSING,
     EmittedNode,
     MountDirective,
+    MountKeySelector,
     MountSelector,
     PyrolyzeMountAdvertisement,
     SlotSelector,
@@ -64,6 +65,23 @@ class _FlattenedMountAttachment:
 @dataclass(frozen=True, slots=True)
 class _NaturalMountInput:
     element: UIElement
+    selectors: tuple[SlotSelector, ...] | None
+
+
+@dataclass(frozen=True, slots=True)
+class _NaturalMountAdvertisementAnchor:
+    advertisement: PyrolyzeMountAdvertisement
+
+
+@dataclass(frozen=True, slots=True)
+class _AdvertProvider:
+    anchor_index: int
+    advertisement: PyrolyzeMountAdvertisement
+
+
+@dataclass(frozen=True, slots=True)
+class _SelectorRoutingResult:
+    provider_anchor_index: int | None
     selectors: tuple[SlotSelector, ...] | None
 
 
@@ -608,10 +626,11 @@ class MountableEngine:
         children: tuple[EmittedNode, ...],
         *,
         selectors: tuple[SlotSelector, ...] | None = None,
-    ) -> list[_NaturalMountInput]:
-        inputs: list[_NaturalMountInput] = []
+    ) -> list[object]:
+        inputs: list[object] = []
         for child in children:
             if isinstance(child, PyrolyzeMountAdvertisement):
+                inputs.append(_NaturalMountAdvertisementAnchor(advertisement=child))
                 continue
             if isinstance(child, MountDirective):
                 directive_selectors = child.selectors
@@ -635,9 +654,149 @@ class MountableEngine:
     def _build_mount_advert_dag(
         self,
         _parent_spec: UiWidgetSpec,
-        mount_inputs: list[_NaturalMountInput],
+        mount_inputs: list[object],
     ) -> list[_NaturalMountInput]:
-        return list(mount_inputs)
+        providers: list[_AdvertProvider] = []
+        for index, mount_input in enumerate(mount_inputs):
+            if isinstance(mount_input, _NaturalMountAdvertisementAnchor):
+                self._validate_advert_provider(
+                    mount_input.advertisement,
+                    providers,
+                )
+                providers.append(
+                    _AdvertProvider(
+                        anchor_index=index,
+                        advertisement=mount_input.advertisement,
+                    )
+                )
+
+        if not providers:
+            return [
+                mount_input
+                for mount_input in mount_inputs
+                if isinstance(mount_input, _NaturalMountInput)
+            ]
+
+        routed_buckets: dict[int, list[_NaturalMountInput]] = {
+            provider.anchor_index: [] for provider in providers
+        }
+        resolved_entries: list[_NaturalMountInput | _NaturalMountAdvertisementAnchor | None] = []
+        for mount_input in mount_inputs:
+            if isinstance(mount_input, _NaturalMountAdvertisementAnchor):
+                resolved_entries.append(mount_input)
+                continue
+            routing = self._route_mount_input_selectors(mount_input.selectors, providers)
+            if routing.provider_anchor_index is not None:
+                routed_buckets[routing.provider_anchor_index].append(
+                    _NaturalMountInput(
+                        element=mount_input.element,
+                        selectors=routing.selectors,
+                    )
+                )
+                resolved_entries.append(None)
+                continue
+            resolved_entries.append(
+                _NaturalMountInput(
+                    element=mount_input.element,
+                    selectors=routing.selectors,
+                )
+            )
+
+        routed_inputs: list[_NaturalMountInput] = []
+        for index, entry in enumerate(resolved_entries):
+            if entry is None:
+                continue
+            if isinstance(entry, _NaturalMountAdvertisementAnchor):
+                routed_inputs.extend(routed_buckets.get(index, ()))
+                continue
+            routed_inputs.append(entry)
+        return routed_inputs
+
+    def _validate_advert_provider(
+        self,
+        advertisement: PyrolyzeMountAdvertisement,
+        providers: list[_AdvertProvider],
+    ) -> None:
+        if any(
+            self._advertisement_keys_equal(provider.advertisement.key, advertisement.key)
+            for provider in providers
+        ):
+            raise ValueError(f"duplicate mount advertisement key {advertisement.key!r}")
+        if advertisement.default and any(provider.advertisement.default for provider in providers):
+            raise ValueError("duplicate default mount advertisement")
+
+    def _route_mount_input_selectors(
+        self,
+        selectors: tuple[SlotSelector, ...] | None,
+        providers: list[_AdvertProvider],
+    ) -> _SelectorRoutingResult:
+        if selectors is None:
+            return _SelectorRoutingResult(provider_anchor_index=None, selectors=None)
+
+        native_fallback: list[SlotSelector] = []
+        saw_advert_selector = False
+        for selector in selectors:
+            if isinstance(selector, MountKeySelector):
+                saw_advert_selector = True
+                provider = self._provider_for_selector(selector, providers)
+                if provider is not None:
+                    return _SelectorRoutingResult(
+                        provider_anchor_index=provider.anchor_index,
+                        selectors=provider.advertisement.selectors,
+                    )
+                continue
+            if isinstance(selector, MountSelector) and selector.kind == "default":
+                provider = self._default_provider(providers)
+                if provider is not None:
+                    return _SelectorRoutingResult(
+                        provider_anchor_index=provider.anchor_index,
+                        selectors=provider.advertisement.selectors,
+                    )
+            native_fallback.append(selector)
+
+        if native_fallback:
+            return _SelectorRoutingResult(
+                provider_anchor_index=None,
+                selectors=tuple(native_fallback),
+            )
+        if saw_advert_selector:
+            raise ValueError(f"no advertised mount matched selectors {selectors!r}")
+        return _SelectorRoutingResult(provider_anchor_index=None, selectors=selectors)
+
+    def _provider_for_selector(
+        self,
+        selector: MountKeySelector,
+        providers: list[_AdvertProvider],
+    ) -> _AdvertProvider | None:
+        for provider in providers:
+            if self._advertisement_matches_selector(provider.advertisement, selector):
+                return provider
+        return None
+
+    def _default_provider(self, providers: list[_AdvertProvider]) -> _AdvertProvider | None:
+        for provider in providers:
+            if provider.advertisement.default:
+                return provider
+        return None
+
+    def _advertisement_matches_selector(
+        self,
+        advertisement: PyrolyzeMountAdvertisement,
+        selector: MountKeySelector,
+    ) -> bool:
+        key = advertisement.key
+        if isinstance(key, MountKeySelector):
+            return key.key == selector.key
+        return key == selector.key
+
+    def _advertisement_keys_equal(self, left: object, right: object) -> bool:
+        if isinstance(left, MountKeySelector) and isinstance(right, MountKeySelector):
+            return left.key == right.key
+        if isinstance(left, MountKeySelector):
+            return left.key == right
+        if isinstance(right, MountKeySelector):
+            return left == right.key
+        return left == right
 
     def _flatten_native_mount_attachments(
         self,

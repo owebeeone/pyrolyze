@@ -113,6 +113,19 @@ class MountSelector(SlotSelector):
 
 
 @dataclass(frozen=True, slots=True)
+class MountKeySelector(SlotSelector):
+    """Public selector family used for advertised mount routing."""
+
+    key: object
+    values: frozendict[str, Any] = field(default_factory=frozendict)
+
+    def __call__(self, /, **values: Any) -> "MountKeySelector":
+        if not values:
+            return self
+        return MountKeySelector(key=self.key, values=frozendict(values))
+
+
+@dataclass(frozen=True, slots=True)
 class MountDirective:
     """Retained structural mount-selection node emitted by transformed source."""
 
@@ -168,6 +181,10 @@ def mount(*selectors: SlotSelector) -> object:
     raise CallFromNonPyrolyzeContext(
         "mount() may only be used inside a transformed @pyrolyze function"
     )
+
+
+def mount_key(key: object) -> MountKeySelector:
+    return MountKeySelector(key=key)
 
 
 def _normalize_mount_advertisement_selectors(
@@ -287,6 +304,7 @@ __all__ = [
     "MISSING",
     "MissingType",
     "MountDirective",
+    "MountKeySelector",
     "MountSelector",
     "PyrolyzeMountAdvertisement",
     "PyrolyzeMountAdvertisementRequest",
@@ -299,6 +317,7 @@ __all__ = [
     "default",
     "keyed",
     "mount",
+    "mount_key",
     "no_emit",
     "pyrolyze",
     "pyrolyze_component_ref",
