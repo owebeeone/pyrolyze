@@ -1,8 +1,8 @@
 #@pyrolyze
-from typing import Callable
+from tkinter import StringVar
 
-from pyrolyze.api import keyed, pyrolyze, use_state
-from pyrolyze.ui import button, row, section, text_field
+from pyrolyze.api import keyed, mount, pyrolyze, use_state
+from pyrolyze.backends.tkinter.generated_library import TkinterUiLibrary as Tk
 
 
 def _coerce_count(raw_value: str) -> int:
@@ -12,71 +12,133 @@ def _coerce_count(raw_value: str) -> int:
         return 0
 
 
+def _decrement(value: int) -> int:
+    return max(0, value - 1)
+
+
+def _request_decrement(_keepalive: object, set_count) -> None:
+    set_count(lambda current: _decrement(int(current)))
+
+
+def _request_increment(_keepalive: object, set_count) -> None:
+    set_count(lambda current: int(current) + 1)
+
+
+def _request_count_update(event, _keepalive: object, set_count) -> None:
+    set_count(_coerce_count(event.widget.get()))
+
+
+def _toggle_layout(_keepalive: object, set_use_grid) -> None:
+    set_use_grid(lambda current: not bool(current))
+
+
 @pyrolyze
 def counter(
-    label: str,
-    field_id: str,
+    title: str,
     count: int,
-    set_count: Callable[[int | Callable[[int], int]], None],
+    set_count,
+    *,
+    decrement_text: str = "-",
+    increment_text: str = "+",
+    keepalive_token: object | None = None,
 ) -> None:
-    with section(label, accent="slate"):
-        with row(f"{field_id}:controls", headline="Adjust"):
-            button(
-                "-",
-                on_press=lambda: set_count(lambda current: max(0, int(current) - 1)),
-                tone="danger",
+    with Tk.CTtkFrame():
+        with mount(Tk.mounts.pack(side="left", padx=4, pady=4)):
+            Tk.CTtkLabel(text=title)
+            Tk.CTtkButton(
+                text=decrement_text,
+                on_command=lambda: _request_decrement((keepalive_token, count), set_count),
             )
-            text_field(
-                f"{field_id}:value",
-                "Count",
-                str(count),
-                on_change=lambda next_value: set_count(_coerce_count(next_value)),
+            Tk.CTtkEntry(
+                textvariable=StringVar(value=str(count)),
+                width=5,
+                on_key_release=lambda event: _request_count_update(
+                    event,
+                    (keepalive_token, count),
+                    set_count,
+                ),
             )
-            button(
-                "+",
-                on_press=lambda: set_count(lambda current: int(current) + 1),
-                tone="success",
+            Tk.CTtkButton(
+                text=increment_text,
+                on_command=lambda: _request_increment((keepalive_token, count), set_count),
             )
 
 
 @pyrolyze
 def header(
     cols: int,
-    set_cols: Callable[[int | Callable[[int], int]], None],
+    set_cols,
     rows: int,
-    set_rows: Callable[[int | Callable[[int], int]], None],
+    set_rows,
+    use_grid: bool,
+    set_use_grid,
 ) -> None:
-    with section("Header", accent="cyan"):
-        with row("header:dimensions", headline="Dimensions"):
-            counter("Cols", "header:cols", cols, set_cols)
-            counter("Rows", "header:rows", rows, set_rows)
+    with Tk.CTtkFrame():
+        with mount(Tk.mounts.pack(side="left", padx=6, pady=6)):
+            Tk.CTtkLabel(text="Grid App")
+            counter(
+                "Cols",
+                cols,
+                set_cols,
+                decrement_text="Cols -",
+                increment_text="Cols +",
+                keepalive_token=(rows, use_grid),
+            )
+            counter(
+                "Rows",
+                rows,
+                set_rows,
+                decrement_text="Rows -",
+                increment_text="Rows +",
+                keepalive_token=(cols, use_grid),
+            )
+            Tk.CTtkButton(
+                text="Use Row Layout" if use_grid else "Use Grid Layout",
+                on_command=lambda: _toggle_layout((cols, rows, use_grid), set_use_grid),
+            )
 
 
 @pyrolyze
-def grid_counter(row_index: int, col_index: int) -> None:
+def cell(row_index: int, col_index: int) -> None:
     count, set_count = use_state(0)
-    counter(
-        f"R{row_index + 1} C{col_index + 1}",
-        f"cell:{row_index}:{col_index}",
-        count,
-        set_count,
-    )
+    with Tk.CTtkFrame():
+        with mount(Tk.mounts.pack(side="left", padx=3, pady=3)):
+            Tk.CTtkLabel(text=f"R{row_index + 1} C{col_index + 1}")
+            Tk.CTtkButton(
+                text="-",
+                on_command=lambda: _request_decrement(count, set_count),
+            )
+            Tk.CTtkLabel(text=str(count))
+            Tk.CTtkButton(
+                text="+",
+                on_command=lambda: _request_increment(count, set_count),
+            )
 
 
 @pyrolyze
-def dyna_grid(cols: int, rows: int) -> None:
-    with section("Grid", accent="green"):
-        for row_index in keyed(range(rows), key=lambda value: value):
-            with row(f"grid:row:{row_index}", headline=f"Row {row_index + 1}"):
+def grid(cols: int, rows: int, use_grid: bool) -> None:
+    with Tk.CTtkFrame():
+        if use_grid:
+            for row_index in keyed(range(rows), key=lambda value: value):
                 for col_index in keyed(range(cols), key=lambda value: value):
-                    grid_counter(row_index, col_index)
+                    with mount(Tk.mounts.grid(row=row_index, column=col_index, padx=6, pady=6)):
+                        cell(row_index, col_index)
+        else:
+            for row_index in keyed(range(rows), key=lambda value: value):
+                with Tk.CTtkFrame():
+                    with mount(Tk.mounts.pack(side="left", padx=6, pady=6)):
+                        for col_index in keyed(range(cols), key=lambda value: value):
+                            cell(row_index, col_index)
 
 
 @pyrolyze
 def grid_app_tkinter() -> None:
     cols, set_cols = use_state(2)
     rows, set_rows = use_state(2)
+    use_grid, set_use_grid = use_state(False)
 
-    with section("Grid App", accent="blue"):
-        header(cols, set_cols, rows, set_rows)
-        dyna_grid(cols, rows)
+    with Tk.CTtkFrame():
+        with mount(Tk.mounts.pack(fill="x", padx=8, pady=8)):
+            header(cols, set_cols, rows, set_rows, use_grid, set_use_grid)
+        with mount(Tk.mounts.pack(fill="both", expand=True, padx=8, pady=8)):
+            grid(cols, rows, use_grid)

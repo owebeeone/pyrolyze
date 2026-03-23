@@ -11,6 +11,9 @@ from .model import MountPointSpec, MountState
 
 T = TypeVar("T")
 
+_CHILD_GEOMETRY_SYNC_METHODS = frozenset({"pack", "grid", "place"})
+_CHILD_GEOMETRY_FORGET_METHODS = frozenset({"pack_forget", "grid_forget", "place_forget"})
+
 
 @dataclass(frozen=True, slots=True)
 class MountedRef(Generic[T]):
@@ -108,14 +111,31 @@ class MountApplierPlan:
 @lru_cache
 def resolve_mount_ops(parent_type: type[object], mount_point: MountPointSpec) -> ResolvedMountOps:
     apply = None
-    if mount_point.apply_method_name and hasattr(parent_type, mount_point.apply_method_name):
+    if mount_point.apply_method_name in _CHILD_GEOMETRY_SYNC_METHODS:
+        method_name = mount_point.apply_method_name
+
+        def apply(parent: object, state: MountState, *, _method_name: str = method_name) -> None:
+            _apply_child_single_mount(parent, state, _method_name)
+    elif mount_point.apply_method_name and hasattr(parent_type, mount_point.apply_method_name):
         method_name = mount_point.apply_method_name
 
         def apply(parent: object, state: MountState, *, _method_name: str = method_name) -> None:
             _apply_single_mount(parent, state, _method_name)
 
     sync = None
-    if mount_point.sync_method_name and hasattr(parent_type, mount_point.sync_method_name):
+    if mount_point.sync_method_name in _CHILD_GEOMETRY_SYNC_METHODS:
+        method_name = mount_point.sync_method_name
+        detach_name = mount_point.detach_method_name or _child_geometry_forget_method_name(method_name)
+
+        def sync(
+            parent: object,
+            states: Sequence[MountState],
+            *,
+            _method_name: str = method_name,
+            _detach_name: str | None = detach_name,
+        ) -> None:
+            _sync_child_geometry_mount(parent, states, _method_name, _detach_name)
+    elif mount_point.sync_method_name and hasattr(parent_type, mount_point.sync_method_name):
         method_name = mount_point.sync_method_name
 
         def sync(parent: object, states: Sequence[MountState], *, _method_name: str = method_name) -> None:
@@ -175,7 +195,11 @@ def resolve_mount_ops(parent_type: type[object], mount_point: MountPointSpec) ->
                     return
                 getattr(parent, _method_name)(value, index)
 
-    if detach_name and hasattr(parent_type, detach_name):
+    if detach_name in _CHILD_GEOMETRY_FORGET_METHODS:
+
+        def detach(parent: object, value: object, *, _method_name: str = detach_name) -> None:
+            getattr(value, _method_name)()
+    elif detach_name and hasattr(parent_type, detach_name):
 
         def detach(parent: object, value: object, *, _method_name: str = detach_name) -> None:
             getattr(parent, _method_name)(value)
@@ -328,6 +352,18 @@ def _apply_single_mount(parent: object, state: MountState, method_name: str) -> 
         raise last_error
 
 
+def _apply_child_single_mount(parent: object, state: MountState, method_name: str) -> None:
+    if len(state.objects) > 1:
+        raise ValueError(f"single mount point {state.mount_point.name!r} requires at most one object")
+    if not state.objects:
+        return
+    value = state.objects[0].value
+    resolved_values = _mount_resolved_values(state)
+    if "in" not in resolved_values and "in_" not in resolved_values:
+        resolved_values["in_"] = parent
+    getattr(value, method_name)(**resolved_values)
+
+
 def _mount_call_args(state: MountState) -> tuple[tuple[Any, ...], dict[str, Any]]:
     keyed_values = iter(state.instance_key[1:])
     args: list[Any] = []
@@ -357,6 +393,49 @@ def _mount_all_args(state: MountState) -> tuple[Any, ...]:
             continue
         args.append(state.values[param.name])
     return tuple(args)
+
+
+def _mount_resolved_values(state: MountState) -> dict[str, Any]:
+    keyed_values = iter(state.instance_key[1:])
+    resolved: dict[str, Any] = {}
+    for param in state.mount_point.params:
+        if param.keyed:
+            resolved[param.name] = next(keyed_values)
+            continue
+        if param.name not in state.values:
+            continue
+        resolved[param.name] = state.values[param.name]
+    return resolved
+
+
+def _sync_child_geometry_mount(
+    parent: object,
+    states: Sequence[MountState],
+    method_name: str,
+    detach_name: str | None,
+) -> None:
+    if detach_name is not None:
+        manager_query_name = f"{method_name}_slaves"
+        manager_query = getattr(parent, manager_query_name, None)
+        if callable(manager_query):
+            for child in tuple(manager_query()):
+                getattr(child, detach_name)()
+    for state in states:
+        resolved_values = _mount_resolved_values(state)
+        if "in" not in resolved_values and "in_" not in resolved_values:
+            resolved_values["in_"] = parent
+        for ref in state.objects:
+            getattr(ref.value, method_name)(**resolved_values)
+
+
+def _child_geometry_forget_method_name(method_name: str) -> str | None:
+    if method_name == "pack":
+        return "pack_forget"
+    if method_name == "grid":
+        return "grid_forget"
+    if method_name == "place":
+        return "place_forget"
+    return None
 
 
 def _ordered_fallback_method_names(mount_point: MountPointSpec) -> tuple[str | None, str | None]:

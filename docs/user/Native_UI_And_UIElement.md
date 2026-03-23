@@ -3,6 +3,10 @@
 PyRolyze lets authored code emit native-style UI nodes through `call_native(...)`
 and `UIElement`.
 
+For generated native backend libraries, explicit attachment-site selection uses
+`mount(...)` and backend-provided `mounts.*` selectors. See
+[Mount_And_Mount_Points.md](Mount_And_Mount_Points.md).
+
 ## `UIElement`
 
 `UIElement` is the current source-level UI node container:

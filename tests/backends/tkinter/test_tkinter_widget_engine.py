@@ -4,7 +4,19 @@ from frozendict import frozendict
 import pytest
 
 from pyrolyze.api import UIElement
-from pyrolyze.backends.model import AccessorKind, ChildPolicy, PropMode, TypeRef, UiParamSpec, UiPropSpec, UiWidgetSpec
+from pyrolyze.backends.model import (
+    AccessorKind,
+    ChildPolicy,
+    EventPayloadPolicy,
+    MountPointSpec,
+    MountReplayKind,
+    PropMode,
+    TypeRef,
+    UiEventSpec,
+    UiParamSpec,
+    UiPropSpec,
+    UiWidgetSpec,
+)
 from pyrolyze.backends.tkinter.engine import MountedWidgetNode, TkinterWidgetEngine, WidgetNodeKey
 from pyrolyze.pyrolyze_tkinter import _create_tk_root
 
@@ -60,6 +72,85 @@ def _button_spec() -> UiWidgetSpec:
             }
         ),
         methods=frozendict(),
+        child_policy=ChildPolicy.NONE,
+    )
+
+
+def _event_button_spec() -> UiWidgetSpec:
+    return UiWidgetSpec(
+        kind="Button",
+        mounted_type_name="tkinter.Button",
+        constructor_params=frozendict(),
+        props=frozendict(
+            {
+                "text": UiPropSpec(
+                    name="text",
+                    annotation=TypeRef("str"),
+                    mode=PropMode.CREATE_UPDATE,
+                    setter_kind=AccessorKind.TK_CONFIG,
+                    setter_name="configure",
+                    getter_kind=AccessorKind.TK_CONFIG,
+                    getter_name="cget",
+                ),
+            }
+        ),
+        methods=frozendict(),
+        events=frozendict(
+            {
+                "on_command": UiEventSpec(
+                    name="on_command",
+                    signal_name="command",
+                    payload_policy=EventPayloadPolicy.NONE,
+                )
+            }
+        ),
+        child_policy=ChildPolicy.NONE,
+    )
+
+
+def _frame_spec() -> UiWidgetSpec:
+    return UiWidgetSpec(
+        kind="Frame",
+        mounted_type_name="tkinter.Frame",
+        constructor_params=frozendict(),
+        props=frozendict(),
+        methods=frozendict(),
+        events=frozendict(),
+        mount_points=frozendict(
+            {
+                "pack": MountPointSpec(
+                    name="pack",
+                    accepted_produced_type=TypeRef("tkinter.Widget"),
+                    sync_method_name="pack",
+                    append_method_name="pack",
+                    detach_method_name="pack_forget",
+                    replay_kind=MountReplayKind.NONE,
+                    prefer_sync=True,
+                )
+            }
+        ),
+        default_child_mount_point_name="pack",
+        default_attach_mount_point_names=("pack",),
+        child_policy=ChildPolicy.NONE,
+    )
+
+
+def _entry_spec() -> UiWidgetSpec:
+    return UiWidgetSpec(
+        kind="Entry",
+        mounted_type_name="tkinter.Entry",
+        constructor_params=frozendict(),
+        props=frozendict(),
+        methods=frozendict(),
+        events=frozendict(
+            {
+                "on_key_release": UiEventSpec(
+                    name="on_key_release",
+                    signal_name="bind:<KeyRelease>",
+                    payload_policy=EventPayloadPolicy.FIRST_ARG,
+                )
+            }
+        ),
         child_policy=ChildPolicy.NONE,
     )
 
@@ -130,3 +221,87 @@ def test_update_remounts_when_master_changes(tk_root) -> None:
     assert updated.widget is not original_widget
     assert updated.widget.master is frame_b
     assert updated.effective_props == {"master": frame_b, "text": "Save", "state": "normal"}
+
+
+def test_mount_connects_tk_command_event_and_dispatches_latest_callback(tk_root) -> None:
+    _tkinter, _ttk, _root = tk_root
+    engine = TkinterWidgetEngine({"Button": _event_button_spec()})
+    calls: list[str] = []
+
+    node = engine.mount(
+        UIElement(
+            kind="Button",
+            props={"text": "Run", "on_command": lambda: calls.append("first")},
+        ),
+        slot_id=("root", "button", 1),
+        call_site_id=17,
+    )
+
+    node.widget.invoke()
+    assert calls == ["first"]
+
+    engine.update(
+        node,
+        UIElement(
+            kind="Button",
+            props={"text": "Run", "on_command": lambda: calls.append("second")},
+        ),
+    )
+    node.widget.invoke()
+
+    assert calls == ["first", "second"]
+
+
+def test_mount_builds_frame_children_with_default_pack_mount(tk_root) -> None:
+    tkinter, _ttk, _root = tk_root
+    engine = TkinterWidgetEngine(
+        {
+            "Frame": _frame_spec(),
+            "Button": _event_button_spec(),
+        }
+    )
+
+    node = engine.mount(
+        UIElement(
+            kind="Frame",
+            props={},
+            children=(
+                UIElement(kind="Button", props={"text": "A"}),
+                UIElement(kind="Button", props={"text": "B"}),
+            ),
+        ),
+        slot_id=("root", "frame", 1),
+        call_site_id=23,
+    )
+
+    assert isinstance(node.widget, tkinter.Frame)
+    assert node._mountable_node is not None
+    child_nodes = node._mountable_node.child_nodes
+    assert [child.mountable.cget("text") for child in child_nodes] == ["A", "B"]
+    assert [child.mountable.winfo_manager() for child in child_nodes] == ["pack", "pack"]
+
+
+def test_mount_connects_tk_bind_event_and_dispatches_current_callback(tk_root) -> None:
+    _tkinter, _ttk, root = tk_root
+    engine = TkinterWidgetEngine({"Entry": _entry_spec()})
+    payloads: list[object] = []
+
+    node = engine.mount(
+        UIElement(
+            kind="Entry",
+            props={"on_key_release": lambda event: payloads.append(event)},
+        ),
+        slot_id=("root", "entry", 1),
+        call_site_id=31,
+    )
+    node.widget.pack()
+    root.deiconify()
+    node.widget.focus_force()
+    root.update_idletasks()
+    root.update()
+
+    node.widget.event_generate("<KeyRelease>", keysym="a")
+    root.update_idletasks()
+    root.update()
+
+    assert len(payloads) == 1

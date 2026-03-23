@@ -10,11 +10,17 @@ Defined in `src/pyrolyze/api.py`:
 - `pyrolyze_component_ref`
 - `call_native`
 - `keyed`
+- `mount`
 - `UIElement`
+- `MountDirective`
+- `MountSelector`
 - `ComponentMetadata`
 - `ComponentRef[...]`
-- `PyrolyteHandler[...]`
+- `PyrolyzeHandler[...]`
 - `SlotCallable[...]`
+- `default`
+- `no_emit`
+- `validate_mount_selectors`
 - `CallFromNonPyrolyzeContext`
 
 Hooks re-exported from `src/pyrolyze/hooks.py`:

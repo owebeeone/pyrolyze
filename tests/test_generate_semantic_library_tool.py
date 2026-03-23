@@ -509,6 +509,46 @@ def test_discover_widget_classes_includes_tkinter_single_arg_setters() -> None:
     assert "set" in {method.name for method in by_identity[("tkinter.ttk", "Combobox")].setter_methods}
 
 
+def test_discover_widget_classes_includes_tkinter_config_props_for_common_widgets() -> None:
+    pytest.importorskip("tkinter")
+    pytest.importorskip("tkinter.ttk")
+
+    widgets = discover_widget_classes("tkinter")
+    by_identity = {(widget.module_name, widget.class_name): widget for widget in widgets}
+
+    raw_button_props = {prop.name for prop in by_identity[("tkinter", "Button")].properties}
+    ttk_button_props = {prop.name for prop in by_identity[("tkinter.ttk", "Button")].properties}
+    raw_entry_props = {prop.name for prop in by_identity[("tkinter", "Entry")].properties}
+    ttk_entry_props = {prop.name for prop in by_identity[("tkinter.ttk", "Entry")].properties}
+    raw_frame_props = {prop.name for prop in by_identity[("tkinter", "Frame")].properties}
+    menu_props = {prop.name for prop in by_identity[("tkinter", "Menu")].properties}
+
+    assert "text" in raw_button_props
+    assert "command" in raw_button_props
+    assert "text" in ttk_button_props
+    assert "command" in ttk_button_props
+    assert "show" in raw_entry_props
+    assert "show" in ttk_entry_props
+    assert "width" in raw_frame_props
+    assert "tearoff" in menu_props
+
+
+def test_discover_widget_classes_includes_tkinter_pack_mount_for_frames() -> None:
+    pytest.importorskip("tkinter")
+    pytest.importorskip("tkinter.ttk")
+
+    widgets = discover_widget_classes("tkinter")
+    by_identity = {(widget.module_name, widget.class_name): widget for widget in widgets}
+
+    raw_frame_mounts = {mount.name for mount in by_identity[("tkinter", "Frame")].mount_points}
+    ttk_frame_mounts = {mount.name for mount in by_identity[("tkinter.ttk", "Frame")].mount_points}
+
+    assert "pack" in raw_frame_mounts
+    assert "pack" in ttk_frame_mounts
+    assert "grid" in raw_frame_mounts
+    assert "grid" in ttk_frame_mounts
+
+
 def test_apply_learnings_overrides_property_signature_defaults() -> None:
     widgets = [
         DiscoveredWidgetClass(

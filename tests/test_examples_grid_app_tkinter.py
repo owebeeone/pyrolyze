@@ -5,9 +5,10 @@ from runpy import run_path
 
 import pytest
 
-from pyrolyze.compiler import load_transformed_namespace
-import pyrolyze.pyrolyze_tkinter as tk_wrapper
-from pyrolyze.runtime import RenderContext, dirtyof
+pytest.importorskip("tkinter")
+pytest.importorskip("tkinter.ttk")
+
+from tkinter import ttk
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -16,40 +17,44 @@ GRID_APP_PATH = EXAMPLES_ROOT / "grid_app_tkinter.py"
 RUNNER_PATH = EXAMPLES_ROOT / "run_grid_app_tkinter.py"
 
 
-@pytest.fixture
-def tk_runtime(monkeypatch: pytest.MonkeyPatch):
-    if not tk_wrapper.tkinter_available():
-        pytest.skip("Tk root unavailable in this environment")
-    monkeypatch.setattr(tk_wrapper, "tkinter_available", lambda: True)
-    yield
-    hidden_root = getattr(tk_wrapper, "_TK_ROOT", None)
-    if hidden_root is not None:
-        hidden_root.destroy()
-        tk_wrapper._TK_ROOT = None
+def _walk_widgets(widget):
+    yield widget
+    for child in widget.winfo_children():
+        yield from _walk_widgets(child)
 
 
-def test_tkinter_grid_app_example_renders_initial_tree() -> None:
+def _find_buttons_by_text(root, text: str) -> list[ttk.Button]:
+    return [
+        widget
+        for widget in _walk_widgets(root)
+        if isinstance(widget, ttk.Button) and str(widget.cget("text")) == text
+    ]
+
+
+def _find_entries(root) -> list[ttk.Entry]:
+    return [widget for widget in _walk_widgets(root) if isinstance(widget, ttk.Entry)]
+
+
+def _label_texts(root) -> list[str]:
+    texts: list[str] = []
+    for widget in _walk_widgets(root):
+        if isinstance(widget, ttk.Label):
+            texts.append(str(widget.cget("text")))
+    return texts
+
+
+def _count_manager(root, manager: str) -> int:
+    return sum(1 for widget in _walk_widgets(root) if widget.winfo_manager() == manager)
+
+
+def _pump_events(root) -> None:
+    for _ in range(10):
+        root.update_idletasks()
+        root.update()
+
+
+def test_native_tkinter_grid_app_example_mounts_and_rerenders() -> None:
     assert GRID_APP_PATH.exists()
-
-    source = GRID_APP_PATH.read_text(encoding="utf-8")
-    namespace = load_transformed_namespace(
-        source,
-        module_name="examples.grid_app_tkinter",
-        filename=str(GRID_APP_PATH),
-    )
-    component = namespace["grid_app_tkinter"]
-    ctx = RenderContext()
-    ctx.mount(lambda: component._pyrolyze_meta._func(ctx, dirtyof()))
-
-    committed = ctx.committed_ui()
-    assert len(committed) == 1
-    root = committed[0]
-    assert root.kind == "section"
-    assert root.props["title"] == "Grid App"
-    assert len(root.children) == 2
-
-
-def test_run_grid_app_tkinter_builds_host(tk_runtime) -> None:
     assert RUNNER_PATH.exists()
 
     namespace = run_path(str(RUNNER_PATH))
@@ -57,7 +62,63 @@ def test_run_grid_app_tkinter_builds_host(tk_runtime) -> None:
     host, ctx = build_app_host()
 
     try:
-        assert len(tuple(host.content_frame.pack_slaves())) == 1
+        assert isinstance(host.root_widget, ttk.Frame)
+        host.show()
+        _pump_events(host.root)
+
+        texts = _label_texts(host.root)
+        assert "Grid App" in texts
+        assert "Cols" in texts
+        assert "Rows" in texts
+        assert "R1 C1" in texts
+        assert "R2 C2" in texts
+        entries = _find_entries(host.root)
+        assert len(entries) == 2
+        assert entries[0].get() == "2"
+        assert entries[1].get() == "2"
+
+        assert _count_manager(host.root, "pack") > 0
+        assert _count_manager(host.root, "grid") == 0
+
+        entries[0].focus_force()
+        _pump_events(host.root)
+        entries[0].delete(0, "end")
+        entries[0].insert(0, "3")
+        entries[0].event_generate("<KeyRelease>", keysym="3")
+        entries[1].focus_force()
+        _pump_events(host.root)
+        entries[1].delete(0, "end")
+        entries[1].insert(0, "1")
+        entries[1].event_generate("<KeyRelease>", keysym="1")
+        _pump_events(host.root)
+
+        texts = _label_texts(host.root)
+        assert "R1 C3" in texts
+        assert "R2 C1" not in texts
+
+        toggle_buttons = _find_buttons_by_text(host.root, "Use Grid Layout")
+        assert len(toggle_buttons) == 1
+
+        toggle_buttons[0].invoke()
+        _pump_events(host.root)
+
+        texts = _label_texts(host.root)
+        assert "R1 C3" in texts
+        assert _count_manager(host.root, "grid") >= 3
+        assert _find_buttons_by_text(host.root, "Use Row Layout")
+
+        cols_plus = _find_buttons_by_text(host.root, "Cols +")
+        rows_plus = _find_buttons_by_text(host.root, "Rows +")
+        assert len(cols_plus) == 1
+        assert len(rows_plus) == 1
+        cols_plus[0].invoke()
+        rows_plus[0].invoke()
+        _pump_events(host.root)
+
+        texts = _label_texts(host.root)
+        assert "R1 C4" in texts
+        assert "R2 C1" in texts
+        assert _count_manager(host.root, "grid") >= 8
     finally:
         ctx.close_app_contexts()
         host.close()

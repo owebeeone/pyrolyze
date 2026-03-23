@@ -10,6 +10,10 @@
   - a structural context that can own a committed native root
 - keyed loop
   - a structural looping context that manages keyed item identity
+- mount point
+  - a named backend attachment site that can receive emitted native children
+- mount selector
+  - a runtime selector value consumed by `mount(...)` to choose a mount point
 - loop item
   - a child context for one keyed loop item
 - render owner

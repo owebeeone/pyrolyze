@@ -31,8 +31,9 @@ Recommended reading order:
 1. [overview/What_Is_PyRolyze.md](overview/What_Is_PyRolyze.md)
 2. [overview/System_Map.md](overview/System_Map.md)
 3. [user/Authoring_Overview.md](user/Authoring_Overview.md) for source authors
-4. [design/Architecture.md](design/Architecture.md) for maintainers
-5. [contributor/Versioned_Test_Runs.md](contributor/Versioned_Test_Runs.md) for AST and version work
+4. [user/Mount_And_Mount_Points.md](user/Mount_And_Mount_Points.md) for explicit backend attachment
+5. [design/Architecture.md](design/Architecture.md) for maintainers
+6. [contributor/Versioned_Test_Runs.md](contributor/Versioned_Test_Runs.md) for AST and version work
 
 For the plan that created this tree, see
 [DocumentationPlan.md](DocumentationPlan.md).

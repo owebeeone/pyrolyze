@@ -1,0 +1,696 @@
+# DearPyGui / Pyrolyze Definitive Design
+
+## Purpose
+
+This document defines the target design for first-class DearPyGui support in
+Pyrolyze.
+
+It follows the same generator principles already used for:
+
+- generated `PySide6UiLibrary`
+- generated `TkinterUiLibrary`
+- the inspectable Hydo mock backend and generated `HydoUiLibrary`
+
+The goal is not to wrap DearPyGui with ad hoc helpers. The goal is to produce a
+generated, inspectable, backend-owned UI library and runtime contract that fits
+the existing `UiInterface` / `UiWidgetSpec` / mount-point model.
+
+
+## Scope
+
+This design covers:
+
+- how DearPyGui API discovery is performed
+- how raw DearPyGui functions are classified into author-facing vs backend-only
+  surface
+- how generated `UiWidgetSpec` metadata should be produced
+- how a DearPyGui backend should map Pyrolyze reconciliation onto DearPyGui's
+  tag-based item model
+- how the Hydo-style adapter pattern should be used to make DearPyGui fit the
+  existing mountable runtime
+
+This design does not attempt to finish:
+
+- every query hook based on DearPyGui introspection APIs
+- every built-in debug/tool window helper
+- docking/multi-viewport feature design beyond the standard viewport host
+- a fully automated derivation of all valid parent-child constraints from the
+  raw API alone
+
+
+## Baseline
+
+The current dump in `py-rolyze/scratch/dpg/dearpygui_api_dump.py` gives the
+starting point:
+
+- DearPyGui version: `2.2`
+- functions: `497`
+- classes: `5`
+- `189` `mountable_factory` functions
+- `42` `mountable_context_alias` helpers
+- `60` `backend_method_candidate` functions
+- `72` `backend_runtime_only` functions
+- `120` `query_only` functions
+- `8` `value_helper` functions
+- `4` `unmappable_factory` functions
+
+Important structural facts from the dump:
+
+- `172` mountable factories expose a `parent` parameter
+- `109` mountable factories also expose `before`
+- `71` mountable factories expose `source`
+- `87` mountable factories expose callback parameters
+- `popup(...)` is the only context alias with no direct factory twin
+
+The dump also confirms the main difficulty: DearPyGui is not a class-based
+widget toolkit like PySide6 or tkinter. Its public surface is mostly a flat
+function API over a retained tag registry.
+
+
+## Design Rules To Preserve
+
+These rules are already established elsewhere in the repo and remain binding
+for DearPyGui:
+
+- one semantic element, one public callable form
+- explicit signatures rather than generic `**kwargs`
+- explicit registration and generated metadata, not runtime guesswork
+- clear separation between author-facing APIs, metadata, and runtime-only
+  helpers
+- no compiler-internal `__pyr_*` names in author-facing examples or hand-written
+  design material
+- learnings overlays remain authoritative for exclusions, renames, and
+  structural shaping
+
+DearPyGui support must therefore look like a normal generated Pyrolyze UI
+library, not like a thin pass-through to `dearpygui.dearpygui`.
+
+
+## Core Decision
+
+DearPyGui support should be dump-driven and adapter-backed.
+
+It should not reuse the current class-discovery path in
+`pyrolyze_tools/generate_semantic_library.py` directly, because DearPyGui does
+not expose one discoverable class tree that matches authored mountables.
+
+Instead the implementation should have four layers:
+
+1. A dump and classification layer.
+2. A DearPyGui-specific generation layer.
+3. A hand-written adapter runtime layer with Hydo-like mountable classes.
+4. A DearPyGui backend host that owns context, viewport, staging, and runtime
+   primitives.
+
+
+## Architectural Shape
+
+### 1. Discovery Artifact
+
+`py-rolyze/scratch/dpg/generate_dearpygui_api_dump.py` is the exploratory
+inspection tool.
+
+Its output in `py-rolyze/scratch/dpg/dearpygui_api_dump.py` is the authoritative
+input for design work and should remain easy to inspect in source control.
+
+The dump must stay rich enough to drive generation decisions:
+
+- public function name
+- canonical classification
+- alias mapping for context-manager forms
+- parameter names, kinds, defaults, and annotations
+- `tag` / `parent` / `before` / `source` presence
+- callback-bearing parameters
+- concise doc summary
+
+This is analogous to:
+
+- Qt meta-object/property discovery for PySide6
+- tkinter config-option discovery and learnings overlays
+- Hydo's hand-written `HYDO_MOUNTABLE_SPECS`
+
+
+### 2. Generated Author Surface
+
+The generated library should be named `DearPyGuiUiLibrary`.
+
+It should follow the same public shape as the existing generated libraries:
+
+- `@ui_interface`
+- `UI_INTERFACE: ClassVar[UiInterface]`
+- `WIDGET_SPECS: ClassVar[frozendict[str, UiWidgetSpec]]`
+- `class mounts:` selectors for explicit mount targeting
+- generated `C...` author callables using explicit parameters
+
+Kind names should be canonicalized from factory names:
+
+- `add_button` -> `Button`
+- `add_window` -> `Window`
+- `add_plot_axis` -> `PlotAxis`
+- `add_theme_component` -> `ThemeComponent`
+- `add_draw_line` -> `DrawLine`
+
+Context aliases collapse into the same semantic kind instead of creating a
+second public callable:
+
+- `window(...)` is alias metadata for `add_window`
+- `group(...)` is alias metadata for `add_group`
+- `plot_axis(...)` is alias metadata for `add_plot_axis`
+
+This matches the existing rule: one semantic element, one public callable form.
+
+
+### 3. Hydo-Style Adapter Mountables
+
+DearPyGui cannot be mounted directly as Python classes, because its primary
+creation APIs are functions that return tags.
+
+To fit the existing mountable engine cleanly, DearPyGui needs a small adapter
+object model, comparable in spirit to the Hydo test toolkit:
+
+- a base item object owns one DearPyGui tag
+- it records enough metadata to reconfigure, move, and dispose the item
+- container-capable items expose mount methods like `sync_children`,
+  `place_child`, `detach_child`
+- special containers expose additional mount methods like `set_menu_bar`,
+  `sync_columns`, `sync_rows`, `sync_axes`, `sync_series`, or
+  `sync_theme_components`
+
+The adapter layer is hand-written at the base-class level and generated at the
+per-kind level.
+
+The generated `UiWidgetSpec.mounted_type_name` values should point at these
+adapter classes, not at DearPyGui factory functions.
+
+
+### 4. DearPyGui Backend Host
+
+The backend host is responsible for everything the generated UI library must not
+expose:
+
+- `create_context`
+- viewport creation/configuration
+- setup/start/stop lifecycle
+- runtime-only mutation helpers such as `configure_item`, `move_item`,
+  `delete_item`, `set_value`, and `reorder_items`
+- the hidden staging area used to create unattached items
+- stable tag allocation and lifetime management
+
+This preserves the author/runtime separation already established by the other
+generated backends.
+
+
+## Function Classification Contract
+
+The dump classifications should map to Pyrolyze behavior as follows:
+
+| Dump category | Pyrolyze meaning | Public generated surface |
+| --- | --- | --- |
+| `mountable_factory` | semantic item candidate | yes |
+| `mountable_context_alias` | alias over an existing semantic item | no separate callable |
+| `backend_method_candidate` | backend/runtime primitive or adapter method | no |
+| `backend_runtime_only` | host/runtime lifecycle or reconciliation primitive | no |
+| `query_only` | read-side hook candidate | not in phase 1 generated library |
+| `value_helper` | math/resource helper | no |
+| `helper_reexport` | imported helper, not toolkit API | no |
+| `unmappable_factory` | cursor/stack/state API that does not form stable mountables | no |
+
+Two specific rules matter:
+
+1. The generated library should be factory-centric. Alias/context-manager forms
+   only inform learnings and structural inference.
+2. `configure_item`, `move_item`, `delete_item`, `set_value`, and viewport
+   lifecycle functions stay backend-owned even though they are essential to the
+   implementation.
+
+
+## Public Parameter Policy
+
+Raw DearPyGui signatures are not the final public Pyrolyze signatures.
+
+The generator should classify raw parameters into four groups.
+
+### 1. Structural parameters: never normal public props
+
+These parameters are backend/runtime attachment concerns:
+
+- `parent`
+- `before`
+
+They must never surface as normal author props.
+
+They are replaced by:
+
+- generated default attach metadata
+- explicit `mount(...)` selection
+- backend replay/reparent behavior
+
+### 2. Backend identity/runtime parameters: suppressed from public surface
+
+These should be backend-owned or learnings-only escape hatches:
+
+- `tag`
+- `user_data`
+- `kwargs`
+
+`tag` is especially important. Pyrolyze already has slot identity. Exposing raw
+DearPyGui tags as a normal author contract would blur semantic identity with
+backend identity. The backend should allocate stable tags itself unless a later,
+explicit escape hatch is deliberately designed.
+
+### 3. Event parameters: become `UiEventSpec`
+
+These are not ordinary props:
+
+- `callback`
+- `drag_callback`
+- `drop_callback`
+- `on_close`
+- `delink_callback`
+- similar callback-bearing parameters discovered later
+
+They must be promoted into named events with `UiEventSpec` metadata and
+`PyrolyzeHandler[...]` signatures.
+
+### 4. Value/config parameters: public prop candidates
+
+All remaining meaningful authored parameters become prop candidates subject to
+learnings shaping.
+
+Examples:
+
+- `label`
+- `show`
+- `enabled`
+- `width`
+- `height`
+- `pos`
+- `items`
+- `min_value`
+- `max_value`
+- family-specific flags like `horizontal`, `menubar`, `header_row`, `modal`
+
+
+## Value Policy
+
+DearPyGui has a split between configuration values and live item values.
+
+That split must be normalized for Pyrolyze authors.
+
+### `default_value` should usually become authored `value`
+
+For value-bearing widgets, the public Pyrolyze prop should generally be
+`value`, not raw `default_value`.
+
+The mapping rule is:
+
+- create path: use the factory's `default_value=...`
+- update path: use backend `set_value(tag, value)`
+
+This preserves reactive authored semantics:
+
+- authored prop represents current state
+- initial creation still feeds the correct DearPyGui factory parameter
+- subsequent updates do not remount the item
+
+Representative cases:
+
+- `add_input_text`
+- `add_checkbox`
+- `add_slider_*`
+- `add_drag_*`
+- `add_progress_bar`
+- `add_listbox`
+- `add_combo`
+- registry value items like `add_bool_value` and `add_string_value`
+
+### `source` is not phase-1 public authoring
+
+The dump shows `71` factories with a `source` parameter.
+
+That parameter is value indirection through DearPyGui's registry system. It is
+not the same thing as ordinary Pyrolyze child mounting or ordinary prop
+ownership.
+
+Phase-1 design:
+
+- suppress `source` from the public generated surface
+- use normal authored props plus backend `set_value(...)`
+- treat registry wiring as a later explicit advanced feature
+
+If shared value sources are needed later, they should be introduced as an
+explicit binding concept, not as a raw pass-through prop on every widget.
+
+
+## Event Policy
+
+DearPyGui callback APIs vary by item family, but the generation contract can
+still be explicit.
+
+### Event naming
+
+The checked-in generated surface should not ship raw fallback names like
+`on_callback` unless a family is still genuinely uncurated.
+
+Learnings must rename callback parameters into semantic event names such as:
+
+- `on_press`
+- `on_change`
+- `on_close`
+- `on_drop`
+- `on_drag`
+- `on_delink`
+- `on_activate`
+
+### Event payloads
+
+The current backend model already supports:
+
+- `EventPayloadPolicy.NONE`
+- `EventPayloadPolicy.FIRST_ARG`
+- `EventPayloadPolicy.ALL_ARGS`
+
+DearPyGui should use that model conservatively:
+
+- use `NONE` where the callback is a plain activation signal
+- use `FIRST_ARG` where `app_data` is the meaningful authored payload
+- use `ALL_ARGS` only when a family still needs the raw callback triple
+
+The backend should install one stable dispatcher per event slot and reconfigure
+DearPyGui callback hooks to target that dispatcher.
+
+`UiEventSpec.signal_name` should carry the underlying DearPyGui callback slot
+name, for example:
+
+- `callback`
+- `drag_callback`
+- `drop_callback`
+- `on_close`
+- `delink_callback`
+
+
+## DearPyGui-Specific Access Semantics
+
+PySide6 and tkinter already needed backend-specific prop access kinds.
+DearPyGui needs the same level of explicitness.
+
+The design should add DearPyGui-specific accessor behavior for two distinct
+cases:
+
+1. configuration updates through `configure_item`
+2. live value updates through `set_value`
+
+The cleanest contract is to add explicit accessor kinds analogous to
+`QT_PROPERTY` and `TK_CONFIG`, for example:
+
+- `AccessorKind.DPG_CONFIG`
+- `AccessorKind.DPG_VALUE`
+
+That allows `UiPropSpec` to stay explicit and inspectable instead of encoding
+DearPyGui behavior indirectly through many generated wrapper methods.
+
+Expected behavior:
+
+- `DPG_CONFIG` updates use `configure_item(tag, **{name: value})`
+- `DPG_VALUE` updates use `set_value(tag, value)`
+- read-side backfill uses backend shadow state or `get_value(...)` when needed
+
+
+## Structural Mount Model
+
+DearPyGui exposes parent-child structure through `parent`, `before`, and a
+single retained item registry.
+
+That fits the existing Pyrolyze mount-point model if we make mount learnings
+authoritative.
+
+### Mount points are learning-driven
+
+The raw dump does not say enough about valid parent-child relationships.
+
+Therefore:
+
+- dump extraction provides candidate item kinds
+- mount-point learnings define allowed produced families and mount semantics
+- default child and default attach ranking are learning-owned
+
+This is the same principle already used by PySide6 and tkinter for shaping
+specialized mount behavior.
+
+### Default attach ranking is critical
+
+Many DearPyGui parents will have both:
+
+- a broad `standard` child mount
+- one or more specialized singular or ordered mounts
+
+Example: a window may accept ordinary children and also a single menu bar.
+
+If `standard` is ranked before `menu_bar`, a `MenuBar` child would attach to the
+wrong place.
+
+Therefore DearPyGui learnings must set specialized attach sites ahead of broad
+fallbacks.
+
+Representative ranking needs:
+
+- `menu_bar` before `standard`
+- `column` / `row` before broad table-body fallback
+- `axis` before plot-body fallback
+- `component` before general theme children
+- `attribute` before broad node-body fallback
+
+### Mount families
+
+The generated adapter type hierarchy should provide produced-family anchors such
+as:
+
+- `DpgItem`
+- `DpgContainerItem`
+- `DpgWindowItem`
+- `DpgMenuBarItem`
+- `DpgMenuItem`
+- `DpgTableItem`
+- `DpgTableColumnItem`
+- `DpgTableRowItem`
+- `DpgTableCellItem`
+- `DpgPlotItem`
+- `DpgPlotAxisItem`
+- `DpgPlotSeriesItem`
+- `DpgNodeEditorItem`
+- `DpgNodeItem`
+- `DpgNodeAttributeItem`
+- `DpgThemeItem`
+- `DpgThemeComponentItem`
+- `DpgThemeEntryItem`
+- `DpgRegistryItem`
+- `DpgDrawlistItem`
+- `DpgDrawCommandItem`
+
+The exact class names can be refined, but the concept must remain: generated
+mount points target produced families, not raw function names.
+
+
+## Representative Mount Specs
+
+The following families should shape the initial learning set.
+
+### Window family
+
+- `Window`
+- `ChildWindow`
+- `FileDialog`
+- `PopupWindow` if later hand-authored
+
+Default child mount:
+
+- `standard`
+
+Additional mounts:
+
+- `menu_bar` accepting `DpgMenuBarItem`, `max_children=1`
+
+### Menu family
+
+- `MenuBar`
+- `ViewportMenuBar`
+- `Menu`
+
+Default child mount:
+
+- `standard`
+
+Accepted children:
+
+- nested `DpgMenuItem`
+- nested `DpgMenuItem`-like entries
+- nested `DpgMenuItem` and `DpgMenu` where the backend family allows it
+
+### Table family
+
+- `Table`
+- `TableRow`
+- `TableCell`
+- `TableColumn`
+
+Required mounts:
+
+- `Table.column`
+- `Table.row`
+- `TableRow.cell`
+
+### Plot family
+
+- `Plot`
+- `PlotAxis`
+- `Legend`
+- plot series kinds
+
+Required mounts:
+
+- `Plot.axis`
+- `Plot.legend` if the legend remains a distinct item
+- `PlotAxis.series`
+
+### Node editor family
+
+- `NodeEditor`
+- `Node`
+- `NodeAttribute`
+- `NodeLink`
+
+Required mounts:
+
+- `NodeEditor.node`
+- `NodeEditor.link`
+- `Node.attribute`
+
+### Theme family
+
+- `Theme`
+- `ThemeComponent`
+- `ThemeColor`
+- `ThemeStyle`
+
+Required mounts:
+
+- `Theme.component`
+- `ThemeComponent.entry`
+
+### Registry/resource family
+
+- `FontRegistry`
+- `TextureRegistry`
+- `ValueRegistry`
+- handler registries
+
+These are still semantic mountables, but their default attach behavior must be
+specialized rather than treated as ordinary layout children.
+
+
+## Ordered Reparenting And Staging
+
+The generic mountable engine mounts child objects before parent-side attachment
+is fully resolved.
+
+That is natural for Qt and tkinter objects, but DearPyGui items usually expect a
+registry/parent relationship from the start.
+
+The DearPyGui backend should solve this with a backend-owned hidden staging
+container:
+
+- non-root items are initially created in a hidden stage or staging container
+- parent mount methods move them into the real parent using `move_item(...)`
+- detaching moves them back to staging rather than destroying them immediately
+- disposal calls `delete_item(tag)` only when the Pyrolyze node is actually
+  being torn down
+
+This makes DearPyGui compatible with the existing retained mount/reuse model and
+lets reparenting stay cheap.
+
+
+## Tag Allocation And Identity
+
+Pyrolyze identity and DearPyGui tag identity must stay separate.
+
+The backend should allocate one stable DearPyGui tag per mounted node using
+backend-owned identity, derived from:
+
+- explicit slot id when present
+- otherwise Pyrolyze call-site identity plus parent/root ownership
+
+Consequences:
+
+- normal authoring does not need raw tags
+- re-renders keep the same DearPyGui item identity
+- reparenting uses `move_item` instead of delete/recreate in most cases
+- author-visible semantic identity remains owned by Pyrolyze, not by DearPyGui
+
+
+## Child Replay Shape
+
+DearPyGui ordered children are naturally expressed with anchor-based replay:
+
+- ordered siblings already have stable tags
+- `before` is the native ordering primitive
+- moving one child should not force a full sync when replay is sufficient
+
+The default ordered mount behavior for standard DearPyGui child containers
+should therefore use:
+
+- `place_method_name` whose first parameter is `before`
+- `detach_method_name` for removal/re-staging
+- `replay_kind=MountReplayKind.ANCHOR_BEFORE`
+
+Specialized singular mounts should use ordinary `apply_method_name`.
+
+
+## What Stays Out Of The Generated Library
+
+The following remain backend-only in phase 1:
+
+- application/context lifecycle
+- viewport creation and manipulation
+- direct imperative mutation helpers
+- query-only functions
+- value helper math functions
+- debug/demo/tool windows
+- `add_same_line`, `add_spacing`, `add_table_next_column`, and similar
+  cursor-driven APIs
+- `popup(...)` until a proper authored semantic model is chosen
+
+This is intentional, not missing coverage.
+
+
+## Production File Layout
+
+The current exploratory assets now live in:
+
+- `py-rolyze/scratch/dpg/generate_dearpygui_api_dump.py`
+- `py-rolyze/scratch/dpg/dearpygui_api_dump.py`
+- `py-rolyze/scratch/dpg/dpg_grid-example.py`
+- `py-rolyze/scratch/dpg/dpg_grid-example2.py`
+
+The production implementation should grow into:
+
+- `py-rolyze/pyrolyze_tools/generate_dearpygui_library.py`
+- `py-rolyze/src/pyrolyze/backends/dearpygui/learnings.py`
+- `py-rolyze/src/pyrolyze/backends/dearpygui/items.py`
+- `py-rolyze/src/pyrolyze/backends/dearpygui/engine.py`
+- `py-rolyze/src/pyrolyze/backends/dearpygui/generated_library.py`
+
+
+## Resulting Contract
+
+When this design is implemented, DearPyGui support should look like the rest of
+the generated backend story:
+
+- a generated `DearPyGuiUiLibrary` with explicit `C...` callables
+- explicit `UiWidgetSpec` metadata that is easy to inspect in source control
+- a learnings file that owns naming, events, exclusions, and mount structure
+- a backend runtime that hides DearPyGui's imperative lifecycle and mutation
+  layer
+- adapter mountables that let DearPyGui participate in the same generic
+  mount-point engine used by the existing generated backends
+
+That is the intended end state.

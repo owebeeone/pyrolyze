@@ -119,8 +119,6 @@ class MountableEngine:
             if value is MISSING:
                 continue
             if name in spec.events:
-                if next_effective.get(name, MISSING) == value:
-                    continue
                 next_effective[name] = value
                 changed_props[name] = value
                 continue
@@ -508,12 +506,6 @@ class MountableEngine:
             )
         mount_states = self._build_mount_states(child_nodes, flattened_children)
 
-        for instance_key, state in mount_states.items():
-            apply_mount_state(
-                parent,
-                old_state=None if old_mount_states is None else old_mount_states.get(instance_key),
-                new_state=state,
-            )
         if old_mount_states is not None:
             for instance_key, old_state in old_mount_states.items():
                 if instance_key in mount_states:
@@ -528,6 +520,12 @@ class MountableEngine:
                         objects=(),
                     ),
                 )
+        for instance_key, state in mount_states.items():
+            apply_mount_state(
+                parent,
+                old_state=None if old_mount_states is None else old_mount_states.get(instance_key),
+                new_state=state,
+            )
         for removed_child in _remaining_reusable_children(reusable_children):
             self._dispose_node_subtree(removed_child)
         return child_nodes, mount_states

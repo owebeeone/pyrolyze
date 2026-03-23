@@ -18,6 +18,16 @@ The host runner is:
 
 - `examples/run_grid_app.py`
 
+## Generated native mount examples
+
+The current end-to-end generated native mount coverage lives in tests:
+
+- `tests/test_pyside6_native_host.py`
+- `tests/test_tkinter_native_host.py`
+
+Those are the best current source examples for authored `mount(...)` with
+generated backend libraries.
+
 ## Simple native emitter
 
 ```python

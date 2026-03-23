@@ -158,6 +158,8 @@ Purpose:
 - carries:
   - `UI_INTERFACE`
   - `WIDGET_SPECS`
+  - `mounts.*` selector artifacts
+  - discovered mount-point metadata for supported families
 
 
 ### `HydoUiLibrary`
@@ -242,8 +244,9 @@ This separation is deliberate:
 - `HydoUiLibrary` is not yet promoted to a real shipped backend package.
 - The broad design docs still contain some older terminology and transition
   history.
-- `TkinterUiLibrary` generation is less complete than `PySide6UiLibrary`,
-  especially around discovered mount points.
+- `TkinterUiLibrary` generation is still less complete than `PySide6UiLibrary`,
+  but it now exposes real `mounts.*` selector artifacts and discovered
+  mount-point metadata for the supported families in the checked-in backend.
 
 
 ## Tests

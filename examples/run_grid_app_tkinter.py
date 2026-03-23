@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from pyrolyze.compiler import load_transformed_namespace
-from pyrolyze.pyrolyze_tkinter import create_window, reconcile_window_content
+from pyrolyze.pyrolyze_native_tkinter import create_host, reconcile_window_content
 from pyrolyze.runtime import RenderContext, dirtyof
 
 
@@ -23,19 +23,11 @@ def _load_component() -> Any:
 
 def build_app_host() -> tuple[Any, RenderContext]:
     component = _load_component()
-    host = create_window("PyRolyze Dynamic Grid")
+    host = create_host("Native Tkinter Grid")
     ctx = RenderContext()
 
     def reconcile_host() -> None:
-        reconcile_window_content(
-            host,
-            ctx.committed_ui(),
-            on_after_event=run_flush_and_reconcile,
-        )
-
-    def run_flush_and_reconcile() -> None:
-        ctx.run_pending_invalidations()
-        reconcile_host()
+        reconcile_window_content(host, ctx.committed_ui())
 
     def render_root() -> None:
         component._pyrolyze_meta._func(ctx, dirtyof())
@@ -58,8 +50,7 @@ def build_app_host() -> tuple[Any, RenderContext]:
 def main() -> int:
     host, ctx = build_app_host()
     try:
-        host.run()
-        return 0
+        return host.run()
     finally:
         ctx.close_app_contexts()
 

@@ -56,6 +56,14 @@ def test_generated_backend_libraries_import() -> None:
 
     tk_combobox_signature = inspect.signature(tkinter_module.TkinterUiLibrary.CCombobox)
     assert "value" in tk_combobox_signature.parameters
+    tk_button_signature = inspect.signature(tkinter_module.TkinterUiLibrary.CButton)
+    assert "text" in tk_button_signature.parameters
+    assert "on_command" in tk_button_signature.parameters
+    tk_entry_signature = inspect.signature(tkinter_module.TkinterUiLibrary.CEntry)
+    assert "show" in tk_entry_signature.parameters
+    assert "on_key_release" in tk_entry_signature.parameters
+    tk_frame_signature = inspect.signature(tkinter_module.TkinterUiLibrary.CFrame)
+    assert "width" in tk_frame_signature.parameters
 
     qpush_button_spec = pyside6_module.PySide6UiLibrary.WIDGET_SPECS["QPushButton"]
     assert "setGeometry" in qpush_button_spec.methods
@@ -115,6 +123,26 @@ def test_generated_backend_libraries_import() -> None:
 
     tk_combobox_spec = tkinter_module.TkinterUiLibrary.WIDGET_SPECS["Combobox"]
     assert "set" in tk_combobox_spec.methods
+    tk_button_spec = tkinter_module.TkinterUiLibrary.WIDGET_SPECS["tkinter_Button"]
+    assert "text" in tk_button_spec.props
+    assert "command" not in tk_button_spec.props
+    assert "on_command" in tk_button_spec.events
+    assert tk_button_spec.events["on_command"].signal_name == "command"
+    ttk_button_spec = tkinter_module.TkinterUiLibrary.WIDGET_SPECS["ttk_Button"]
+    assert "text" in ttk_button_spec.props
+    assert "on_command" in ttk_button_spec.events
+    tk_entry_spec = tkinter_module.TkinterUiLibrary.WIDGET_SPECS["tkinter_Entry"]
+    assert "show" in tk_entry_spec.props
+    assert "on_key_release" in tk_entry_spec.events
+    assert tk_entry_spec.events["on_key_release"].signal_name == "bind:<KeyRelease>"
+    tk_frame_spec = tkinter_module.TkinterUiLibrary.WIDGET_SPECS["tkinter_Frame"]
+    assert "pack" in tk_frame_spec.mount_points
+    assert tk_frame_spec.mount_points["pack"].append_method_name == "pack"
+    assert tk_frame_spec.default_child_mount_point_name == "pack"
+    assert tk_frame_spec.default_attach_mount_point_names == ("pack",)
+    assert "grid" in tk_frame_spec.mount_points
+    assert tk_frame_spec.mount_points["grid"].apply_method_name == "grid"
+    assert tk_frame_spec.mount_points["grid"].detach_method_name == "grid_forget"
 
     notebook_spec = tkinter_module.TkinterUiLibrary.WIDGET_SPECS["Notebook"]
     panedwindow_spec = tkinter_module.TkinterUiLibrary.WIDGET_SPECS["Panedwindow"]

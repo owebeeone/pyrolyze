@@ -18,6 +18,8 @@ In the current package, PyRolyze includes:
 What it is good for:
 
 - building reactive UI code in Python without manually wiring update logic
+- directing emitted native children into explicit backend mount points with `mount(...)`,
+  including toolkit attachment sites that would otherwise need imperative setup
 - testing AST-lowered output directly
 - debugging rerender behavior through committed UI and context-graph tools
 - experimenting with backend adapters built on a shared reconciler model

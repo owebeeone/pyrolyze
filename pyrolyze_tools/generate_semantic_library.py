@@ -15,6 +15,7 @@ from functools import lru_cache
 import importlib
 import importlib.util
 import inspect
+import keyword
 import pkgutil
 from pathlib import Path
 import re
@@ -914,6 +915,9 @@ def _render_widget_props(package_name: str, widget: DiscoveredWidgetClass) -> li
     prop_names = tuple(dict.fromkeys([*constructor_params, *properties]))
     lines: list[str] = []
     for prop_name in prop_names:
+        learning = widget.prop_learnings.get(prop_name)
+        if learning is not None and learning.public is False:
+            continue
         parameter = constructor_params.get(prop_name)
         discovered_property = properties.get(prop_name)
         annotation_source = (
@@ -1014,6 +1018,9 @@ def _default_child_mount_priority(package_name: str) -> tuple[str, ...]:
             "corner_widget",
         )
     return (
+        "pack",
+        "pane",
+        "tab",
         "standard",
         "widget",
         "layout",
@@ -1039,6 +1046,9 @@ def _default_attach_mount_priority(package_name: str) -> tuple[str, ...]:
             "corner_widget",
         )
     return (
+        "pack",
+        "pane",
+        "tab",
         "standard",
         "widget",
         "layout",
@@ -1242,6 +1252,8 @@ def _extract_properties(
     package_name = root_module_name.split(".", 1)[0]
     if package_name == "PySide6":
         return _extract_qt_properties(widget_class)
+    if package_name == "tkinter":
+        return _extract_tkinter_properties(widget_class)
     return ()
 
 
@@ -1413,6 +1425,109 @@ _TKINTER_ORDERED_MOUNT_FAMILIES: tuple[
     ("tkinter", "PanedWindow", "pane", "add", None, ("remove", "forget")),
 )
 
+_TKINTER_DEFAULT_PACK_CONTAINERS: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("tkinter", "Frame"),
+        ("tkinter.ttk", "Frame"),
+        ("tkinter", "LabelFrame"),
+        ("tkinter.ttk", "Labelframe"),
+    }
+)
+
+
+def _tkinter_pack_mount_params() -> tuple[DiscoveredParameter, ...]:
+    return (
+        DiscoveredParameter(
+            name="side",
+            kind=inspect.Parameter.KEYWORD_ONLY,
+            annotation_source="Any",
+            default_source="None",
+            coerced_expression="side",
+        ),
+        DiscoveredParameter(
+            name="fill",
+            kind=inspect.Parameter.KEYWORD_ONLY,
+            annotation_source="Any",
+            default_source="None",
+            coerced_expression="fill",
+        ),
+        DiscoveredParameter(
+            name="expand",
+            kind=inspect.Parameter.KEYWORD_ONLY,
+            annotation_source="Any",
+            default_source="None",
+            coerced_expression="expand",
+        ),
+        DiscoveredParameter(
+            name="padx",
+            kind=inspect.Parameter.KEYWORD_ONLY,
+            annotation_source="Any",
+            default_source="None",
+            coerced_expression="padx",
+        ),
+        DiscoveredParameter(
+            name="pady",
+            kind=inspect.Parameter.KEYWORD_ONLY,
+            annotation_source="Any",
+            default_source="None",
+            coerced_expression="pady",
+        ),
+    )
+
+
+def _tkinter_grid_mount_params() -> tuple[DiscoveredParameter, ...]:
+    return (
+        DiscoveredParameter(
+            name="row",
+            kind=inspect.Parameter.KEYWORD_ONLY,
+            annotation_source="int",
+            default_source=None,
+            coerced_expression="int(row)",
+        ),
+        DiscoveredParameter(
+            name="column",
+            kind=inspect.Parameter.KEYWORD_ONLY,
+            annotation_source="int",
+            default_source=None,
+            coerced_expression="int(column)",
+        ),
+        DiscoveredParameter(
+            name="rowspan",
+            kind=inspect.Parameter.KEYWORD_ONLY,
+            annotation_source="int",
+            default_source="1",
+            coerced_expression="int(rowspan)",
+        ),
+        DiscoveredParameter(
+            name="columnspan",
+            kind=inspect.Parameter.KEYWORD_ONLY,
+            annotation_source="int",
+            default_source="1",
+            coerced_expression="int(columnspan)",
+        ),
+        DiscoveredParameter(
+            name="sticky",
+            kind=inspect.Parameter.KEYWORD_ONLY,
+            annotation_source="Any",
+            default_source="None",
+            coerced_expression="sticky",
+        ),
+        DiscoveredParameter(
+            name="padx",
+            kind=inspect.Parameter.KEYWORD_ONLY,
+            annotation_source="Any",
+            default_source="None",
+            coerced_expression="padx",
+        ),
+        DiscoveredParameter(
+            name="pady",
+            kind=inspect.Parameter.KEYWORD_ONLY,
+            annotation_source="Any",
+            default_source="None",
+            coerced_expression="pady",
+        ),
+    )
+
 
 def _extract_tkinter_mount_points(
     widget_class: type[Any],
@@ -1438,6 +1553,30 @@ def _extract_tkinter_mount_points(
                 replay_kind=MountReplayKind.INDEX,
                 default_child=True,
                 default_attach_rank=0,
+            ),
+        )
+    if (widget_class.__module__, widget_class.__name__) in _TKINTER_DEFAULT_PACK_CONTAINERS:
+        return (
+            DiscoveredMountPoint(
+                name="pack",
+                accepted_type_name="tkinter.Widget",
+                params=_tkinter_pack_mount_params(),
+                max_children=None,
+                sync_method_name="pack",
+                append_method_name="pack",
+                detach_method_name="pack_forget",
+                prefer_sync=True,
+                default_child=True,
+                default_attach_rank=0,
+            ),
+            DiscoveredMountPoint(
+                name="grid",
+                accepted_type_name="tkinter.Widget",
+                params=_tkinter_grid_mount_params(),
+                keyed_param_names=frozenset({"row", "column"}),
+                max_children=1,
+                apply_method_name="grid",
+                detach_method_name="grid_forget",
             ),
         )
     return ()
@@ -1697,6 +1836,106 @@ def _extract_tkinter_setters(
                 ),
             )
     return tuple(discovered[name] for name in sorted(discovered))
+
+
+_TKINTER_BLOCKED_CONFIG_OPTION_NAMES = frozenset(
+    {
+        "class",
+        "cnf",
+        "container",
+        "use",
+    }
+)
+
+
+def _create_tkinter_probe_root() -> object | None:
+    import tkinter as tk
+
+    try:
+        root = tk.Tk()
+    except Exception:
+        return None
+    root.withdraw()
+    return root
+
+
+def _destroy_tkinter_probe_root(root: object) -> None:
+    try:
+        import tkinter as tk
+    except Exception:
+        tk = None
+    try:
+        destroy = getattr(root, "destroy", None)
+        if callable(destroy):
+            destroy()
+    except Exception:
+        pass
+    if tk is not None and getattr(tk, "_default_root", None) is root:
+        tk._default_root = None
+
+
+def _extract_tkinter_properties(
+    widget_class: type[Any],
+) -> tuple[DiscoveredProperty, ...]:
+    probe = _instantiate_tkinter_probe_widget(widget_class)
+    if probe is None:
+        return ()
+    root, widget = probe
+    try:
+        try:
+            config = widget.configure()
+        except Exception:
+            return ()
+        properties: dict[str, DiscoveredProperty] = {}
+        for option_name in sorted(config):
+            if not _is_supported_tkinter_config_option(option_name):
+                continue
+            properties[option_name] = DiscoveredProperty(
+                name=option_name,
+                type_name="Any",
+                readable=callable(getattr(widget, "cget", None)),
+                writable=True,
+            )
+        return tuple(properties[name] for name in sorted(properties))
+    finally:
+        _destroy_tkinter_probe_widget(widget, root)
+
+
+def _instantiate_tkinter_probe_widget(widget_class: type[Any]) -> tuple[object, object] | None:
+    root = _create_tkinter_probe_root()
+    if root is None:
+        return None
+    attempts = (
+        ((root,), {}),
+        ((), {"master": root}),
+    )
+    for args, kwargs in attempts:
+        try:
+            return root, widget_class(*args, **kwargs)
+        except Exception:
+            continue
+    _destroy_tkinter_probe_root(root)
+    return None
+
+
+def _destroy_tkinter_probe_widget(widget: object, root: object) -> None:
+    destroy = getattr(widget, "destroy", None)
+    if callable(destroy):
+        try:
+            destroy()
+        except Exception:
+            pass
+    _destroy_tkinter_probe_root(root)
+
+
+def _is_supported_tkinter_config_option(option_name: str) -> bool:
+    if option_name in _TKINTER_BLOCKED_CONFIG_OPTION_NAMES:
+        return False
+    if not option_name.isidentifier():
+        return False
+    if keyword.iskeyword(option_name):
+        return False
+    return True
 
 
 def _ast_parameters_to_discovered(args: ast.arguments) -> tuple[DiscoveredParameter, ...]:

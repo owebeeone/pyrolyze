@@ -10,7 +10,8 @@ Typical author flow:
 1. write declarative component functions
 2. use `@pyrolyze_slotted` for value helpers that should run through plain-call slots
 3. use hooks such as `use_state(...)` inside `@pyrolyze` bodies
-4. emit UI through component calls, containers, or `call_native(...)`
+4. emit UI through component calls, containers, generated UI libraries, or `call_native(...)`
+5. use `mount(...)` when a backend requires an explicit attachment site
 
 Minimal shape:
 
@@ -31,3 +32,4 @@ Read next:
 
 - [Decorators_And_Annotations.md](Decorators_And_Annotations.md)
 - [Components_Containers_And_Function_Semantics.md](Components_Containers_And_Function_Semantics.md)
+- [Mount_And_Mount_Points.md](Mount_And_Mount_Points.md)
