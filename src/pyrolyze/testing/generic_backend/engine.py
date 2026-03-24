@@ -6,7 +6,13 @@ from typing import Any, Mapping
 
 from frozendict import frozendict
 
-from pyrolyze.backends.model import ChildPolicy, MountParamSpec, MountPointSpec, TypeRef, UiWidgetSpec
+from pyrolyze.backends.model import (
+    ChildPolicy,
+    MountParamSpec,
+    MountPointSpec,
+    TypeRef,
+    UiWidgetSpec as UiMountableSpec,
+)
 from pyrolyze.backends.mountable_engine import MountableEngine, MountedMountableNode
 
 from .model import PyroNode
@@ -30,7 +36,7 @@ class PyroNodeEngine(MountableEngine):
         self._runtime_types = build_runtime_types(self._node_specs)
         self._current_generation = initial_generation
         self._strict_compatibility = strict_compatibility
-        super().__init__(_build_widget_specs(self._node_specs))
+        super().__init__(_build_node_specs(self._node_specs))
 
     @property
     def current_generation(self) -> int:
@@ -80,25 +86,25 @@ class PyroNodeEngine(MountableEngine):
             raise TypeError(f"expected GeneratedPyroMountable, got {type(mountable)!r}")
         return mountable.to_pyro_node()
 
-    def _mountable_type_for(self, spec: UiWidgetSpec) -> type[object]:
+    def _mountable_type_for(self, spec: UiMountableSpec) -> type[object]:
         return self._runtime_types[spec.kind]
 
 
-def _build_widget_specs(
+def _build_node_specs(
     node_specs: tuple[NodeGenSpec, ...],
-) -> Mapping[str, UiWidgetSpec]:
+) -> Mapping[str, UiMountableSpec]:
     spec_map = {spec.name: spec for spec in node_specs}
-    return frozendict({spec.name: _build_widget_spec(spec, spec_map) for spec in node_specs})
+    return frozendict({spec.name: _build_node_spec(spec, spec_map) for spec in node_specs})
 
 
-def _build_widget_spec(
+def _build_node_spec(
     spec: NodeGenSpec,
     spec_map: Mapping[str, NodeGenSpec],
-) -> UiWidgetSpec:
+) -> UiMountableSpec:
     mount_points = frozendict({mount.name: _build_mount_point(mount, spec_map) for mount in spec.mounts})
     default_mount = next((mount.name for mount in spec.mounts if mount.default), None)
     child_policy = _child_policy_for(spec.mounts)
-    return UiWidgetSpec(
+    return UiMountableSpec(
         kind=spec.name,
         mounted_type_name=spec.name,
         constructor_params=frozendict(
