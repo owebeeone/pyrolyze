@@ -96,6 +96,15 @@ grouped by milestone priority.
     - profile generic-backend stress tests to find avoidable snapshot/build overhead
   - Use the current advert/generic-backend stress suites as the starting regression guard before and after optimization work.
 
+- [P3] Run the deferred structural/rerender stress phase for hierarchical app context management after the core implementation lands.
+  - The core rollout should stop after AST surface, runtime skeleton, copied per-key stream primitive, and provider/reader integration are stable.
+  - Follow up with the deferred structural phase from [HierarchicalContextManagementPlan.md](./dev-docs/HierarchicalContextManagementPlan.md) to prove:
+    - nested provider shadowing under churn
+    - provider removal/reintroduction correctness
+    - reader key rebind behavior across rerenders
+    - component-boundary inheritance stability
+    - mount isolation from app-context changes
+
 - [P3] Support multiple independently keyed `use_state()` calls inside a single custom plain-call helper runtime context.
   - `use_state()` currently stores under fixed local keys inside one `PlainCallRuntimeContext`.
   - Custom helper composition currently has to use a tuple state or another manual aggregation strategy.
