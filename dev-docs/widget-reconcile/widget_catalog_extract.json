@@ -1,0 +1,1398 @@
+{
+  "schema_version": 2,
+  "generated_at": "2026-03-24T14:50:46Z",
+  "repo_note": "Paths in this file are relative to the pyrolyze package repository root.",
+  "pyside6": {
+    "source_module": "src/pyrolyze/backends/pyside6/generated_library.py",
+    "ui_interface_entry_count": 105,
+    "entries": [
+      {
+        "public_name": "CQAbstractButton",
+        "kind": "QAbstractButton"
+      },
+      {
+        "public_name": "CQAbstractItemView",
+        "kind": "QAbstractItemView"
+      },
+      {
+        "public_name": "CQAbstractPrintDialog",
+        "kind": "QAbstractPrintDialog"
+      },
+      {
+        "public_name": "CQAbstractScrollArea",
+        "kind": "QAbstractScrollArea"
+      },
+      {
+        "public_name": "CQAbstractSlider",
+        "kind": "QAbstractSlider"
+      },
+      {
+        "public_name": "CQAbstractSpinBox",
+        "kind": "QAbstractSpinBox"
+      },
+      {
+        "public_name": "CQAction",
+        "kind": "QAction"
+      },
+      {
+        "public_name": "CQBoxLayout",
+        "kind": "QBoxLayout"
+      },
+      {
+        "public_name": "CQCalendarWidget",
+        "kind": "QCalendarWidget"
+      },
+      {
+        "public_name": "CQChartView",
+        "kind": "QChartView"
+      },
+      {
+        "public_name": "CQCheckBox",
+        "kind": "QCheckBox"
+      },
+      {
+        "public_name": "CQColorDialog",
+        "kind": "QColorDialog"
+      },
+      {
+        "public_name": "CQColumnView",
+        "kind": "QColumnView"
+      },
+      {
+        "public_name": "CQComboBox",
+        "kind": "QComboBox"
+      },
+      {
+        "public_name": "CQCommandLinkButton",
+        "kind": "QCommandLinkButton"
+      },
+      {
+        "public_name": "CQDateEdit",
+        "kind": "QDateEdit"
+      },
+      {
+        "public_name": "CQDateTimeEdit",
+        "kind": "QDateTimeEdit"
+      },
+      {
+        "public_name": "CQDesignerActionEditorInterface",
+        "kind": "QDesignerActionEditorInterface"
+      },
+      {
+        "public_name": "CQDesignerFormWindowInterface",
+        "kind": "QDesignerFormWindowInterface"
+      },
+      {
+        "public_name": "CQDesignerObjectInspectorInterface",
+        "kind": "QDesignerObjectInspectorInterface"
+      },
+      {
+        "public_name": "CQDesignerPropertyEditorInterface",
+        "kind": "QDesignerPropertyEditorInterface"
+      },
+      {
+        "public_name": "CQDesignerWidgetBoxInterface",
+        "kind": "QDesignerWidgetBoxInterface"
+      },
+      {
+        "public_name": "CQDial",
+        "kind": "QDial"
+      },
+      {
+        "public_name": "CQDialog",
+        "kind": "QDialog"
+      },
+      {
+        "public_name": "CQDialogButtonBox",
+        "kind": "QDialogButtonBox"
+      },
+      {
+        "public_name": "CQDockWidget",
+        "kind": "QDockWidget"
+      },
+      {
+        "public_name": "CQDoubleSpinBox",
+        "kind": "QDoubleSpinBox"
+      },
+      {
+        "public_name": "CQErrorMessage",
+        "kind": "QErrorMessage"
+      },
+      {
+        "public_name": "CQFileDialog",
+        "kind": "QFileDialog"
+      },
+      {
+        "public_name": "CQFocusFrame",
+        "kind": "QFocusFrame"
+      },
+      {
+        "public_name": "CQFontComboBox",
+        "kind": "QFontComboBox"
+      },
+      {
+        "public_name": "CQFontDialog",
+        "kind": "QFontDialog"
+      },
+      {
+        "public_name": "CQFormLayout",
+        "kind": "QFormLayout"
+      },
+      {
+        "public_name": "CQFrame",
+        "kind": "QFrame"
+      },
+      {
+        "public_name": "CQGraphicsView",
+        "kind": "QGraphicsView"
+      },
+      {
+        "public_name": "CQGridLayout",
+        "kind": "QGridLayout"
+      },
+      {
+        "public_name": "CQGroupBox",
+        "kind": "QGroupBox"
+      },
+      {
+        "public_name": "CQHBoxLayout",
+        "kind": "QHBoxLayout"
+      },
+      {
+        "public_name": "CQHeaderView",
+        "kind": "QHeaderView"
+      },
+      {
+        "public_name": "CQHelpContentWidget",
+        "kind": "QHelpContentWidget"
+      },
+      {
+        "public_name": "CQHelpFilterSettingsWidget",
+        "kind": "QHelpFilterSettingsWidget"
+      },
+      {
+        "public_name": "CQHelpIndexWidget",
+        "kind": "QHelpIndexWidget"
+      },
+      {
+        "public_name": "CQHelpSearchQueryWidget",
+        "kind": "QHelpSearchQueryWidget"
+      },
+      {
+        "public_name": "CQHelpSearchResultWidget",
+        "kind": "QHelpSearchResultWidget"
+      },
+      {
+        "public_name": "CQInputDialog",
+        "kind": "QInputDialog"
+      },
+      {
+        "public_name": "CQKeySequenceEdit",
+        "kind": "QKeySequenceEdit"
+      },
+      {
+        "public_name": "CQLCDNumber",
+        "kind": "QLCDNumber"
+      },
+      {
+        "public_name": "CQLabel",
+        "kind": "QLabel"
+      },
+      {
+        "public_name": "CQLayout",
+        "kind": "QLayout"
+      },
+      {
+        "public_name": "CQLineEdit",
+        "kind": "QLineEdit"
+      },
+      {
+        "public_name": "CQListView",
+        "kind": "QListView"
+      },
+      {
+        "public_name": "CQListWidget",
+        "kind": "QListWidget"
+      },
+      {
+        "public_name": "CQMainWindow",
+        "kind": "QMainWindow"
+      },
+      {
+        "public_name": "CQMdiArea",
+        "kind": "QMdiArea"
+      },
+      {
+        "public_name": "CQMdiSubWindow",
+        "kind": "QMdiSubWindow"
+      },
+      {
+        "public_name": "CQMenu",
+        "kind": "QMenu"
+      },
+      {
+        "public_name": "CQMenuBar",
+        "kind": "QMenuBar"
+      },
+      {
+        "public_name": "CQMessageBox",
+        "kind": "QMessageBox"
+      },
+      {
+        "public_name": "CQOpenGLWidget",
+        "kind": "QOpenGLWidget"
+      },
+      {
+        "public_name": "CQPageSetupDialog",
+        "kind": "QPageSetupDialog"
+      },
+      {
+        "public_name": "CQPdfPageSelector",
+        "kind": "QPdfPageSelector"
+      },
+      {
+        "public_name": "CQPdfView",
+        "kind": "QPdfView"
+      },
+      {
+        "public_name": "CQPlainTextEdit",
+        "kind": "QPlainTextEdit"
+      },
+      {
+        "public_name": "CQPrintDialog",
+        "kind": "QPrintDialog"
+      },
+      {
+        "public_name": "CQPrintPreviewDialog",
+        "kind": "QPrintPreviewDialog"
+      },
+      {
+        "public_name": "CQPrintPreviewWidget",
+        "kind": "QPrintPreviewWidget"
+      },
+      {
+        "public_name": "CQProgressBar",
+        "kind": "QProgressBar"
+      },
+      {
+        "public_name": "CQProgressDialog",
+        "kind": "QProgressDialog"
+      },
+      {
+        "public_name": "CQPushButton",
+        "kind": "QPushButton"
+      },
+      {
+        "public_name": "CQQuickWidget",
+        "kind": "QQuickWidget"
+      },
+      {
+        "public_name": "CQRadioButton",
+        "kind": "QRadioButton"
+      },
+      {
+        "public_name": "CQRhiWidget",
+        "kind": "QRhiWidget"
+      },
+      {
+        "public_name": "CQRubberBand",
+        "kind": "QRubberBand"
+      },
+      {
+        "public_name": "CQScrollArea",
+        "kind": "QScrollArea"
+      },
+      {
+        "public_name": "CQScrollBar",
+        "kind": "QScrollBar"
+      },
+      {
+        "public_name": "CQSizeGrip",
+        "kind": "QSizeGrip"
+      },
+      {
+        "public_name": "CQSlider",
+        "kind": "QSlider"
+      },
+      {
+        "public_name": "CQSpinBox",
+        "kind": "QSpinBox"
+      },
+      {
+        "public_name": "CQSplashScreen",
+        "kind": "QSplashScreen"
+      },
+      {
+        "public_name": "CQSplitter",
+        "kind": "QSplitter"
+      },
+      {
+        "public_name": "CQSplitterHandle",
+        "kind": "QSplitterHandle"
+      },
+      {
+        "public_name": "CQStackedLayout",
+        "kind": "QStackedLayout"
+      },
+      {
+        "public_name": "CQStackedWidget",
+        "kind": "QStackedWidget"
+      },
+      {
+        "public_name": "CQStatusBar",
+        "kind": "QStatusBar"
+      },
+      {
+        "public_name": "CQSvgWidget",
+        "kind": "QSvgWidget"
+      },
+      {
+        "public_name": "CQTabBar",
+        "kind": "QTabBar"
+      },
+      {
+        "public_name": "CQTabWidget",
+        "kind": "QTabWidget"
+      },
+      {
+        "public_name": "CQTableView",
+        "kind": "QTableView"
+      },
+      {
+        "public_name": "CQTableWidget",
+        "kind": "QTableWidget"
+      },
+      {
+        "public_name": "CQTextBrowser",
+        "kind": "QTextBrowser"
+      },
+      {
+        "public_name": "CQTextEdit",
+        "kind": "QTextEdit"
+      },
+      {
+        "public_name": "CQTimeEdit",
+        "kind": "QTimeEdit"
+      },
+      {
+        "public_name": "CQToolBar",
+        "kind": "QToolBar"
+      },
+      {
+        "public_name": "CQToolBox",
+        "kind": "QToolBox"
+      },
+      {
+        "public_name": "CQToolButton",
+        "kind": "QToolButton"
+      },
+      {
+        "public_name": "CQTreeView",
+        "kind": "QTreeView"
+      },
+      {
+        "public_name": "CQTreeWidget",
+        "kind": "QTreeWidget"
+      },
+      {
+        "public_name": "CQUndoView",
+        "kind": "QUndoView"
+      },
+      {
+        "public_name": "CQVBoxLayout",
+        "kind": "QVBoxLayout"
+      },
+      {
+        "public_name": "CQVideoWidget",
+        "kind": "QVideoWidget"
+      },
+      {
+        "public_name": "CQWebEngineView",
+        "kind": "QWebEngineView"
+      },
+      {
+        "public_name": "CQWidget",
+        "kind": "QWidget"
+      },
+      {
+        "public_name": "CQWidgetAction",
+        "kind": "QWidgetAction"
+      },
+      {
+        "public_name": "CQWizard",
+        "kind": "QWizard"
+      },
+      {
+        "public_name": "CQWizardPage",
+        "kind": "QWizardPage"
+      }
+    ]
+  },
+  "tkinter": {
+    "source_module": "src/pyrolyze/backends/tkinter/generated_library.py",
+    "ui_interface_entry_count": 105,
+    "entries": [
+      {
+        "public_name": "CBalloon",
+        "kind": "Balloon"
+      },
+      {
+        "public_name": "CButtonBox",
+        "kind": "ButtonBox"
+      },
+      {
+        "public_name": "CCObjView",
+        "kind": "CObjView"
+      },
+      {
+        "public_name": "CCanvas",
+        "kind": "Canvas"
+      },
+      {
+        "public_name": "CCheckList",
+        "kind": "CheckList"
+      },
+      {
+        "public_name": "CComboBox",
+        "kind": "ComboBox"
+      },
+      {
+        "public_name": "CCombobox",
+        "kind": "Combobox"
+      },
+      {
+        "public_name": "CControl",
+        "kind": "Control"
+      },
+      {
+        "public_name": "CDialog",
+        "kind": "Dialog"
+      },
+      {
+        "public_name": "CDialogShell",
+        "kind": "DialogShell"
+      },
+      {
+        "public_name": "CDirList",
+        "kind": "DirList"
+      },
+      {
+        "public_name": "CDirSelectBox",
+        "kind": "DirSelectBox"
+      },
+      {
+        "public_name": "CDirSelectDialog",
+        "kind": "DirSelectDialog"
+      },
+      {
+        "public_name": "CDirTree",
+        "kind": "DirTree"
+      },
+      {
+        "public_name": "CExFileSelectBox",
+        "kind": "ExFileSelectBox"
+      },
+      {
+        "public_name": "CExFileSelectDialog",
+        "kind": "ExFileSelectDialog"
+      },
+      {
+        "public_name": "CFileEntry",
+        "kind": "FileEntry"
+      },
+      {
+        "public_name": "CFileSelectBox",
+        "kind": "FileSelectBox"
+      },
+      {
+        "public_name": "CFileSelectDialog",
+        "kind": "FileSelectDialog"
+      },
+      {
+        "public_name": "CGrid",
+        "kind": "Grid"
+      },
+      {
+        "public_name": "CHList",
+        "kind": "HList"
+      },
+      {
+        "public_name": "CInputOnly",
+        "kind": "InputOnly"
+      },
+      {
+        "public_name": "CLabelEntry",
+        "kind": "LabelEntry"
+      },
+      {
+        "public_name": "CLabeledScale",
+        "kind": "LabeledScale"
+      },
+      {
+        "public_name": "CLabelframe",
+        "kind": "Labelframe"
+      },
+      {
+        "public_name": "CListNoteBook",
+        "kind": "ListNoteBook"
+      },
+      {
+        "public_name": "CListbox",
+        "kind": "Listbox"
+      },
+      {
+        "public_name": "CMenu",
+        "kind": "Menu"
+      },
+      {
+        "public_name": "CMessage",
+        "kind": "Message"
+      },
+      {
+        "public_name": "CMeter",
+        "kind": "Meter"
+      },
+      {
+        "public_name": "CNoteBook",
+        "kind": "NoteBook"
+      },
+      {
+        "public_name": "CNoteBookFrame",
+        "kind": "NoteBookFrame"
+      },
+      {
+        "public_name": "CNotebook",
+        "kind": "Notebook"
+      },
+      {
+        "public_name": "CPanedwindow",
+        "kind": "Panedwindow"
+      },
+      {
+        "public_name": "CPopupMenu",
+        "kind": "PopupMenu"
+      },
+      {
+        "public_name": "CProgressbar",
+        "kind": "Progressbar"
+      },
+      {
+        "public_name": "CResizeHandle",
+        "kind": "ResizeHandle"
+      },
+      {
+        "public_name": "CScrolledGrid",
+        "kind": "ScrolledGrid"
+      },
+      {
+        "public_name": "CScrolledHList",
+        "kind": "ScrolledHList"
+      },
+      {
+        "public_name": "CScrolledListBox",
+        "kind": "ScrolledListBox"
+      },
+      {
+        "public_name": "CScrolledTList",
+        "kind": "ScrolledTList"
+      },
+      {
+        "public_name": "CScrolledWindow",
+        "kind": "ScrolledWindow"
+      },
+      {
+        "public_name": "CSelect",
+        "kind": "Select"
+      },
+      {
+        "public_name": "CSeparator",
+        "kind": "Separator"
+      },
+      {
+        "public_name": "CShell",
+        "kind": "Shell"
+      },
+      {
+        "public_name": "CSizegrip",
+        "kind": "Sizegrip"
+      },
+      {
+        "public_name": "CStdButtonBox",
+        "kind": "StdButtonBox"
+      },
+      {
+        "public_name": "CTList",
+        "kind": "TList"
+      },
+      {
+        "public_name": "CText",
+        "kind": "Text"
+      },
+      {
+        "public_name": "CTixSubWidget",
+        "kind": "TixSubWidget"
+      },
+      {
+        "public_name": "CTixWidget",
+        "kind": "TixWidget"
+      },
+      {
+        "public_name": "CTree",
+        "kind": "Tree"
+      },
+      {
+        "public_name": "CTreeview",
+        "kind": "Treeview"
+      },
+      {
+        "public_name": "C_dummyButton",
+        "kind": "_dummyButton"
+      },
+      {
+        "public_name": "C_dummyCheckbutton",
+        "kind": "_dummyCheckbutton"
+      },
+      {
+        "public_name": "C_dummyComboBox",
+        "kind": "_dummyComboBox"
+      },
+      {
+        "public_name": "C_dummyDirList",
+        "kind": "_dummyDirList"
+      },
+      {
+        "public_name": "C_dummyDirSelectBox",
+        "kind": "_dummyDirSelectBox"
+      },
+      {
+        "public_name": "C_dummyEntry",
+        "kind": "_dummyEntry"
+      },
+      {
+        "public_name": "C_dummyExFileSelectBox",
+        "kind": "_dummyExFileSelectBox"
+      },
+      {
+        "public_name": "C_dummyFileComboBox",
+        "kind": "_dummyFileComboBox"
+      },
+      {
+        "public_name": "C_dummyFileSelectBox",
+        "kind": "_dummyFileSelectBox"
+      },
+      {
+        "public_name": "C_dummyFrame",
+        "kind": "_dummyFrame"
+      },
+      {
+        "public_name": "C_dummyHList",
+        "kind": "_dummyHList"
+      },
+      {
+        "public_name": "C_dummyLabel",
+        "kind": "_dummyLabel"
+      },
+      {
+        "public_name": "C_dummyListbox",
+        "kind": "_dummyListbox"
+      },
+      {
+        "public_name": "C_dummyMenu",
+        "kind": "_dummyMenu"
+      },
+      {
+        "public_name": "C_dummyMenubutton",
+        "kind": "_dummyMenubutton"
+      },
+      {
+        "public_name": "C_dummyNoteBookFrame",
+        "kind": "_dummyNoteBookFrame"
+      },
+      {
+        "public_name": "C_dummyPanedWindow",
+        "kind": "_dummyPanedWindow"
+      },
+      {
+        "public_name": "C_dummyScrollbar",
+        "kind": "_dummyScrollbar"
+      },
+      {
+        "public_name": "C_dummyScrolledHList",
+        "kind": "_dummyScrolledHList"
+      },
+      {
+        "public_name": "C_dummyScrolledListBox",
+        "kind": "_dummyScrolledListBox"
+      },
+      {
+        "public_name": "C_dummyStdButtonBox",
+        "kind": "_dummyStdButtonBox"
+      },
+      {
+        "public_name": "C_dummyTList",
+        "kind": "_dummyTList"
+      },
+      {
+        "public_name": "C_dummyText",
+        "kind": "_dummyText"
+      },
+      {
+        "public_name": "CScrolledtextScrolledText",
+        "kind": "scrolledtext_ScrolledText"
+      },
+      {
+        "public_name": "CTixLabelFrame",
+        "kind": "tix_LabelFrame"
+      },
+      {
+        "public_name": "CTixOptionMenu",
+        "kind": "tix_OptionMenu"
+      },
+      {
+        "public_name": "CTixPanedWindow",
+        "kind": "tix_PanedWindow"
+      },
+      {
+        "public_name": "CTixScrolledText",
+        "kind": "tix_ScrolledText"
+      },
+      {
+        "public_name": "CButton",
+        "kind": "tkinter_Button"
+      },
+      {
+        "public_name": "CCheckbutton",
+        "kind": "tkinter_Checkbutton"
+      },
+      {
+        "public_name": "CEntry",
+        "kind": "tkinter_Entry"
+      },
+      {
+        "public_name": "CFrame",
+        "kind": "tkinter_Frame"
+      },
+      {
+        "public_name": "CLabel",
+        "kind": "tkinter_Label"
+      },
+      {
+        "public_name": "CLabelFrame",
+        "kind": "tkinter_LabelFrame"
+      },
+      {
+        "public_name": "CMenubutton",
+        "kind": "tkinter_Menubutton"
+      },
+      {
+        "public_name": "COptionMenu",
+        "kind": "tkinter_OptionMenu"
+      },
+      {
+        "public_name": "CPanedWindow",
+        "kind": "tkinter_PanedWindow"
+      },
+      {
+        "public_name": "CRadiobutton",
+        "kind": "tkinter_Radiobutton"
+      },
+      {
+        "public_name": "CScale",
+        "kind": "tkinter_Scale"
+      },
+      {
+        "public_name": "CScrollbar",
+        "kind": "tkinter_Scrollbar"
+      },
+      {
+        "public_name": "CSpinbox",
+        "kind": "tkinter_Spinbox"
+      },
+      {
+        "public_name": "CTtkButton",
+        "kind": "ttk_Button"
+      },
+      {
+        "public_name": "CTtkCheckbutton",
+        "kind": "ttk_Checkbutton"
+      },
+      {
+        "public_name": "CTtkEntry",
+        "kind": "ttk_Entry"
+      },
+      {
+        "public_name": "CTtkFrame",
+        "kind": "ttk_Frame"
+      },
+      {
+        "public_name": "CTtkLabel",
+        "kind": "ttk_Label"
+      },
+      {
+        "public_name": "CTtkMenubutton",
+        "kind": "ttk_Menubutton"
+      },
+      {
+        "public_name": "CTtkOptionMenu",
+        "kind": "ttk_OptionMenu"
+      },
+      {
+        "public_name": "CTtkRadiobutton",
+        "kind": "ttk_Radiobutton"
+      },
+      {
+        "public_name": "CTtkScale",
+        "kind": "ttk_Scale"
+      },
+      {
+        "public_name": "CTtkScrollbar",
+        "kind": "ttk_Scrollbar"
+      },
+      {
+        "public_name": "CTtkSpinbox",
+        "kind": "ttk_Spinbox"
+      }
+    ]
+  },
+  "dearpygui": {
+    "generated_library_module": "src/pyrolyze/backends/dearpygui/generated_library.py",
+    "items_py_module": "src/pyrolyze/backends/dearpygui/items.py",
+    "unique_add_factory_count_generated_m_classes": 157,
+    "add_factories_generated_m_classes": [
+      "add_2d_histogram_series",
+      "add_3d_slider",
+      "add_activated_handler",
+      "add_active_handler",
+      "add_area_series",
+      "add_axis_tag",
+      "add_bar_group_series",
+      "add_bar_series",
+      "add_bool_value",
+      "add_candle_series",
+      "add_char_remap",
+      "add_checkbox",
+      "add_child",
+      "add_child_window",
+      "add_clicked_handler",
+      "add_clipper",
+      "add_collapsing_header",
+      "add_color_button",
+      "add_color_edit",
+      "add_color_picker",
+      "add_color_value",
+      "add_colormap",
+      "add_colormap_button",
+      "add_colormap_registry",
+      "add_colormap_scale",
+      "add_colormap_slider",
+      "add_combo",
+      "add_custom_series",
+      "add_date_picker",
+      "add_deactivated_after_edit_handler",
+      "add_deactivated_handler",
+      "add_digital_series",
+      "add_double4_value",
+      "add_double_value",
+      "add_drag_double",
+      "add_drag_doublex",
+      "add_drag_float",
+      "add_drag_floatx",
+      "add_drag_int",
+      "add_drag_intx",
+      "add_drag_line",
+      "add_drag_payload",
+      "add_drag_point",
+      "add_drag_rect",
+      "add_draw_layer",
+      "add_draw_node",
+      "add_drawlist",
+      "add_dummy",
+      "add_dynamic_texture",
+      "add_edited_handler",
+      "add_error_series",
+      "add_file_dialog",
+      "add_file_extension",
+      "add_filter_set",
+      "add_float4_value",
+      "add_float_value",
+      "add_float_vect_value",
+      "add_focus_handler",
+      "add_font",
+      "add_font_chars",
+      "add_font_range",
+      "add_font_range_hint",
+      "add_group",
+      "add_handler_registry",
+      "add_heat_series",
+      "add_histogram_series",
+      "add_hline_series",
+      "add_hover_handler",
+      "add_image",
+      "add_image_button",
+      "add_image_series",
+      "add_inf_line_series",
+      "add_input_double",
+      "add_input_doublex",
+      "add_input_float",
+      "add_input_floatx",
+      "add_input_int",
+      "add_input_intx",
+      "add_int4_value",
+      "add_int_value",
+      "add_item_activated_handler",
+      "add_item_active_handler",
+      "add_item_clicked_handler",
+      "add_item_deactivated_after_edit_handler",
+      "add_item_deactivated_handler",
+      "add_item_double_clicked_handler",
+      "add_item_edited_handler",
+      "add_item_focus_handler",
+      "add_item_handler_registry",
+      "add_item_hover_handler",
+      "add_item_resize_handler",
+      "add_item_scroll_handler",
+      "add_item_toggled_open_handler",
+      "add_item_visible_handler",
+      "add_key_down_handler",
+      "add_key_press_handler",
+      "add_key_release_handler",
+      "add_knob_float",
+      "add_line_series",
+      "add_listbox",
+      "add_loading_indicator",
+      "add_menu_item",
+      "add_mouse_click_handler",
+      "add_mouse_double_click_handler",
+      "add_mouse_down_handler",
+      "add_mouse_drag_handler",
+      "add_mouse_move_handler",
+      "add_mouse_release_handler",
+      "add_mouse_wheel_handler",
+      "add_node_attribute",
+      "add_pie_series",
+      "add_plot_annotation",
+      "add_plot_legend",
+      "add_progress_bar",
+      "add_radio_button",
+      "add_raw_texture",
+      "add_resize_handler",
+      "add_scatter_series",
+      "add_selectable",
+      "add_separator",
+      "add_series_value",
+      "add_shade_series",
+      "add_simple_plot",
+      "add_slider_double",
+      "add_slider_doublex",
+      "add_slider_float",
+      "add_slider_floatx",
+      "add_slider_int",
+      "add_slider_intx",
+      "add_spacer",
+      "add_stage",
+      "add_staging_container",
+      "add_stair_series",
+      "add_static_texture",
+      "add_stem_series",
+      "add_string_value",
+      "add_subplots",
+      "add_synced_tables",
+      "add_tab",
+      "add_tab_bar",
+      "add_tab_button",
+      "add_table_cell",
+      "add_template_registry",
+      "add_text",
+      "add_text_point",
+      "add_texture_registry",
+      "add_theme_color",
+      "add_theme_style",
+      "add_time_picker",
+      "add_toggled_open_handler",
+      "add_tooltip",
+      "add_tree_node",
+      "add_value_registry",
+      "add_viewport_drawlist",
+      "add_viewport_menu_bar",
+      "add_visible_handler",
+      "add_vline_series"
+    ],
+    "unique_add_factory_count_items_py": 16,
+    "add_factories_items_py": [
+      "add_button",
+      "add_font_registry",
+      "add_input_text",
+      "add_menu",
+      "add_menu_bar",
+      "add_node",
+      "add_node_editor",
+      "add_node_link",
+      "add_plot",
+      "add_plot_axis",
+      "add_table",
+      "add_table_column",
+      "add_table_row",
+      "add_theme",
+      "add_theme_component",
+      "add_window"
+    ],
+    "unique_add_factory_count_union": 173,
+    "add_factories_union": [
+      "add_2d_histogram_series",
+      "add_3d_slider",
+      "add_activated_handler",
+      "add_active_handler",
+      "add_area_series",
+      "add_axis_tag",
+      "add_bar_group_series",
+      "add_bar_series",
+      "add_bool_value",
+      "add_button",
+      "add_candle_series",
+      "add_char_remap",
+      "add_checkbox",
+      "add_child",
+      "add_child_window",
+      "add_clicked_handler",
+      "add_clipper",
+      "add_collapsing_header",
+      "add_color_button",
+      "add_color_edit",
+      "add_color_picker",
+      "add_color_value",
+      "add_colormap",
+      "add_colormap_button",
+      "add_colormap_registry",
+      "add_colormap_scale",
+      "add_colormap_slider",
+      "add_combo",
+      "add_custom_series",
+      "add_date_picker",
+      "add_deactivated_after_edit_handler",
+      "add_deactivated_handler",
+      "add_digital_series",
+      "add_double4_value",
+      "add_double_value",
+      "add_drag_double",
+      "add_drag_doublex",
+      "add_drag_float",
+      "add_drag_floatx",
+      "add_drag_int",
+      "add_drag_intx",
+      "add_drag_line",
+      "add_drag_payload",
+      "add_drag_point",
+      "add_drag_rect",
+      "add_draw_layer",
+      "add_draw_node",
+      "add_drawlist",
+      "add_dummy",
+      "add_dynamic_texture",
+      "add_edited_handler",
+      "add_error_series",
+      "add_file_dialog",
+      "add_file_extension",
+      "add_filter_set",
+      "add_float4_value",
+      "add_float_value",
+      "add_float_vect_value",
+      "add_focus_handler",
+      "add_font",
+      "add_font_chars",
+      "add_font_range",
+      "add_font_range_hint",
+      "add_font_registry",
+      "add_group",
+      "add_handler_registry",
+      "add_heat_series",
+      "add_histogram_series",
+      "add_hline_series",
+      "add_hover_handler",
+      "add_image",
+      "add_image_button",
+      "add_image_series",
+      "add_inf_line_series",
+      "add_input_double",
+      "add_input_doublex",
+      "add_input_float",
+      "add_input_floatx",
+      "add_input_int",
+      "add_input_intx",
+      "add_input_text",
+      "add_int4_value",
+      "add_int_value",
+      "add_item_activated_handler",
+      "add_item_active_handler",
+      "add_item_clicked_handler",
+      "add_item_deactivated_after_edit_handler",
+      "add_item_deactivated_handler",
+      "add_item_double_clicked_handler",
+      "add_item_edited_handler",
+      "add_item_focus_handler",
+      "add_item_handler_registry",
+      "add_item_hover_handler",
+      "add_item_resize_handler",
+      "add_item_scroll_handler",
+      "add_item_toggled_open_handler",
+      "add_item_visible_handler",
+      "add_key_down_handler",
+      "add_key_press_handler",
+      "add_key_release_handler",
+      "add_knob_float",
+      "add_line_series",
+      "add_listbox",
+      "add_loading_indicator",
+      "add_menu",
+      "add_menu_bar",
+      "add_menu_item",
+      "add_mouse_click_handler",
+      "add_mouse_double_click_handler",
+      "add_mouse_down_handler",
+      "add_mouse_drag_handler",
+      "add_mouse_move_handler",
+      "add_mouse_release_handler",
+      "add_mouse_wheel_handler",
+      "add_node",
+      "add_node_attribute",
+      "add_node_editor",
+      "add_node_link",
+      "add_pie_series",
+      "add_plot",
+      "add_plot_annotation",
+      "add_plot_axis",
+      "add_plot_legend",
+      "add_progress_bar",
+      "add_radio_button",
+      "add_raw_texture",
+      "add_resize_handler",
+      "add_scatter_series",
+      "add_selectable",
+      "add_separator",
+      "add_series_value",
+      "add_shade_series",
+      "add_simple_plot",
+      "add_slider_double",
+      "add_slider_doublex",
+      "add_slider_float",
+      "add_slider_floatx",
+      "add_slider_int",
+      "add_slider_intx",
+      "add_spacer",
+      "add_stage",
+      "add_staging_container",
+      "add_stair_series",
+      "add_static_texture",
+      "add_stem_series",
+      "add_string_value",
+      "add_subplots",
+      "add_synced_tables",
+      "add_tab",
+      "add_tab_bar",
+      "add_tab_button",
+      "add_table",
+      "add_table_cell",
+      "add_table_column",
+      "add_table_row",
+      "add_template_registry",
+      "add_text",
+      "add_text_point",
+      "add_texture_registry",
+      "add_theme",
+      "add_theme_color",
+      "add_theme_component",
+      "add_theme_style",
+      "add_time_picker",
+      "add_toggled_open_handler",
+      "add_tooltip",
+      "add_tree_node",
+      "add_value_registry",
+      "add_viewport_drawlist",
+      "add_viewport_menu_bar",
+      "add_visible_handler",
+      "add_vline_series",
+      "add_window"
+    ],
+    "only_in_generated_m_classes": [
+      "add_2d_histogram_series",
+      "add_3d_slider",
+      "add_activated_handler",
+      "add_active_handler",
+      "add_area_series",
+      "add_axis_tag",
+      "add_bar_group_series",
+      "add_bar_series",
+      "add_bool_value",
+      "add_candle_series",
+      "add_char_remap",
+      "add_checkbox",
+      "add_child",
+      "add_child_window",
+      "add_clicked_handler",
+      "add_clipper",
+      "add_collapsing_header",
+      "add_color_button",
+      "add_color_edit",
+      "add_color_picker",
+      "add_color_value",
+      "add_colormap",
+      "add_colormap_button",
+      "add_colormap_registry",
+      "add_colormap_scale",
+      "add_colormap_slider",
+      "add_combo",
+      "add_custom_series",
+      "add_date_picker",
+      "add_deactivated_after_edit_handler",
+      "add_deactivated_handler",
+      "add_digital_series",
+      "add_double4_value",
+      "add_double_value",
+      "add_drag_double",
+      "add_drag_doublex",
+      "add_drag_float",
+      "add_drag_floatx",
+      "add_drag_int",
+      "add_drag_intx",
+      "add_drag_line",
+      "add_drag_payload",
+      "add_drag_point",
+      "add_drag_rect",
+      "add_draw_layer",
+      "add_draw_node",
+      "add_drawlist",
+      "add_dummy",
+      "add_dynamic_texture",
+      "add_edited_handler",
+      "add_error_series",
+      "add_file_dialog",
+      "add_file_extension",
+      "add_filter_set",
+      "add_float4_value",
+      "add_float_value",
+      "add_float_vect_value",
+      "add_focus_handler",
+      "add_font",
+      "add_font_chars",
+      "add_font_range",
+      "add_font_range_hint",
+      "add_group",
+      "add_handler_registry",
+      "add_heat_series",
+      "add_histogram_series",
+      "add_hline_series",
+      "add_hover_handler",
+      "add_image",
+      "add_image_button",
+      "add_image_series",
+      "add_inf_line_series",
+      "add_input_double",
+      "add_input_doublex",
+      "add_input_float",
+      "add_input_floatx",
+      "add_input_int",
+      "add_input_intx",
+      "add_int4_value",
+      "add_int_value",
+      "add_item_activated_handler",
+      "add_item_active_handler",
+      "add_item_clicked_handler",
+      "add_item_deactivated_after_edit_handler",
+      "add_item_deactivated_handler",
+      "add_item_double_clicked_handler",
+      "add_item_edited_handler",
+      "add_item_focus_handler",
+      "add_item_handler_registry",
+      "add_item_hover_handler",
+      "add_item_resize_handler",
+      "add_item_scroll_handler",
+      "add_item_toggled_open_handler",
+      "add_item_visible_handler",
+      "add_key_down_handler",
+      "add_key_press_handler",
+      "add_key_release_handler",
+      "add_knob_float",
+      "add_line_series",
+      "add_listbox",
+      "add_loading_indicator",
+      "add_menu_item",
+      "add_mouse_click_handler",
+      "add_mouse_double_click_handler",
+      "add_mouse_down_handler",
+      "add_mouse_drag_handler",
+      "add_mouse_move_handler",
+      "add_mouse_release_handler",
+      "add_mouse_wheel_handler",
+      "add_node_attribute",
+      "add_pie_series",
+      "add_plot_annotation",
+      "add_plot_legend",
+      "add_progress_bar",
+      "add_radio_button",
+      "add_raw_texture",
+      "add_resize_handler",
+      "add_scatter_series",
+      "add_selectable",
+      "add_separator",
+      "add_series_value",
+      "add_shade_series",
+      "add_simple_plot",
+      "add_slider_double",
+      "add_slider_doublex",
+      "add_slider_float",
+      "add_slider_floatx",
+      "add_slider_int",
+      "add_slider_intx",
+      "add_spacer",
+      "add_stage",
+      "add_staging_container",
+      "add_stair_series",
+      "add_static_texture",
+      "add_stem_series",
+      "add_string_value",
+      "add_subplots",
+      "add_synced_tables",
+      "add_tab",
+      "add_tab_bar",
+      "add_tab_button",
+      "add_table_cell",
+      "add_template_registry",
+      "add_text",
+      "add_text_point",
+      "add_texture_registry",
+      "add_theme_color",
+      "add_theme_style",
+      "add_time_picker",
+      "add_toggled_open_handler",
+      "add_tooltip",
+      "add_tree_node",
+      "add_value_registry",
+      "add_viewport_drawlist",
+      "add_viewport_menu_bar",
+      "add_visible_handler",
+      "add_vline_series"
+    ],
+    "only_in_items_py": [
+      "add_button",
+      "add_font_registry",
+      "add_input_text",
+      "add_menu",
+      "add_menu_bar",
+      "add_node",
+      "add_node_editor",
+      "add_node_link",
+      "add_plot",
+      "add_plot_axis",
+      "add_table",
+      "add_table_column",
+      "add_table_row",
+      "add_theme",
+      "add_theme_component",
+      "add_window"
+    ],
+    "api_dump": {
+      "status": "missing",
+      "expected_path_relative_to_repo": "scratch/dpg/dearpygui_api_dump.py",
+      "note": "Install checked-in dump to populate mountable_factory slice and classification_counts."
+    }
+  }
+}

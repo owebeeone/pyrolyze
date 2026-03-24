@@ -1,0 +1,617 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-03-24T14:50:13Z",
+  "mount_selectors": {
+    "pyside6": [
+      "action",
+      "central_widget",
+      "corner_widget",
+      "layout",
+      "menu",
+      "menu_bar",
+      "menu_widget",
+      "status_bar",
+      "title_bar_widget",
+      "viewport",
+      "widget"
+    ],
+    "tkinter": [
+      "grid",
+      "pack",
+      "pane",
+      "tab"
+    ],
+    "dearpygui": {
+      "note": "No DearPyGuiUiLibrary.mounts namespace; placement uses host move_item and UiWidgetSpec.mount_points on generated M_* classes where present.",
+      "mount_selector_count": 0
+    }
+  },
+  "dearpygui_factory_sets": {
+    "generated_m_classes_count": 157,
+    "items_py_count": 16,
+    "only_in_generated_m_classes": [
+      "add_2d_histogram_series",
+      "add_3d_slider",
+      "add_activated_handler",
+      "add_active_handler",
+      "add_area_series",
+      "add_axis_tag",
+      "add_bar_group_series",
+      "add_bar_series",
+      "add_bool_value",
+      "add_candle_series",
+      "add_char_remap",
+      "add_checkbox",
+      "add_child",
+      "add_child_window",
+      "add_clicked_handler",
+      "add_clipper",
+      "add_collapsing_header",
+      "add_color_button",
+      "add_color_edit",
+      "add_color_picker",
+      "add_color_value",
+      "add_colormap",
+      "add_colormap_button",
+      "add_colormap_registry",
+      "add_colormap_scale",
+      "add_colormap_slider",
+      "add_combo",
+      "add_custom_series",
+      "add_date_picker",
+      "add_deactivated_after_edit_handler",
+      "add_deactivated_handler",
+      "add_digital_series",
+      "add_double4_value",
+      "add_double_value",
+      "add_drag_double",
+      "add_drag_doublex",
+      "add_drag_float",
+      "add_drag_floatx",
+      "add_drag_int",
+      "add_drag_intx",
+      "add_drag_line",
+      "add_drag_payload",
+      "add_drag_point",
+      "add_drag_rect",
+      "add_draw_layer",
+      "add_draw_node",
+      "add_drawlist",
+      "add_dummy",
+      "add_dynamic_texture",
+      "add_edited_handler",
+      "add_error_series",
+      "add_file_dialog",
+      "add_file_extension",
+      "add_filter_set",
+      "add_float4_value",
+      "add_float_value",
+      "add_float_vect_value",
+      "add_focus_handler",
+      "add_font",
+      "add_font_chars",
+      "add_font_range",
+      "add_font_range_hint",
+      "add_group",
+      "add_handler_registry",
+      "add_heat_series",
+      "add_histogram_series",
+      "add_hline_series",
+      "add_hover_handler",
+      "add_image",
+      "add_image_button",
+      "add_image_series",
+      "add_inf_line_series",
+      "add_input_double",
+      "add_input_doublex",
+      "add_input_float",
+      "add_input_floatx",
+      "add_input_int",
+      "add_input_intx",
+      "add_int4_value",
+      "add_int_value",
+      "add_item_activated_handler",
+      "add_item_active_handler",
+      "add_item_clicked_handler",
+      "add_item_deactivated_after_edit_handler",
+      "add_item_deactivated_handler",
+      "add_item_double_clicked_handler",
+      "add_item_edited_handler",
+      "add_item_focus_handler",
+      "add_item_handler_registry",
+      "add_item_hover_handler",
+      "add_item_resize_handler",
+      "add_item_scroll_handler",
+      "add_item_toggled_open_handler",
+      "add_item_visible_handler",
+      "add_key_down_handler",
+      "add_key_press_handler",
+      "add_key_release_handler",
+      "add_knob_float",
+      "add_line_series",
+      "add_listbox",
+      "add_loading_indicator",
+      "add_menu_item",
+      "add_mouse_click_handler",
+      "add_mouse_double_click_handler",
+      "add_mouse_down_handler",
+      "add_mouse_drag_handler",
+      "add_mouse_move_handler",
+      "add_mouse_release_handler",
+      "add_mouse_wheel_handler",
+      "add_node_attribute",
+      "add_pie_series",
+      "add_plot_annotation",
+      "add_plot_legend",
+      "add_progress_bar",
+      "add_radio_button",
+      "add_raw_texture",
+      "add_resize_handler",
+      "add_scatter_series",
+      "add_selectable",
+      "add_separator",
+      "add_series_value",
+      "add_shade_series",
+      "add_simple_plot",
+      "add_slider_double",
+      "add_slider_doublex",
+      "add_slider_float",
+      "add_slider_floatx",
+      "add_slider_int",
+      "add_slider_intx",
+      "add_spacer",
+      "add_stage",
+      "add_staging_container",
+      "add_stair_series",
+      "add_static_texture",
+      "add_stem_series",
+      "add_string_value",
+      "add_subplots",
+      "add_synced_tables",
+      "add_tab",
+      "add_tab_bar",
+      "add_tab_button",
+      "add_table_cell",
+      "add_template_registry",
+      "add_text",
+      "add_text_point",
+      "add_texture_registry",
+      "add_theme_color",
+      "add_theme_style",
+      "add_time_picker",
+      "add_toggled_open_handler",
+      "add_tooltip",
+      "add_tree_node",
+      "add_value_registry",
+      "add_viewport_drawlist",
+      "add_viewport_menu_bar",
+      "add_visible_handler",
+      "add_vline_series"
+    ],
+    "only_in_items_py": [
+      "add_button",
+      "add_font_registry",
+      "add_input_text",
+      "add_menu",
+      "add_menu_bar",
+      "add_node",
+      "add_node_editor",
+      "add_node_link",
+      "add_plot",
+      "add_plot_axis",
+      "add_table",
+      "add_table_column",
+      "add_table_row",
+      "add_theme",
+      "add_theme_component",
+      "add_window"
+    ],
+    "interpretation": "Hand-written items.py binds core widgets (button, input_text, window) not represented as M_* FACTORY entries in generated_library.py; unified DPG adapters must consult both."
+  },
+  "child_policy_distribution": {
+    "pyside6": {
+      "none": 105
+    },
+    "tkinter": {
+      "none": 105
+    },
+    "note": "Current codegen sets ChildPolicy.NONE for all kinds; children attach via mount_points, not child_policy ordered/single."
+  },
+  "wave1_widget_spec_samples": {
+    "pyside6": {
+      "QPushButton": {
+        "kind": "QPushButton",
+        "mounted_type_name": "PySide6.QtWidgets.QPushButton",
+        "child_policy": "none",
+        "prop_count": 76,
+        "prop_modes": {
+          "CREATE_UPDATE": 57,
+          "CREATE_ONLY_REMOUNT": 1,
+          "READONLY": 18
+        },
+        "setter_kind_counts": {
+          "qt_property": 57
+        },
+        "mount_point_names": [
+          "action",
+          "layout",
+          "menu"
+        ],
+        "default_child_mount_point_name": "layout",
+        "default_attach_mount_point_names": [
+          "layout",
+          "menu",
+          "action"
+        ]
+      },
+      "QLineEdit": {
+        "kind": "QLineEdit",
+        "mounted_type_name": "PySide6.QtWidgets.QLineEdit",
+        "child_policy": "none",
+        "prop_count": 82,
+        "prop_modes": {
+          "CREATE_ONLY_REMOUNT": 8,
+          "CREATE_UPDATE": 56,
+          "READONLY": 18
+        },
+        "setter_kind_counts": {
+          "qt_property": 56
+        },
+        "mount_point_names": [
+          "action",
+          "layout"
+        ],
+        "default_child_mount_point_name": "layout",
+        "default_attach_mount_point_names": [
+          "layout",
+          "action"
+        ]
+      },
+      "QCheckBox": {
+        "kind": "QCheckBox",
+        "mounted_type_name": "PySide6.QtWidgets.QCheckBox",
+        "child_policy": "none",
+        "prop_count": 74,
+        "prop_modes": {
+          "CREATE_UPDATE": 55,
+          "CREATE_ONLY_REMOUNT": 1,
+          "READONLY": 18
+        },
+        "setter_kind_counts": {
+          "qt_property": 55
+        },
+        "mount_point_names": [
+          "action",
+          "layout"
+        ],
+        "default_child_mount_point_name": "layout",
+        "default_attach_mount_point_names": [
+          "layout",
+          "action"
+        ]
+      },
+      "QComboBox": {
+        "kind": "QComboBox",
+        "mounted_type_name": "PySide6.QtWidgets.QComboBox",
+        "child_policy": "none",
+        "prop_count": 78,
+        "prop_modes": {
+          "CREATE_ONLY_REMOUNT": 3,
+          "CREATE_UPDATE": 57,
+          "READONLY": 18
+        },
+        "setter_kind_counts": {
+          "qt_property": 57
+        },
+        "mount_point_names": [
+          "action",
+          "layout"
+        ],
+        "default_child_mount_point_name": "layout",
+        "default_attach_mount_point_names": [
+          "layout",
+          "action"
+        ]
+      },
+      "QSlider": {
+        "kind": "QSlider",
+        "mounted_type_name": "PySide6.QtWidgets.QSlider",
+        "child_policy": "none",
+        "prop_count": 75,
+        "prop_modes": {
+          "CREATE_UPDATE": 56,
+          "CREATE_ONLY_REMOUNT": 1,
+          "READONLY": 18
+        },
+        "setter_kind_counts": {
+          "qt_property": 56
+        },
+        "mount_point_names": [
+          "action",
+          "layout"
+        ],
+        "default_child_mount_point_name": "layout",
+        "default_attach_mount_point_names": [
+          "layout",
+          "action"
+        ]
+      },
+      "QMainWindow": {
+        "kind": "QMainWindow",
+        "mounted_type_name": "PySide6.QtWidgets.QMainWindow",
+        "child_policy": "none",
+        "prop_count": 71,
+        "prop_modes": {
+          "CREATE_ONLY_REMOUNT": 2,
+          "CREATE_UPDATE": 51,
+          "READONLY": 18
+        },
+        "setter_kind_counts": {
+          "qt_property": 51
+        },
+        "mount_point_names": [
+          "action",
+          "central_widget",
+          "layout",
+          "menu_bar",
+          "menu_widget",
+          "status_bar"
+        ],
+        "default_child_mount_point_name": "layout",
+        "default_attach_mount_point_names": [
+          "menu_bar",
+          "status_bar",
+          "layout",
+          "central_widget",
+          "action",
+          "menu_widget"
+        ]
+      },
+      "QGridLayout": {
+        "kind": "QGridLayout",
+        "mounted_type_name": "PySide6.QtWidgets.QGridLayout",
+        "child_policy": "none",
+        "prop_count": 7,
+        "prop_modes": {
+          "CREATE_ONLY_REMOUNT": 1,
+          "CREATE_UPDATE": 6
+        },
+        "setter_kind_counts": {
+          "qt_property": 6
+        },
+        "mount_point_names": [
+          "layout",
+          "menu_bar",
+          "widget"
+        ],
+        "default_child_mount_point_name": "layout",
+        "default_attach_mount_point_names": [
+          "menu_bar"
+        ]
+      },
+      "QScrollArea": {
+        "kind": "QScrollArea",
+        "mounted_type_name": "PySide6.QtWidgets.QScrollArea",
+        "child_policy": "none",
+        "prop_count": 73,
+        "prop_modes": {
+          "CREATE_ONLY_REMOUNT": 1,
+          "CREATE_UPDATE": 53,
+          "READONLY": 19
+        },
+        "setter_kind_counts": {
+          "qt_property": 53
+        },
+        "mount_point_names": [
+          "action",
+          "corner_widget",
+          "layout",
+          "viewport",
+          "widget"
+        ],
+        "default_child_mount_point_name": "layout",
+        "default_attach_mount_point_names": [
+          "widget",
+          "viewport",
+          "layout",
+          "action",
+          "corner_widget"
+        ]
+      },
+      "QTabWidget": {
+        "kind": "QTabWidget",
+        "mounted_type_name": "PySide6.QtWidgets.QTabWidget",
+        "child_policy": "none",
+        "prop_count": 73,
+        "prop_modes": {
+          "CREATE_ONLY_REMOUNT": 2,
+          "CREATE_UPDATE": 53,
+          "READONLY": 18
+        },
+        "setter_kind_counts": {
+          "qt_property": 53
+        },
+        "mount_point_names": [
+          "action",
+          "corner_widget",
+          "layout"
+        ],
+        "default_child_mount_point_name": "layout",
+        "default_attach_mount_point_names": [
+          "layout",
+          "action",
+          "corner_widget"
+        ]
+      }
+    },
+    "tkinter": {
+      "ttk_Button": {
+        "kind": "ttk_Button",
+        "mounted_type_name": "tkinter.ttk.Button",
+        "child_policy": "none",
+        "prop_count": 13,
+        "prop_modes": {
+          "CREATE_UPDATE": 13
+        },
+        "setter_kind_counts": {
+          "tk_config": 13
+        },
+        "mount_point_names": [],
+        "default_child_mount_point_name": null,
+        "default_attach_mount_point_names": []
+      },
+      "ttk_Entry": {
+        "kind": "ttk_Entry",
+        "mounted_type_name": "tkinter.ttk.Entry",
+        "child_policy": "none",
+        "prop_count": 18,
+        "prop_modes": {
+          "CREATE_UPDATE": 18
+        },
+        "setter_kind_counts": {
+          "tk_config": 18
+        },
+        "mount_point_names": [],
+        "default_child_mount_point_name": null,
+        "default_attach_mount_point_names": []
+      },
+      "ttk_Checkbutton": {
+        "kind": "ttk_Checkbutton",
+        "mounted_type_name": "tkinter.ttk.Checkbutton",
+        "child_policy": "none",
+        "prop_count": 17,
+        "prop_modes": {
+          "CREATE_ONLY_REMOUNT": 1,
+          "CREATE_UPDATE": 16
+        },
+        "setter_kind_counts": {
+          "tk_config": 16
+        },
+        "mount_point_names": [],
+        "default_child_mount_point_name": null,
+        "default_attach_mount_point_names": []
+      },
+      "Combobox": {
+        "kind": "Combobox",
+        "mounted_type_name": "tkinter.ttk.Combobox",
+        "child_policy": "none",
+        "prop_count": 22,
+        "prop_modes": {
+          "CREATE_ONLY_REMOUNT": 1,
+          "CREATE_UPDATE": 21
+        },
+        "setter_kind_counts": {
+          "tk_config": 21
+        },
+        "mount_point_names": [],
+        "default_child_mount_point_name": null,
+        "default_attach_mount_point_names": []
+      },
+      "ttk_Scale": {
+        "kind": "ttk_Scale",
+        "mounted_type_name": "tkinter.ttk.Scale",
+        "child_policy": "none",
+        "prop_count": 11,
+        "prop_modes": {
+          "CREATE_ONLY_REMOUNT": 1,
+          "CREATE_UPDATE": 10
+        },
+        "setter_kind_counts": {
+          "tk_config": 10
+        },
+        "mount_point_names": [],
+        "default_child_mount_point_name": null,
+        "default_attach_mount_point_names": []
+      },
+      "ttk_Frame": {
+        "kind": "ttk_Frame",
+        "mounted_type_name": "tkinter.ttk.Frame",
+        "child_policy": "none",
+        "prop_count": 8,
+        "prop_modes": {
+          "CREATE_UPDATE": 8
+        },
+        "setter_kind_counts": {
+          "tk_config": 8
+        },
+        "mount_point_names": [
+          "grid",
+          "pack"
+        ],
+        "default_child_mount_point_name": "pack",
+        "default_attach_mount_point_names": [
+          "pack"
+        ]
+      },
+      "tkinter_Frame": {
+        "kind": "tkinter_Frame",
+        "mounted_type_name": "tkinter.Frame",
+        "child_policy": "none",
+        "prop_count": 19,
+        "prop_modes": {
+          "CREATE_UPDATE": 19
+        },
+        "setter_kind_counts": {
+          "tk_config": 19
+        },
+        "mount_point_names": [
+          "grid",
+          "pack"
+        ],
+        "default_child_mount_point_name": "pack",
+        "default_attach_mount_point_names": [
+          "pack"
+        ]
+      }
+    }
+  },
+  "advertise_mount_container_rule": {
+    "source": "runtime/context.py advertise_mount()",
+    "rule": "Parent slot must have expects_native_root or committed_native_root True.",
+    "mechanism": "_NativeContainerCallHandle and _PyrolyzeContainerCallHandle set expects_native_root while native container helper runs; author must emit exactly one root UIElement.",
+    "implication": "advertise_mount is valid inside call_native(UIElement) container components, not arbitrary leaf widgets."
+  },
+  "window_shell_sketch": {
+    "qt": {
+      "primary_types": [
+        "QMainWindow",
+        "QWidget",
+        "QDialog"
+      ],
+      "notes": "QApplication single process; Toplevel-style behavior via QDialog or secondary QMainWindow."
+    },
+    "tkinter": {
+      "primary_types": [
+        "tkinter.Tk",
+        "tkinter.Toplevel"
+      ],
+      "notes": "Root is Tk; extra windows are Toplevel; maps to ReactiveRootWindowProxy.md."
+    },
+    "dearpygui": {
+      "primary_types": [
+        "viewport (global)",
+        "add_window",
+        "add_child_window"
+      ],
+      "notes": "DpgWindowItem uses add_window; viewport menu bar is separate from per-window chrome; reconcile with proxy registry.",
+      "handwritten_item_factories": [
+        "add_button",
+        "add_font_registry",
+        "add_input_text",
+        "add_menu",
+        "add_menu_bar",
+        "add_node",
+        "add_node_editor",
+        "add_node_link",
+        "add_plot",
+        "add_plot_axis",
+        "add_table",
+        "add_table_column",
+        "add_table_row",
+        "add_theme",
+        "add_theme_component",
+        "add_window"
+      ]
+    }
+  }
+}
