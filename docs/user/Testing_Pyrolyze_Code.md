@@ -25,6 +25,10 @@ Use more than one test layer.
   - `tests/test_visitor_context_graph_integrated.py`
 - example host tests
   - `tests/test_examples_grid_app.py`
+- dynamic mount and mount-advert behavior
+  - many scenarios use `pyrolyze.testing.generic_backend` to generate minimal
+    `@pyrolyze` component APIs for tests; see
+    [../contributor/Generic_Backend_Testing.md](../contributor/Generic_Backend_Testing.md)
 
 ## Versioned Python runs
 

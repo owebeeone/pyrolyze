@@ -12,6 +12,12 @@ Defined in `src/pyrolyze/api.py` (see `__all__` for the authoritative list):
 - `keyed`
 - `KeyedIterable`
 - `mount`
+- `mount_key` (builds a `MountKeySelector` for advert and `mount(...)` keys)
+- `advertise_mount` (publish a stable public mount key mapped to internal selectors)
+- `MountKeySelector`
+- `PyrolyzeMountAdvertisement` (resolved advert attached in the emitted tree)
+- `PyrolyzeMountAdvertisementRequest` (author-time request returned by the stub;
+  lowered when compiling `@pyrolyze` code)
 - `UIElement`
 - `MountDirective`
 - `MountSelector`
