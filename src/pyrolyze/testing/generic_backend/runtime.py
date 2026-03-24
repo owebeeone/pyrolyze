@@ -185,10 +185,16 @@ class GeneratedPyroMountable:
     ) -> None:
         mount_spec = self._mount_spec(mount_name)
         child, resolved_values = _resolve_mount_call(mount_spec, call_args, call_kwargs)
-        self._validate_child(mount_spec, child)
         bucket_key = _bucket_key(mount_spec, resolved_values)
-        bucket_values = _bucket_values(mount_spec, resolved_values)
         bucket_map = self._pyro_mounts[mount_name]
+        if child is None:
+            if bucket_key not in bucket_map:
+                return
+            bucket_map.pop(bucket_key, None)
+            self._update_generation()
+            return
+        self._validate_child(mount_spec, child)
+        bucket_values = _bucket_values(mount_spec, resolved_values)
         existing = bucket_map.get(bucket_key)
         if (
             existing is not None
@@ -266,18 +272,25 @@ def _resolve_mount_call(
     mount_spec: MountSpec,
     call_args: tuple[Any, ...],
     call_kwargs: Mapping[str, Any],
-) -> tuple[GeneratedPyroMountable, dict[str, Any]]:
+) -> tuple[GeneratedPyroMountable | None, dict[str, Any]]:
     if not call_args:
         raise TypeError(f"mount {mount_spec.name!r} requires a child value")
     if isinstance(call_args[0], GeneratedPyroMountable):
         child = call_args[0]
         param_args = call_args[1:]
+    elif call_args[0] is None:
+        child = None
+        param_args = call_args[1:]
     else:
         last = call_args[-1]
-        if not isinstance(last, GeneratedPyroMountable):
-            raise TypeError(f"mount {mount_spec.name!r} requires a child value")
-        child = last
-        param_args = call_args[:-1]
+        if last is None:
+            child = None
+            param_args = call_args[:-1]
+        else:
+            if not isinstance(last, GeneratedPyroMountable):
+                raise TypeError(f"mount {mount_spec.name!r} requires a child value")
+            child = last
+            param_args = call_args[:-1]
     resolved_values = {
         param.name: value for param, value in zip(mount_spec.params, param_args)
     }
