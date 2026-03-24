@@ -145,8 +145,8 @@ itself.
 
 ### 3. Adapter naming rules
 
-- **One module or package per toolkit** under a shared namespace, e.g.
-  `pyrolyze.unified.native.qt`, `...tk`, `...dpg` (exact package layout TBD).
+- **Package (implemented):** `pyrolyze.unified` under `src/pyrolyze/unified/`, with
+  modules `qt.py`, `tk.py`, `dpg.py`, `factory.py`, and `base.py`.
 - **Mandatory:** For every unified operation, the three concrete classes expose
   the **same method names** (and roughly the same signatures on the shared
   parameters) with documented differences on extras.
@@ -177,13 +177,13 @@ generated `*UiLibrary` (for `call_native`, `*.mounts.*`, kinds).
 - **Extension:** optional `qt=`, `tk=`, `dpg=` passthrough bags can live on the
   base API without duplicating module-level function sprawl.
 
-**Selection (illustrative; names TBD):**
+**Selection (implemented):**
 
-- Read e.g. `PYROLYZE_UNIFIED_BACKEND` / `PYROLYZE_BACKEND` (exact name to be
-  chosen once) with values such as `qt`, `tk`, `dpg`.
-- CLI wrappers may set the same variable or call a small
-  `get_unified_native_library(backend: str | None = None)` factory that
-  defaults to the env var.
+- Environment variable **`PYROLYZE_UNIFIED_BACKEND`**: values `qt` (default), `tk`,
+  `dpg` (case-insensitive; stripped).
+- **`get_unified_native_library(backend=None)`** in `pyrolyze.unified`: uses
+  the env var when ``backend`` is omitted; explicit ``backend`` overrides env.
+- CLI entrypoints may set the same variable before import.
 
 Authors type against the **base** / protocol; tests can inject a fake subclass
 without importing Qt.
@@ -346,10 +346,9 @@ Exact hook implementation is **TBD**; until it lands, **keep using**
 
 ## Open Questions
 
-- Package name and import path (`pyrolyze.unified` vs extending
-  `pyrolyze.backends`)—pick one tree and avoid duplicate entry points.
-- Exact **env var / CLI** names and enum values for backend selection; whether
-  selection is **once per process** only or ever rebound after import.
+- Whether selection may be **rebound** after first `get_unified_native_library`
+  call (today: factory returns a **new** instance each time; no global singleton).
+- **CLI** flag naming in apps that wrap PyRolyze (library only defines env + API).
 - How the **PyRolyze import hook** is enabled automatically for **`pytest`** runs
   from the project **`.venv`** (implementation TBD; see § Tests, layout, and
   `.venv` import hook).

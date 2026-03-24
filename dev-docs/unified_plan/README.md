@@ -20,10 +20,9 @@ design prose—link back to the parent docs.
 
 - **Canonical mount keys** — spec and reference layouts (Widget Reconcile Phase 2;
   not finished until `MountKeys.md` or equivalent exists).
-- **Unified package layout** — import path decision (`pyrolyze.unified` vs under
-  `backends/`); **abstract base + concrete adapter classes** per toolkit (same
-  method names as `*UiLibrary`); runtime backend via **env var / CLI** (see
-  `UnifiedMountBasedNativeApi.md` § 4).
+- **Unified package** — `pyrolyze.unified` (`src/pyrolyze/unified/`): base +
+  `QtUnifiedNativeLibrary` / `TkUnifiedNativeLibrary` / `DpgUnifiedNativeLibrary`,
+  `get_unified_native_library()`, env `PYROLYZE_UNIFIED_BACKEND` (default `qt`).
 - **App context policy keys** — theme / density / typography; readers only on
   create/update paths (not mount resolution).
 - **Window proxy** — shell lifetime; `dev-docs/ReactiveRootWindowProxy.md`.
