@@ -22,3 +22,11 @@ class TkUnifiedNativeLibrary(UnifiedNativeLibrary):
     def push_button(self, *, text: str = "", **props: Any) -> UIElement:
         merged = {"text": text, **props}
         return UIElement(kind="ttk_Button", props=merged)
+
+    def toggle(self, *, checked: bool = False, text: str = "", **props: Any) -> UIElement:
+        merged = {"text": text, "checked": checked, **props}
+        return UIElement(kind="ttk_Checkbutton", props=merged)
+
+    def text_field(self, *, text: str = "", **props: Any) -> UIElement:
+        merged = {"text": text, **props}
+        return UIElement(kind="ttk_Entry", props=merged)

@@ -25,6 +25,14 @@ class UnifiedNativeLibrary(ABC):
     def push_button(self, *, text: str = "", **props: Any) -> UIElement:
         """Primary click target; maps to toolkit-specific kind and props."""
 
+    @abstractmethod
+    def toggle(self, *, checked: bool = False, text: str = "", **props: Any) -> UIElement:
+        """Boolean control (checkbox semantics)."""
+
+    @abstractmethod
+    def text_field(self, *, text: str = "", **props: Any) -> UIElement:
+        """Single-line text entry; ``text`` is the initial / bound value string."""
+
     def label(self, *, text: str) -> UIElement:
         """Shared helper; same ``UIElement`` shape on every backend."""
         return Label(text=text)

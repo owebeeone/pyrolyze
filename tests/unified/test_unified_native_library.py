@@ -85,3 +85,30 @@ def test_label_shared_across_backends() -> None:
         el = lib.label(text="Hi")
         assert el.kind == "Label"
         assert el.props == {"text": "Hi"}
+
+
+def test_qt_toggle_and_text_field() -> None:
+    lib = QtUnifiedNativeLibrary()
+    assert lib.toggle(checked=True, text="On") == UIElement(
+        kind="QCheckBox",
+        props={"text": "On", "checked": True},
+    )
+    assert lib.text_field(text="x") == UIElement(kind="QLineEdit", props={"text": "x"})
+
+
+def test_tk_toggle_and_text_field() -> None:
+    lib = TkUnifiedNativeLibrary()
+    assert lib.toggle(text="x", checked=False) == UIElement(
+        kind="ttk_Checkbutton",
+        props={"text": "x", "checked": False},
+    )
+    assert lib.text_field(text="ab") == UIElement(kind="ttk_Entry", props={"text": "ab"})
+
+
+def test_dpg_toggle_and_text_field() -> None:
+    lib = DpgUnifiedNativeLibrary()
+    assert lib.toggle(checked=True, text="L") == UIElement(
+        kind="DpgCheckbox",
+        props={"label": "L", "value": True},
+    )
+    assert lib.text_field(text="hi") == UIElement(kind="DpgInputText", props={"value": "hi"})

@@ -25,3 +25,16 @@ class DpgUnifiedNativeLibrary(UnifiedNativeLibrary):
         if text:
             merged["label"] = text
         return UIElement(kind="DpgButton", props=merged)
+
+    def toggle(self, *, checked: bool = False, text: str = "", **props: Any) -> UIElement:
+        merged = {**props}
+        if text:
+            merged["label"] = text
+        merged["value"] = checked
+        return UIElement(kind="DpgCheckbox", props=merged)
+
+    def text_field(self, *, text: str = "", **props: Any) -> UIElement:
+        merged = {**props}
+        if text:
+            merged["value"] = text
+        return UIElement(kind="DpgInputText", props=merged)

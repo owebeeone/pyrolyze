@@ -22,3 +22,11 @@ class QtUnifiedNativeLibrary(UnifiedNativeLibrary):
     def push_button(self, *, text: str = "", **props: Any) -> UIElement:
         merged = {"text": text, **props}
         return UIElement(kind="QPushButton", props=merged)
+
+    def toggle(self, *, checked: bool = False, text: str = "", **props: Any) -> UIElement:
+        merged = {"text": text, "checked": checked, **props}
+        return UIElement(kind="QCheckBox", props=merged)
+
+    def text_field(self, *, text: str = "", **props: Any) -> UIElement:
+        merged = {"text": text, **props}
+        return UIElement(kind="QLineEdit", props=merged)
