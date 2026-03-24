@@ -4,6 +4,7 @@
 "phase3_nested_factory.py" = "golden.phase3.nested_factory"
 "phase3_nested_method_factory.py" = "golden.phase3.nested_method_factory"
 "phase3_imported_aliases.py" = "golden.phase3.imported_aliases"
+"phase4_app_context_override.py" = "golden.phase4.app_context_override"
 "phase4_stats_panel.py" = "golden.phase4.stats_panel"
 "phase4_nested_grid.py" = "golden.phase4.nested_grid"
 "phase4_nested_pair_panel.py" = "golden.phase4.nested_pair_panel"

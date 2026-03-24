@@ -16,6 +16,7 @@ _REACTIVE_DECORATORS = {"pyrolyze", "reactive_component"}
 _SLOTTED_DECORATORS = {"pyrolyze_slotted"}
 _EVENT_HANDLER_TYPES = {"PyrolyzeHandler", "PyrolyteHandler"}
 _MOUNT_HELPERS = {"mount"}
+_APP_CONTEXT_OVERRIDE_HELPER = "app_context_override"
 _CALLABLE_KIND_COMPONENT_REF = "component_ref"
 _CALLABLE_KIND_SLOT_CALLABLE = "slot_callable"
 _CALLABLE_KIND_PLAIN_CALLABLE = "plain_callable"
@@ -697,6 +698,15 @@ def _lower_container_with(statement: ast.With, *, state: _LoweringState) -> list
             call=context_expr,
             state=state,
         )
+    if _is_app_context_override_call(context_expr):
+        return _lower_app_context_override_with(
+            statement,
+            slot_index=slot_index,
+            slot_name=slot_name,
+            slot_setup=slot_setup,
+            call=context_expr,
+            state=state,
+        )
     if not _is_container_candidate_call(context_expr, state=state):
         raise error_from_node(
             statement,
@@ -849,6 +859,79 @@ def _lower_mount_with(
         ]
     )
     lowered = ast.If(test=guard, body=[directive_with], orelse=[])
+    return [*slot_setup, copy_reason_location(lowered, statement)]
+
+
+def _lower_app_context_override_with(
+    statement: ast.With,
+    *,
+    slot_index: int,
+    slot_name: ast.expr,
+    slot_setup: list[ast.stmt],
+    call: ast.Call,
+    state: _LoweringState,
+) -> list[ast.stmt]:
+    if call.keywords:
+        raise error_from_node(
+            statement,
+            code="PYR-E-APP-CONTEXT-OVERRIDE-KEYWORDS",
+            message="app_context_override[...] accepts override values as positional arguments only",
+            module_name=state.module_name,
+            suggested_fix="pass_override_values_positionally",
+        )
+
+    keys = _app_context_override_key_exprs(call, state=state, error_node=statement)
+    has_starred_args = any(isinstance(arg, ast.Starred) for arg in call.args)
+    if not has_starred_args and len(call.args) != len(keys):
+        raise error_from_node(
+            statement,
+            code="PYR-E-APP-CONTEXT-OVERRIDE-ARITY",
+            message="app_context_override[...] requires the same number of values as fixed keys",
+            module_name=state.module_name,
+            suggested_fix="match_override_key_value_arity",
+        )
+
+    override_ctx_name = _context_name_for_slot(slot_index)
+    child_state = state.child(context_name=override_ctx_name)
+    lowered_body = _lower_block(statement.body, state=child_state)
+    keys_tuple = ast.Tuple(elts=[copy.deepcopy(key) for key in keys], ctx=ast.Load())
+    override_with = ast.With(
+        items=[
+            ast.withitem(
+                context_expr=ast.Call(
+                    func=ast.Attribute(
+                        value=state.context_ref(),
+                        attr="open_app_context_override",
+                        ctx=ast.Load(),
+                    ),
+                    args=[
+                        slot_name,
+                        keys_tuple,
+                        *copy.deepcopy(call.args),
+                    ],
+                    keywords=[],
+                ),
+                optional_vars=ast.Name(id=override_ctx_name, ctx=ast.Store()),
+            )
+        ],
+        body=lowered_body or [ast.Pass()],
+    )
+    guard = _or_expression(
+        [
+            _dirty_expr_for_value(call, state.dirty_by_name),
+            _dirty_expr_for_statements(statement.body, state.dirty_by_name),
+            ast.Call(
+                func=ast.Attribute(
+                    value=state.context_ref(),
+                    attr="visit_slot_and_dirty",
+                    ctx=ast.Load(),
+                ),
+                args=[slot_name],
+                keywords=[],
+            ),
+        ]
+    )
+    lowered = ast.If(test=guard, body=[override_with], orelse=[])
     return [*slot_setup, copy_reason_location(lowered, statement)]
 
 
@@ -2100,6 +2183,8 @@ def _callable_kind_for_name(name: str, *, state: _LoweringState) -> str | None:
 
 
 def _is_pyrolyze_sensitive_call(call: ast.Call, *, state: _LoweringState) -> bool:
+    if _is_app_context_override_call(call):
+        return True
     call_name = _call_name(call)
     if call_name is None:
         return False
@@ -2117,6 +2202,56 @@ def _is_container_candidate_call(call: ast.Call, *, state: _LoweringState) -> bo
 def _is_mount_call(call: ast.Call, *, state: _LoweringState) -> bool:
     call_name = _call_name(call)
     return call_name is not None and call_name in state.mount_helper_names
+
+
+def _is_app_context_override_call(call: ast.Call) -> bool:
+    if not isinstance(call.func, ast.Subscript):
+        return False
+    return _call_qualified_name(call.func.value) == _APP_CONTEXT_OVERRIDE_HELPER
+
+
+def _app_context_override_key_exprs(
+    call: ast.Call,
+    *,
+    state: _LoweringState,
+    error_node: ast.AST,
+) -> tuple[ast.expr, ...]:
+    if not isinstance(call.func, ast.Subscript):
+        raise error_from_node(
+            error_node,
+            code="PYR-E-APP-CONTEXT-OVERRIDE-SHAPE",
+            message="app_context_override must be subscripted with one or more fixed keys",
+            module_name=state.module_name,
+            suggested_fix="use_app_context_override_with_fixed_keys",
+        )
+    slice_node = call.func.slice
+    raw_keys = tuple(slice_node.elts) if isinstance(slice_node, ast.Tuple) else (slice_node,)
+    if not raw_keys:
+        raise error_from_node(
+            error_node,
+            code="PYR-E-APP-CONTEXT-OVERRIDE-EMPTY",
+            message="app_context_override[...] requires at least one fixed key",
+            module_name=state.module_name,
+            suggested_fix="provide_one_or_more_fixed_keys",
+        )
+    invalid = next((expr for expr in raw_keys if not _is_static_app_context_key_expr(expr, state=state)), None)
+    if invalid is not None:
+        raise error_from_node(
+            invalid,
+            code="PYR-E-APP-CONTEXT-OVERRIDE-KEYS",
+            message="app_context_override[...] requires static key references like NAME, module.NAME, or Class.NAME",
+            module_name=state.module_name,
+            suggested_fix="replace_computed_key_with_static_reference",
+        )
+    return cast(tuple[ast.expr, ...], raw_keys)
+
+
+def _is_static_app_context_key_expr(expr: ast.expr, *, state: _LoweringState) -> bool:
+    if isinstance(expr, ast.Name):
+        return expr.id not in state.dirty_by_name
+    if isinstance(expr, ast.Attribute):
+        return _is_static_app_context_key_expr(cast(ast.expr, expr.value), state=state)
+    return False
 
 
 def _update_callable_kind_from_assignment(target: ast.expr, value: ast.AST, *, state: _LoweringState) -> None:

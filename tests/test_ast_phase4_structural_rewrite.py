@@ -320,6 +320,100 @@ def bad_panel(items):
         )
 
 
+def test_phase4_lowers_app_context_override_with_guarded_scope() -> None:
+    source = """
+from pyrolyze.api import app_context_override, pyrolyze
+
+THEME_KEY: object = object()
+LOCALE_KEY: object = object()
+
+def badge(text: str) -> None:
+    print(text)
+
+@pyrolyze
+def panel(theme: str, locale: str, show: bool) -> None:
+    with app_context_override[THEME_KEY, LOCALE_KEY](theme, locale):
+        badge("body")
+        if show:
+            badge("extra")
+"""
+
+    transformed = emit_transformed_source(
+        source,
+        module_name="example.phase4.app_context_override",
+        filename="/virtual/example/phase4/app_context_override.py",
+    )
+
+    assert "open_app_context_override(" in transformed
+    assert "visit_slot_and_dirty(__pyr_slot_1)" in transformed
+    assert "with __pyr_ctx.open_app_context_override(__pyr_slot_1, (THEME_KEY, LOCALE_KEY), theme, locale) as __pyr_ctx_slot_1:" in transformed
+    assert "if (__pyr_dirty_state.theme or __pyr_dirty_state.locale) or __pyr_dirty_state.show or __pyr_ctx.visit_slot_and_dirty(__pyr_slot_1):" in transformed
+    assert "badge('body')" in transformed
+    assert "badge('extra')" in transformed
+
+
+def test_phase4_rejects_app_context_override_with_as_in_render_scope() -> None:
+    source = """
+from pyrolyze.api import app_context_override, pyrolyze
+
+THEME_KEY: object = object()
+
+@pyrolyze
+def panel(theme: str) -> None:
+    with app_context_override[THEME_KEY](theme) as current:
+        print(current)
+"""
+
+    with pytest.raises(PyRolyzeCompileError, match="ordinary Python"):
+        emit_transformed_source(
+            source,
+            module_name="example.phase4.bad_app_context_override_as",
+            filename="/virtual/example/phase4/bad_app_context_override_as.py",
+        )
+
+
+def test_phase4_rejects_computed_app_context_override_keys() -> None:
+    source = """
+from pyrolyze.api import app_context_override, pyrolyze
+
+def build_key() -> object:
+    return object()
+
+@pyrolyze
+def panel(theme: str) -> None:
+    with app_context_override[build_key()](theme):
+        print(theme)
+"""
+
+    with pytest.raises(PyRolyzeCompileError, match="requires static key references"):
+        emit_transformed_source(
+            source,
+            module_name="example.phase4.bad_app_context_override_keys",
+            filename="/virtual/example/phase4/bad_app_context_override_keys.py",
+        )
+
+
+def test_phase4_rejects_app_context_override_arity_mismatch_without_splat() -> None:
+    source = """
+from pyrolyze.api import app_context_override, pyrolyze
+
+THEME_KEY: object = object()
+LOCALE_KEY: object = object()
+
+@pyrolyze
+def panel(theme: str) -> None:
+    with app_context_override[THEME_KEY, LOCALE_KEY](theme):
+        print(theme)
+"""
+
+    with pytest.raises(PyRolyzeCompileError, match="same number of values as fixed keys"):
+        emit_transformed_source(
+            source,
+            module_name="example.phase4.bad_app_context_override_arity",
+            filename="/virtual/example/phase4/bad_app_context_override_arity.py",
+        )
+
+
 def test_phase4_rejects_with_as_in_render_scope() -> None:
     source = """
 from pyrolyze.api import pyrolyze
