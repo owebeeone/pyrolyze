@@ -9,6 +9,8 @@ from typing import Any, Iterable, Mapping
 
 from frozendict import frozendict
 
+from pyrolyze.backends.model import MountReplayKind
+
 from .model import PyroArgs, PyroMountBucket, PyroMountEntry, PyroNode
 from .specs import MountInterfaceKind, MountSpec, NodeGenSpec, validate_node_specs
 
@@ -148,6 +150,24 @@ class GeneratedPyroMountable:
         bucket.objects.insert(index, child)
         self._update_generation()
 
+    def _ordered_insert_before(
+        self,
+        mount_name: str,
+        before: GeneratedPyroMountable | None,
+        child: GeneratedPyroMountable,
+    ) -> None:
+        mount_spec = self._mount_spec(mount_name)
+        self._validate_child(mount_spec, child)
+        bucket_map = self._pyro_mounts[mount_name]
+        bucket_key = PyroArgs()
+        bucket = bucket_map.setdefault(bucket_key, _LiveMountBucket(key=bucket_key, values=PyroArgs(), objects=[]))
+        bucket.objects = [existing for existing in bucket.objects if existing is not child]
+        index = len(bucket.objects)
+        if before is not None and before in bucket.objects:
+            index = bucket.objects.index(before)
+        bucket.objects.insert(index, child)
+        self._update_generation()
+
     def _ordered_sync(self, mount_name: str, children: Iterable[GeneratedPyroMountable]) -> None:
         mount_spec = self._mount_spec(mount_name)
         resolved_children = list(children)
@@ -222,7 +242,7 @@ def build_runtime_types(
         for mount in spec.mounts:
             if mount.interface is MountInterfaceKind.ORDERED:
                 namespace[f"add_{mount.name}"] = _make_add_method(mount.name)
-                namespace[f"insert_{mount.name}"] = _make_insert_method(mount.name)
+                namespace[f"insert_{mount.name}"] = _make_insert_method(mount)
                 namespace[f"sync_{_pluralize(mount.name)}"] = _make_sync_method(mount.name)
                 namespace[f"detach_{mount.name}"] = _make_detach_method(mount.name)
             else:
@@ -240,9 +260,19 @@ def _make_add_method(mount_name: str) -> Any:
     return add
 
 
-def _make_insert_method(mount_name: str) -> Any:
+def _make_insert_method(mount_spec: MountSpec) -> Any:
+    if mount_spec.replay_kind is MountReplayKind.ANCHOR_BEFORE:
+        def insert(
+            self: GeneratedPyroMountable,
+            before: GeneratedPyroMountable | None,
+            child: GeneratedPyroMountable,
+        ) -> None:
+            self._ordered_insert_before(mount_spec.name, before, child)
+
+        return insert
+
     def insert(self: GeneratedPyroMountable, index: int, child: GeneratedPyroMountable) -> None:
-        self._ordered_insert(mount_name, index, child)
+        self._ordered_insert(mount_spec.name, index, child)
 
     return insert
 

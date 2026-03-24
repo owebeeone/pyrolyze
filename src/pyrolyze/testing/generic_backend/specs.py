@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from pyrolyze.backends.model import TypeRef
+from pyrolyze.backends.model import MountReplayKind, TypeRef
 
 
 class MountInterfaceKind(StrEnum):
@@ -38,6 +38,8 @@ class MountSpec:
     interface: MountInterfaceKind = MountInterfaceKind.ORDERED
     params: tuple[MountParam, ...] = ()
     default: bool = False
+    replay_kind: MountReplayKind = MountReplayKind.NONE
+    prefer_sync: bool = False
 
 
 @dataclass(frozen=True, slots=True)

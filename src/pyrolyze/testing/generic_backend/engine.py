@@ -158,6 +158,8 @@ def _build_mount_point(
             place_method_name=f"insert_{mount.name}",
             append_method_name=f"add_{mount.name}",
             detach_method_name=f"detach_{mount.name}",
+            replay_kind=mount.replay_kind,
+            prefer_sync=mount.prefer_sync,
         )
     return MountPointSpec(
         name=mount.name,
@@ -165,6 +167,8 @@ def _build_mount_point(
         params=params,
         max_children=1,
         apply_method_name=f"set_{mount.name}",
+        replay_kind=mount.replay_kind,
+        prefer_sync=mount.prefer_sync,
     )
 
 
