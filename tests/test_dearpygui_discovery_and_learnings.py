@@ -10,12 +10,18 @@ from pyrolyze.backends.dearpygui.author_shape import (
 )
 from pyrolyze.backends.dearpygui.discovery import (
     classification_for,
+    dearpygui_default_dump_path,
     factory_to_kind_name,
     iter_canonical_mountables,
     load_dearpygui_dump,
 )
 from pyrolyze.backends.dearpygui.learnings import LEARNINGS, dearpygui_learning_key
 from pyrolyze.backends.model import UiWidgetLearning
+
+pytestmark = pytest.mark.skipif(
+    not dearpygui_default_dump_path().is_file(),
+    reason="requires checked-in DearPyGui dump under scratch/dpg",
+)
 
 
 def test_load_dearpygui_dump_default_path() -> None:

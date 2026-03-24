@@ -4,15 +4,23 @@ import importlib.util
 from pathlib import Path
 import sys
 
+import pytest
+
 from pyrolyze.api import UIElement
 from pyrolyze.backends.mountable_engine import MountableEngine, MountedMountableNode, MountableNodeKey
 from pyrolyze.testing import hydo
 
+GENERATED_HYDO_LIBRARY_PATH = Path(__file__).resolve().parents[1] / "scratch" / "generated_hydo_library.py"
+
+pytestmark = pytest.mark.skipif(
+    not GENERATED_HYDO_LIBRARY_PATH.is_file(),
+    reason="requires generated Hydo helper under scratch/",
+)
+
 
 def _load_generated_hydo_module():
     module_name = "generated_hydo_library_runtime_test"
-    module_path = Path(__file__).resolve().parents[1] / "scratch" / "generated_hydo_library.py"
-    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    spec = importlib.util.spec_from_file_location(module_name, GENERATED_HYDO_LIBRARY_PATH)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
