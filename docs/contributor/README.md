@@ -10,6 +10,8 @@ Start here:
 - [Diagnosing_AST_Regressions.md](Diagnosing_AST_Regressions.md)
 - [Tracing_And_Debugging.md](Tracing_And_Debugging.md)
 - [Backend_Generation_And_Learnings.md](Backend_Generation_And_Learnings.md)
+- [Generic_Backend_Testing.md](Generic_Backend_Testing.md) (minimal generated
+  UI libraries for mount and mount-advert tests)
 
 These docs are intentionally operational. They are meant to help with active
 maintenance, not just explain the architecture.

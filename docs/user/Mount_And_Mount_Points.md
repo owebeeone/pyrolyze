@@ -133,6 +133,69 @@ with mount(no_emit, some_selector):
     ...
 ```
 
+## Advertising mount points (`advertise_mount`)
+
+Backend mount selectors (`Qt.mounts.*`, `Tk.mounts.*`, …) are often detailed and
+backend-specific. A container component can **publish a stable public key** that
+maps to those internal selectors so callers use `with mount(public_key):`
+instead of importing your layout details.
+
+`advertise_mount(...)` declares that mapping for the **current native
+container** surface. It is a `@pyrolyze_slotted` helper: it compiles like other
+slotted calls and becomes part of the emitted tree as mount-advert metadata.
+
+**What you gain**
+
+- Callers depend on a **small, stable** name (string, enum-like value, or
+  `mount_key(...)`) rather than on internal grid indices or toolkit paths.
+- **`default=True`** marks which advert receives children when the caller uses
+  `with mount(default):` (see the generic-backend tests under
+  `tests/test_generic_backend_mount_advert_readable.py` for the routing shape).
+
+**Author-time shape**
+
+- Pass the public key as **`key=`** or **`name=`** (not both).
+- Pass internal selectors either as **`target=`** or as **positional** selector
+  arguments after the key—**not** both.
+- Optional **`default=`** (boolean) marks the default-routing advert for that
+  surface.
+
+Examples:
+
+```python
+advertise_mount("body", target=Qt.mounts.menu_bar, default=True)
+advertise_mount("sidebar", Qt.mounts.widget(row=0, column=1))
+```
+
+For non-string public keys, build a key value with `mount_key(...)` and use
+the same value in `with mount(...):`.
+
+**Call site**
+
+`advertise_mount(...)` must run in a context owned by a **native container** (the
+same class of owner that can emit native children). Invalid placement is rejected
+at runtime; see `tests/test_mount_advert_binding.py`.
+
+**PySide6 example** (public `"body"` mapped to the menu bar, then filled by the
+caller):
+
+```python
+#@pyrolyze
+from pyrolyze.api import advertise_mount, mount, pyrolyze
+from pyrolyze.backends.pyside6.generated_library import PySide6UiLibrary as Qt
+
+
+@pyrolyze
+def shell() -> None:
+    with Qt.CQMainWindow(windowTitle="Advert"):
+        advertise_mount("body", target=Qt.mounts.menu_bar, default=True)
+        with mount("body"):
+            Qt.CQMenuBar(objectName="main_menu")
+```
+
+Design background and graph behavior are described under `dev-docs/`
+(`MountAdvertsDagBuilder.md`, `mount_advert_plan/`).
+
 ## Relationship to generated UI libraries
 
 For native backends, `mount(...)` works with the generated library's mount
@@ -148,6 +211,8 @@ That is why the backend libraries expose both public component callables and
 ## Current scope
 
 - explicit `mount(...)` is part of the supported authored source surface
+- `advertise_mount(...)` is part of the supported authored source surface for
+  native containers
 - generated PySide6 mount coverage is broader than generated Tkinter coverage
 - generated Tkinter mount coverage currently centers on the families present in
   `TkinterUiLibrary`

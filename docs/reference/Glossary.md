@@ -14,6 +14,12 @@
   - a named backend attachment site that can receive emitted native children
 - mount selector
   - a runtime selector value consumed by `mount(...)` to choose a mount point
+- mount advertisement
+  - metadata published by `advertise_mount(...)` that maps a stable public key
+    to one or more internal mount selectors for a native container surface
+- default advert
+  - a mount advertisement marked with `default=True`, used when resolving
+    `with mount(default):` for children on that surface
 - loop item
   - a child context for one keyed loop item
 - render owner
