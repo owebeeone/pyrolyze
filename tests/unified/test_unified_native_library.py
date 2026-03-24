@@ -61,6 +61,25 @@ def test_qt_native_library_type() -> None:
     assert lib.native_library_type is PySide6UiLibrary
 
 
+def test_qt_mounts_delegates_to_ui_library() -> None:
+    from pyrolyze.backends.pyside6.generated_library import PySide6UiLibrary
+
+    lib = QtUnifiedNativeLibrary()
+    assert lib.mounts is PySide6UiLibrary.mounts
+
+
+def test_tk_mounts_delegates_to_ui_library() -> None:
+    from pyrolyze.backends.tkinter.generated_library import TkinterUiLibrary
+
+    lib = TkUnifiedNativeLibrary()
+    assert lib.mounts is TkinterUiLibrary.mounts
+
+
+def test_dpg_mounts_is_none() -> None:
+    lib = DpgUnifiedNativeLibrary()
+    assert lib.mounts is None
+
+
 def test_qt_push_button_kind() -> None:
     lib = QtUnifiedNativeLibrary()
     el = lib.push_button(text="OK")

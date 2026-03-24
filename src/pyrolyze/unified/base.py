@@ -21,6 +21,11 @@ class UnifiedNativeLibrary(ABC):
     def native_library_type(self) -> type[Any]:
         """Generated ``*UiLibrary`` class for this backend (for advanced use)."""
 
+    @property
+    def mounts(self) -> Any:
+        """Mount selector namespace from the generated ``*UiLibrary``, or ``None`` if absent."""
+        return getattr(self.native_library_type, "mounts", None)
+
     @abstractmethod
     def push_button(self, *, text: str = "", **props: Any) -> UIElement:
         """Primary click target; maps to toolkit-specific kind and props."""
