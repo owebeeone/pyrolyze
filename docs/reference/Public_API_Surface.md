@@ -36,6 +36,36 @@ Defined in `src/pyrolyze/api.py` (see `__all__` for the authoritative list):
 - `Label` (small `UIElement` helper)
 - `MISSING`, `MissingType` (sentinel for generated UI libraries)
 
+## Portable native surface (`pyrolyze.unified`)
+
+**Default path** for backend-agnostic control widgets: import
+`get_unified_native_library` (and optionally `mount_keys`, `context_keys`) from
+`pyrolyze.unified`. Method names and shared parameters are documented in
+[`Unified_Native_Methods.md`](Unified_Native_Methods.md). API version:
+`UNIFIED_NATIVE_API_VERSION`.
+
+- **`get_unified_native_library(backend=...)`** — returns a
+  `UnifiedNativeLibrary` for `qt` / `tk` / `dpg` without importing the other
+  backends.
+- **`pyrolyze.unified.context_keys`** — `UNIFIED_THEME`, `UNIFIED_DENSITY`,
+  `UNIFIED_TYPOGRAPHY` (`AppContextKey`) for subtree overrides; authors read
+  values and pass them into emitters or element props (mount code does not read
+  app context).
+
+**PySide6 structural chrome via unified package:** `pyrolyze.unified.qt.QtUx`
+(alias of `QtUnifiedNativeLibrary`) re-exports the same generated `CQ*` component
+refs and `mounts` as `PySide6UiLibrary`, so `with QtUx.CQMainWindow():` compiles
+without importing the generated library by name; use a `QtUnifiedNativeLibrary()`
+instance for `push_button` / `text_field` / … plus `call_native(UIElement)`.
+
+**Other backends:** Tk / DPG generated `*UiLibrary` classes remain the structural
+entry points until an equivalent re-export exists there.
+
+**Examples:** `examples/unified_hello_pyside6.py` (run via
+`examples/run_unified_hello_pyside6.py`); larger demo with unified buttons and
+fields: `examples/grid_app_unified.py` (run via
+`examples/run_grid_app_unified.py`).
+
 Hooks re-exported from `src/pyrolyze/hooks.py`:
 
 - `use_state`

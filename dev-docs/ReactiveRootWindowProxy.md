@@ -129,7 +129,8 @@ Rules to design explicitly:
 
 - **Proxy** = shell and lifetime; **mounts** = interior layout regions.
 - A window’s content root should still **advertise** canonical mount keys
-  (`body`, `chrome`, …) inside that window’s reconcile scope.
+  (`shell.body`, `shell.chrome`, … — see `dev-docs/MountKeys.md` and
+  `dev-docs/ReferenceShellLayout.md`) inside that window’s reconcile scope.
 - Widget adapters read **app context** inside the window subtree; they do not
   resolve mounts from context (unchanged rule from hierarchical context plan).
 
@@ -172,6 +173,8 @@ When this proposal is implemented, the following should hold:
 
 ## Cross-References
 
+- `dev-docs/ReferenceShellLayout.md` (canonical shell tree + per-backend selectors)
+- `dev-docs/MountKeys.md` (key constants table)
 - `dev-docs/UnifiedMountBasedNativeApi.md`
 - `dev-docs/WidgetReconcilePlan.md` (deliverables table links here)
 - `dev-docs/HierarchicalContextManagementPlan.md` (context boundaries)

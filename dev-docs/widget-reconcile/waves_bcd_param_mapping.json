@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "repo_note": "Shared parameters for Phase 4 Waves B–D unified methods (text/structure, chrome, layout helpers).",
+  "methods": {
+    "text_area": {
+      "shared": ["text", "read_only"],
+      "qt_props": ["plainText", "readOnly"],
+      "tk_props": ["text", "state", "height", "width", "wrap"],
+      "dpg_props": ["value", "multiline", "readonly"],
+      "notes": "Plain multiline only; rich text is out of scope. Tk uses kind Text with default height/width."
+    },
+    "static_text": {
+      "shared": ["text"],
+      "qt_props": ["text"],
+      "tk_props": ["text"],
+      "dpg_props": ["default_value"],
+      "notes": "Native static line; prefer portable label() for shared Label kind. DpgText uses default_value."
+    },
+    "menu_bar": {
+      "shared": [],
+      "qt_props": [],
+      "tk_props": ["tearoff"],
+      "dpg_props": [],
+      "notes": "Empty shell; Tk Menu uses tearoff=0."
+    },
+    "tool_bar": {
+      "shared": ["title"],
+      "qt_props": ["title"],
+      "tk_props": [],
+      "dpg_props": ["label", "horizontal"],
+      "notes": "Tk maps to ttk.Frame (title unused). DPG uses horizontal DpgGroup."
+    },
+    "separator": {
+      "shared": ["horizontal"],
+      "qt_props": ["frameShape", "frameShadow"],
+      "tk_props": ["orient"],
+      "dpg_props": [],
+      "notes": "DPG separator orientation is layout-driven; horizontal flag ignored on DPG."
+    },
+    "scroll_panel": {
+      "shared": [],
+      "qt_props": ["widgetResizable"],
+      "tk_props": ["width", "height", "background"],
+      "dpg_props": ["width", "height", "horizontal_scrollbar", "no_scrollbar"],
+      "notes": "Best-effort viewport: Tk Canvas, DPG DpgChildWindow with scroll flags."
+    },
+    "spacer": {
+      "shared": ["width", "height"],
+      "qt_props": ["minimumWidth", "maximumWidth", "minimumHeight", "maximumHeight"],
+      "tk_props": ["width", "height"],
+      "dpg_props": ["width", "height"],
+      "notes": "Qt uses QWidget with fixed min/max when dimensions > 0."
+    }
+  }
+}

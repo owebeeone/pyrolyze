@@ -8,7 +8,7 @@ import sysconfig
 from pathlib import Path
 
 PTH_FILENAME = "pyrolyze_import_hook.pth"
-PTH_LINE = "import pyrolyze.compiler.import_hook; pyrolyze.compiler.import_hook.install()\n"
+PTH_LINE = "import pyrolyze.import_hook; pyrolyze.import_hook.install_startup_import_hook()\n"
 
 
 def _purelib() -> Path:

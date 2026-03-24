@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "repo_note": "Canonical shared parameters for Wave A unified methods (Phase 1). Native prop names differ; adapters map these.",
+  "methods": {
+    "int_field": {
+      "shared": ["value", "min_value", "max_value", "step"],
+      "qt_props": ["value", "minimum", "maximum", "singleStep"],
+      "tk_props": ["text", "to", "increment"],
+      "dpg_props": ["value", "min_value", "max_value"],
+      "notes": "Tk uses tkinter_Spinbox with string text for current value; range via to + increment."
+    },
+    "float_field": {
+      "shared": ["value", "min_value", "max_value", "step"],
+      "qt_props": ["value", "minimum", "maximum", "singleStep"],
+      "tk_props": ["text", "to", "increment", "format"],
+      "dpg_props": ["value", "min_value", "max_value"],
+      "notes": "Tk float uses tkinter_Spinbox; format optional."
+    },
+    "combo_box": {
+      "shared": ["items", "current_index"],
+      "qt_props": ["items", "currentIndex"],
+      "tk_props": ["values"],
+      "dpg_props": ["items", "value"],
+      "notes": "Tk selection uses first value string; DPG value is selected item string."
+    },
+    "slider": {
+      "shared": ["value", "min_value", "max_value"],
+      "qt_props": ["value", "minimum", "maximum", "orientation"],
+      "tk_props": ["value", "from_", "to"],
+      "dpg_props": ["value", "min_value", "max_value"],
+      "notes": "DPG uses DpgSliderInt. Tk ttk.Scale uses from_/to + value."
+    },
+    "progress": {
+      "shared": ["value"],
+      "qt_props": ["value", "maximum"],
+      "tk_props": ["value", "maximum"],
+      "dpg_props": ["value"],
+      "notes": "Unified value is 0.0..1.0; Qt/Tk map to 0..maximum (default 100)."
+    },
+    "tab_stack": {
+      "shared": [],
+      "qt_props": [],
+      "tk_props": [],
+      "dpg_props": [],
+      "notes": "Empty props baseline; children mount via PyRolyze tree. DPG uses DpgTabBar (subset)."
+    },
+    "radio_button": {
+      "shared": ["text", "checked"],
+      "qt_props": ["text", "checked"],
+      "tk_props": ["text", "value"],
+      "dpg_props": ["label", "items", "value"],
+      "notes": "DPG radio uses items tuple + value string; single option uses items=(text,)."
+    }
+  }
+}

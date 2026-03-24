@@ -22,9 +22,23 @@ canonical **mount keys** with per-backend mapping recipes.
 Literal behavioral parity (edge cases, modality, threading, pixels) is **not**
 required; **identical API shape + a published behavior matrix** is.
 
+### Phase tracker
+
+| Phase | Status | Notes |
+| --- | --- | --- |
+| **0** — Scope and governance | **Done** | `unified_native_coverage.json`, `UNIFIED_NATIVE_API_VERSION`, open decisions resolved. |
+| **1** — Inventory and normalization | **Done (Wave A)** | `wave_a_param_mapping.json`; full per-widget `widget_catalog_unified.json` + DPG dump merge still optional/future. |
+| **2** — Mount points and shell | **Done** | `MountKeys.md`, `ReferenceShellLayout.md`, `pyrolyze.unified.mount_keys`, schema tests, cross-links, `tests/unified/e2e/test_reference_shell_layout.py` (Qt / Tk / DPG). |
+| **3** — Unified API design | **Done (Wave A)** | `docs/reference/Unified_Native_Methods.md`; typed `qt=` / `tk=` / `dpg=` bags and error policy still to tighten. |
+| **4** — Implementation waves | **Done (Waves A–D)** | `UnifiedNativeLibrary` through `spacer`; tests in `tests/unified/test_unified_native_library.py`; `waves_bcd_param_mapping.json`; coverage script updated. |
+| **5** — Testing and parity | **Done** | Emitter matrix + push_button smoke + mount-key routing (Qt/Tk/DPG); Tk ``MountableEngine`` skips on macOS when mixed with Qt; run ``tests/unified/`` on Linux CI for full Tk coverage. |
+| **6** — Policy and cutover | **Done** | `pyrolyze.unified.context_keys`; subtree override tests (`test_phase6_app_context.py`); `examples/unified_hello_pyside6.py`; `scripts/check_unified_drift.py` + AST drift test; `Public_API_Surface.md` unified section. |
+
 ---
 
 ## Phase 0 — Scope and governance
+
+**Status: Done**
 
 **Duration:** short if decisions are crisp; longer if the team debates every row.
 
@@ -68,9 +82,16 @@ Add **parameter parity class** per method:
   per native entry: unified bucket, triage, exclusion reason, primary backend
   reference (`kind` or factory name).
 
+**Implemented:** run `scripts/extract_widget_catalogs.py` then
+`scripts/build_unified_coverage.py` →
+`dev-docs/widget-reconcile/unified_native_coverage.json`. API version:
+`pyrolyze.unified.UNIFIED_NATIVE_API_VERSION`.
+
 ---
 
 ## Phase 1 — Mechanical inventory and normalization
+
+**Status: Done (Wave A deliverables)** — full per-entry constructor/mount schema file still future work.
 
 ### 1.1 Regenerate and extend extracts
 
@@ -108,6 +129,8 @@ version or sibling of `widget_catalog_extract.json`).
 
 ## Phase 2 — Mount points and shell
 
+**Status: Done** — canonical keys, `MountKeys.md`, **`ReferenceShellLayout.md`**, **`tests/unified/e2e/test_reference_shell_layout.py`** (same `mount_keys` advert sequence on Qt, Tk, DPG), and **ReactiveRootWindowProxy** cross-links.
+
 ### 2.1 Canonical mount keys
 
 - Add `dev-docs/MountKeys.md` and/or `pyrolyze.unified.mount_keys` (names TBD).
@@ -123,11 +146,14 @@ For each key, document the **recommended** pattern:
 - Qt/Tk: `advertise_mount(..., target=<GeneratedUiLibrary.mounts....>)`
 - DPG: viewport vs per-window menu bars, child windows, etc. (honest divergence)
 
+Consolidated in **`dev-docs/ReferenceShellLayout.md`** (mermaid tree + tables).
+
 ### 2.3 Reference layouts
 
-- One **minimal shell** per backend under `examples/` or
-  `tests/unified/e2e/`: same mount keys and same component tree shape, three
-  backends.
+- **Implemented:** `tests/unified/e2e/test_reference_shell_layout.py` — three
+  cases (Qt / Tk / DPG) share the same `mount_keys` advert sequence and
+  `with host():` shape; host `kind` and `target=` selectors follow
+  `ReferenceShellLayout.md`.
 
 **Exit criteria**
 
@@ -139,6 +165,8 @@ For each key, document the **recommended** pattern:
 ---
 
 ## Phase 3 — Unified API design (identical author surface)
+
+**Status: Done (Wave A)** — method list published; `qt=` / `tk=` / `dpg=` typed extras and formal `NotImplementedError` matrix still optional follow-up.
 
 ### 3.1 Facade decomposition
 
@@ -176,6 +204,11 @@ Avoid a single class with hundreds of methods if the catalog demands it:
 
 ## Phase 4 — Implementation waves
 
+**Status: Waves A–D complete** — see `docs/reference/Unified_Native_Methods.md`,
+`waves_bcd_param_mapping.json`, and `tests/unified/test_unified_native_library.py`.
+File dialogs, plots, and node-editor surfaces remain **deferred** (toolkit-native
+or a future scoped module per Wave D plan).
+
 Implement **backend adapters in lockstep** (Qt, Tk, DPG) per wave; no wave
 merges without **green tests** on all three where the method is `portable` or
 `best-effort`.
@@ -202,74 +235,111 @@ Plot series, custom handlers, node graphs — either a **unified subset** with
 clear bounds or an explicit **`dpg`-scoped** extension module so Qt/Tk authors
 are not misled.
 
-**Per-wave checklist**
+**Per-wave checklist (Wave A)**
 
-- [ ] Abstract method(s) on `UnifiedNativeLibrary` (or shell facet)
-- [ ] `QtUnifiedNativeLibrary` / `TkUnifiedNativeLibrary` /
+- [x] Abstract method(s) on `UnifiedNativeLibrary` (or shell facet)
+- [x] `QtUnifiedNativeLibrary` / `TkUnifiedNativeLibrary` /
       `DpgUnifiedNativeLibrary` implementations
-- [ ] Unit tests: expected `UIElement(kind=..., props=...)` per backend
-- [ ] Behavior matrix row updated (short prose on known differences)
+- [x] Unit tests: expected `UIElement(kind=..., props=...)` per backend
+- [ ] Behavior matrix row updated (short prose on known differences) — optional prose in `RoleMatrix` / coverage JSON notes
 
 ---
 
 ## Phase 5 — Testing and parity discipline
 
+**Status: Done** — see `tests/unified/test_phase5_*.py`, `tests/unified/conftest.py`.
+
 ### 5.1 Unit matrix
 
-For each unified method:
-
-- Assert emitted **`UIElement`** shape per backend (pattern in
-  `tests/unified/test_unified_native_library.py`).
-- Optional: golden **props** JSON for large payloads.
+- **Shipped:** `tests/unified/test_unified_native_library.py` (exact ``UIElement`` per
+  method) plus **`test_phase5_emitter_matrix.py`**: every emitter mounted once per
+  backend via ``MountableEngine`` (structural acceptance).
+- Optional follow-up: golden **props** JSON for large payloads.
 
 ### 5.2 Behavioral smoke
 
-- Small set of **integration** tests per backend: mount + render + one
-  interaction path where harness exists.
-- Known differences called out in **test docstrings** and the behavior matrix.
+- **Shipped:** `tests/unified/test_phase5_behavior_smoke.py` — ``push_button`` through
+  each backend’s ``MountableEngine`` (native instance created). Full event-loop
+  interaction remains a future harness upgrade.
 
 ### 5.3 Mount integration
 
-- Same PyRolyze tree, three backends: identical **mount key** adverts; assert
-  compatible routing within engine capabilities.
+- **Shipped:** `tests/unified/test_phase5_mount_routing.py` — ``mount_key(shell.body)``
+  resolves through ``PyrolyzeMountAdvertisement`` to native selectors (Qt
+  ``central_widget``, Tk ``pack`` mount point, DPG ``standard`` on ``DpgWindow``).
+- Phase 2 advert graph: `tests/unified/e2e/test_reference_shell_layout.py`.
 
 ### 5.4 CI
 
-- Run unified tests for **qt**, **tk**, **dpg** on every change; avoid silent
-  backend skips unless CI truly cannot run a toolkit (document if so).
+- **Command:** from the ``pyrolyze`` repo root, ``uv run pytest tests/unified/`` (or
+  full ``uv run pytest``). Prefer **Linux** agents so Tk ``MountableEngine`` tests
+  run (they are **skipped on macOS** in ``conftest.py`` because ``Tk()`` after
+  PySide6 in the same process aborts on Darwin).
+- **Lazy imports:** ``pyrolyze.unified`` re-exports adapters via ``__getattr__`` and
+  ``get_unified_native_library`` loads **one** backend so optional tooling can
+  avoid pulling Qt when only Tk/DPG is needed.
 
 **Exit criteria**
 
-- Every unified method row has **at least one test** per applicable backend.
-- Mount reference tests green.
+- Every unified method row has **at least one test** per applicable backend
+  (emitter matrix + existing equality tests).
+- Mount reference tests green; engine-level routing covered by Phase 5.3 tests.
 
 ---
 
 ## Phase 6 — Policy, examples, and cutover
 
+**Status: Done**
+
+Canonical **theme / density / typography** keys, drift guards, public reference
+prose for `pyrolyze.unified`, and a PySide6 hello example are in place. Mount
+resolution still does **not** read authored app context; authors use
+`use_app_context` / `get_authored_app_context` (or equivalent) and map values into
+unified emitter arguments or `UIElement` props—see
+`src/pyrolyze/unified/context_keys.py` and
+`dev-docs/HierarchicalContextManagementPlan.md`.
+
 ### 6.1 App context
 
-- Define minimal **`AppContextKey`** set (theme, density, typography).
-- Adapters **read** keys on create/update paths per
-  `dev-docs/HierarchicalContextManagementPlan.md`.
-- At least **one E2E per backend** with a subtree override affecting native
-  output.
+- **Shipped:** `pyrolyze.unified.context_keys` — `UNIFIED_THEME`, `UNIFIED_DENSITY`,
+  `UNIFIED_TYPOGRAPHY` (`AppContextKey` instances with stable debug names).
+- **Shipped:** `tests/unified/test_phase6_app_context.py` — for **Qt, Tk, and DPG**,
+  a subtree `open_app_context_override` supplies a value that is read with
+  `get_authored_app_context` and passed into a unified emitter; `MountableEngine`
+  mounts the resulting `UIElement` and asserts native-facing props (Tk skips on
+  macOS per `conftest.py`).
 
 ### 6.2 Documentation and examples
 
-- Update `docs/reference/Public_API_Surface.md`: unified as default path;
-  generated `*UiLibrary` as advanced.
-- Migrate examples off ad hoc `call_native` where unified covers the widget.
+- **Shipped:** `docs/reference/Public_API_Surface.md` — **Portable native surface
+  (`pyrolyze.unified`)** section (`get_unified_native_library`, `mount_keys`,
+  `context_keys`, pointer to `Unified_Native_Methods.md`, generated libraries as
+  advanced escape hatch).
+- **Shipped:** `examples/unified_hello_pyside6.py` (runner:
+  `examples/run_unified_hello_pyside6.py`).
 
 ### 6.3 Drift prevention
 
-- CI grep: no reintroduction of deprecated **common**-style modules if removed
-  (see `dev-docs/WidgetReconcilePlan.md` checklist).
+- **Shipped:** `scripts/check_unified_drift.py` — no disallowed
+  `backends.common`-style drift.
+- **Shipped:** `tests/unified/test_phase6_drift_guard.py` — AST guard on forbidden
+  references (aligns with `dev-docs/WidgetReconcilePlan.md` direction).
 
-**Exit criteria**
+**Exit criteria (Phase 6)**
 
-- Non-trivial sample app buildable using **unified + mount keys**, with
-  **rare** `call_native` only for escapes.
+- [x] Stable context keys for unified authoring.
+- [x] Per-backend test proving subtree overrides can influence values fed into
+  unified emitters and through mount.
+- [x] Public API doc + drift checks + at least one runnable unified example.
+
+### Phase 6 follow-ups (optional, not Phase 6 blockers)
+
+- **Examples:** migrate **additional** repo examples off ad hoc `call_native`
+  wherever `pyrolyze.unified` already covers the widget (hello is the baseline,
+  not full migration).
+- **Deeper coupling (only if product asks):** today emitters do not implicitly
+  call `use_app_context` inside library code; any automatic read inside
+  `UnifiedNativeLibrary` would be a separate, explicit API/design change.
 
 ---
 
@@ -286,7 +356,8 @@ For each unified method:
 
 ## Related paths (repository-relative)
 
-- `src/pyrolyze/unified/` — implementation package
+- `src/pyrolyze/unified/` — implementation package (includes `context_keys.py`)
+- `scripts/check_unified_drift.py` — no `backends.common` drift
 - `tests/unified/` — tests mirroring the package
 - `dev-docs/UnifiedMountBasedNativeApi.md` — design intent
 - `dev-docs/widget-reconcile/RoleMatrix.md` — role → name proposals
@@ -299,10 +370,10 @@ For each unified method:
 
 | Topic | Options | Resolution |
 | --- | --- | --- |
-| Monolith vs sub-facades | Single class vs `shell` / `widgets` split | _TBD_ |
-| DPG plots in v1 | Unified subset vs `unified.dpg` only | _TBD_ |
-| `label` | Always `pyrolyze.api.Label` vs per-backend native label | _TBD_ |
-| File dialog shape | Sync vs async callback API | _TBD_ |
+| Monolith vs sub-facades | Single class vs `shell` / `widgets` split | **Wave A:** single `UnifiedNativeLibrary`; add `unified.shell` only when window/dialog methods land. |
+| DPG plots in v1 | Unified subset vs `unified.dpg` only | **Defer:** no unified plot API in v1; use `call_native` / generated DPG. |
+| `label` | Always `pyrolyze.api.Label` vs per-backend native label | **`pyrolyze.api.Label`** for portable semantic label until native styling is required. |
+| File dialog shape | Sync vs async callback API | **Defer** to Phase C; no unified `file_dialog` in Wave A. |
 
 ---
 
@@ -310,3 +381,11 @@ For each unified method:
 
 - **Created** as the actionable completion plan for full native coverage under
   `pyrolyze.unified`, aligned with existing reconcile and mount docs.
+- **Updated** — phase tracker and per-phase status lines after Phases 0–4 (Wave A)
+  land in code and docs.
+- **Updated** — Phase 6 marked done (context keys, drift script, public API doc,
+  PySide6 unified hello example).
+- **Updated** — Phase 6 body reconciled with the phase tracker: detailed **Done**
+  checklist, accurate semantics (authors map context into emitters; mount does
+  not read authored context), and **Phase 6 follow-ups** for optional example
+  migration / future auto-read design.

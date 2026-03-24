@@ -222,6 +222,31 @@ def _invoke_compiler(
     return compiler_fn(source, module_name=module_name)
 
 
-__all__ = ["PyRolyzeFinder", "install_import_hook", "uninstall_import_hook"]
+def install_startup_import_hook() -> None:
+    """Install the source-transform import hook used by ``#@pyrolyze`` modules.
 
+    This is the canonical startup/bootstrap path for venv ``.pth`` loading and
+    should remain idempotent.
+    """
+
+    from .compiler.import_hook import install as install_compiler_import_hook
+
+    install_compiler_import_hook()
+
+
+def uninstall_startup_import_hook() -> None:
+    """Remove the source-transform startup hook used by ``#@pyrolyze`` modules."""
+
+    from .compiler.import_hook import uninstall as uninstall_compiler_import_hook
+
+    uninstall_compiler_import_hook()
+
+
+__all__ = [
+    "PyRolyzeFinder",
+    "install_import_hook",
+    "install_startup_import_hook",
+    "uninstall_import_hook",
+    "uninstall_startup_import_hook",
+]
 

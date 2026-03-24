@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from pyrolyze.import_hook import install_import_hook, uninstall_import_hook
+from pyrolyze.pyrolyze_tools.import_hook_pth import PTH_LINE
 
 
 def test_import_hook_transforms_transitively_imported_pyrolyze_modules(
@@ -58,3 +59,10 @@ def test_import_hook_transforms_transitively_imported_pyrolyze_modules(
         sys.modules.pop("demoapp.root", None)
         sys.modules.pop("demoapp.child", None)
         sys.modules.pop("demoapp", None)
+
+
+def test_pth_bootstrap_uses_public_import_hook_entrypoint() -> None:
+    assert (
+        PTH_LINE
+        == "import pyrolyze.import_hook; pyrolyze.import_hook.install_startup_import_hook()\n"
+    )

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import inspect
+from pathlib import Path
 
 from frozendict import frozendict
 
@@ -9,26 +10,50 @@ from pyrolyze.api import MISSING
 from pyrolyze.backends.model import MountReplayKind, UiEventSpec, UiInterface, UiMethodSpec, UiWidgetSpec
 
 
+def test_checked_in_ui_libraries_are_plain_pyrolyze_source_not_compiled_output() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    targets = (
+        repo_root / "src" / "pyrolyze" / "backends" / "pyside6" / "generated_library.py",
+        repo_root / "src" / "pyrolyze" / "backends" / "tkinter" / "generated_library.py",
+    )
+
+    compiled_markers = (
+        "__pyr_",
+        "@globals()['__pyr_component_ref']",
+        "CallFromNonPyrolyzeContext as __pyr_CallFromNonPyrolyzeContext",
+    )
+    failures: list[str] = []
+
+    for path in targets:
+        source = path.read_text(encoding="utf-8")
+        if "#@pyrolyze" not in "\n".join(source.splitlines()[:2]):
+            failures.append(
+                f"{path.relative_to(repo_root)} is missing the #@pyrolyze marker in the first two lines."
+            )
+        for marker in compiled_markers:
+            if marker in source:
+                failures.append(
+                    f"{path.relative_to(repo_root)} contains compiled-output marker {marker!r}."
+                )
+
+    assert not failures, (
+        "DO NOT CHECK IN AST-COMPILED UI LIBRARIES.\n"
+        "The checked-in backend generated libraries must remain plain #@pyrolyze source so the "
+        "import hook can transform them at load time.\n"
+        "Regenerate them from the semantic-library generator instead of committing __pyr_* output.\n"
+        + "\n".join(f"- {entry}" for entry in failures)
+    )
+
+
 def test_generated_backend_libraries_import() -> None:
-    common_module = importlib.import_module("pyrolyze.backends.common.generated_library")
     pyside6_module = importlib.import_module("pyrolyze.backends.pyside6.generated_library")
     tkinter_module = importlib.import_module("pyrolyze.backends.tkinter.generated_library")
 
-    assert hasattr(common_module, "CoreUiLibrary")
     assert hasattr(pyside6_module, "PySide6UiLibrary")
     assert hasattr(tkinter_module, "TkinterUiLibrary")
 
-    assert isinstance(common_module.CoreUiLibrary.UI_INTERFACE, UiInterface)
     assert isinstance(pyside6_module.PySide6UiLibrary.UI_INTERFACE, UiInterface)
     assert isinstance(tkinter_module.TkinterUiLibrary.UI_INTERFACE, UiInterface)
-    assert common_module.CoreUiLibrary.UI_INTERFACE.name == "CoreUiLibrary"
-    assert common_module.CoreUiLibrary.UI_INTERFACE.build_element(
-        "section",
-        title="Root",
-        accent="blue",
-    ).kind == "section"
-    assert hasattr(common_module.CoreUiLibrary.section, "_pyrolyze_meta")
-    assert hasattr(common_module.CoreUiLibrary.button, "_pyrolyze_meta")
     assert isinstance(pyside6_module.PySide6UiLibrary.WIDGET_SPECS, frozendict)
     assert isinstance(tkinter_module.TkinterUiLibrary.WIDGET_SPECS, frozendict)
     assert all(isinstance(spec, UiWidgetSpec) for spec in pyside6_module.PySide6UiLibrary.WIDGET_SPECS.values())

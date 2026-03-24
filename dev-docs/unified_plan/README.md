@@ -18,16 +18,17 @@ mount-based library and adapters (`dev-docs/UnifiedMountBasedNativeApi.md`,
 Track these in **every** backend file where they apply; do not duplicate long
 design prose—link back to the parent docs.
 
-- **Canonical mount keys** — spec and reference layouts (Widget Reconcile Phase 2;
-  not finished until `MountKeys.md` or equivalent exists).
+- **Canonical mount keys** — `dev-docs/MountKeys.md` + `pyrolyze.unified.mount_keys`;
+  reference layouts still expand in `tests/unified/` / `examples/`.
 - **Unified package** — `pyrolyze.unified` (`src/pyrolyze/unified/`): base +
   `QtUnifiedNativeLibrary` / `TkUnifiedNativeLibrary` / `DpgUnifiedNativeLibrary`,
   `get_unified_native_library()`, env `PYROLYZE_UNIFIED_BACKEND` (default `qt`).
 - **App context policy keys** — theme / density / typography; readers only on
   create/update paths (not mount resolution).
 - **Window proxy** — shell lifetime; `dev-docs/ReactiveRootWindowProxy.md`.
-- **Mechanical extracts** — `dev-docs/widget-reconcile/`; re-run when codegen or
-  dump changes.
+- **Mechanical extracts** — `dev-docs/widget-reconcile/`; re-run
+  `scripts/extract_widget_catalogs.py` and `scripts/build_unified_coverage.py` when
+  codegen or dump changes.
 - **Tests** — mirror `src/pyrolyze/<unified>/...` under `tests/...`; use public
   PyRolyze forms in E2E tests (`pyrolyze/AGENTS.md`).
 - **PyRolyze under pytest** — **pytest11** import hook (`pyrolyze.compiler.import_hook`)

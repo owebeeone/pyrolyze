@@ -1,0 +1,3455 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-03-24T16:43:51Z",
+  "source_extract": "dev-docs/widget-reconcile/widget_catalog_extract.json",
+  "row_count": 383,
+  "entries": [
+    {
+      "backend": "pyside6",
+      "native_id": "QAbstractButton",
+      "public_name": "CQAbstractButton",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QAbstractItemView",
+      "public_name": "CQAbstractItemView",
+      "bucket": "grouped",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Abstract base; use concrete subtype for unified mapping"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QAbstractPrintDialog",
+      "public_name": "CQAbstractPrintDialog",
+      "bucket": "grouped",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Abstract base; use concrete subtype for unified mapping"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QAbstractScrollArea",
+      "public_name": "CQAbstractScrollArea",
+      "bucket": "grouped",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Abstract base; use concrete subtype for unified mapping"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QAbstractSlider",
+      "public_name": "CQAbstractSlider",
+      "bucket": "grouped",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Abstract base; use concrete subtype for unified mapping"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QAbstractSpinBox",
+      "public_name": "CQAbstractSpinBox",
+      "bucket": "grouped",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Abstract base; use concrete subtype for unified mapping"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QAction",
+      "public_name": "CQAction",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QBoxLayout",
+      "public_name": "CQBoxLayout",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QCalendarWidget",
+      "public_name": "CQCalendarWidget",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QChartView",
+      "public_name": "CQChartView",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QCheckBox",
+      "public_name": "CQCheckBox",
+      "bucket": "unified",
+      "triage": "portable",
+      "unified_method": "toggle",
+      "note": null
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QColorDialog",
+      "public_name": "CQColorDialog",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QColumnView",
+      "public_name": "CQColumnView",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QComboBox",
+      "public_name": "CQComboBox",
+      "bucket": "unified",
+      "triage": "portable",
+      "unified_method": "combo_box",
+      "note": null
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QCommandLinkButton",
+      "public_name": "CQCommandLinkButton",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QDateEdit",
+      "public_name": "CQDateEdit",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QDateTimeEdit",
+      "public_name": "CQDateTimeEdit",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QDesignerActionEditorInterface",
+      "public_name": "CQDesignerActionEditorInterface",
+      "bucket": "excluded",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Qt Designer plugin or designer-only type"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QDesignerFormWindowInterface",
+      "public_name": "CQDesignerFormWindowInterface",
+      "bucket": "excluded",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Qt Designer plugin or designer-only type"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QDesignerObjectInspectorInterface",
+      "public_name": "CQDesignerObjectInspectorInterface",
+      "bucket": "excluded",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Qt Designer plugin or designer-only type"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QDesignerPropertyEditorInterface",
+      "public_name": "CQDesignerPropertyEditorInterface",
+      "bucket": "excluded",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Qt Designer plugin or designer-only type"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QDesignerWidgetBoxInterface",
+      "public_name": "CQDesignerWidgetBoxInterface",
+      "bucket": "excluded",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Qt Designer plugin or designer-only type"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QDial",
+      "public_name": "CQDial",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QDialog",
+      "public_name": "CQDialog",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QDialogButtonBox",
+      "public_name": "CQDialogButtonBox",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QDockWidget",
+      "public_name": "CQDockWidget",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QDoubleSpinBox",
+      "public_name": "CQDoubleSpinBox",
+      "bucket": "unified",
+      "triage": "portable",
+      "unified_method": "float_field",
+      "note": null
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QErrorMessage",
+      "public_name": "CQErrorMessage",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QFileDialog",
+      "public_name": "CQFileDialog",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QFocusFrame",
+      "public_name": "CQFocusFrame",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QFontComboBox",
+      "public_name": "CQFontComboBox",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QFontDialog",
+      "public_name": "CQFontDialog",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QFormLayout",
+      "public_name": "CQFormLayout",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QFrame",
+      "public_name": "CQFrame",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QGraphicsView",
+      "public_name": "CQGraphicsView",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QGridLayout",
+      "public_name": "CQGridLayout",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QGroupBox",
+      "public_name": "CQGroupBox",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QHBoxLayout",
+      "public_name": "CQHBoxLayout",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QHeaderView",
+      "public_name": "CQHeaderView",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QHelpContentWidget",
+      "public_name": "CQHelpContentWidget",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QHelpFilterSettingsWidget",
+      "public_name": "CQHelpFilterSettingsWidget",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QHelpIndexWidget",
+      "public_name": "CQHelpIndexWidget",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QHelpSearchQueryWidget",
+      "public_name": "CQHelpSearchQueryWidget",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QHelpSearchResultWidget",
+      "public_name": "CQHelpSearchResultWidget",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QInputDialog",
+      "public_name": "CQInputDialog",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QKeySequenceEdit",
+      "public_name": "CQKeySequenceEdit",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QLCDNumber",
+      "public_name": "CQLCDNumber",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QLabel",
+      "public_name": "CQLabel",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "static_text",
+      "note": null
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QLayout",
+      "public_name": "CQLayout",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QLineEdit",
+      "public_name": "CQLineEdit",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "text_field",
+      "note": null
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QListView",
+      "public_name": "CQListView",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QListWidget",
+      "public_name": "CQListWidget",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QMainWindow",
+      "public_name": "CQMainWindow",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QMdiArea",
+      "public_name": "CQMdiArea",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QMdiSubWindow",
+      "public_name": "CQMdiSubWindow",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QMenu",
+      "public_name": "CQMenu",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QMenuBar",
+      "public_name": "CQMenuBar",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "menu_bar",
+      "note": null
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QMessageBox",
+      "public_name": "CQMessageBox",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QOpenGLWidget",
+      "public_name": "CQOpenGLWidget",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QPageSetupDialog",
+      "public_name": "CQPageSetupDialog",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QPdfPageSelector",
+      "public_name": "CQPdfPageSelector",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QPdfView",
+      "public_name": "CQPdfView",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QPlainTextEdit",
+      "public_name": "CQPlainTextEdit",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "text_area",
+      "note": null
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QPrintDialog",
+      "public_name": "CQPrintDialog",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QPrintPreviewDialog",
+      "public_name": "CQPrintPreviewDialog",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QPrintPreviewWidget",
+      "public_name": "CQPrintPreviewWidget",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QProgressBar",
+      "public_name": "CQProgressBar",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "progress",
+      "note": null
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QProgressDialog",
+      "public_name": "CQProgressDialog",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QPushButton",
+      "public_name": "CQPushButton",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "push_button",
+      "note": null
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QQuickWidget",
+      "public_name": "CQQuickWidget",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QRadioButton",
+      "public_name": "CQRadioButton",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "radio_button",
+      "note": null
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QRhiWidget",
+      "public_name": "CQRhiWidget",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QRubberBand",
+      "public_name": "CQRubberBand",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QScrollArea",
+      "public_name": "CQScrollArea",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "scroll_panel",
+      "note": null
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QScrollBar",
+      "public_name": "CQScrollBar",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QSizeGrip",
+      "public_name": "CQSizeGrip",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QSlider",
+      "public_name": "CQSlider",
+      "bucket": "unified",
+      "triage": "portable",
+      "unified_method": "slider",
+      "note": null
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QSpinBox",
+      "public_name": "CQSpinBox",
+      "bucket": "unified",
+      "triage": "portable",
+      "unified_method": "int_field",
+      "note": null
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QSplashScreen",
+      "public_name": "CQSplashScreen",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QSplitter",
+      "public_name": "CQSplitter",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QSplitterHandle",
+      "public_name": "CQSplitterHandle",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QStackedLayout",
+      "public_name": "CQStackedLayout",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QStackedWidget",
+      "public_name": "CQStackedWidget",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QStatusBar",
+      "public_name": "CQStatusBar",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QSvgWidget",
+      "public_name": "CQSvgWidget",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QTabBar",
+      "public_name": "CQTabBar",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QTabWidget",
+      "public_name": "CQTabWidget",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "tab_stack",
+      "note": null
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QTableView",
+      "public_name": "CQTableView",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QTableWidget",
+      "public_name": "CQTableWidget",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QTextBrowser",
+      "public_name": "CQTextBrowser",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QTextEdit",
+      "public_name": "CQTextEdit",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QTimeEdit",
+      "public_name": "CQTimeEdit",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QToolBar",
+      "public_name": "CQToolBar",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "tool_bar",
+      "note": null
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QToolBox",
+      "public_name": "CQToolBox",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QToolButton",
+      "public_name": "CQToolButton",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QTreeView",
+      "public_name": "CQTreeView",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QTreeWidget",
+      "public_name": "CQTreeWidget",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QUndoView",
+      "public_name": "CQUndoView",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QVBoxLayout",
+      "public_name": "CQVBoxLayout",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QVideoWidget",
+      "public_name": "CQVideoWidget",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QWebEngineView",
+      "public_name": "CQWebEngineView",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QWidget",
+      "public_name": "CQWidget",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "spacer",
+      "note": null
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QWidgetAction",
+      "public_name": "CQWidgetAction",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QWizard",
+      "public_name": "CQWizard",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "pyside6",
+      "native_id": "QWizardPage",
+      "public_name": "CQWizardPage",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "Balloon",
+      "public_name": "CBalloon",
+      "bucket": "excluded",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Tix / legacy auxiliary surface"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "ButtonBox",
+      "public_name": "CButtonBox",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "CObjView",
+      "public_name": "CCObjView",
+      "bucket": "excluded",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Tix / legacy auxiliary surface"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "Canvas",
+      "public_name": "CCanvas",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "scroll_panel",
+      "note": null
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "CheckList",
+      "public_name": "CCheckList",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "ComboBox",
+      "public_name": "CComboBox",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "Combobox",
+      "public_name": "CCombobox",
+      "bucket": "unified",
+      "triage": "portable",
+      "unified_method": "combo_box",
+      "note": null
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "Control",
+      "public_name": "CControl",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "Dialog",
+      "public_name": "CDialog",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "DialogShell",
+      "public_name": "CDialogShell",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "DirList",
+      "public_name": "CDirList",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "DirSelectBox",
+      "public_name": "CDirSelectBox",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "DirSelectDialog",
+      "public_name": "CDirSelectDialog",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "DirTree",
+      "public_name": "CDirTree",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "ExFileSelectBox",
+      "public_name": "CExFileSelectBox",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "ExFileSelectDialog",
+      "public_name": "CExFileSelectDialog",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "FileEntry",
+      "public_name": "CFileEntry",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "FileSelectBox",
+      "public_name": "CFileSelectBox",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "FileSelectDialog",
+      "public_name": "CFileSelectDialog",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "Grid",
+      "public_name": "CGrid",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "HList",
+      "public_name": "CHList",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "InputOnly",
+      "public_name": "CInputOnly",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "LabelEntry",
+      "public_name": "CLabelEntry",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "LabeledScale",
+      "public_name": "CLabeledScale",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "Labelframe",
+      "public_name": "CLabelframe",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "ListNoteBook",
+      "public_name": "CListNoteBook",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "Listbox",
+      "public_name": "CListbox",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "Menu",
+      "public_name": "CMenu",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "menu_bar",
+      "note": null
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "Message",
+      "public_name": "CMessage",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "Meter",
+      "public_name": "CMeter",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "NoteBook",
+      "public_name": "CNoteBook",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "NoteBookFrame",
+      "public_name": "CNoteBookFrame",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "Notebook",
+      "public_name": "CNotebook",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "tab_stack",
+      "note": null
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "Panedwindow",
+      "public_name": "CPanedwindow",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "PopupMenu",
+      "public_name": "CPopupMenu",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "Progressbar",
+      "public_name": "CProgressbar",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "progress",
+      "note": null
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "ResizeHandle",
+      "public_name": "CResizeHandle",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "ScrolledGrid",
+      "public_name": "CScrolledGrid",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "ScrolledHList",
+      "public_name": "CScrolledHList",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "ScrolledListBox",
+      "public_name": "CScrolledListBox",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "ScrolledTList",
+      "public_name": "CScrolledTList",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "ScrolledWindow",
+      "public_name": "CScrolledWindow",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "Select",
+      "public_name": "CSelect",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "Separator",
+      "public_name": "CSeparator",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "separator",
+      "note": null
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "Shell",
+      "public_name": "CShell",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "Sizegrip",
+      "public_name": "CSizegrip",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "StdButtonBox",
+      "public_name": "CStdButtonBox",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "TList",
+      "public_name": "CTList",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "Text",
+      "public_name": "CText",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "text_area",
+      "note": null
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "TixSubWidget",
+      "public_name": "CTixSubWidget",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "TixWidget",
+      "public_name": "CTixWidget",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "Tree",
+      "public_name": "CTree",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "Treeview",
+      "public_name": "CTreeview",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "_dummyButton",
+      "public_name": "C_dummyButton",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "_dummyCheckbutton",
+      "public_name": "C_dummyCheckbutton",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "_dummyComboBox",
+      "public_name": "C_dummyComboBox",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "_dummyDirList",
+      "public_name": "C_dummyDirList",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "_dummyDirSelectBox",
+      "public_name": "C_dummyDirSelectBox",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "_dummyEntry",
+      "public_name": "C_dummyEntry",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "_dummyExFileSelectBox",
+      "public_name": "C_dummyExFileSelectBox",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "_dummyFileComboBox",
+      "public_name": "C_dummyFileComboBox",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "_dummyFileSelectBox",
+      "public_name": "C_dummyFileSelectBox",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "_dummyFrame",
+      "public_name": "C_dummyFrame",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "_dummyHList",
+      "public_name": "C_dummyHList",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "_dummyLabel",
+      "public_name": "C_dummyLabel",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "_dummyListbox",
+      "public_name": "C_dummyListbox",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "_dummyMenu",
+      "public_name": "C_dummyMenu",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "_dummyMenubutton",
+      "public_name": "C_dummyMenubutton",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "_dummyNoteBookFrame",
+      "public_name": "C_dummyNoteBookFrame",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "_dummyPanedWindow",
+      "public_name": "C_dummyPanedWindow",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "_dummyScrollbar",
+      "public_name": "C_dummyScrollbar",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "_dummyScrolledHList",
+      "public_name": "C_dummyScrolledHList",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "_dummyScrolledListBox",
+      "public_name": "C_dummyScrolledListBox",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "_dummyStdButtonBox",
+      "public_name": "C_dummyStdButtonBox",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "_dummyTList",
+      "public_name": "C_dummyTList",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "_dummyText",
+      "public_name": "C_dummyText",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "scrolledtext_ScrolledText",
+      "public_name": "CScrolledtextScrolledText",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "tix_LabelFrame",
+      "public_name": "CTixLabelFrame",
+      "bucket": "excluded",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Tix / legacy auxiliary surface"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "tix_OptionMenu",
+      "public_name": "CTixOptionMenu",
+      "bucket": "excluded",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Tix / legacy auxiliary surface"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "tix_PanedWindow",
+      "public_name": "CTixPanedWindow",
+      "bucket": "excluded",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Tix / legacy auxiliary surface"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "tix_ScrolledText",
+      "public_name": "CTixScrolledText",
+      "bucket": "excluded",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Tix / legacy auxiliary surface"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "tkinter_Button",
+      "public_name": "CButton",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "tkinter_Checkbutton",
+      "public_name": "CCheckbutton",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "tkinter_Entry",
+      "public_name": "CEntry",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "tkinter_Frame",
+      "public_name": "CFrame",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "tkinter_Label",
+      "public_name": "CLabel",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "tkinter_LabelFrame",
+      "public_name": "CLabelFrame",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "tkinter_Menubutton",
+      "public_name": "CMenubutton",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "tkinter_OptionMenu",
+      "public_name": "COptionMenu",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "tkinter_PanedWindow",
+      "public_name": "CPanedWindow",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "tkinter_Radiobutton",
+      "public_name": "CRadiobutton",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "radio_button",
+      "note": null
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "tkinter_Scale",
+      "public_name": "CScale",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "tkinter_Scrollbar",
+      "public_name": "CScrollbar",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "tkinter_Spinbox",
+      "public_name": "CSpinbox",
+      "bucket": "unified",
+      "triage": "portable",
+      "unified_method": "int_field",
+      "note": null
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "ttk_Button",
+      "public_name": "CTtkButton",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "push_button",
+      "note": null
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "ttk_Checkbutton",
+      "public_name": "CTtkCheckbutton",
+      "bucket": "unified",
+      "triage": "portable",
+      "unified_method": "toggle",
+      "note": null
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "ttk_Entry",
+      "public_name": "CTtkEntry",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "text_field",
+      "note": null
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "ttk_Frame",
+      "public_name": "CTtkFrame",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "tool_bar",
+      "note": null
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "ttk_Label",
+      "public_name": "CTtkLabel",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "static_text",
+      "note": null
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "ttk_Menubutton",
+      "public_name": "CTtkMenubutton",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "ttk_OptionMenu",
+      "public_name": "CTtkOptionMenu",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "ttk_Radiobutton",
+      "public_name": "CTtkRadiobutton",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "radio_button",
+      "note": null
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "ttk_Scale",
+      "public_name": "CTtkScale",
+      "bucket": "unified",
+      "triage": "portable",
+      "unified_method": "slider",
+      "note": null
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "ttk_Scrollbar",
+      "public_name": "CTtkScrollbar",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "No Wave A unified method assigned yet"
+    },
+    {
+      "backend": "tkinter",
+      "native_id": "ttk_Spinbox",
+      "public_name": "CTtkSpinbox",
+      "bucket": "unified",
+      "triage": "portable",
+      "unified_method": "int_field",
+      "note": null
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_2d_histogram_series",
+      "public_name": "add_2d_histogram_series",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_3d_slider",
+      "public_name": "add_3d_slider",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_activated_handler",
+      "public_name": "add_activated_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_active_handler",
+      "public_name": "add_active_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_area_series",
+      "public_name": "add_area_series",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_axis_tag",
+      "public_name": "add_axis_tag",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_bar_group_series",
+      "public_name": "add_bar_group_series",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_bar_series",
+      "public_name": "add_bar_series",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_bool_value",
+      "public_name": "add_bool_value",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_button",
+      "public_name": "add_button",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "push_button",
+      "note": null
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_candle_series",
+      "public_name": "add_candle_series",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_char_remap",
+      "public_name": "add_char_remap",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_checkbox",
+      "public_name": "add_checkbox",
+      "bucket": "unified",
+      "triage": "portable",
+      "unified_method": "toggle",
+      "note": null
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_child",
+      "public_name": "add_child",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_child_window",
+      "public_name": "add_child_window",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "scroll_panel",
+      "note": null
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_clicked_handler",
+      "public_name": "add_clicked_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_clipper",
+      "public_name": "add_clipper",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_collapsing_header",
+      "public_name": "add_collapsing_header",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_color_button",
+      "public_name": "add_color_button",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_color_edit",
+      "public_name": "add_color_edit",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_color_picker",
+      "public_name": "add_color_picker",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_color_value",
+      "public_name": "add_color_value",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_colormap",
+      "public_name": "add_colormap",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_colormap_button",
+      "public_name": "add_colormap_button",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_colormap_registry",
+      "public_name": "add_colormap_registry",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_colormap_scale",
+      "public_name": "add_colormap_scale",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_colormap_slider",
+      "public_name": "add_colormap_slider",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_combo",
+      "public_name": "add_combo",
+      "bucket": "unified",
+      "triage": "portable",
+      "unified_method": "combo_box",
+      "note": null
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_custom_series",
+      "public_name": "add_custom_series",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_date_picker",
+      "public_name": "add_date_picker",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_deactivated_after_edit_handler",
+      "public_name": "add_deactivated_after_edit_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_deactivated_handler",
+      "public_name": "add_deactivated_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_digital_series",
+      "public_name": "add_digital_series",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_double4_value",
+      "public_name": "add_double4_value",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_double_value",
+      "public_name": "add_double_value",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_drag_double",
+      "public_name": "add_drag_double",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_drag_doublex",
+      "public_name": "add_drag_doublex",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_drag_float",
+      "public_name": "add_drag_float",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_drag_floatx",
+      "public_name": "add_drag_floatx",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_drag_int",
+      "public_name": "add_drag_int",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_drag_intx",
+      "public_name": "add_drag_intx",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_drag_line",
+      "public_name": "add_drag_line",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_drag_payload",
+      "public_name": "add_drag_payload",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_drag_point",
+      "public_name": "add_drag_point",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_drag_rect",
+      "public_name": "add_drag_rect",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_draw_layer",
+      "public_name": "add_draw_layer",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Draw-list primitive; defer"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_draw_node",
+      "public_name": "add_draw_node",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Draw-list primitive; defer"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_drawlist",
+      "public_name": "add_drawlist",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_dummy",
+      "public_name": "add_dummy",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_dynamic_texture",
+      "public_name": "add_dynamic_texture",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_edited_handler",
+      "public_name": "add_edited_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_error_series",
+      "public_name": "add_error_series",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_file_dialog",
+      "public_name": "add_file_dialog",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_file_extension",
+      "public_name": "add_file_extension",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_filter_set",
+      "public_name": "add_filter_set",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_float4_value",
+      "public_name": "add_float4_value",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_float_value",
+      "public_name": "add_float_value",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_float_vect_value",
+      "public_name": "add_float_vect_value",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_focus_handler",
+      "public_name": "add_focus_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_font",
+      "public_name": "add_font",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_font_chars",
+      "public_name": "add_font_chars",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_font_range",
+      "public_name": "add_font_range",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_font_range_hint",
+      "public_name": "add_font_range_hint",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_font_registry",
+      "public_name": "add_font_registry",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_group",
+      "public_name": "add_group",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "tool_bar",
+      "note": null
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_handler_registry",
+      "public_name": "add_handler_registry",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_heat_series",
+      "public_name": "add_heat_series",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_histogram_series",
+      "public_name": "add_histogram_series",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_hline_series",
+      "public_name": "add_hline_series",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_hover_handler",
+      "public_name": "add_hover_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_image",
+      "public_name": "add_image",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_image_button",
+      "public_name": "add_image_button",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_image_series",
+      "public_name": "add_image_series",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_inf_line_series",
+      "public_name": "add_inf_line_series",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_input_double",
+      "public_name": "add_input_double",
+      "bucket": "unified",
+      "triage": "portable",
+      "unified_method": "float_field",
+      "note": null
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_input_doublex",
+      "public_name": "add_input_doublex",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_input_float",
+      "public_name": "add_input_float",
+      "bucket": "unified",
+      "triage": "portable",
+      "unified_method": "float_field",
+      "note": null
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_input_floatx",
+      "public_name": "add_input_floatx",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_input_int",
+      "public_name": "add_input_int",
+      "bucket": "unified",
+      "triage": "portable",
+      "unified_method": "int_field",
+      "note": null
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_input_intx",
+      "public_name": "add_input_intx",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_input_text",
+      "public_name": "add_input_text",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "text_field",
+      "note": null
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_int4_value",
+      "public_name": "add_int4_value",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_int_value",
+      "public_name": "add_int_value",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_item_activated_handler",
+      "public_name": "add_item_activated_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_item_active_handler",
+      "public_name": "add_item_active_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_item_clicked_handler",
+      "public_name": "add_item_clicked_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_item_deactivated_after_edit_handler",
+      "public_name": "add_item_deactivated_after_edit_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_item_deactivated_handler",
+      "public_name": "add_item_deactivated_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_item_double_clicked_handler",
+      "public_name": "add_item_double_clicked_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_item_edited_handler",
+      "public_name": "add_item_edited_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_item_focus_handler",
+      "public_name": "add_item_focus_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_item_handler_registry",
+      "public_name": "add_item_handler_registry",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_item_hover_handler",
+      "public_name": "add_item_hover_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_item_resize_handler",
+      "public_name": "add_item_resize_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_item_scroll_handler",
+      "public_name": "add_item_scroll_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_item_toggled_open_handler",
+      "public_name": "add_item_toggled_open_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_item_visible_handler",
+      "public_name": "add_item_visible_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_key_down_handler",
+      "public_name": "add_key_down_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_key_press_handler",
+      "public_name": "add_key_press_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_key_release_handler",
+      "public_name": "add_key_release_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_knob_float",
+      "public_name": "add_knob_float",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_line_series",
+      "public_name": "add_line_series",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_listbox",
+      "public_name": "add_listbox",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_loading_indicator",
+      "public_name": "add_loading_indicator",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_menu",
+      "public_name": "add_menu",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_menu_bar",
+      "public_name": "add_menu_bar",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "menu_bar",
+      "note": null
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_menu_item",
+      "public_name": "add_menu_item",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_mouse_click_handler",
+      "public_name": "add_mouse_click_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_mouse_double_click_handler",
+      "public_name": "add_mouse_double_click_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_mouse_down_handler",
+      "public_name": "add_mouse_down_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_mouse_drag_handler",
+      "public_name": "add_mouse_drag_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_mouse_move_handler",
+      "public_name": "add_mouse_move_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_mouse_release_handler",
+      "public_name": "add_mouse_release_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_mouse_wheel_handler",
+      "public_name": "add_mouse_wheel_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_node",
+      "public_name": "add_node",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_node_attribute",
+      "public_name": "add_node_attribute",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_node_editor",
+      "public_name": "add_node_editor",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_node_link",
+      "public_name": "add_node_link",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_pie_series",
+      "public_name": "add_pie_series",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_plot",
+      "public_name": "add_plot",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_plot_annotation",
+      "public_name": "add_plot_annotation",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_plot_axis",
+      "public_name": "add_plot_axis",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_plot_legend",
+      "public_name": "add_plot_legend",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_progress_bar",
+      "public_name": "add_progress_bar",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "progress",
+      "note": null
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_radio_button",
+      "public_name": "add_radio_button",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "radio_button",
+      "note": null
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_raw_texture",
+      "public_name": "add_raw_texture",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_resize_handler",
+      "public_name": "add_resize_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_scatter_series",
+      "public_name": "add_scatter_series",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_selectable",
+      "public_name": "add_selectable",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_separator",
+      "public_name": "add_separator",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "separator",
+      "note": null
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_series_value",
+      "public_name": "add_series_value",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_shade_series",
+      "public_name": "add_shade_series",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_simple_plot",
+      "public_name": "add_simple_plot",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_slider_double",
+      "public_name": "add_slider_double",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_slider_doublex",
+      "public_name": "add_slider_doublex",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_slider_float",
+      "public_name": "add_slider_float",
+      "bucket": "unified",
+      "triage": "portable",
+      "unified_method": "slider",
+      "note": null
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_slider_floatx",
+      "public_name": "add_slider_floatx",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_slider_int",
+      "public_name": "add_slider_int",
+      "bucket": "unified",
+      "triage": "portable",
+      "unified_method": "slider",
+      "note": null
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_slider_intx",
+      "public_name": "add_slider_intx",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_spacer",
+      "public_name": "add_spacer",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "spacer",
+      "note": null
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_stage",
+      "public_name": "add_stage",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_staging_container",
+      "public_name": "add_staging_container",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_stair_series",
+      "public_name": "add_stair_series",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_static_texture",
+      "public_name": "add_static_texture",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_stem_series",
+      "public_name": "add_stem_series",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_string_value",
+      "public_name": "add_string_value",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_subplots",
+      "public_name": "add_subplots",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_synced_tables",
+      "public_name": "add_synced_tables",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_tab",
+      "public_name": "add_tab",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_tab_bar",
+      "public_name": "add_tab_bar",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "tab_stack",
+      "note": null
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_tab_button",
+      "public_name": "add_tab_button",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_table",
+      "public_name": "add_table",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_table_cell",
+      "public_name": "add_table_cell",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_table_column",
+      "public_name": "add_table_column",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_table_row",
+      "public_name": "add_table_row",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_template_registry",
+      "public_name": "add_template_registry",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_text",
+      "public_name": "add_text",
+      "bucket": "unified",
+      "triage": "best-effort",
+      "unified_method": "static_text",
+      "note": null
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_text_point",
+      "public_name": "add_text_point",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_texture_registry",
+      "public_name": "add_texture_registry",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_theme",
+      "public_name": "add_theme",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_theme_color",
+      "public_name": "add_theme_color",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_theme_component",
+      "public_name": "add_theme_component",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_theme_style",
+      "public_name": "add_theme_style",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_time_picker",
+      "public_name": "add_time_picker",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_toggled_open_handler",
+      "public_name": "add_toggled_open_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_tooltip",
+      "public_name": "add_tooltip",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_tree_node",
+      "public_name": "add_tree_node",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_value_registry",
+      "public_name": "add_value_registry",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_viewport_drawlist",
+      "public_name": "add_viewport_drawlist",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_viewport_menu_bar",
+      "public_name": "add_viewport_menu_bar",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_visible_handler",
+      "public_name": "add_visible_handler",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_vline_series",
+      "public_name": "add_vline_series",
+      "bucket": "deferred",
+      "triage": "toolkit-only",
+      "unified_method": null,
+      "note": "Plot/handler family; defer unified v1"
+    },
+    {
+      "backend": "dearpygui",
+      "native_id": "add_window",
+      "public_name": "add_window",
+      "bucket": "deferred",
+      "triage": "best-effort",
+      "unified_method": null,
+      "note": "Not yet mapped to a unified method"
+    }
+  ]
+}

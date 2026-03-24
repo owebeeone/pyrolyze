@@ -6,3 +6,6 @@ from __future__ import annotations
 PYROLYZE_UNIFIED_BACKEND_ENV = "PYROLYZE_UNIFIED_BACKEND"
 
 DEFAULT_UNIFIED_BACKEND = "qt"
+
+# Bumped when unified method sets or mount-key contracts change materially.
+UNIFIED_NATIVE_API_VERSION = "0.4.0"
