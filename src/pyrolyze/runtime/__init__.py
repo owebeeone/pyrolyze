@@ -1,7 +1,18 @@
 """Runtime module surface."""
 
-from .app_context import AppContextKey, AppContextStore, GENERATION_TRACKER_KEY, GenerationTracker
+from .app_context import (
+    EMPTY_APP_CONTEXT_LOOKUP,
+    AppContextKey,
+    AppContextLookup,
+    AppContextStore,
+    EmptyAppContextLookup,
+    GENERATION_TRACKER_KEY,
+    GenerationTracker,
+    OverlayAppContextLookup,
+)
 from .context import (
+    AppContextOverrideSlotContext,
+    AppContextOverrideStructureError,
     CompValue,
     ComponentCallSlotContext,
     ContextBase,
@@ -36,6 +47,7 @@ from .context import (
     dirtyof,
     module_registry,
 )
+from .drip import Drip
 from .trace import (
     TraceChannel,
     TraceRecord,
@@ -79,14 +91,21 @@ from .ui_nodes import (
 )
 
 __all__ = [
+    "AppContextLookup",
     "AppContextKey",
     "AppContextStore",
+    "EMPTY_APP_CONTEXT_LOOKUP",
+    "EmptyAppContextLookup",
+    "OverlayAppContextLookup",
+    "AppContextOverrideSlotContext",
+    "AppContextOverrideStructureError",
     "CompValue",
     "ComponentCallSlotContext",
     "ContextBase",
     "ContainerSlotContext",
     "DirectiveSlotContext",
     "DirtyStateContext",
+    "Drip",
     "DuplicateKeyError",
     "DuplicateMountAdvertisementError",
     "EventHandlerSlotContext",

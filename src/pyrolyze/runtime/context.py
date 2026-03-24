@@ -17,7 +17,16 @@ from pyrolyze.api import (
     UIElement,
 )
 
-from .app_context import AppContextKey, AppContextStore, GENERATION_TRACKER_KEY
+from .app_context import (
+    APP_CONTEXT_MISSING,
+    EMPTY_APP_CONTEXT_LOOKUP,
+    AppContextKey,
+    AppContextLookup,
+    AppContextStore,
+    GENERATION_TRACKER_KEY,
+    OverlayAppContextLookup,
+)
+from .drip import Drip
 from .trace import TraceChannel, emit_trace, trace_enabled
 
 
@@ -119,6 +128,10 @@ class DuplicateMountAdvertisementError(RuntimeError):
 
 class MountAdvertisementContextError(RuntimeError):
     """Raised when an advert is published outside a valid structural container."""
+
+
+class AppContextOverrideStructureError(RuntimeError):
+    """Raised when one retained app-context provider changes its fixed structure."""
 
 
 def _dirty_state_truthy(value: Any) -> bool:
@@ -229,6 +242,15 @@ class PlainCallRuntimeContext:
 
     def has_app_context(self, key: AppContextKey[Any]) -> bool:
         return self.slot.root_context._scheduler_root._app_context_store.has(key)
+
+    def get_authored_app_context(self, key: AppContextKey[T]) -> T:
+        return self.slot.get_authored_app_context(key)
+
+    def has_authored_app_context(self, key: AppContextKey[Any]) -> bool:
+        return self.slot.has_authored_app_context(key)
+
+    def authored_app_context_ref(self, key: AppContextKey[T]) -> ExternalStoreRef[T]:
+        return self.slot.authored_app_context_ref(key)
 
     def current_generation_id(self) -> int:
         tracker = self.get_app_context(GENERATION_TRACKER_KEY)
@@ -805,6 +827,42 @@ class ContextBase:
     def has_app_context(self, key: AppContextKey[Any]) -> bool:
         return self.root_context._scheduler_root._app_context_store.has(key)
 
+    def get_authored_app_context(self, key: AppContextKey[T]) -> T:
+        return self._effective_authored_app_context_lookup().get(key)
+
+    def has_authored_app_context(self, key: AppContextKey[Any]) -> bool:
+        return self._effective_authored_app_context_lookup().has(key)
+
+    def authored_app_context_ref(self, key: AppContextKey[T]) -> ExternalStoreRef[T]:
+        lookup = self._effective_authored_app_context_lookup()
+        drip = lookup.resolve_drip(key)
+        if drip is None or drip.get() is APP_CONTEXT_MISSING:
+            raise LookupError(f"no authored app context for key {key.debug_name!r}")
+
+        def subscribe(listener: Callable[[], None]) -> Callable[[], None]:
+            initialized = False
+
+            def on_change(_value: object | None) -> None:
+                nonlocal initialized
+                if not initialized:
+                    initialized = True
+                    return
+                listener()
+
+            return drip.subscribe_priority(on_change)
+
+        def get() -> T:
+            current = drip.get()
+            if current is APP_CONTEXT_MISSING:
+                raise LookupError(f"no authored app context for key {key.debug_name!r}")
+            return cast(T, current)
+
+        return ExternalStoreRef(
+            identity=drip,
+            subscribe=subscribe,
+            get=get,
+        )
+
     def current_generation_id(self) -> int:
         tracker = self.get_app_context(GENERATION_TRACKER_KEY)
         return tracker.current()
@@ -812,6 +870,14 @@ class ContextBase:
     def current_slot_id(self) -> SlotId | None:
         slot_id = getattr(self, "slot_id", None)
         return slot_id if isinstance(slot_id, SlotId) else None
+
+    def _effective_authored_app_context_lookup(self) -> AppContextLookup:
+        parent = getattr(self, "parent", None)
+        if isinstance(parent, ContextBase):
+            return parent._effective_authored_app_context_lookup()
+        if isinstance(self, RenderContext):
+            return self._authored_app_context_lookup
+        return EMPTY_APP_CONTEXT_LOOKUP
 
     def context_kind(self) -> str:
         return _context_kind(self)
@@ -933,6 +999,20 @@ class ContextBase:
             directive_fn=directive_fn,
             args=args,
             kwargs=kwargs,
+        )
+
+    def open_app_context_override(
+        self,
+        slot_id: SlotId,
+        keys: tuple[AppContextKey[Any], ...],
+        *values: Any,
+    ) -> _AppContextOverrideHandle:
+        self._require_active_scope()
+        slot = self._ensure_slot(slot_id, AppContextOverrideSlotContext)
+        return _AppContextOverrideHandle(
+            slot=slot,
+            keys=keys,
+            values=values,
         )
 
     def leaf_call(
@@ -1635,6 +1715,190 @@ class DirectiveSlotContext(PlainCallSlotContext):
         )
 
 
+def _empty_authored_app_context_lookup() -> AppContextLookup:
+    return EMPTY_APP_CONTEXT_LOOKUP
+
+
+def _authored_app_context_drip() -> Drip[object]:
+    return Drip(initial=APP_CONTEXT_MISSING, elide_policy="equality")
+
+
+@dataclass(slots=True)
+class _ParentAuthoredAppContextLookup:
+    parent_context: ContextBase
+
+    def get(self, key: AppContextKey[T]) -> T:
+        return self.parent_context._effective_authored_app_context_lookup().get(key)
+
+    def has(self, key: AppContextKey[Any]) -> bool:
+        return self.parent_context._effective_authored_app_context_lookup().has(key)
+
+    def resolve_drip(self, key: AppContextKey[Any]) -> Drip[object] | None:
+        return self.parent_context._effective_authored_app_context_lookup().resolve_drip(key)
+
+
+@dataclass(slots=True)
+class _CommittedAppContextOverrideKeyState:
+    key: AppContextKey[Any]
+    drip: Drip[object] = field(default_factory=_authored_app_context_drip)
+    parent_drip: Drip[object] | None = None
+    unsubscribe_parent: Callable[[], None] | None = None
+
+    def sync_value(self, value: Any) -> None:
+        self._clear_parent_link()
+        self.drip.next(value)
+
+    def sync_parent(self, parent_drip: Drip[object] | None) -> None:
+        if parent_drip is None:
+            self._clear_parent_link()
+            self.drip.next(APP_CONTEXT_MISSING)
+            return
+        if self.parent_drip is parent_drip and self.unsubscribe_parent is not None:
+            self.drip.next(parent_drip.get())
+            return
+
+        self._clear_parent_link()
+        self.parent_drip = parent_drip
+        self.drip.next(parent_drip.get())
+
+        def on_parent_change(next_value: object | None) -> None:
+            self.drip.next(APP_CONTEXT_MISSING if next_value is None else next_value)
+
+        self.unsubscribe_parent = parent_drip.subscribe_priority(on_parent_change)
+
+    def deactivate(self) -> None:
+        self._clear_parent_link()
+
+    def _clear_parent_link(self) -> None:
+        unsubscribe = self.unsubscribe_parent
+        self.unsubscribe_parent = None
+        self.parent_drip = None
+        if unsubscribe is not None:
+            unsubscribe()
+
+
+@dataclass(slots=True)
+class AppContextOverrideSlotContext(RerunnableSlotContext):
+    declared_keys: tuple[AppContextKey[Any], ...] = ()
+    committed_values: tuple[Any, ...] = ()
+    _committed_key_states: dict[AppContextKey[Any], _CommittedAppContextOverrideKeyState] = field(default_factory=dict)
+    _committed_lookup: AppContextLookup = field(default_factory=_empty_authored_app_context_lookup)
+    _pass_committed_values: tuple[Any, ...] = ()
+    _pass_committed_lookup: AppContextLookup = field(default_factory=_empty_authored_app_context_lookup)
+    _pending_values: tuple[Any, ...] = ()
+    _pending_lookup: AppContextLookup = field(default_factory=_empty_authored_app_context_lookup)
+    _pending_initialized: bool = False
+
+    def stage_override(
+        self,
+        keys: tuple[AppContextKey[Any], ...],
+        values: tuple[Any, ...],
+    ) -> None:
+        self._validate_override(keys, values)
+        if self.declared_keys and self.declared_keys != keys:
+            raise AppContextOverrideStructureError(
+                "app_context_override fixed keys cannot change at one slot"
+            )
+        if not self.declared_keys:
+            self.declared_keys = keys
+        self._apply_pending_values(values)
+        self._pending_values = values
+        self._pending_lookup = OverlayAppContextLookup(
+            parent=_ParentAuthoredAppContextLookup(self.parent),
+            drips={key: self._committed_key_states[key].drip for key in keys},
+        )
+        self._pending_initialized = True
+
+    def _effective_authored_app_context_lookup(self) -> AppContextLookup:
+        if self._scope_active and self._pending_initialized:
+            return self._pending_lookup
+        if self.declared_keys:
+            return self._committed_lookup
+        return super()._effective_authored_app_context_lookup()
+
+    def _begin_scope_pass(self) -> None:
+        self._pass_committed_values = self.committed_values
+        self._pass_committed_lookup = self._committed_lookup
+        super(AppContextOverrideSlotContext, self)._begin_scope_pass()
+
+    def _commit_scope_pass(self) -> None:
+        if not self._pending_initialized:
+            raise RuntimeError("app_context_override slot was not staged")
+        self.committed_values = self._pending_values
+        self._committed_lookup = OverlayAppContextLookup(
+            parent=_ParentAuthoredAppContextLookup(self.parent),
+            drips={key: self._committed_key_states[key].drip for key in self.declared_keys},
+        )
+        super(AppContextOverrideSlotContext, self)._commit_scope_pass()
+        self._pending_values = ()
+        self._pending_lookup = EMPTY_APP_CONTEXT_LOOKUP
+        self._pending_initialized = False
+        self._pass_committed_values = ()
+        self._pass_committed_lookup = EMPTY_APP_CONTEXT_LOOKUP
+
+    def _rollback_scope_pass(self) -> None:
+        super(AppContextOverrideSlotContext, self)._rollback_scope_pass()
+        self.committed_values = self._pass_committed_values
+        self._committed_lookup = self._pass_committed_lookup
+        if self.declared_keys and len(self._pass_committed_values) == len(self.declared_keys):
+            self._apply_values(self._pass_committed_values)
+        elif not self._pass_committed_values:
+            for state in self._committed_key_states.values():
+                state.deactivate()
+        self._pending_values = ()
+        self._pending_lookup = EMPTY_APP_CONTEXT_LOOKUP
+        self._pending_initialized = False
+        self._pass_committed_values = ()
+        self._pass_committed_lookup = EMPTY_APP_CONTEXT_LOOKUP
+
+    def deactivate(self) -> None:
+        for state in self._committed_key_states.values():
+            state.deactivate()
+        self._committed_key_states = {}
+        self._pending_values = ()
+        self._pending_lookup = EMPTY_APP_CONTEXT_LOOKUP
+        self._pending_initialized = False
+        super(AppContextOverrideSlotContext, self).deactivate()
+
+    def _apply_pending_values(self, values: tuple[Any, ...]) -> None:
+        self._apply_values(values)
+
+    def _apply_values(self, values: tuple[Any, ...]) -> None:
+        parent_lookup = self.parent._effective_authored_app_context_lookup()
+        for key, value in zip(self.declared_keys, values, strict=True):
+            state = self._committed_key_states.get(key)
+            if state is None:
+                state = _CommittedAppContextOverrideKeyState(key=key)
+                self._committed_key_states[key] = state
+            if value is None:
+                state.sync_parent(parent_lookup.resolve_drip(key))
+            else:
+                state.sync_value(value)
+
+    def _validate_override(
+        self,
+        keys: tuple[AppContextKey[Any], ...],
+        values: tuple[Any, ...],
+    ) -> None:
+        if not keys:
+            raise AppContextOverrideStructureError("app_context_override requires at least one key")
+        if len(keys) != len(values):
+            raise AppContextOverrideStructureError(
+                "app_context_override key/value arity must match"
+            )
+        seen: set[AppContextKey[Any]] = set()
+        for key in keys:
+            if not isinstance(key, AppContextKey):
+                raise AppContextOverrideStructureError(
+                    "app_context_override keys must be AppContextKey instances"
+                )
+            if key in seen:
+                raise AppContextOverrideStructureError(
+                    f"app_context_override duplicate key {key.debug_name!r}"
+                )
+            seen.add(key)
+
+
 @dataclass(slots=True)
 class ContainerSlotContext(RerunnableSlotContext):
     expects_native_root: bool = False
@@ -1690,6 +1954,7 @@ class ComponentCallSlotContext(RerunnableSlotContext):
             self.child_context = RenderContext(
                 owner_slot=self,
                 scheduler_root=self.render_context._scheduler_root,
+                authored_app_context_lookup=self.parent._effective_authored_app_context_lookup(),
             )
             self.component_identity = identity_key
             self.schema = schema
@@ -1732,6 +1997,9 @@ class ComponentCallSlotContext(RerunnableSlotContext):
                 self.last_args = ()
                 self.last_kwargs = {}
                 self.uses_dirty_state_api = True
+            self.child_context._authored_app_context_lookup = (
+                self.parent._effective_authored_app_context_lookup()
+            )
             self.child_context._mounted_callback = self._rerun_child
             self.child_context._run_boundary()
         except BaseException:
@@ -2028,6 +2296,22 @@ class _DirectiveCallHandle(AbstractContextManager[DirectiveSlotContext]):
 
 
 @dataclass(slots=True)
+class _AppContextOverrideHandle(AbstractContextManager[AppContextOverrideSlotContext]):
+    slot: AppContextOverrideSlotContext
+    keys: tuple[AppContextKey[Any], ...]
+    values: tuple[Any, ...]
+
+    def __enter__(self) -> AppContextOverrideSlotContext:
+        self.slot.stage_override(self.keys, self.values)
+        self.slot._begin_scope_pass()
+        return self.slot
+
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
+        _finish_context_pass(self.slot, commit=exc_type is None)
+        return False
+
+
+@dataclass(slots=True)
 class _NativeContainerCallHandle(AbstractContextManager[ContainerSlotContext]):
     slot: ContainerSlotContext
     container_fn: Callable[..., Any]
@@ -2227,6 +2511,7 @@ class RenderContext(ContextBase):
         owner_slot: ComponentCallSlotContext | None = None,
         scheduler_root: RenderContext | None = None,
         app_context_store: AppContextStore | None = None,
+        authored_app_context_lookup: AppContextLookup | None = None,
     ) -> None:
         self._slots_by_id: dict[SlotId, SlotContext] = {}
         self._mount_advertisements_by_slot: dict[SlotId, PyrolyzeMountAdvertisement] = {}
@@ -2240,10 +2525,16 @@ class RenderContext(ContextBase):
             self._scheduler_root = self
             self._scheduler = _InvalidationScheduler()
             self._app_context_store = app_context_store or AppContextStore()
+            self._authored_app_context_lookup = (
+                authored_app_context_lookup or EMPTY_APP_CONTEXT_LOOKUP
+            )
         else:
             self._scheduler_root = scheduler_root
             self._scheduler = scheduler_root._scheduler
             self._app_context_store = scheduler_root._app_context_store
+            self._authored_app_context_lookup = (
+                authored_app_context_lookup or scheduler_root._authored_app_context_lookup
+            )
         super().__init__(self)
 
     def pass_scope(self) -> _PassScopeHandle:
@@ -2551,6 +2842,8 @@ class RenderContext(ContextBase):
 def _context_kind(context: object) -> str:
     if isinstance(context, RenderContext):
         return "render_root" if context._owner_slot is None else "component_render"
+    if isinstance(context, AppContextOverrideSlotContext):
+        return "app_context_override"
     if isinstance(context, ContainerSlotContext):
         return "container"
     if isinstance(context, PlainCallSlotContext):
@@ -2571,6 +2864,8 @@ def _context_kind(context: object) -> str:
 
 
 __all__ = [
+    "AppContextOverrideSlotContext",
+    "AppContextOverrideStructureError",
     "CompValue",
     "ComponentCallSlotContext",
     "ContextBase",

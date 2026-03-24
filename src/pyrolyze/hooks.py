@@ -9,7 +9,7 @@ T = TypeVar("T")
 
 
 if TYPE_CHECKING:
-    from pyrolyze.runtime import ExternalStoreRef, PlainCallRuntimeContext, UseEffectRequest
+    from pyrolyze.runtime import AppContextKey, ExternalStoreRef, PlainCallRuntimeContext, UseEffectRequest
 
 
 def use_state(
@@ -97,8 +97,23 @@ def use_grip(source: ExternalStoreRef[T] | object) -> ExternalStoreRef[T]:
     raise TypeError("use_grip() expects an ExternalStoreRef or an object with ref()")
 
 
+def use_app_context(
+    key: AppContextKey[T],
+    *,
+    __pyrolyze_ctx: PlainCallRuntimeContext = cast(Any, None),
+) -> ExternalStoreRef[T]:
+    from pyrolyze.runtime import AppContextKey
+
+    if __pyrolyze_ctx is None:
+        raise RuntimeError("use_app_context() requires a pyrolyze plain-call runtime context")
+    if not isinstance(key, AppContextKey):
+        raise TypeError("use_app_context() expects an AppContextKey")
+    return __pyrolyze_ctx.authored_app_context_ref(key)
+
+
 __all__ = [
     "use_effect",
+    "use_app_context",
     "use_grip",
     "use_mount",
     "use_state",
