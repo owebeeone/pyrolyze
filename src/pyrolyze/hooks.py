@@ -101,10 +101,14 @@ def use_app_context(
     key: AppContextKey[T],
     *,
     __pyrolyze_ctx: PlainCallRuntimeContext = cast(Any, None),
-) -> T:
+) -> ExternalStoreRef[T]:
+    from pyrolyze.runtime import AppContextKey
+
     if __pyrolyze_ctx is None:
         raise RuntimeError("use_app_context() requires a pyrolyze plain-call runtime context")
-    return __pyrolyze_ctx.get_authored_app_context(key)
+    if not isinstance(key, AppContextKey):
+        raise TypeError("use_app_context() expects an AppContextKey")
+    return __pyrolyze_ctx.authored_app_context_ref(key)
 
 
 __all__ = [

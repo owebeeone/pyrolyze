@@ -840,7 +840,13 @@ class ContextBase:
             raise LookupError(f"no authored app context for key {key.debug_name!r}")
 
         def subscribe(listener: Callable[[], None]) -> Callable[[], None]:
+            initialized = False
+
             def on_change(_value: object | None) -> None:
+                nonlocal initialized
+                if not initialized:
+                    initialized = True
+                    return
                 listener()
 
             return drip.subscribe_priority(on_change)
@@ -1834,8 +1840,11 @@ class AppContextOverrideSlotContext(RerunnableSlotContext):
         super(AppContextOverrideSlotContext, self)._rollback_scope_pass()
         self.committed_values = self._pass_committed_values
         self._committed_lookup = self._pass_committed_lookup
-        if self.declared_keys:
+        if self.declared_keys and len(self._pass_committed_values) == len(self.declared_keys):
             self._apply_values(self._pass_committed_values)
+        elif not self._pass_committed_values:
+            for state in self._committed_key_states.values():
+                state.deactivate()
         self._pending_values = ()
         self._pending_lookup = EMPTY_APP_CONTEXT_LOOKUP
         self._pending_initialized = False

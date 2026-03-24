@@ -46,6 +46,8 @@ def _watch_ref(ref: object) -> tuple[list[object], Callable[[], None]]:
     subscribe = getattr(ref, "subscribe")
     get = getattr(ref, "get")
 
+    events.append(get())
+
     def on_change() -> None:
         events.append(get())
 
