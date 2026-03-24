@@ -297,6 +297,14 @@ Suggested file:
 This is last because it requires more backend behavior than pure structural
 snapshot tests.
 
+Status:
+
+- currently deferred
+- the staged coverage through adapter replay is already carrying most of the
+  confidence story for the immediate stabilization goal
+- only reopen this if a concrete correctness gap points at missing readback or
+  if a later optimization pass needs sharper no-op-write assertions
+
 Purpose:
 
 - prove retain-effective logic and detect over-application of writes

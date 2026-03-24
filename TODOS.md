@@ -86,6 +86,16 @@ grouped by milestone priority.
   - When ready, add developer-facing guidance under `dev-docs/` and author/test-facing usage guidance under `docs/` where appropriate.
   - Include when to prefer it over Hydo or narrow unit scaffolds, how to build one generated API surface, and how to assert both emitted UI and mounted graph snapshots.
 
+- [P3] Run a dedicated optimization phase after the current mount-advert stabilization push.
+  - Treat this as follow-on work, not as a blocker to the present correctness goal.
+  - Likely vectors:
+    - reduce allocation churn in advert DAG build and selector-routing passes
+    - trim repeated flatten/rebuild work in mount attachment resolution
+    - improve child-node reuse lookup and mount-state diff hot paths
+    - reduce invalidation propagation overhead in wide rerender trees
+    - profile generic-backend stress tests to find avoidable snapshot/build overhead
+  - Use the current advert/generic-backend stress suites as the starting regression guard before and after optimization work.
+
 - [P3] Support multiple independently keyed `use_state()` calls inside a single custom plain-call helper runtime context.
   - `use_state()` currently stores under fixed local keys inside one `PlainCallRuntimeContext`.
   - Custom helper composition currently has to use a tuple state or another manual aggregation strategy.
