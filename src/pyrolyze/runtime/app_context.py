@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Generic, TypeVar, cast
+from typing import Any, Callable, Generic, Protocol, TypeVar, cast
 
 
 T = TypeVar("T")
 _APP_CONTEXT_MISSING = object()
+
+
+class AppContextLookup(Protocol):
+    def get(self, key: AppContextKey[T]) -> T: ...
+
+    def has(self, key: AppContextKey[Any]) -> bool: ...
+
+    def resolve(self, key: AppContextKey[Any]) -> object: ...
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -49,6 +57,40 @@ class AppContextStore:
             close(cast(Any, self._values[key]))
 
 
+@dataclass(frozen=True, slots=True)
+class EmptyAppContextLookup:
+    def get(self, key: AppContextKey[T]) -> T:
+        raise LookupError(f"no authored app context for key {key.debug_name!r}")
+
+    def has(self, key: AppContextKey[Any]) -> bool:
+        return False
+
+    def resolve(self, key: AppContextKey[Any]) -> object:
+        _ = key
+        return _APP_CONTEXT_MISSING
+
+
+@dataclass(frozen=True, slots=True)
+class OverlayAppContextLookup:
+    parent: AppContextLookup
+    values: dict[AppContextKey[Any], object]
+
+    def get(self, key: AppContextKey[T]) -> T:
+        resolved = self.resolve(key)
+        if resolved is _APP_CONTEXT_MISSING:
+            raise LookupError(f"no authored app context for key {key.debug_name!r}")
+        return cast(T, resolved)
+
+    def has(self, key: AppContextKey[Any]) -> bool:
+        return self.resolve(key) is not _APP_CONTEXT_MISSING
+
+    def resolve(self, key: AppContextKey[Any]) -> object:
+        local = self.values.get(key, _APP_CONTEXT_MISSING)
+        if local is _APP_CONTEXT_MISSING or local is None:
+            return self.parent.resolve(key)
+        return local
+
+
 @dataclass(slots=True)
 class GenerationTracker:
     committed_generation_id: int = 0
@@ -83,10 +125,16 @@ GENERATION_TRACKER_KEY = AppContextKey(
     factory=lambda _host_app: GenerationTracker(),
 )
 
+EMPTY_APP_CONTEXT_LOOKUP: AppContextLookup = EmptyAppContextLookup()
+
 
 __all__ = [
+    "AppContextLookup",
     "AppContextKey",
     "AppContextStore",
+    "EMPTY_APP_CONTEXT_LOOKUP",
+    "EmptyAppContextLookup",
     "GENERATION_TRACKER_KEY",
     "GenerationTracker",
+    "OverlayAppContextLookup",
 ]

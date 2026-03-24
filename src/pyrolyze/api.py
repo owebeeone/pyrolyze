@@ -183,6 +183,22 @@ def mount(*selectors: SlotSelector) -> object:
     )
 
 
+class _AppContextOverrideSpecialForm:
+    def __getitem__(self, key_spec: object) -> Callable[..., object]:
+        _ = key_spec
+
+        def call(*args: Any, **kwargs: Any) -> object:
+            _ = (args, kwargs)
+            raise CallFromNonPyrolyzeContext(
+                "app_context_override[...] may only be used inside a transformed @pyrolyze function"
+            )
+
+        return call
+
+
+app_context_override = _AppContextOverrideSpecialForm()
+
+
 def mount_key(key: object) -> MountKeySelector:
     return MountKeySelector(key=key)
 
@@ -290,12 +306,13 @@ PyrolyteHandler = PyrolyzeHandler
 type SlotCallable[**P, T] = Annotated[Callable[P, T], PyrolyzeSlottedParam()]
 
 
-from .hooks import use_effect, use_grip, use_mount, use_state, use_unmount
+from .hooks import use_app_context, use_effect, use_grip, use_mount, use_state, use_unmount
 
 
 __all__ = [
     "CallFromNonPyrolyzeContext",
     "advertise_mount",
+    "app_context_override",
     "call_native",
     "ComponentMetadata",
     "ComponentRef",
@@ -324,6 +341,7 @@ __all__ = [
     "pyrolyze_slotted",
     "reactive_component",
     "ui_interface",
+    "use_app_context",
     "use_effect",
     "use_grip",
     "use_mount",
