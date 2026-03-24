@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Generic, Protocol, TypeVar, cast
 
+from .drip import Drip
+
 
 T = TypeVar("T")
 _APP_CONTEXT_MISSING = object()
@@ -15,7 +17,7 @@ class AppContextLookup(Protocol):
 
     def has(self, key: AppContextKey[Any]) -> bool: ...
 
-    def resolve(self, key: AppContextKey[Any]) -> object: ...
+    def resolve_drip(self, key: AppContextKey[Any]) -> Drip[object] | None: ...
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -65,30 +67,36 @@ class EmptyAppContextLookup:
     def has(self, key: AppContextKey[Any]) -> bool:
         return False
 
-    def resolve(self, key: AppContextKey[Any]) -> object:
+    def resolve_drip(self, key: AppContextKey[Any]) -> Drip[object] | None:
         _ = key
-        return _APP_CONTEXT_MISSING
+        return None
 
 
 @dataclass(frozen=True, slots=True)
 class OverlayAppContextLookup:
     parent: AppContextLookup
-    values: dict[AppContextKey[Any], object]
+    drips: dict[AppContextKey[Any], Drip[object]]
 
     def get(self, key: AppContextKey[T]) -> T:
-        resolved = self.resolve(key)
+        drip = self.resolve_drip(key)
+        if drip is None:
+            raise LookupError(f"no authored app context for key {key.debug_name!r}")
+        resolved = drip.get()
         if resolved is _APP_CONTEXT_MISSING:
             raise LookupError(f"no authored app context for key {key.debug_name!r}")
         return cast(T, resolved)
 
     def has(self, key: AppContextKey[Any]) -> bool:
-        return self.resolve(key) is not _APP_CONTEXT_MISSING
+        drip = self.resolve_drip(key)
+        if drip is None:
+            return False
+        return drip.get() is not _APP_CONTEXT_MISSING
 
-    def resolve(self, key: AppContextKey[Any]) -> object:
-        local = self.values.get(key, _APP_CONTEXT_MISSING)
-        if local is _APP_CONTEXT_MISSING or local is None:
-            return self.parent.resolve(key)
-        return local
+    def resolve_drip(self, key: AppContextKey[Any]) -> Drip[object] | None:
+        local = self.drips.get(key)
+        if local is not None:
+            return local
+        return self.parent.resolve_drip(key)
 
 
 @dataclass(slots=True)
@@ -129,6 +137,7 @@ EMPTY_APP_CONTEXT_LOOKUP: AppContextLookup = EmptyAppContextLookup()
 
 
 __all__ = [
+    "APP_CONTEXT_MISSING",
     "AppContextLookup",
     "AppContextKey",
     "AppContextStore",
@@ -138,3 +147,6 @@ __all__ = [
     "GenerationTracker",
     "OverlayAppContextLookup",
 ]
+
+
+APP_CONTEXT_MISSING = _APP_CONTEXT_MISSING

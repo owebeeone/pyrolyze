@@ -18,6 +18,7 @@ from pyrolyze.api import (
 )
 
 from .app_context import (
+    APP_CONTEXT_MISSING,
     EMPTY_APP_CONTEXT_LOOKUP,
     AppContextKey,
     AppContextLookup,
@@ -25,6 +26,7 @@ from .app_context import (
     GENERATION_TRACKER_KEY,
     OverlayAppContextLookup,
 )
+from .drip import Drip
 from .trace import TraceChannel, emit_trace, trace_enabled
 
 
@@ -246,6 +248,9 @@ class PlainCallRuntimeContext:
 
     def has_authored_app_context(self, key: AppContextKey[Any]) -> bool:
         return self.slot.has_authored_app_context(key)
+
+    def authored_app_context_ref(self, key: AppContextKey[T]) -> ExternalStoreRef[T]:
+        return self.slot.authored_app_context_ref(key)
 
     def current_generation_id(self) -> int:
         tracker = self.get_app_context(GENERATION_TRACKER_KEY)
@@ -827,6 +832,30 @@ class ContextBase:
 
     def has_authored_app_context(self, key: AppContextKey[Any]) -> bool:
         return self._effective_authored_app_context_lookup().has(key)
+
+    def authored_app_context_ref(self, key: AppContextKey[T]) -> ExternalStoreRef[T]:
+        lookup = self._effective_authored_app_context_lookup()
+        drip = lookup.resolve_drip(key)
+        if drip is None or drip.get() is APP_CONTEXT_MISSING:
+            raise LookupError(f"no authored app context for key {key.debug_name!r}")
+
+        def subscribe(listener: Callable[[], None]) -> Callable[[], None]:
+            def on_change(_value: object | None) -> None:
+                listener()
+
+            return drip.subscribe_priority(on_change)
+
+        def get() -> T:
+            current = drip.get()
+            if current is APP_CONTEXT_MISSING:
+                raise LookupError(f"no authored app context for key {key.debug_name!r}")
+            return cast(T, current)
+
+        return ExternalStoreRef(
+            identity=drip,
+            subscribe=subscribe,
+            get=get,
+        )
 
     def current_generation_id(self) -> int:
         tracker = self.get_app_context(GENERATION_TRACKER_KEY)
@@ -1684,10 +1713,69 @@ def _empty_authored_app_context_lookup() -> AppContextLookup:
     return EMPTY_APP_CONTEXT_LOOKUP
 
 
+def _authored_app_context_drip() -> Drip[object]:
+    return Drip(initial=APP_CONTEXT_MISSING, elide_policy="equality")
+
+
+@dataclass(slots=True)
+class _ParentAuthoredAppContextLookup:
+    parent_context: ContextBase
+
+    def get(self, key: AppContextKey[T]) -> T:
+        return self.parent_context._effective_authored_app_context_lookup().get(key)
+
+    def has(self, key: AppContextKey[Any]) -> bool:
+        return self.parent_context._effective_authored_app_context_lookup().has(key)
+
+    def resolve_drip(self, key: AppContextKey[Any]) -> Drip[object] | None:
+        return self.parent_context._effective_authored_app_context_lookup().resolve_drip(key)
+
+
+@dataclass(slots=True)
+class _CommittedAppContextOverrideKeyState:
+    key: AppContextKey[Any]
+    drip: Drip[object] = field(default_factory=_authored_app_context_drip)
+    parent_drip: Drip[object] | None = None
+    unsubscribe_parent: Callable[[], None] | None = None
+
+    def sync_value(self, value: Any) -> None:
+        self._clear_parent_link()
+        self.drip.next(value)
+
+    def sync_parent(self, parent_drip: Drip[object] | None) -> None:
+        if parent_drip is None:
+            self._clear_parent_link()
+            self.drip.next(APP_CONTEXT_MISSING)
+            return
+        if self.parent_drip is parent_drip and self.unsubscribe_parent is not None:
+            self.drip.next(parent_drip.get())
+            return
+
+        self._clear_parent_link()
+        self.parent_drip = parent_drip
+        self.drip.next(parent_drip.get())
+
+        def on_parent_change(next_value: object | None) -> None:
+            self.drip.next(APP_CONTEXT_MISSING if next_value is None else next_value)
+
+        self.unsubscribe_parent = parent_drip.subscribe_priority(on_parent_change)
+
+    def deactivate(self) -> None:
+        self._clear_parent_link()
+
+    def _clear_parent_link(self) -> None:
+        unsubscribe = self.unsubscribe_parent
+        self.unsubscribe_parent = None
+        self.parent_drip = None
+        if unsubscribe is not None:
+            unsubscribe()
+
+
 @dataclass(slots=True)
 class AppContextOverrideSlotContext(RerunnableSlotContext):
     declared_keys: tuple[AppContextKey[Any], ...] = ()
     committed_values: tuple[Any, ...] = ()
+    _committed_key_states: dict[AppContextKey[Any], _CommittedAppContextOverrideKeyState] = field(default_factory=dict)
     _committed_lookup: AppContextLookup = field(default_factory=_empty_authored_app_context_lookup)
     _pass_committed_values: tuple[Any, ...] = ()
     _pass_committed_lookup: AppContextLookup = field(default_factory=_empty_authored_app_context_lookup)
@@ -1707,10 +1795,11 @@ class AppContextOverrideSlotContext(RerunnableSlotContext):
             )
         if not self.declared_keys:
             self.declared_keys = keys
+        self._apply_pending_values(values)
         self._pending_values = values
         self._pending_lookup = OverlayAppContextLookup(
-            parent=self.parent._effective_authored_app_context_lookup(),
-            values={key: value for key, value in zip(keys, values, strict=True)},
+            parent=_ParentAuthoredAppContextLookup(self.parent),
+            drips={key: self._committed_key_states[key].drip for key in keys},
         )
         self._pending_initialized = True
 
@@ -1730,7 +1819,10 @@ class AppContextOverrideSlotContext(RerunnableSlotContext):
         if not self._pending_initialized:
             raise RuntimeError("app_context_override slot was not staged")
         self.committed_values = self._pending_values
-        self._committed_lookup = self._pending_lookup
+        self._committed_lookup = OverlayAppContextLookup(
+            parent=_ParentAuthoredAppContextLookup(self.parent),
+            drips={key: self._committed_key_states[key].drip for key in self.declared_keys},
+        )
         super(AppContextOverrideSlotContext, self)._commit_scope_pass()
         self._pending_values = ()
         self._pending_lookup = EMPTY_APP_CONTEXT_LOOKUP
@@ -1742,6 +1834,8 @@ class AppContextOverrideSlotContext(RerunnableSlotContext):
         super(AppContextOverrideSlotContext, self)._rollback_scope_pass()
         self.committed_values = self._pass_committed_values
         self._committed_lookup = self._pass_committed_lookup
+        if self.declared_keys:
+            self._apply_values(self._pass_committed_values)
         self._pending_values = ()
         self._pending_lookup = EMPTY_APP_CONTEXT_LOOKUP
         self._pending_initialized = False
@@ -1749,10 +1843,28 @@ class AppContextOverrideSlotContext(RerunnableSlotContext):
         self._pass_committed_lookup = EMPTY_APP_CONTEXT_LOOKUP
 
     def deactivate(self) -> None:
+        for state in self._committed_key_states.values():
+            state.deactivate()
+        self._committed_key_states = {}
         self._pending_values = ()
         self._pending_lookup = EMPTY_APP_CONTEXT_LOOKUP
         self._pending_initialized = False
         super(AppContextOverrideSlotContext, self).deactivate()
+
+    def _apply_pending_values(self, values: tuple[Any, ...]) -> None:
+        self._apply_values(values)
+
+    def _apply_values(self, values: tuple[Any, ...]) -> None:
+        parent_lookup = self.parent._effective_authored_app_context_lookup()
+        for key, value in zip(self.declared_keys, values, strict=True):
+            state = self._committed_key_states.get(key)
+            if state is None:
+                state = _CommittedAppContextOverrideKeyState(key=key)
+                self._committed_key_states[key] = state
+            if value is None:
+                state.sync_parent(parent_lookup.resolve_drip(key))
+            else:
+                state.sync_value(value)
 
     def _validate_override(
         self,

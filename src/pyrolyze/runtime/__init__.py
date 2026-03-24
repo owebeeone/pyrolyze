@@ -47,6 +47,7 @@ from .context import (
     dirtyof,
     module_registry,
 )
+from .drip import Drip
 from .trace import (
     TraceChannel,
     TraceRecord,
@@ -104,6 +105,7 @@ __all__ = [
     "ContainerSlotContext",
     "DirectiveSlotContext",
     "DirtyStateContext",
+    "Drip",
     "DuplicateKeyError",
     "DuplicateMountAdvertisementError",
     "EventHandlerSlotContext",
