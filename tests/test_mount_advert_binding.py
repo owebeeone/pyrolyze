@@ -23,6 +23,8 @@ _FIRST_DUPLICATE_SLOT = SlotId(_MODULE_ID, 2, line_no=11)
 _SECOND_DUPLICATE_SLOT = SlotId(_MODULE_ID, 3, line_no=12)
 _CONTAINER_SLOT = SlotId(_MODULE_ID, 4, line_no=13)
 _PLAIN_CONTAINER_SLOT = SlotId(_MODULE_ID, 5, line_no=14)
+_LOOP_SLOT = SlotId(_MODULE_ID, 6, line_no=15)
+_LOOP_ADVERT_SLOT = SlotId(_MODULE_ID, 7, line_no=16)
 
 def _pyr_section(ctx: ContextBase, title: str) -> None:
     ctx.call_native(
@@ -158,3 +160,27 @@ def test_advertise_mount_rejects_non_native_container_owner() -> None:
         with ctx.pass_scope():
             with ctx.container_call(_PLAIN_CONTAINER_SLOT, len, [1, 2, 3]) as plain_ctx:
                 _ = plain_ctx.call_plain(_ADVERT_SLOT, advertise_mount, "body")
+
+
+def test_advertise_mount_resolves_enclosing_native_container_through_loop_scopes() -> None:
+    ctx = RenderContext()
+    menu = MountSelector.named("menu")
+
+    with ctx.pass_scope():
+        with ctx.container_call(_CONTAINER_SLOT, _pyr_section, "Wrapper") as section_ctx:
+            for item_ctx in section_ctx.keyed_loop(_LOOP_SLOT, ["a"], key_fn=lambda value: value):
+                with item_ctx.pass_scope():
+                    _ = item_ctx.call_plain(
+                        _LOOP_ADVERT_SLOT,
+                        advertise_mount,
+                        "body",
+                        target=menu,
+                        default=True,
+                    )
+
+    advertisements = ctx.debug_mount_advertisements()
+    assert len(advertisements) == 1
+    assert advertisements[0].key == "body"
+    assert advertisements[0].selectors == (menu,)
+    assert advertisements[0].surface_owner_id == _CONTAINER_SLOT
+    assert advertisements[0].mount_owner_id == _CONTAINER_SLOT

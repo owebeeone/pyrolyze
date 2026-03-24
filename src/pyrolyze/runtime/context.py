@@ -172,6 +172,18 @@ def _project_dirty_state(dirty: bool, result_shape: object | None) -> Any:
     raise TypeError(f"unsupported result_shape {result_shape!r}")
 
 
+def _resolve_mount_advertisement_owner(parent: ContextBase) -> ContainerSlotContext | None:
+    current: ContextBase | SlotContext | None = parent
+    while current is not None:
+        if isinstance(current, ContainerSlotContext):
+            return current
+        if isinstance(current, SlotContext):
+            current = current.parent
+            continue
+        return None
+    return None
+
+
 @dataclass(frozen=True, slots=True)
 class UseEffectRequest:
     effect_fn: Callable[[], Callable[[], None] | None]
@@ -2279,10 +2291,12 @@ class RenderContext(ContextBase):
 
     def end_pass(self) -> None:
         self._commit_scope_pass()
+        self._rebuild_mount_advertisement_surface()
         self._flush_post_commit()
 
     def rollback_pass(self) -> None:
         self._rollback_scope_pass()
+        self._rebuild_mount_advertisement_surface()
         self._post_commit_callbacks.clear()
 
     def debug_children_of(self, slot_id: SlotId | None = None) -> tuple[SlotId, ...]:
@@ -2453,8 +2467,8 @@ class RenderContext(ContextBase):
         slot: PlainCallSlotContext,
         request: PyrolyzeMountAdvertisementRequest,
     ) -> PyrolyzeMountAdvertisement:
-        parent = slot.parent
-        if not isinstance(parent, ContainerSlotContext):
+        parent = _resolve_mount_advertisement_owner(slot.parent)
+        if parent is None:
             raise MountAdvertisementContextError(
                 "advertise_mount() requires a native container owner"
             )
@@ -2475,13 +2489,6 @@ class RenderContext(ContextBase):
             surface_owner_id=mount_owner_id,
             mount_owner_id=mount_owner_id,
         )
-        next_entries = dict(self._mount_advertisements_by_slot)
-        next_entries[slot.slot_id] = advertisement
-        self._validate_mount_advertisement_surface(
-            next_entries,
-            surface_owner_id=advertisement.surface_owner_id,
-        )
-        self._mount_advertisements_by_slot = next_entries
         return advertisement
 
     def _withdraw_mount_advertisement(self, slot_id: SlotId) -> None:
@@ -2516,6 +2523,29 @@ class RenderContext(ContextBase):
                         "duplicate default mount advertisement"
                     )
                 seen_default = True
+
+    def _rebuild_mount_advertisement_surface(self) -> None:
+        next_entries: dict[SlotId, PyrolyzeMountAdvertisement] = {}
+        for slot_id, slot in self._slots_by_id.items():
+            if not isinstance(slot, PlainCallSlotContext):
+                continue
+            binding = slot.binding
+            if not isinstance(binding, PyrolyzeMountAdvertisementBinding):
+                continue
+            advertisement = binding.retained_advertisement()
+            if advertisement is None:
+                continue
+            next_entries[slot_id] = advertisement
+
+        for surface_owner_id in {
+            advertisement.surface_owner_id for advertisement in next_entries.values()
+        }:
+            self._validate_mount_advertisement_surface(
+                next_entries,
+                surface_owner_id=surface_owner_id,
+            )
+
+        self._mount_advertisements_by_slot = next_entries
 
 
 def _context_kind(context: object) -> str:
