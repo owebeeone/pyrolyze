@@ -2,42 +2,39 @@
 
 ## Purpose
 
-This document proposes a broad end-to-end test matrix for mount adverts and
-related dynamic mount behavior using the generated backend from
+This document defines the non-Medusa end-to-end advert and dynamic mount test
+matrix for the generated backend from
 [GenericApiGenerator.md](GenericApiGenerator.md).
 
-The goal is to test the real mechanism with authored Pyrolyze functions rather
-than only narrow runtime or engine scaffolds.
+The goal is to grow coverage in a deliberate order:
+
+- start with the most readable authored cases
+- add one new source of structural difficulty at a time
+- layer generation and failure assertions onto already-readable tests
+- leave the full randomized brutality to a separate design:
+  [MountMedusaDesign.md](MountMedusaDesign.md)
 
 
-## Why This Exists
+## Why This Is Split
 
-The current advert tests are good at proving:
+The old single document mixed together:
 
-- the slot lifecycle
-- retained anchor behavior
-- static-key routed mounting
-- some Hydo graph stability
+- easy narrative advert cases
+- medium-difficulty rerender and compatibility cases
+- the eventual randomized stress monster
 
-They are still weak at proving:
+That made it harder to tell what should be implemented first.
 
-- dynamic function arguments changing mount APIs
-- dynamic backend adapter changes for the same public mount
-- deeply nested wrapper behavior expressed as ordinary authored code
-- keyed rerender reshaping that is easy for a human to reason about
-- rejection paths where the wrong child type is mounted into a constrained
-  mount point
-- exactly which nodes were mutated in a given rerender cycle
-
-The generated backend should make those tests small, explicit, and cheap.
+This document is now the progressive rollout plan. Medusa is separate because
+it is a design problem in its own right, not just "more tests".
 
 
 ## Test Style
 
-These tests should use the generated helper layer rather than raw
-`UIElement(...)` construction wherever possible.
+These tests should prefer the generated helper surface over raw
+`UIElement(...)` construction whenever possible.
 
-Preferred authored style:
+Preferred style:
 
 ```python
 backend = BuildPyroNodeBackend(SPECS)
@@ -45,492 +42,370 @@ backend = BuildPyroNodeBackend(SPECS)
 text = backend.pyro_func("text")
 row = backend.pyro_func("row")
 grid = backend.pyro_func("grid")
-
-text_cls = backend.pyro_class("text")
 ```
 
 Assertions should use:
 
-- `run_pyro_ui(...)` for emitted-tree expectations
-- `run_pyro(...)` for mounted backend expectations
+- `run_pyro_ui(...)` for emitted-tree assertions
+- `run_pyro(...)` for mounted-graph assertions
 
 
-## Core Helper Expectations
+## General Rules
 
-The generated framework should make these forms possible:
-
-```python
-ctx = backend.context(component, initial_generation=0)
-run_pyro(ctx.get())
-run_pyro(ctx.run().get())
-run_pyro(ctx.run(generation=7).get())
-run_pyro_ui(ctx.get())
-```
-
-And also direct mount/mountable-engine tests:
-
-```python
-engine = backend.engine()
-mounted = engine.mount(run_pyro_ui(ctx.get()))
-snapshot = run_pyro(mounted)
-```
+- authored tests should read like ordinary Pyrolyze author code
+- each stage should add only one main new difficulty at a time
+- same-input rerender equality should be asserted early and often
+- negative legality tests should use stable and explicit failures
+- do not jump to Medusa until the staged suites below are solid
 
 
-## Coverage Groups
+## Progressive Order
 
-### 1. Simple Wrapper Advert Routing
+The suites below are intentionally ordered from easiest to hardest.
 
-This is the first readability target.
+Treat this numbered order as the recommended roll-build phase order for the
+non-Medusa mount advert test expansion.
 
-Example shape:
+Implementation rule:
 
-```python
-def my_mount(v: int):
-    return mount_key(("my_key", v))
-
-
-@pyrolyze
-def fred():
-    with row():
-        text("hello")
-        advertise_mount(name=my_mount(1), default=True)
-        text("world")
-        advertise_mount(name=my_mount(2))
-        text("!")
+- complete one numbered stage cleanly before opening the next
+- if a stage exposes a required semantics change instead of a missing test or
+  correctness bug, stop and consult rather than mutating semantics to satisfy
+  the stage
 
 
-@pyrolyze
-def main():
-    with fred():
-        with mount(my_mount(1)):
-            text("Mr Smith")
-            text(" and Mrs Smith your")
-        with mount(my_mount(2)):
-            text("just changed forever")
-```
+### 1. Readable Narrative Routing
+
+This is the first implementation target.
+
+Purpose:
+
+- prove the generated backend is readable enough to replace ad hoc scaffolds
+- prove advert anchors route children to the obvious insertion site
+
+Required cases:
+
+- simple wrapper advert routing
+- advertised default case
+- two advert anchors in one container
+- same-input rerender graph equality
 
 Expected assertions:
 
 - emitted UI anchor order is obvious
-- mounted backend output shows routed children inserted at the two advert sites
-- rerender with the same logical input produces the same graph snapshot
+- mounted graph shows routed children in the expected place
+- same logical input produces the same mounted graph on rerender
+
+Suggested file:
+
+- `tests/test_generic_backend_mount_advert_readable.py`
 
 
-### 2. Dynamic Grid Rotation
+### 2. Public Key Remap Without Target Change
 
-This should be the signature high-variation case.
+This is the first dynamic case because it is still easy to reason about.
 
-Example family:
+Purpose:
 
-```python
-def my_mount(v: int):
-    return mount_key(("cell", v))
+- prove public mount naming can change without changing the translated graph
 
+Required cases:
 
-@pyrolyze
-def bob(w: int, h: int, positions=((0, 0), (0, 1), (1, 0), (1, 1))):
-    with grid(w, h):
-        for i, pos in keyed(enumerate(positions), key=lambda item: item[1]):
-            advertise_mount(name=my_mount(i), target=grid_point(*pos))
-```
+- rename one public key while target stays the same
+- caller-provided public key object
+- semantically equal key-family values recreated on rerender
 
-Then:
+Expected assertions:
 
-- a wrapper consumes those public mounts
-- a rerender rotates the `positions`
-- routed children move legally without zombie state
+- mounted graph stays unchanged when translated target stays unchanged
+- no unnecessary remounts caused only by public naming changes
 
-Assertions should cover:
+Suggested file:
 
-- first pass mounted graph
-- rerender mounted graph
-- exact equality for equivalent passes
-- expected relocation only for changed passes
+- `tests/test_generic_backend_mount_advert_remap.py`
 
 
-### 3. Dynamic Public Key Remapping
+### 3. Keyed Rotation And Relocation
 
-Tests where public keys themselves change.
+This is the first real shape-changing suite.
 
-Cases:
+Purpose:
 
-- one public key renamed while target remains the same
-- one caller-chosen key object passed into the provider
-- public key family values recreated each rerender but semantically equal
+- prove keyed advert targets can move legally across rerenders
+- prove no zombie routed attachments remain after relocation
 
-Expected result:
+Required cases:
 
-- graph unchanged when the translated target is unchanged
-- no unnecessary remount when only public naming changes
+- 2x2 grid rotation by one step
+- reverse-order rotation
+- equivalent rerender equality
+- sparse disappearance
 
+Expected assertions:
 
-### 4. Dynamic Backend Adapter Flips
+- pass 1 snapshot matches expected buckets
+- rerender relocates only the intended buckets
+- equivalent rerender preserves exact graph equality
 
-One logical public mount should be able to target different backend adapter
-shapes across rerenders.
+Suggested file:
 
-Examples:
-
-- ordered child mount -> keyed mount
-- keyed mount -> single mount
-- sync-preferred ordered mount -> place-by-index ordered mount
-
-These are not realistic toolkit changes, but they are excellent stress tests.
-
-The generator should make them possible from one spec family so that the same
-authored test can be replayed against multiple backend shapes.
+- `tests/test_generic_backend_mount_advert_rotation.py`
 
 
-### 5. Multiple Keyed Params And Value Params
+### 4. Multi-Param Mount Families
 
-The backend generator must support mount points with:
+This stage adds mount-selector richness without adding randomization.
+
+Purpose:
+
+- prove the generated backend can express keyed and non-keyed selector data
+
+Required cases:
 
 - zero keyed params
 - one keyed param
 - multiple keyed params
-- additional non-key params
+- additional non-key value params
 
-Test cases should include:
+Examples:
 
 - `grid_point(row, column)`
 - `grid_point(row, column, colour="red")`
-- one keyed param changing
-- non-key value changing while key identity stays stable
+
+Expected assertions:
+
+- keyed identity changes only when keyed params change
+- non-key value changes do not masquerade as key changes
+
+Suggested file:
+
+- `tests/test_generic_backend_mount_selector_families.py`
 
 
-### 6. Current-Value Readback
+### 5. Generation Visibility
 
-Some tests should intentionally use mount/prop shapes where the backend can
-read current mounted values.
+Generation assertions should be added after the structural cases are readable.
 
 Purpose:
 
-- prove retain-effective logic
-- prove that advert-driven rerenders do not over-apply writes
-- prove adapter switches do not leak stale value state
-
-
-### 7. Type Compatibility Rejection
-
-The generated backend must let tests assert mount compatibility failures.
+- prove change locality, not just final shape
 
 Required cases:
 
-- exact-kind mount accepts `text` and rejects `menu`
-- base-kind mount accepts `text` and `button` because both inherit `widget`
-- advert-routed mount still rejects the wrong child kind after translation
-- rerender that changes provider target from compatible to incompatible fails
-  deterministically
+- initial render stamps generation `0` by default
+- `run()` increments generation
+- `run(generation=n)` override is respected
+- unchanged subtree keeps its previous generation
+- changed or rerouted nodes take the new generation
 
-The failure should not be a vague backend crash. It should be a stable and
-assertable error such as `PyrolyzeMountCompatibilityError`, raised directly by
-the generated mount inserter path that received the invalid child.
+Suggested file:
 
-Strict compatibility checking should be the default mode for the generated
-backend. If the framework exposes a temporary "disable compatibility checks"
-switch for debugging, that should be tested separately and should not weaken
-the default behavior.
+- `tests/test_generic_backend_generation.py`
+
+Note:
+
+- this suite should reuse simple routing and keyed-rotation scenarios rather
+  than inventing a new structural test language
 
 
-### 8. Generation Tracking
+### 6. Compatibility Failure Cases
 
-The generated backend should expose a per-node `generation` field so tests can
-see which mounted nodes were actually changed in a rerender.
+This is the first intentionally negative suite.
+
+Purpose:
+
+- prove invalid child-to-mount connections fail deterministically
 
 Required cases:
 
-- initial render stamps all created nodes with the initial generation
-- rerender without structural change only bumps nodes that actually change
-- rerender with advert target movement bumps the affected parents and retained
-  nodes that were rewritten
-- explicit generation override on `ctx.run(generation=...)` is reflected in the
-  changed nodes
+- exact-kind accepts valid child and rejects invalid child
+- base-kind accepts subclass-compatible child
+- advert-routed invalid child still fails
+- compatible first pass, incompatible rerender
+- optional debug mode with compatibility checks disabled
+
+Expected failure:
+
+- `PyrolyzeMountCompatibilityError`
+
+Important rule:
+
+- failure should come from the generated mount inserter path, not from vague
+  incidental backend behavior
+
+Suggested file:
+
+- `tests/test_generic_backend_mount_compatibility.py`
 
 
-## Concrete Test Matrix
+### 7. Branching And Removal Churn
 
-### Group A: Readable Narrative Cases
+This is where the tree starts to become genuinely annoying.
 
-These are the tests future contributors should understand first.
+Purpose:
 
-1. `fred/main` wrapper routing
-2. simple advertised default case
-3. rename-only rerender case
-4. remove-one-advert keep-one-advert case
+- prove multiple sibling routed branches behave well under add/remove churn
 
+Required cases:
 
-### Group B: Keyed Rotation Cases
+- two sibling advertised branches
+- one branch disappears while another remains
+- provider disappears
+- consumer subtree disappears
+- reorder of sibling consumer branches
 
-1. 2x2 grid rotation by one step
-2. 2x2 grid reverse order
-3. sparse grid where one cell disappears
-4. grid grows from 2x2 to 3x2
-5. grid shrinks from 3x2 to 2x2
+Expected assertions:
 
+- no zombie routed children remain
+- surviving branches keep stable placement
+- rerender converges to the same final graph as a fresh render of that shape
 
-### Group C: Adapter Shape Stress
+Suggested file:
 
-1. ordered mount backend
-2. keyed backend
-3. single-mount backend
-4. anchor-before backend
-5. same authored wrapper test run against all of the above
+- `tests/test_generic_backend_mount_branching.py`
 
 
-### Group D: Change-Heavy Cases
+### 8. Adapter Shape Replay
 
-1. provider key changes
-2. provider target changes
-3. provider adapter shape changes
-4. consumer order changes
-5. consumer subtree disappears
-6. provider disappears
+This is harder because one authored test is replayed against multiple backend
+shapes.
+
+Purpose:
+
+- prove the same logical wrapper behavior can be checked against multiple mount
+  interface shapes
+
+Required shapes:
+
+- ordered mount backend
+- keyed mount backend
+- single-mount backend
+- anchor-before backend
+
+Expected assertions:
+
+- same authored wrapper remains legal where intended
+- translated mounted graph matches each backend shape's contract
+
+Suggested file:
+
+- `tests/test_generic_backend_mount_adapter_replay.py`
 
 
-### Group E: Compatibility Failures
+### 9. Current-Value Readback
 
-1. direct invalid child type into constrained mount
-2. advert-routed invalid child type into constrained mount
-3. same public key remapped from compatible target to incompatible target
-4. compatible on first pass, incompatible on rerender
-5. exact-kind acceptance vs base-kind acceptance
-6. debug mode with compatibility checks disabled
+This is last because it requires more backend behavior than pure structural
+snapshot tests.
 
+Purpose:
 
-### Group F: Generation Visibility
+- prove retain-effective logic and detect over-application of writes
 
-1. initial render generation is `0` by default
-2. rerender auto-increments to `1`
-3. explicit rerender generation override to a non-sequential value
-4. unchanged subtree keeps old generation
-5. moved/rerouted subtree gets the new generation where mutation occurred
+Required cases:
+
+- rerender with no effective value change performs no write
+- advert-driven rerender does not over-apply updates
+- adapter switches do not leak stale current-value state
+
+Suggested file:
+
+- `tests/test_generic_backend_mount_readback.py`
 
 
 ## Assertion Strategy
 
-Every test should choose one or more of these assertion levels explicitly.
+Every suite should state explicitly which assertion level it cares about.
 
-### Emitted Tree Assertion
+### Emitted Tree
 
 Use when proving:
 
 - anchor order
-- retained `MountDirective` structure
-- generated author code readability
+- retained advert structure
+- readability of generated author code
 
-
-### Mounted Graph Assertion
+### Mounted Graph
 
 Use when proving:
 
 - routed placement
 - cleanup
-- mount bucket identity
+- bucket identity
 - graph equality across rerender
 - per-node generation changes
 
-
-### Failure Assertion
+### Failure
 
 Use when proving:
 
 - invalid child attachment is rejected
 - rejection happens at the expected layer
 - the raised error identifies the mount and the incompatible child kind
-- the default strict mode crashes immediately on invalid insertion
 
+### Dual
 
-### Dual Assertion
-
-Use for the most important advert tests:
+Use for the most important advert suites:
 
 - emitted tree proves structural intent
 - mounted graph proves backend reality
 
 
-## Snapshot Shape
+## Snapshot Rules
 
 Mounted graph snapshots should include:
 
 - node kind
-- node generation
+- generation
 - args
 - kwargs
-- per-mount-point bucket keys
+- mount bucket keys
 - ordered entry placement
-- translated selector identity
+- translated selector identity where relevant
 
-Do not rely on reprs of mutable live backend objects.
-
-
-## Example Assertions
-
-### Wrapper Insertion
-
-Expected mounted result should read like:
-
-```python
-{
-    default: [
-        (
-            run_pyro(row),
-            [
-                text("hello"),
-                text("Mr Smith"),
-                text(" and Mrs Smith your"),
-                text("world"),
-                text("just changed forever"),
-                text("!"),
-            ],
-        )
-    ]
-}
-```
-
-The exact helper syntax may differ, but the readability bar is important:
-
-- the expected result should look like the authored layout
-- not like raw runtime internals
+Do not rely on `repr(...)` of mutable live backend objects.
 
 
-### Rotating Grid
+## Rollout Advice
 
-Pass 1:
-
-- cell 0 in `(0, 0)`
-- cell 1 in `(0, 1)`
-- cell 2 in `(1, 0)`
-- cell 3 in `(1, 1)`
-
-Pass 2:
-
-- same logical children
-- new routed target buckets after rotation
-- stable identity where keyed routing allows it
-- generation only changes on nodes actually rewritten by the rerender
+- implement Stage 1 fully before opening Stage 2
+- add generation assertions only after the underlying structural case is
+  already easy to read
+- keep Medusa out of the critical path until Stages 1 through 7 are stable
+- treat adapter replay and readback as later confidence multipliers, not as
+  blockers for the earlier advert suites
 
 
-### Generation Override
+## Future TODO: Migration
 
-Example expectation should read like:
+Broad test migration is still deferred.
 
-```python
-ctx = backend.context(crazy, initial_generation=10)
-
-first = run_pyro(ctx.get())
-second = run_pyro(ctx.run())
-third = run_pyro(ctx.run(generation=25))
-```
-
-With assertions such as:
-
-- first-pass nodes have generation `10`
-- second-pass changed nodes have generation `11`
-- unchanged retained nodes keep their previous generation
-- third-pass changed nodes have generation `25`
-
-
-### Compatibility Failure
-
-Example expectation should read like:
-
-```python
-with pytest.raises(PyrolyzeMountCompatibilityError):
-    run_pyro(ctx.get())
-```
-
-The important property is that the test can deliberately build an invalid graph
-and assert the failure, rather than relying on incidental backend behavior.
-
-
-## Future TODO: Migrate Existing Tests
-
-This framework should eventually replace ad hoc test scaffolding where it
-improves clarity, but only after the generated backend has been proven
-extensively on dedicated new coverage first.
-
-Future good migration candidates:
+Good later migration candidates:
 
 - broad advert-routing tests
 - dynamic rerender matrix tests
 - adapter-shape stress tests
 
-Still poor migration candidates:
+Poor migration candidates:
 
 - narrow compiler golden tests
 - tiny runtime unit tests that are clearer without a generated backend
 
 
-## Recommended Rollout
-
-### Phase 1
-
-Add the generic backend generator with enough shapes to express:
-
-- `text`
-- `row`
-- `grid`
-- one keyed mount family
-- one ordered mount family
-- one exact-kind constrained mount
-- one base-kind constrained mount
-- strict-by-default inserter-side compatibility checking
-- node generation stamping
-- `ctx.run(generation=...)` override support
-
-
-### Phase 2
-
-Port the current advert integration tests that are already easiest to read in
-author code.
-
-
-### Phase 3
-
-Add the dramatic rotation/remap/removal matrix and use it as the main advert
-confidence suite.
-
-
-### Phase 4
-
-Expand the compatibility-failure matrix so dynamic remaps and rerenders are
-covered alongside the positive cases.
-
-
-## Risks To Watch
-
-### 1. The helper layer becomes a DSL of its own
-
-Keep it thin.
-
-The generated helpers should stay close to:
-
-- real Pyrolyze author code
-- real backend mount semantics
-
-
-### 2. Snapshots become too magical
-
-Keep the snapshot format explicit and structural.
-
-
-### 3. Too much migration too early
-
-Do not rewrite every existing test immediately.
-
-Treat migration as follow-on work after the framework has earned confidence.
-
-
 ## Bottom Line
 
-The generated backend is the right place for the "crazy" tests:
+The easy work should stay easy.
 
-- real Pyrolyze functions
-- real rerenders
-- dynamic keys
-- dynamic mount targets
-- dynamic adapter shapes
+This document is the staged path:
 
-That should become the primary home for the hard advert tests, while the
-existing small unit tests remain as narrow guards around individual compiler,
-runtime, and mount-engine details.
+1. readable routing
+2. simple remap
+3. keyed relocation
+4. selector richness
+5. generation assertions
+6. compatibility failures
+7. branching churn
+8. adapter replay
+9. readback
+
+After that, use [MountMedusaDesign.md](MountMedusaDesign.md) for the genuinely
+brutal randomized convergence tests.

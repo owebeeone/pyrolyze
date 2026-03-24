@@ -52,6 +52,15 @@ grouped by milestone priority.
   - The public/runtime implementation does not currently expose this hook.
   - If this is not in scope for the first release, remove it from the documented API for now.
 
+- [P3] Add dedicated tests for `use_effect_async(...)` once the runtime surface is ready.
+  - Do not treat this as active implementation work yet.
+  - When the API/runtime hook is in place, add focused lifecycle tests for:
+    - async start
+    - completion-driven invalidation
+    - cancellation/cleanup
+    - rerender replacement semantics
+    - no stale completion after teardown
+
 - [P2] Lower nested `@pyrolyze` definitions directly inside render scope.
   - The authoring guide describes local nested `@pyrolyze` lowering through private component ids with synthetic props.
   - The current structural rewrite still rejects nested component definitions.
@@ -71,6 +80,11 @@ grouped by milestone priority.
   - `runtime/context.py` currently combines slot lifecycle, scheduling, binding semantics, event dispatch behavior, and committed-UI propagation.
   - Backend modules (especially PySide6) also mix reconciler bindings with legacy widget-rendering helpers.
   - Extract focused submodules to improve separation of concerns, testability, and maintenance cost.
+
+- [P3] Document `pyrolyze.testing.generic_backend` once the framework survives broader stress coverage.
+  - The framework is now useful enough to depend on internally and from adjacent projects, but it still needs more brutal advert/remap stress before it should be treated as fully documented guidance.
+  - When ready, add developer-facing guidance under `dev-docs/` and author/test-facing usage guidance under `docs/` where appropriate.
+  - Include when to prefer it over Hydo or narrow unit scaffolds, how to build one generated API surface, and how to assert both emitted UI and mounted graph snapshots.
 
 - [P3] Support multiple independently keyed `use_state()` calls inside a single custom plain-call helper runtime context.
   - `use_state()` currently stores under fixed local keys inside one `PlainCallRuntimeContext`.

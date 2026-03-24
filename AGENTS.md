@@ -42,6 +42,12 @@ Use a strict red/green/refactor workflow for all behavior changes.
 4. Verify targeted scope: Re-run the focused test subset.
 5. Verify full regression: Run the full test suite before finalizing.
 
+## Test-Led Semantics Guardrail
+- Do not change public API semantics, runtime semantics, or mount semantics merely to make a test pass without user consultation.
+- If a red test reveals that the desired behavior would require a real semantic change rather than a bug fix or missing coverage, stop and ask before implementing it.
+- It is acceptable to tighten tests, fix test assumptions, or fix correctness bugs that clearly match the existing design intent.
+- It is not acceptable to quietly redefine semantics to satisfy a convenient test expectation.
+
 ## Roll-Build Method
 - When the user asks for a phased rollout using the roll-build method, start from a clean git tree and tag that point before implementation begins.
 - Use the requested start tag name when one is given. If none is given, ask or use a clearly scoped phase-start tag name.
