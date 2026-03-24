@@ -42,6 +42,24 @@ Use a strict red/green/refactor workflow for all behavior changes.
 4. Verify targeted scope: Re-run the focused test subset.
 5. Verify full regression: Run the full test suite before finalizing.
 
+## Roll-Build Method
+- When the user asks for a phased rollout using the roll-build method, start from a clean git tree and tag that point before implementation begins.
+- Use the requested start tag name when one is given. If none is given, ask or use a clearly scoped phase-start tag name.
+- Implement one phase at a time.
+- After a phase is complete, only commit and tag it if:
+  - the phase goal is actually met
+  - focused verification passes
+  - the remaining ambiguities are minor and non-blocking
+- Tag completed phases using the naming scheme the user requested. If a phase is only partially complete, use an explicit partial tag name rather than pretending the phase is done.
+- If there are no more phases, or if confidence drops because of material ambiguity or instability, stop and wait instead of forcing the next phase.
+- If work starts cycling on the same persistent bug or bug family, stop, report the cycle clearly, and ask for direction.
+
+## When To Push Back On Roll-Build
+- Push back when the next phase has too many unresolved ambiguities to produce a trustworthy checkpoint.
+- Push back when the requested phase is too large or too coupled to complete safely as one checkpoint.
+- Push back when implementation reveals facts that materially break the current design or plan assumptions.
+- Push back when the resulting checkpoint would be misleadingly partial, unstable, or hard to recover from.
+
 ## Test Framework Selection
 - For new end-to-end PyRolyze tests that exercise authored component code, dynamic mount behavior, advert routing, or rerender graph changes, prefer the generic backend framework in `pyrolyze.testing.generic_backend` when it keeps the test clearer than ad hoc scaffolding.
 - Keep narrow compiler golden tests and tiny runtime unit tests on simpler direct scaffolding when that remains clearer.
