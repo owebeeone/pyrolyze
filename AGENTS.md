@@ -69,7 +69,7 @@ Use a strict red/green/refactor workflow for all behavior changes.
 ## Test Framework Selection
 - For new end-to-end PyRolyze tests that exercise authored component code, dynamic mount behavior, advert routing, or rerender graph changes, prefer the generic backend framework in `pyrolyze.testing.generic_backend` when it keeps the test clearer than ad hoc scaffolding.
 - Keep narrow compiler golden tests and tiny runtime unit tests on simpler direct scaffolding when that remains clearer.
-- **`@pyrolyze` under pytest:** the `pyrolyze` name in `pyrolyze.api` is a stub that raises; do not use module-level `@pyrolyze` in collected test files unless an import hook is installed. Use `pyrolyze.compiler.load_transformed_namespace` on author-shaped source (see `tests/unified/test_pyrolyze_compilation_runs_under_pytest.py` and `dev-docs/UnifiedMountBasedNativeApi.md` § Tests, layout, and `.venv` import hook).
+- **`@pyrolyze` under pytest:** installing the package registers a **pytest11** plugin that enables on-disk modules marked with `#@pyrolyze` (first two lines) via `pyrolyze.compiler.import_hook`. For `python` outside pytest, run `uv run pyrolyze-import-hook-pth install` once per venv (writes `pyrolyze_import_hook.pth` under `site-packages`; remove with `pyrolyze-import-hook-pth remove`). The legacy alias `pyrolyze-install-import-hook` still runs install only. The `pyrolyze` name in `pyrolyze.api` remains a stub for modules that are **not** transformed. Tests that build **dynamic** source (f-strings, generated module names) should keep `pyrolyze.compiler.load_transformed_namespace` (see `dev-docs/UnifiedMountBasedNativeApi.md` § Tests).
 
 ## Test Commands
 - Focused tests: `uv run --with pytest --with pytest-cov pytest <test-path> -q`

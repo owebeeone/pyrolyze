@@ -20,6 +20,13 @@ test = [
   "pytest-cov>=5,<7",
 ]
 
+[project.scripts]
+pyrolyze-install-import-hook = "pyrolyze.compiler.import_hook_cli:main"
+pyrolyze-import-hook-pth = "pyrolyze.pyrolyze_tools.import_hook_pth:main_cli"
+
+[project.entry-points.pytest11]
+pyrolyze = "pyrolyze.compiler.pytest_plugin"
+
 [tool.pyrolyze.test-matrix]
 python = ["3.12", "3.13", "3.14", "3.15"]
 

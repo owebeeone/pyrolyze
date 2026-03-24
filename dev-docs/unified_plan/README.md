@@ -30,9 +30,10 @@ design prose—link back to the parent docs.
   dump changes.
 - **Tests** — mirror `src/pyrolyze/<unified>/...` under `tests/...`; use public
   PyRolyze forms in E2E tests (`pyrolyze/AGENTS.md`).
-- **PyRolyze under pytest** — **today:** `load_transformed_namespace` + source
-  strings (see `tests/unified/test_pyrolyze_compilation_runs_under_pytest.py`);
-  **future:** `.venv` import hook for on-disk `@pyrolyze` (`UnifiedMountBasedNativeApi.md`).
+- **PyRolyze under pytest** — **pytest11** import hook (`pyrolyze.compiler.import_hook`)
+  for on-disk modules with `#@pyrolyze`; optional `pyrolyze-import-hook-pth install`
+  for plain `python` in a venv. **Dynamic** snippets still use
+  `load_transformed_namespace` (`UnifiedMountBasedNativeApi.md`).
 
 ## Related documents
 

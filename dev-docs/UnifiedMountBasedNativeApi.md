@@ -261,42 +261,33 @@ should use **public** PyRolyze source forms (`@pyrolyze`, `call_native(...)`,
 hand-written examples (`pyrolyze/AGENTS.md`). How that source is **loaded** is
 governed by the strategy below.
 
-### Current strategy under `pytest` (no import hook)
+### Import hook under `pytest` and the venv
 
-The public `pyrolyze` decorator in `pyrolyze.api` is a **stub** that raises
-(`"pyrolyze compiler failed"`). Real components are produced by the **compiler**
-(`analyze_source` → `lower_plan_to_ast` → exec of transformed AST).
+The public `pyrolyze` decorator in `pyrolyze.api` is still a **stub** for modules
+that are **not** compiled. For on-disk code, transformation is triggered by a
+**`#@pyrolyze` marker** in the first two lines of the module (same rule as
+`should_transform_module` in the AST kernel).
 
-**Therefore:**
+- **Pytest:** the package registers **`project.entry-points.pytest11`** →
+  `pyrolyze.compiler.pytest_plugin`, which calls
+  `pyrolyze.compiler.import_hook.install()` during `pytest_configure`. `install`
+  re-orders the finder to `sys.meta_path[0]` **after** pytest’s assertion rewrite
+  hook is installed, so PyRolyze compilation runs first. Normal `uv run pytest …`
+  loads `#@pyrolyze` test modules without extra steps. Example:
+  `tests/unified/test_pyrolyze_compilation_runs_under_pytest.py`.
+- **Plain `python` in a venv:** run **`uv run pyrolyze-import-hook-pth install`** once
+  per environment; it writes `pyrolyze_import_hook.pth` under `site-packages`
+  (path comes from `sysconfig`, no absolute paths in the repo). Use
+  **`pyrolyze-import-hook-pth remove`** to delete that file. Implementation:
+  `src/pyrolyze/pyrolyze_tools/import_hook_pth.py`.
 
-- **Do not** put `@pyrolyze` on **module-level** functions in ordinary `tests/*.py`
-  files that pytest imports directly—the stub runs at **import/collection** and
-  the suite will fail.
-- **Do** exercise `@pyrolyze` by passing **author-shaped source** through
-  **`pyrolyze.compiler.load_transformed_namespace`** (optionally with
-  `globals_dict={"pyrolyze": pyrolyze}` when the snippet needs the name in
-  scope), then invoke the transformed callable via `_pyrolyze_meta._func` and a
-  `RenderContext` / `dirtyof()` like existing tests (`tests/test_mount_advert_api.py`,
-  generic backend tests).
-- **Reference:** `tests/unified/test_pyrolyze_compilation_runs_under_pytest.py`
-  documents the stub behavior and a minimal successful compile-and-run path.
+### When to keep `load_transformed_namespace`
 
-This is the **supported strategy today** for unified-track and other tests that
-need transformed PyRolyze without an import hook.
-
-### Future: `.venv` and automatic import transformation
-
-**Goal:** on-disk test modules (and app modules) can use top-level `@pyrolyze`
-under `pytest` because the project **`.venv`** (or `uv run` entrypoint) **auto-installs**
-an import hook that compiles before the stub decorator executes.
-
-- **Constraint:** document the mechanism under `dev-docs/`; any committed config
-  stays **path-portable** (workspace `AGENTS.md` / `pyrolyze/AGENTS.md`).
-- **Target UX:** `uv run --with pytest ... pytest tests/unified/...` with no
-  extra “enable the hook” steps.
-
-Exact hook implementation is **TBD**; until it lands, **keep using**
-`load_transformed_namespace` (and generic backend harnesses where appropriate).
+Use **`pyrolyze.compiler.load_transformed_namespace`** when the PyRolyze source
+is a **string** built at test time (f-strings with generated `module_name`,
+virtual filenames, or golden snapshots). Generic backend harnesses and several
+compiler integration tests rely on this. Author-shaped snippets still use
+`@pyrolyze` **inside** the string; only the loader differs.
 
 
 ## Implementation Phases
