@@ -8,6 +8,7 @@ import importlib.util
 import inspect
 import os
 import sys
+from pathlib import Path
 from typing import Any, Callable
 
 from .compiler import compile_source_with_env, kernel_loader
@@ -27,7 +28,7 @@ def _raw_source_has_pyrolyze_marker(source: str) -> bool:
     return any(line.strip() == "#@pyrolyze" for line in marker_window)
 
 
-class _PyRolyzeLoader(importlib.abc.Loader):
+class _PyRolyzeLoader(importlib.abc.SourceLoader):
     def __init__(
         self,
         *,
@@ -42,55 +43,95 @@ class _PyRolyzeLoader(importlib.abc.Loader):
         self._delegate = delegate
         self._compiler_fn = compiler_fn
         self._cache = cache
+        self._prepared_source: str | None = None
+        self._prepared_path: str | None = None
+        self._prepared_artifact: Any | None = None
 
     def create_module(self, spec: importlib.machinery.ModuleSpec) -> Any:
         if hasattr(self._delegate, "create_module"):
             return self._delegate.create_module(spec)  # type: ignore[call-arg]
         return None
 
-    def exec_module(self, module: Any) -> None:
-        source = _get_source_from_loader(self._delegate, self._fullname)
-        file_path = getattr(module, "__file__", None) or self._path
-        artifact: Any | None = None
+    def get_filename(self, fullname: str) -> str:
+        del fullname
+        return self._path
 
+    def get_data(self, path: str) -> bytes:
+        return Path(path).read_bytes()
+
+    def path_stats(self, path: str) -> dict[str, Any]:
+        stat = os.stat(path)
+        return {
+            "mtime": stat.st_mtime,
+            "size": stat.st_size,
+        }
+
+    def set_data(self, path: str, data: bytes) -> None:
+        try:
+            target = Path(path)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+        except OSError:
+            return
+
+    def source_to_code(self, data: bytes, path: str, *, _optimize: int = -1) -> Any:
+        del _optimize
+        source = importlib.util.decode_source(data)
+        artifact = self._consume_prepared_artifact(source=source, file_path=path)
+        if artifact is None:
+            artifact = self._resolve_artifact(source, file_path=path)
+        transformed_source = getattr(artifact, "transformed_source", None)
+        source_to_compile = transformed_source if isinstance(transformed_source, str) else source
+        return compile(source_to_compile, path, "exec")
+
+    def exec_module(self, module: Any) -> None:
+        source = self.get_source(module.__name__)
+        file_path = getattr(module, "__file__", None) or self._path
         if source is not None and should_transform(
             module_name=self._fullname,
             file_path=str(file_path),
             source_text=source,
         ):
-            mtime = _safe_mtime(self._path)
-            python_magic = importlib.util.MAGIC_NUMBER.hex()
-            transformer_fingerprint = kernel_loader.active_transformer_fingerprint()
-            cache_key = compute_source_fingerprint(
-                source,
-                mtime=mtime,
-                python_magic=python_magic,
-                transformer_fingerprint=transformer_fingerprint,
+            artifact = self._resolve_artifact(source, file_path=str(file_path))
+            self._prepared_source = source
+            self._prepared_path = str(file_path)
+            self._prepared_artifact = artifact
+            setattr(
+                module,
+                "__pyrolyze_artifact__",
+                artifact,
             )
-            artifact = self._cache.get(module_name=self._fullname, cache_key=cache_key)
-            if artifact is None:
-                artifact = _invoke_compiler(
-                    self._compiler_fn,
-                    source,
-                    module_name=self._fullname,
-                    filename=str(file_path),
-                )
-                self._cache.put(module_name=self._fullname, cache_key=cache_key, payload=artifact)
+        super().exec_module(module)
 
-            setattr(module, "__pyrolyze_artifact__", artifact)
+    def _resolve_artifact(self, source: str, *, file_path: str) -> Any:
+        mtime = _safe_mtime(self._path)
+        python_magic = importlib.util.MAGIC_NUMBER.hex()
+        transformer_fingerprint = kernel_loader.active_transformer_fingerprint()
+        cache_key = compute_source_fingerprint(
+            source,
+            mtime=mtime,
+            python_magic=python_magic,
+            transformer_fingerprint=transformer_fingerprint,
+        )
+        artifact = self._cache.get(module_name=self._fullname, cache_key=cache_key)
+        if artifact is None:
+            artifact = _invoke_compiler(
+                self._compiler_fn,
+                source,
+                module_name=self._fullname,
+                filename=str(file_path),
+            )
+            self._cache.put(module_name=self._fullname, cache_key=cache_key, payload=artifact)
+        return artifact
 
-            transformed_source = getattr(artifact, "transformed_source", None)
-            if isinstance(transformed_source, str):
-                code = compile(transformed_source, str(file_path), "exec")
-                exec(code, module.__dict__)
-                return
-
-        if hasattr(self._delegate, "exec_module"):
-            self._delegate.exec_module(module)  # type: ignore[call-arg]
-            return
-
-        code = _get_code_from_loader(self._delegate, self._fullname)
-        exec(code, module.__dict__)
+    def _consume_prepared_artifact(self, *, source: str, file_path: str) -> Any | None:
+        if self._prepared_source == source and self._prepared_path == file_path:
+            artifact = self._prepared_artifact
+            self._prepared_source = None
+            self._prepared_path = None
+            self._prepared_artifact = None
+            return artifact
+        return None
 
 
 class PyRolyzeFinder(importlib.abc.MetaPathFinder):

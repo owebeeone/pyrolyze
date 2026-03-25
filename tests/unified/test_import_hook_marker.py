@@ -15,9 +15,10 @@ def test_pyrolyze_marker_only_first_two_lines() -> None:
 def test_install_registers_at_most_once() -> None:
     import sys
 
-    from pyrolyze.compiler.import_hook import PyrolyzeMetaPathFinder, install
+    from pyrolyze.compiler.import_hook import PyrolyzeMetaPathFinder, install, uninstall
 
-    count = sum(1 for f in sys.meta_path if isinstance(f, PyrolyzeMetaPathFinder))
-    assert count == 1
+    uninstall()
+    install()
+    assert sum(1 for f in sys.meta_path if isinstance(f, PyrolyzeMetaPathFinder)) == 1
     install()
     assert sum(1 for f in sys.meta_path if isinstance(f, PyrolyzeMetaPathFinder)) == 1
