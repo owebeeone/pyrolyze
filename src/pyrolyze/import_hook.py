@@ -20,6 +20,13 @@ _CACHE_DIR_ENV = "PYROLYZE_CACHE_DIR"
 _INSTALLED_FINDER: "PyRolyzeFinder | None" = None
 
 
+def _raw_source_has_pyrolyze_marker(source: str) -> bool:
+    """Match the first-two-lines ``#@pyrolyze`` eligibility rule."""
+
+    marker_window = source.splitlines()[:2]
+    return any(line.strip() == "#@pyrolyze" for line in marker_window)
+
+
 class _PyRolyzeLoader(importlib.abc.Loader):
     def __init__(
         self,
@@ -133,6 +140,30 @@ class PyRolyzeFinder(importlib.abc.MetaPathFinder):
         return spec
 
 
+def _install_finder(
+    *,
+    compiler_fn: Callable[..., Any] = compile_source_with_env,
+    cache: BytecodeCache | PersistentArtifactCache | None = None,
+) -> PyRolyzeFinder:
+    global _INSTALLED_FINDER
+
+    if _INSTALLED_FINDER is None:
+        effective_cache = cache
+        if effective_cache is None and _is_truthy(os.getenv(_ENABLE_CACHE_ENV, "")):
+            cache_dir = os.getenv(_CACHE_DIR_ENV, ".pyrolyze_cache")
+            effective_cache = PersistentArtifactCache(cache_dir=cache_dir)
+
+        _INSTALLED_FINDER = PyRolyzeFinder(
+            compiler_fn=compiler_fn,
+            cache=effective_cache,
+        )
+
+    while _INSTALLED_FINDER in sys.meta_path:
+        sys.meta_path.remove(_INSTALLED_FINDER)
+    sys.meta_path.insert(0, _INSTALLED_FINDER)
+    return _INSTALLED_FINDER
+
+
 
 def install_import_hook(
     *,
@@ -151,18 +182,10 @@ def install_import_hook(
     if not _is_truthy(enabled_value):
         return None
 
-    effective_cache = cache
-    if effective_cache is None and _is_truthy(os.getenv(_ENABLE_CACHE_ENV, "")):
-        cache_dir = os.getenv(_CACHE_DIR_ENV, ".pyrolyze_cache")
-        effective_cache = PersistentArtifactCache(cache_dir=cache_dir)
-
-    finder = PyRolyzeFinder(
+    return _install_finder(
         compiler_fn=compiler_fn,
-        cache=effective_cache,
+        cache=cache,
     )
-    sys.meta_path.insert(0, finder)
-    _INSTALLED_FINDER = finder
-    return finder
 
 
 
@@ -229,24 +252,26 @@ def install_startup_import_hook() -> None:
     should remain idempotent.
     """
 
-    from .compiler.import_hook import install as install_compiler_import_hook
-
-    install_compiler_import_hook()
+    _install_finder()
 
 
 def uninstall_startup_import_hook() -> None:
     """Remove the source-transform startup hook used by ``#@pyrolyze`` modules."""
 
-    from .compiler.import_hook import uninstall as uninstall_compiler_import_hook
+    uninstall_import_hook()
 
-    uninstall_compiler_import_hook()
+
+PyrolyzeLoader = _PyRolyzeLoader
+PyrolyzeMetaPathFinder = PyRolyzeFinder
 
 
 __all__ = [
+    "PyrolyzeLoader",
+    "PyrolyzeMetaPathFinder",
     "PyRolyzeFinder",
+    "_raw_source_has_pyrolyze_marker",
     "install_import_hook",
     "install_startup_import_hook",
     "uninstall_import_hook",
     "uninstall_startup_import_hook",
 ]
-
