@@ -1,7 +1,7 @@
 """Ensure the ``#@pyrolyze`` meta-path hook is registered when the package loads.
 
 Backend modules such as ``generated_library.py`` are checked in as plain
-``#@pyrolyze`` source. :mod:`pyrolyze.compiler.import_hook` must run before their
+``#@pyrolyze`` source. :mod:`pyrolyze.import_hook` must run before their
 ``exec_module`` so ``@pyrolyze`` is compiled. If the hook is absent, authors still
 import :func:`pyrolyze.api.pyrolyze`, which is intentionally a stub that raises.
 
@@ -24,14 +24,17 @@ import sys
 
 
 def apply() -> None:
-    """Register :class:`~pyrolyze.compiler.import_hook.PyrolyzeMetaPathFinder` if missing."""
+    """Register :class:`~pyrolyze.import_hook.PyrolyzeMetaPathFinder` if missing."""
 
-    from .compiler.import_hook import PyrolyzeMetaPathFinder, install as install_compiler_import_hook
+    from .import_hook import (
+        PyrolyzeMetaPathFinder,
+        install_startup_import_hook,
+    )
 
     if any(isinstance(h, PyrolyzeMetaPathFinder) for h in sys.meta_path):
         return
 
-    install_compiler_import_hook()
+    install_startup_import_hook()
 
 
 __all__ = ["apply"]
