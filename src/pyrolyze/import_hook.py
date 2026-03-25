@@ -8,6 +8,7 @@ import importlib.util
 import inspect
 import os
 import sys
+import hashlib
 from pathlib import Path
 from typing import Any, Callable
 
@@ -46,6 +47,7 @@ class _PyRolyzeLoader(importlib.abc.SourceLoader):
         self._prepared_source: str | None = None
         self._prepared_path: str | None = None
         self._prepared_artifact: Any | None = None
+        self._prepared_transformer_fingerprint: str | None = None
 
     def create_module(self, spec: importlib.machinery.ModuleSpec) -> Any:
         if hasattr(self._delegate, "create_module"):
@@ -61,8 +63,14 @@ class _PyRolyzeLoader(importlib.abc.SourceLoader):
 
     def path_stats(self, path: str) -> dict[str, Any]:
         stat = os.stat(path)
+        transformer_fingerprint = self._prepared_transformer_fingerprint
+        if transformer_fingerprint is None:
+            transformer_fingerprint = kernel_loader.active_transformer_fingerprint()
         return {
-            "mtime": stat.st_mtime,
+            "mtime": _cache_mtime_with_transformer_fingerprint(
+                stat_mtime_ns=stat.st_mtime_ns,
+                transformer_fingerprint=transformer_fingerprint,
+            ),
             "size": stat.st_size,
         }
 
@@ -92,21 +100,36 @@ class _PyRolyzeLoader(importlib.abc.SourceLoader):
             file_path=str(file_path),
             source_text=source,
         ):
-            artifact = self._resolve_artifact(source, file_path=str(file_path))
+            transformer_fingerprint = kernel_loader.active_transformer_fingerprint()
+            artifact = self._resolve_artifact(
+                source,
+                file_path=str(file_path),
+                transformer_fingerprint=transformer_fingerprint,
+            )
             self._prepared_source = source
             self._prepared_path = str(file_path)
             self._prepared_artifact = artifact
-            setattr(
-                module,
-                "__pyrolyze_artifact__",
-                artifact,
-            )
-        super().exec_module(module)
+            self._prepared_transformer_fingerprint = transformer_fingerprint
+            setattr(module, "__pyrolyze_artifact__", artifact)
+        try:
+            super().exec_module(module)
+        finally:
+            self._prepared_source = None
+            self._prepared_path = None
+            self._prepared_artifact = None
+            self._prepared_transformer_fingerprint = None
 
-    def _resolve_artifact(self, source: str, *, file_path: str) -> Any:
+    def _resolve_artifact(
+        self,
+        source: str,
+        *,
+        file_path: str,
+        transformer_fingerprint: str | None = None,
+    ) -> Any:
         mtime = _safe_mtime(self._path)
         python_magic = importlib.util.MAGIC_NUMBER.hex()
-        transformer_fingerprint = kernel_loader.active_transformer_fingerprint()
+        if transformer_fingerprint is None:
+            transformer_fingerprint = kernel_loader.active_transformer_fingerprint()
         cache_key = compute_source_fingerprint(
             source,
             mtime=mtime,
@@ -247,6 +270,15 @@ def uninstall_import_hook() -> bool:
 
 def _is_truthy(value: str) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _cache_mtime_with_transformer_fingerprint(
+    *,
+    stat_mtime_ns: int,
+    transformer_fingerprint: str,
+) -> int:
+    payload = f"{stat_mtime_ns}|{transformer_fingerprint}".encode("utf-8")
+    return int(hashlib.sha1(payload).hexdigest()[:8], 16)
 
 
 

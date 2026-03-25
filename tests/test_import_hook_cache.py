@@ -62,3 +62,34 @@ def test_import_loader_cache_misses_when_transformer_fingerprint_changes(
     loader.exec_module(second_module)
 
     assert len(calls) == 2
+
+
+def test_cache_mtime_changes_when_transformer_fingerprint_changes() -> None:
+    stat_mtime_ns = 1_234_567_890
+
+    first = import_hook._cache_mtime_with_transformer_fingerprint(
+        stat_mtime_ns=stat_mtime_ns,
+        transformer_fingerprint="cache_schema=1;kernel=v3_14;transform_hash=first",
+    )
+    second = import_hook._cache_mtime_with_transformer_fingerprint(
+        stat_mtime_ns=stat_mtime_ns,
+        transformer_fingerprint="cache_schema=1;kernel=v3_14;transform_hash=second",
+    )
+
+    assert first != second
+
+
+def test_cache_mtime_is_stable_when_transformer_fingerprint_is_unchanged() -> None:
+    stat_mtime_ns = 1_234_567_890
+    fingerprint = "cache_schema=1;kernel=v3_14;transform_hash=stable"
+
+    first = import_hook._cache_mtime_with_transformer_fingerprint(
+        stat_mtime_ns=stat_mtime_ns,
+        transformer_fingerprint=fingerprint,
+    )
+    second = import_hook._cache_mtime_with_transformer_fingerprint(
+        stat_mtime_ns=stat_mtime_ns,
+        transformer_fingerprint=fingerprint,
+    )
+
+    assert first == second
