@@ -39,6 +39,7 @@ class PyroNode:
     args: tuple[Any, ...] = ()
     kwargs: frozendict[str, Any] = frozendict()
     mounts: frozendict[object, tuple[PyroMountBucket, ...]] = frozendict()
+    mount_metadata: frozendict[object, frozendict[str, Any]] = frozendict()
 
     def to_builder(self) -> PyroNodeBuilder:
         from .builders import PyroNodeBuilder

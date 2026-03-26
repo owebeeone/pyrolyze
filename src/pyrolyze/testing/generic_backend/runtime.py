@@ -75,9 +75,11 @@ class GeneratedPyroMountable:
 
     def to_pyro_node(self) -> PyroNode:
         mounts: dict[object, tuple[PyroMountBucket, ...]] = {}
+        mount_metadata: dict[object, frozendict[str, Any]] = {}
         for mount_name, bucket_map in self._pyro_mounts.items():
             if not bucket_map:
                 continue
+            mount_spec = self._mount_spec(mount_name)
             buckets = tuple(
                 PyroMountBucket(
                     key=bucket.key,
@@ -90,11 +92,13 @@ class GeneratedPyroMountable:
                 for bucket in _sorted_live_buckets(bucket_map.values())
             )
             mounts[mount_name] = buckets
+            mount_metadata[mount_name] = _mount_metadata(mount_spec)
         return PyroNode(
             node_type=type(self).__node_spec__.name,
             generation=self._pyro_generation,
             kwargs=frozendict(self._pyro_constructor_kwargs),
             mounts=frozendict(mounts),
+            mount_metadata=frozendict(mount_metadata),
         )
 
     def _update_generation(self) -> None:
@@ -347,6 +351,23 @@ def _bucket_values(mount_spec: MountSpec, resolved_values: Mapping[str, Any]) ->
             }
         )
     )
+
+
+def _mount_metadata(mount_spec: MountSpec) -> frozendict[str, Any]:
+    metadata: dict[str, Any] = {
+        "interface": mount_spec.interface.value,
+        "replay_kind": mount_spec.replay_kind.value,
+        "prefer_sync": mount_spec.prefer_sync,
+    }
+    if mount_spec.style_label is not None:
+        metadata["style_label"] = mount_spec.style_label
+    if mount_spec.profile_label is not None:
+        metadata["profile_label"] = mount_spec.profile_label
+    if mount_spec.mutation_policy is not None:
+        metadata["mutation_policy"] = mount_spec.mutation_policy
+    if mount_spec.small_delta_threshold is not None:
+        metadata["small_delta_threshold"] = mount_spec.small_delta_threshold
+    return frozendict(metadata)
 
 
 def _sorted_live_buckets(

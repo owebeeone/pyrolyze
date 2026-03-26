@@ -6,13 +6,26 @@ from .harness import PyroRenderHarness, PyroRenderResult
 from .model import PyroArgs, PyroMountBucket, PyroMountEntry, PyroNode
 from .runtime import PyrolyzeMountCompatibilityError
 from .snapshots import PyroUiElement, PyroUiMountAdvertisement, PyroUiMountDirective, run_pyro, run_pyro_ui
-from .specs import MountInterfaceKind, MountParam, MountSpec, NodeGenSpec, ParamSpec, validate_node_specs
+from .specs import (
+    MountInterfaceKind,
+    MountParam,
+    MountPointProfile,
+    MountSpec,
+    MountStyleVariant,
+    MountVariantSpec,
+    NodeGenSpec,
+    ParamSpec,
+    validate_node_specs,
+)
 
 __all__ = [
     "BuildPyroNodeBackend",
     "MountInterfaceKind",
     "MountParam",
+    "MountPointProfile",
     "MountSpec",
+    "MountStyleVariant",
+    "MountVariantSpec",
     "NodeGenSpec",
     "ParamSpec",
     "PyroArgs",
