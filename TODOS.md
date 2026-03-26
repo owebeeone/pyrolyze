@@ -71,6 +71,13 @@ grouped by milestone priority.
   - `integrated_nested_grid_reorder`
   - These are the highest-value missing confidence tests for rerender correctness before release.
 
+- [P1] Hoist hook-like plain-call reads out of enclosing expressions during phase-5 lowering.
+  - Current lowering handles direct assignments like `value = use_grip(...)`, but misses enclosing-expression forms such as `value = use_grip(...) or "clock"` and `count = int(use_grip(...) or 0)`.
+  - In those forms the authored source can compile into runtime code that still evaluates the raw `ExternalStoreRef`, which breaks branch selection and coercions at runtime.
+  - Fix by introducing a compiler temporary for the hook-like read before evaluating the containing expression, while preserving Python evaluation order and short-circuit semantics.
+  - Add focused tests for `use_grip`, `use_state`-style helpers, coercion wrappers, branch conditions, f-strings, tuple/function arguments, and mixed-expression rerender behavior.
+  - Open design question: decide whether the same temp-hoisting rule should also apply to `call_native(...)` / native-call expressions, or whether native calls should keep stricter source-shape requirements than hook-like plain-call reads.
+
 - [P2] Add the remaining helper assertions recommended by [MountableTestingPlan.md](./dev-docs/MountableTestingPlan.md).
   - Keep small integrated-test helpers such as `assert_only_ui_changed(...)`, `assert_no_unexpected_context_churn(...)`, and `assert_ui_elements_present(...)` in the integrated graph test module so scenario expectations stay readable and deterministic.
 
