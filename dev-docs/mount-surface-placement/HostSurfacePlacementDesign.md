@@ -98,6 +98,11 @@ The generic backend must distinguish at least:
 The current unresolved bug is specifically about a nested-container child
 occupying one parent host slot while also owning its own interior surface.
 
+This kind must be modeled at two levels:
+
+- what kinds a host surface allows
+- what kind each concrete placed entry actually is
+
 
 ### 4. Surface Placement Operations
 
@@ -139,7 +144,7 @@ class HostSurfaceStyle:
 @dataclass(frozen=True, slots=True)
 class HostPlacementProfile:
     label: str
-    child_kind: Literal["widget", "nested_container"]
+    allowed_child_kinds: tuple[Literal["widget", "nested_container"], ...]
     stable_slot_identity: bool = True
     separates_structure_from_placement: bool = True
 ```
@@ -177,7 +182,7 @@ class MountPointProfile:
 This lets one logical mount family expand into concrete surfaces such as:
 
 - `child_ordered_index_widget_surface`
-- `child_ordered_index_nested_surface`
+- `child_ordered_index_mixed_surface`
 - `child_sync_preferred_nested_surface`
 
 
@@ -191,6 +196,10 @@ If host placement behavior is not represented in the generator surface:
 
 So the generator must emit enough concrete metadata for the runtime and tests to
 know which host placement contract is active.
+
+The generator also needs a way for generated test nodes to declare what host
+placement kind they occupy when attached to a host surface. This should be a
+node-level declaration, not inferred only from the surface.
 
 
 ## Runtime Model Changes
@@ -223,6 +232,7 @@ Possible shape:
 @dataclass(frozen=True, slots=True)
 class PyroHostSurfaceEntry:
     placement_handle: object
+    child_kind: HostPlacementChildKind
     child_node: PyroNode
 
 
@@ -234,6 +244,13 @@ class PyroHostSurface:
 
 The exact names can change. The key point is that this snapshot must be
 parallel to, not merged into, the structural mount buckets.
+
+This is necessary because one surface may legally contain a mix of:
+
+- widget-like entries
+- nested-container entries
+
+The current PySide6 `QBoxLayout` failure is exactly such a mixed surface.
 
 
 ### Required Operation Log Additions

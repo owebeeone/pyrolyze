@@ -54,7 +54,7 @@ class HostSurfaceStyle:
 @dataclass(frozen=True, slots=True)
 class HostPlacementProfile:
     label: str
-    child_kind: HostPlacementChildKind = HostPlacementChildKind.WIDGET
+    allowed_child_kinds: tuple[HostPlacementChildKind, ...] = (HostPlacementChildKind.WIDGET,)
     stable_slot_identity: bool = True
     separates_structure_from_placement: bool = True
 
@@ -88,7 +88,7 @@ class MountSpec:
     host_surface_supports_anchor_before: bool | None = None
     host_surface_keyed: bool | None = None
     host_placement_profile_label: str | None = None
-    host_child_kind: HostPlacementChildKind | None = None
+    host_allowed_child_kinds: tuple[HostPlacementChildKind, ...] = ()
     host_stable_slot_identity: bool | None = None
     host_separates_structure_from_placement: bool | None = None
 
@@ -109,6 +109,7 @@ class NodeGenSpec:
     base_name: str | None = None
     constructor: tuple[ParamSpec, ...] = ()
     mounts: tuple[MountSpec | MountVariantSpec, ...] = ()
+    host_child_kind: HostPlacementChildKind | None = None
 
 
 def validate_node_specs(specs: tuple[NodeGenSpec, ...] | list[NodeGenSpec]) -> tuple[NodeGenSpec, ...]:
@@ -203,10 +204,10 @@ def _expand_node_spec(spec: NodeGenSpec) -> NodeGenSpec:
                         if profile.host_placement_profile is not None
                         else None
                     ),
-                    host_child_kind=(
-                        profile.host_placement_profile.child_kind
+                    host_allowed_child_kinds=(
+                        profile.host_placement_profile.allowed_child_kinds
                         if profile.host_placement_profile is not None
-                        else None
+                        else ()
                     ),
                     host_stable_slot_identity=(
                         profile.host_placement_profile.stable_slot_identity
@@ -233,6 +234,10 @@ def _validate_mount_profile(node_name: str, mount_name: str, profile: MountPoint
     host_placement = profile.host_placement_profile
     if host_surface is None or host_placement is None:
         return
+    if not host_placement.allowed_child_kinds:
+        raise ValueError(
+            f"mount variant {mount_name!r} on {node_name!r} must declare at least one allowed host child kind"
+        )
     if host_surface.supports_anchor_before and profile.style.replay_kind is not MountReplayKind.ANCHOR_BEFORE:
         raise ValueError(
             f"mount variant {mount_name!r} on {node_name!r} declares anchor-before host "
@@ -243,7 +248,7 @@ def _validate_mount_profile(node_name: str, mount_name: str, profile: MountPoint
             f"mount variant {mount_name!r} on {node_name!r} declares keyed host surface "
             f"{host_surface.label!r} without a keyed mount style"
         )
-    if host_placement.child_kind is HostPlacementChildKind.NESTED_CONTAINER:
+    if HostPlacementChildKind.NESTED_CONTAINER in host_placement.allowed_child_kinds:
         if not host_placement.stable_slot_identity:
             raise ValueError(
                 f"mount variant {mount_name!r} on {node_name!r} declares nested-container "

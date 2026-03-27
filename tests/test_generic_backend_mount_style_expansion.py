@@ -54,7 +54,7 @@ def _expanded_specs() -> tuple[NodeGenSpec, ...]:
                             host_surface_style=HostSurfaceStyle(label="ordered_slots"),
                             host_placement_profile=HostPlacementProfile(
                                 label="widget_child",
-                                child_kind=HostPlacementChildKind.WIDGET,
+                                allowed_child_kinds=(HostPlacementChildKind.WIDGET,),
                             ),
                         ),
                         MountPointProfile(
@@ -70,7 +70,10 @@ def _expanded_specs() -> tuple[NodeGenSpec, ...]:
                             host_surface_style=HostSurfaceStyle(label="ordered_slots"),
                             host_placement_profile=HostPlacementProfile(
                                 label="nested_container_child",
-                                child_kind=HostPlacementChildKind.NESTED_CONTAINER,
+                                allowed_child_kinds=(
+                                    HostPlacementChildKind.WIDGET,
+                                    HostPlacementChildKind.NESTED_CONTAINER,
+                                ),
                             ),
                         ),
                     ),
@@ -131,14 +134,17 @@ def test_mount_variant_specs_expand_into_concrete_mount_surfaces() -> None:
     assert host_spec.mounts[0].mutation_policy is MountMutationPolicy.PLACE_ONLY
     assert host_spec.mounts[0].host_surface_label == "ordered_slots"
     assert host_spec.mounts[0].host_placement_profile_label == "widget_child"
-    assert host_spec.mounts[0].host_child_kind is HostPlacementChildKind.WIDGET
+    assert host_spec.mounts[0].host_allowed_child_kinds == (HostPlacementChildKind.WIDGET,)
     assert host_spec.mounts[1].style_label == "ordered_sync_preferred"
     assert host_spec.mounts[1].profile_label == "tk_pack_surface"
     assert host_spec.mounts[1].mutation_policy is MountMutationPolicy.REPLAY_THEN_SYNC
     assert host_spec.mounts[1].small_delta_threshold == 8
     assert host_spec.mounts[1].host_surface_label == "ordered_slots"
     assert host_spec.mounts[1].host_placement_profile_label == "nested_container_child"
-    assert host_spec.mounts[1].host_child_kind is HostPlacementChildKind.NESTED_CONTAINER
+    assert host_spec.mounts[1].host_allowed_child_kinds == (
+        HostPlacementChildKind.WIDGET,
+        HostPlacementChildKind.NESTED_CONTAINER,
+    )
 
     engine = backend.engine()
     mount_point = engine._mountable_specs["host"].mount_points["child_tk_pack_surface"]
@@ -174,7 +180,7 @@ def test_snapshot_exposes_style_and_profile_identity_for_expanded_mount_surface(
     assert metadata["host_surface_supports_anchor_before"] is False
     assert metadata["host_surface_keyed"] is False
     assert metadata["host_placement_profile_label"] == "nested_container_child"
-    assert metadata["host_child_kind"] == "nested_container"
+    assert metadata["host_allowed_child_kinds"] == ("widget", "nested_container")
     assert metadata["host_stable_slot_identity"] is True
     assert metadata["host_separates_structure_from_placement"] is True
 

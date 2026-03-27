@@ -22,6 +22,7 @@ from .model import (
     PyroNode,
 )
 from .specs import MountInterfaceKind, MountSpec, NodeGenSpec, validate_node_specs
+from .specs import HostPlacementChildKind
 
 _CURRENT_GENERATION: ContextVar[int] = ContextVar("pyrolyze_generic_backend_generation", default=0)
 _STRICT_COMPATIBILITY: ContextVar[bool] = ContextVar("pyrolyze_generic_backend_strict", default=True)
@@ -60,6 +61,7 @@ class _LiveMountBucket:
 @dataclass(slots=True)
 class _LiveHostSurfaceEntry:
     placement_handle: object
+    child_kind: HostPlacementChildKind
     child: GeneratedPyroMountable
 
 
@@ -129,6 +131,7 @@ class GeneratedPyroMountable:
                     entries=tuple(
                         PyroHostSurfaceEntry(
                             placement_handle=entry.placement_handle,
+                            child_kind=entry.child_kind,
                             node=entry.child.to_pyro_node(),
                         )
                         for entry in host_surface.entries
@@ -348,6 +351,7 @@ class GeneratedPyroMountable:
         surface.entries.append(
             _LiveHostSurfaceEntry(
                 placement_handle=self._next_host_handle(surface),
+                child_kind=self._resolve_host_child_kind(mount_spec, child),
                 child=child,
             )
         )
@@ -369,7 +373,11 @@ class GeneratedPyroMountable:
         bounded_index = max(0, min(index, len(surface.entries)))
         surface.entries.insert(
             bounded_index,
-            _LiveHostSurfaceEntry(placement_handle=handle, child=child),
+            _LiveHostSurfaceEntry(
+                placement_handle=handle,
+                child_kind=self._resolve_host_child_kind(mount_spec, child),
+                child=child,
+            ),
         )
         self._record_host_surface_operation(
             mount_spec.name,
@@ -397,7 +405,14 @@ class GeneratedPyroMountable:
                 if entry.child is before:
                     index = current_index
                     break
-        surface.entries.insert(index, _LiveHostSurfaceEntry(placement_handle=handle, child=child))
+        surface.entries.insert(
+            index,
+            _LiveHostSurfaceEntry(
+                placement_handle=handle,
+                child_kind=self._resolve_host_child_kind(mount_spec, child),
+                child=child,
+            ),
+        )
         self._record_host_surface_operation(
             mount_spec.name,
             "surface_place_before",
@@ -422,6 +437,7 @@ class GeneratedPyroMountable:
         surface.entries = [
             _LiveHostSurfaceEntry(
                 placement_handle=existing_handles.get(id(child), self._next_host_handle(surface)),
+                child_kind=self._resolve_host_child_kind(mount_spec, child),
                 child=child,
             )
             for child in resolved_children
@@ -451,7 +467,13 @@ class GeneratedPyroMountable:
         if handle is None:
             handle = self._next_host_handle(surface)
             self._record_host_surface_operation(mount_spec.name, "surface_attach", child=child)
-        surface.entries.append(_LiveHostSurfaceEntry(placement_handle=handle, child=child))
+        surface.entries.append(
+            _LiveHostSurfaceEntry(
+                placement_handle=handle,
+                child_kind=self._resolve_host_child_kind(mount_spec, child),
+                child=child,
+            )
+        )
 
     def _host_surface_remove(
         self,
@@ -497,6 +519,7 @@ class GeneratedPyroMountable:
                 child_name = value._pyro_constructor_kwargs.get("name")
                 if child_name is not None:
                     normalized[f"{key}_name"] = child_name
+                normalized[f"{key}_kind"] = self._infer_mountable_host_child_kind(value).value
                 continue
             normalized[key] = value
         self._pyro_host_surface_operations.append(
@@ -506,6 +529,31 @@ class GeneratedPyroMountable:
                 details=frozendict(normalized),
             )
         )
+
+    def _resolve_host_child_kind(
+        self,
+        mount_spec: MountSpec,
+        child: GeneratedPyroMountable,
+    ) -> HostPlacementChildKind:
+        child_kind = self._infer_mountable_host_child_kind(child)
+        if mount_spec.host_allowed_child_kinds and child_kind not in mount_spec.host_allowed_child_kinds:
+            allowed = ", ".join(kind.value for kind in mount_spec.host_allowed_child_kinds)
+            raise PyrolyzeMountCompatibilityError(
+                f"{type(self).__node_spec__.name!r} host surface {mount_spec.name!r} allows "
+                f"{allowed}, got {child_kind.value!r}"
+            )
+        return child_kind
+
+    def _infer_mountable_host_child_kind(
+        self,
+        child: GeneratedPyroMountable,
+    ) -> HostPlacementChildKind:
+        declared = type(child).__node_spec__.host_child_kind
+        if declared is not None:
+            return declared
+        if type(child).__node_spec__.mounts:
+            return HostPlacementChildKind.NESTED_CONTAINER
+        return HostPlacementChildKind.WIDGET
 
 
 def build_runtime_types(
@@ -647,8 +695,8 @@ def _mount_metadata(mount_spec: MountSpec) -> frozendict[str, Any]:
         metadata["host_surface_keyed"] = mount_spec.host_surface_keyed
     if mount_spec.host_placement_profile_label is not None:
         metadata["host_placement_profile_label"] = mount_spec.host_placement_profile_label
-    if mount_spec.host_child_kind is not None:
-        metadata["host_child_kind"] = mount_spec.host_child_kind.value
+    if mount_spec.host_allowed_child_kinds:
+        metadata["host_allowed_child_kinds"] = tuple(kind.value for kind in mount_spec.host_allowed_child_kinds)
         metadata["host_stable_slot_identity"] = mount_spec.host_stable_slot_identity
         metadata["host_separates_structure_from_placement"] = (
             mount_spec.host_separates_structure_from_placement
@@ -665,8 +713,8 @@ def _host_surface_metadata(mount_spec: MountSpec) -> frozendict[str, Any]:
         metadata["host_surface_keyed"] = mount_spec.host_surface_keyed
     if mount_spec.host_placement_profile_label is not None:
         metadata["host_placement_profile_label"] = mount_spec.host_placement_profile_label
-    if mount_spec.host_child_kind is not None:
-        metadata["host_child_kind"] = mount_spec.host_child_kind.value
+    if mount_spec.host_allowed_child_kinds:
+        metadata["host_allowed_child_kinds"] = tuple(kind.value for kind in mount_spec.host_allowed_child_kinds)
         metadata["host_stable_slot_identity"] = mount_spec.host_stable_slot_identity
         metadata["host_separates_structure_from_placement"] = (
             mount_spec.host_separates_structure_from_placement

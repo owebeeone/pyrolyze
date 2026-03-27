@@ -25,6 +25,7 @@ def _host_surface_backend() -> BuildPyroNodeBackend:
             NodeGenSpec(
                 name="text",
                 base_name="node",
+                host_child_kind=HostPlacementChildKind.WIDGET,
                 constructor=(
                     ParamSpec(name="name", annotation=TypeRef("str")),
                     ParamSpec(name="text", annotation=TypeRef("str")),
@@ -33,6 +34,7 @@ def _host_surface_backend() -> BuildPyroNodeBackend:
             NodeGenSpec(
                 name="row",
                 base_name="node",
+                host_child_kind=HostPlacementChildKind.NESTED_CONTAINER,
                 constructor=(ParamSpec(name="name", annotation=TypeRef("str")),),
                 mounts=(
                     MountVariantSpec(
@@ -51,7 +53,10 @@ def _host_surface_backend() -> BuildPyroNodeBackend:
                                 host_surface_style=HostSurfaceStyle(label="ordered_slots"),
                                 host_placement_profile=HostPlacementProfile(
                                     label="nested_container_child",
-                                    child_kind=HostPlacementChildKind.NESTED_CONTAINER,
+                                    allowed_child_kinds=(
+                                        HostPlacementChildKind.WIDGET,
+                                        HostPlacementChildKind.NESTED_CONTAINER,
+                                    ),
                                 ),
                             ),
                         ),
@@ -79,7 +84,10 @@ def _host_surface_backend() -> BuildPyroNodeBackend:
                                 host_surface_style=HostSurfaceStyle(label="ordered_slots"),
                                 host_placement_profile=HostPlacementProfile(
                                     label="nested_container_child",
-                                    child_kind=HostPlacementChildKind.NESTED_CONTAINER,
+                                    allowed_child_kinds=(
+                                        HostPlacementChildKind.WIDGET,
+                                        HostPlacementChildKind.NESTED_CONTAINER,
+                                    ),
                                 ),
                             ),
                         ),
@@ -116,6 +124,11 @@ def test_snapshot_represents_host_surface_order_separately_from_structural_mount
         "controls",
         "bottom",
     )
+    assert tuple(entry.child_kind.value for entry in snapshot.host_surfaces["child_nested_layout_surface"].entries) == (
+        "widget",
+        "nested_container",
+        "widget",
+    )
 
     builder = snapshot.to_builder()
     surface = builder.host_surfaces["child_nested_layout_surface"]
@@ -131,6 +144,11 @@ def test_snapshot_represents_host_surface_order_separately_from_structural_mount
         "top",
         "bottom",
         "controls",
+    )
+    assert tuple(entry.child_kind.value for entry in shifted.host_surfaces["child_nested_layout_surface"].entries) == (
+        "widget",
+        "widget",
+        "nested_container",
     )
 
 
@@ -168,9 +186,17 @@ def test_host_surface_snapshot_and_operations_are_deterministic() -> None:
     snapshot = root.to_pyro_node()
 
     assert snapshot.host_surface_metadata["child_nested_layout_surface"]["host_surface_label"] == "ordered_slots"
+    assert snapshot.host_surface_metadata["child_nested_layout_surface"]["host_allowed_child_kinds"] == (
+        "widget",
+        "nested_container",
+    )
     assert tuple(entry.node.kwargs["name"] for entry in snapshot.host_surfaces["child_nested_layout_surface"].entries) == (
         "second",
         "first",
+    )
+    assert tuple(entry.child_kind.value for entry in snapshot.host_surfaces["child_nested_layout_surface"].entries) == (
+        "widget",
+        "widget",
     )
     assert [operation.kind for operation in snapshot.host_surface_operations] == [
         "surface_attach",

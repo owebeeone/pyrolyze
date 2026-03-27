@@ -7,6 +7,8 @@ from typing import Any
 
 from frozendict import frozendict
 
+from .specs import HostPlacementChildKind
+
 
 @dataclass(frozen=True, slots=True)
 class PyroArgs:
@@ -30,6 +32,7 @@ class PyroMountOperation:
 @dataclass(frozen=True, slots=True)
 class PyroHostSurfaceEntry:
     placement_handle: object
+    child_kind: HostPlacementChildKind
     node: PyroNode
 
 

@@ -57,14 +57,23 @@ class PyroMountBucketBuilder:
 @dataclass(slots=True)
 class PyroHostSurfaceEntryBuilder:
     placement_handle: object
+    child_kind: object
     node: PyroNode
 
     @classmethod
     def from_entry(cls, entry: PyroHostSurfaceEntry) -> PyroHostSurfaceEntryBuilder:
-        return cls(placement_handle=entry.placement_handle, node=entry.node)
+        return cls(
+            placement_handle=entry.placement_handle,
+            child_kind=entry.child_kind,
+            node=entry.node,
+        )
 
     def build(self) -> PyroHostSurfaceEntry:
-        return PyroHostSurfaceEntry(placement_handle=self.placement_handle, node=self.node)
+        return PyroHostSurfaceEntry(
+            placement_handle=self.placement_handle,
+            child_kind=self.child_kind,
+            node=self.node,
+        )
 
 
 @dataclass(slots=True)

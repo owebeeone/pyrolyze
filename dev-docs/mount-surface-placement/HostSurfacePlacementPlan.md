@@ -188,7 +188,8 @@ Deliverables:
 Required runtime concepts:
 
 - parent-owned host surface
-- child kind: widget vs nested container
+- surface-level allowed child kinds
+- per-entry concrete child kind: widget vs nested container
 - placement handle identity
 - host placement order
 
@@ -214,7 +215,8 @@ Goal:
 Target surface:
 
 - ordered parent host surface
-- nested-container child occupies one parent slot
+- mixed child kinds in one parent surface
+- one nested-container child occupies one parent slot among widget-like siblings
 - nested child also owns its own internal ordered surface
 
 Deliverables:
