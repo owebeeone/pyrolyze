@@ -195,8 +195,22 @@ behavior may legitimately vary based on:
 This is important because some backends or adapter surfaces may deliberately
 change mutation strategy under churn.
 
-The generic backend must therefore support pluggable or configurable policies
-for:
+This policy must not remain a generic-backend-only testing concept. If policy
+is part of the supported PyRolyze backend behavior, it must become part of the
+shared backend API/model so generated backends, learnings, and the common mount
+applier all speak the same contract.
+
+That means the shared backend model must be able to represent at least:
+
+- mutation policy identity
+- small-delta threshold where applicable
+- compatibility with existing simpler flags such as `prefer_sync`
+
+The generic backend must then consume that same real backend policy contract,
+not invent a parallel test-only abstraction.
+
+The resulting runtime/model surface must therefore support pluggable or
+configurable policies for:
 
 - ordered replay
 - anchor-before replay

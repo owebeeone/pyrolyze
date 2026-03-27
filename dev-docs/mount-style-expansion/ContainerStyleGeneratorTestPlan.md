@@ -225,6 +225,11 @@ There should also be focused tests for replay itself:
 Because mutation behavior may vary by API learnings, backend learnings, or churn
 volume, the test platform must eventually cover policy as a separate axis.
 
+This phase is not only about generic-backend variation. Before the broader
+policy matrix is trustworthy, the shared backend API/model and common mount
+applier must expose and consume the same policy fields. Otherwise the generic
+backend would be testing a parallel contract instead of the real runtime one.
+
 Initial policy-oriented tests should verify:
 
 1. ordered/index with place-only behavior
@@ -233,7 +238,8 @@ Initial policy-oriented tests should verify:
 4. rollback via snapshot/restore
 5. rollback via fallback reapply
 
-These can be added after the first deterministic style tests land.
+These should be added only after the shared backend policy model is promoted
+into the real runtime surface and consumed by the common mount applier.
 
 
 ## Gap-Closing Checks

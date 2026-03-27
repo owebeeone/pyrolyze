@@ -121,6 +121,11 @@ This keeps the contract precise while still enabling a matrix.
 These should remain the low-level concrete contract fields that describe one
 generated mount surface.
 
+However, Phase 2 implementation showed that policy cannot remain only in the
+generic-backend builder layer. If PyRolyze wants policy-aware behavior such as
+Tkinter low-churn replay vs higher-churn sync, the real shared backend model
+must carry executable policy fields too.
+
 ### Add a higher-level style-expansion input
 
 Add a generator-facing way to request multiple mount-style variants from one
@@ -169,6 +174,24 @@ The important idea is not the exact class name. The important part is the level:
 
 - style expansion request at generation time
 - concrete mount style at runtime
+
+
+## Shared Backend Policy Revision
+
+Policy must be promoted into the real backend API/model, not left as a
+generic-backend-only label.
+
+That means the shared backend model should gain explicit policy fields on the
+real mount-point surface, for example:
+
+- mutation policy identity
+- small-delta threshold
+
+and the common mount applier should choose between replay, sync, and fallback
+using those fields instead of a partly hardcoded policy.
+
+The generic backend should then lower `MountPointProfile` into that same shared
+runtime contract so tests and real backends exercise the same semantics.
 
 
 ## Expansion Behavior
@@ -442,8 +465,10 @@ The requirements surface is broad, but the implementation should be phased.
 
 ### Phase 3
 
-- add rollback variants
-- implement policy variation behavior behind the Phase 1 API
+- revise the shared backend API/model to carry executable mutation policy
+- make the common mount applier policy-driven
+- align generic-backend profiles to the shared runtime policy fields
+- add rollback variants on top of that corrected model
 
 ### Phase 4
 
