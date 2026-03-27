@@ -2,7 +2,13 @@
 
 from .api import BuildPyroNodeBackend
 from .engine import PyroNodeEngine
-from .fuzz import FuzzReplayRecord, FuzzReplayStep, generate_argument_fuzz_replay
+from .fuzz import (
+    FuzzReplayRecord,
+    FuzzReplayStep,
+    HostSurfaceReplayState,
+    capture_host_surface_replay_state,
+    generate_argument_fuzz_replay,
+)
 from .harness import PyroRenderHarness, PyroRenderResult
 from .model import (
     PyroArgs,
@@ -35,6 +41,7 @@ __all__ = [
     "BuildPyroNodeBackend",
     "FuzzReplayRecord",
     "FuzzReplayStep",
+    "HostSurfaceReplayState",
     "HostPlacementChildKind",
     "HostPlacementProfile",
     "HostSurfaceStyle",
@@ -61,6 +68,7 @@ __all__ = [
     "PyroUiMountAdvertisement",
     "PyroUiMountDirective",
     "PyrolyzeMountCompatibilityError",
+    "capture_host_surface_replay_state",
     "run_pyro",
     "run_pyro_ui",
     "generate_argument_fuzz_replay",

@@ -8,6 +8,8 @@ from typing import Any, Mapping, Sequence
 
 from frozendict import frozendict
 
+from .model import PyroNode
+
 
 @dataclass(frozen=True, slots=True)
 class FuzzReplayStep:
@@ -18,6 +20,13 @@ class FuzzReplayStep:
 class FuzzReplayRecord:
     seed: int
     steps: tuple[FuzzReplayStep, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class HostSurfaceReplayState:
+    structural_mounts: frozendict[str, tuple[str, ...]]
+    host_surface_orders: frozendict[str, tuple[str, ...]]
+    host_surface_kinds: frozendict[str, tuple[str, ...]]
 
 
 def generate_argument_fuzz_replay(
@@ -43,8 +52,48 @@ def generate_argument_fuzz_replay(
     return FuzzReplayRecord(seed=seed, steps=tuple(steps))
 
 
+def capture_host_surface_replay_state(node: PyroNode) -> HostSurfaceReplayState:
+    structural_mounts = frozendict(
+        {
+            str(mount_name): tuple(
+                _entry_display_name(entry.node)
+                for bucket in buckets
+                for entry in bucket.entries
+            )
+            for mount_name, buckets in node.mounts.items()
+        }
+    )
+    host_surface_orders = frozendict(
+        {
+            str(surface_name): tuple(_entry_display_name(entry.node) for entry in surface.entries)
+            for surface_name, surface in node.host_surfaces.items()
+        }
+    )
+    host_surface_kinds = frozendict(
+        {
+            str(surface_name): tuple(entry.child_kind.value for entry in surface.entries)
+            for surface_name, surface in node.host_surfaces.items()
+        }
+    )
+    return HostSurfaceReplayState(
+        structural_mounts=structural_mounts,
+        host_surface_orders=host_surface_orders,
+        host_surface_kinds=host_surface_kinds,
+    )
+
+
+def _entry_display_name(node: PyroNode) -> str:
+    if "name" in node.kwargs:
+        return str(node.kwargs["name"])
+    if "text" in node.kwargs:
+        return str(node.kwargs["text"])
+    return node.node_type
+
+
 __all__ = [
     "FuzzReplayRecord",
+    "HostSurfaceReplayState",
     "FuzzReplayStep",
+    "capture_host_surface_replay_state",
     "generate_argument_fuzz_replay",
 ]
