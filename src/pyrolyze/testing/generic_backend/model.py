@@ -28,6 +28,25 @@ class PyroMountOperation:
 
 
 @dataclass(frozen=True, slots=True)
+class PyroHostSurfaceEntry:
+    placement_handle: object
+    node: PyroNode
+
+
+@dataclass(frozen=True, slots=True)
+class PyroHostSurfaceOperation:
+    surface_name: str
+    kind: str
+    details: frozendict[str, Any] = frozendict()
+
+
+@dataclass(frozen=True, slots=True)
+class PyroHostSurface:
+    surface_name: str
+    entries: tuple[PyroHostSurfaceEntry, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class PyroMountBucket:
     key: PyroArgs
     values: PyroArgs
@@ -48,6 +67,9 @@ class PyroNode:
     mounts: frozendict[object, tuple[PyroMountBucket, ...]] = frozendict()
     mount_metadata: frozendict[object, frozendict[str, Any]] = frozendict()
     mount_operations: tuple[PyroMountOperation, ...] = field(default=(), compare=False)
+    host_surfaces: frozendict[object, PyroHostSurface] = frozendict()
+    host_surface_metadata: frozendict[object, frozendict[str, Any]] = frozendict()
+    host_surface_operations: tuple[PyroHostSurfaceOperation, ...] = field(default=(), compare=False)
 
     def to_builder(self) -> PyroNodeBuilder:
         from .builders import PyroNodeBuilder
@@ -55,10 +77,14 @@ class PyroNode:
         return PyroNodeBuilder.from_node(self)
 
 
-from .builders import PyroMountBucketBuilder, PyroNodeBuilder  # noqa: E402
+from .builders import PyroHostSurfaceBuilder, PyroMountBucketBuilder, PyroNodeBuilder  # noqa: E402
 
 __all__ = [
     "PyroArgs",
+    "PyroHostSurface",
+    "PyroHostSurfaceBuilder",
+    "PyroHostSurfaceEntry",
+    "PyroHostSurfaceOperation",
     "PyroMountBucket",
     "PyroMountEntry",
     "PyroMountOperation",

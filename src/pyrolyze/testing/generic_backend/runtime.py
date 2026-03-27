@@ -11,7 +11,16 @@ from frozendict import frozendict
 
 from pyrolyze.backends.model import MountReplayKind
 
-from .model import PyroArgs, PyroMountBucket, PyroMountEntry, PyroMountOperation, PyroNode
+from .model import (
+    PyroArgs,
+    PyroHostSurface,
+    PyroHostSurfaceEntry,
+    PyroHostSurfaceOperation,
+    PyroMountBucket,
+    PyroMountEntry,
+    PyroMountOperation,
+    PyroNode,
+)
 from .specs import MountInterfaceKind, MountSpec, NodeGenSpec, validate_node_specs
 
 _CURRENT_GENERATION: ContextVar[int] = ContextVar("pyrolyze_generic_backend_generation", default=0)
@@ -48,6 +57,19 @@ class _LiveMountBucket:
     objects: list[GeneratedPyroMountable]
 
 
+@dataclass(slots=True)
+class _LiveHostSurfaceEntry:
+    placement_handle: object
+    child: GeneratedPyroMountable
+
+
+@dataclass(slots=True)
+class _LiveHostSurface:
+    surface_name: str
+    entries: list[_LiveHostSurfaceEntry]
+    next_handle: int = 0
+
+
 class GeneratedPyroMountable:
     __node_spec__: NodeGenSpec
     __runtime_types__: Mapping[str, type[GeneratedPyroMountable]]
@@ -69,6 +91,8 @@ class GeneratedPyroMountable:
             mount.name: {} for mount in type(self).__node_spec__.mounts
         }
         self._pyro_mount_operations: list[PyroMountOperation] = []
+        self._pyro_host_surfaces: dict[str, _LiveHostSurface] = {}
+        self._pyro_host_surface_operations: list[PyroHostSurfaceOperation] = []
 
     @property
     def generation(self) -> int:
@@ -77,10 +101,13 @@ class GeneratedPyroMountable:
     def to_pyro_node(self) -> PyroNode:
         mounts: dict[object, tuple[PyroMountBucket, ...]] = {}
         mount_metadata: dict[object, frozendict[str, Any]] = {}
+        host_surfaces: dict[object, PyroHostSurface] = {}
+        host_surface_metadata: dict[object, frozendict[str, Any]] = {}
         for mount_name, bucket_map in self._pyro_mounts.items():
-            if not bucket_map:
-                continue
             mount_spec = self._mount_spec(mount_name)
+            host_surface = self._pyro_host_surfaces.get(mount_name)
+            if not bucket_map and host_surface is None:
+                continue
             buckets = tuple(
                 PyroMountBucket(
                     key=bucket.key,
@@ -93,10 +120,21 @@ class GeneratedPyroMountable:
                 for bucket in _sorted_live_buckets(bucket_map.values())
                 if bucket.objects
             )
-            if not buckets:
-                continue
-            mounts[mount_name] = buckets
-            mount_metadata[mount_name] = _mount_metadata(mount_spec)
+            if buckets:
+                mounts[mount_name] = buckets
+                mount_metadata[mount_name] = _mount_metadata(mount_spec)
+            if host_surface is not None and host_surface.entries:
+                host_surfaces[mount_name] = PyroHostSurface(
+                    surface_name=host_surface.surface_name,
+                    entries=tuple(
+                        PyroHostSurfaceEntry(
+                            placement_handle=entry.placement_handle,
+                            node=entry.child.to_pyro_node(),
+                        )
+                        for entry in host_surface.entries
+                    ),
+                )
+                host_surface_metadata[mount_name] = _host_surface_metadata(mount_spec)
         return PyroNode(
             node_type=type(self).__node_spec__.name,
             generation=self._pyro_generation,
@@ -104,6 +142,9 @@ class GeneratedPyroMountable:
             mounts=frozendict(mounts),
             mount_metadata=frozendict(mount_metadata),
             mount_operations=tuple(self._pyro_mount_operations),
+            host_surfaces=frozendict(host_surfaces),
+            host_surface_metadata=frozendict(host_surface_metadata),
+            host_surface_operations=tuple(self._pyro_host_surface_operations),
         )
 
     def _update_generation(self) -> None:
@@ -144,6 +185,7 @@ class GeneratedPyroMountable:
         bucket = bucket_map.setdefault(bucket_key, _LiveMountBucket(key=bucket_key, values=PyroArgs(), objects=[]))
         bucket.objects.append(child)
         self._record_mount_operation(mount_name, "append", child=child)
+        self._host_surface_append(mount_spec, child)
         self._update_generation()
 
     def _ordered_insert(self, mount_name: str, index: int, child: GeneratedPyroMountable) -> None:
@@ -159,6 +201,7 @@ class GeneratedPyroMountable:
             index = len(bucket.objects)
         bucket.objects.insert(index, child)
         self._record_mount_operation(mount_name, "place_by_index", index=index, child=child)
+        self._host_surface_place_by_index(mount_spec, index, child)
         self._update_generation()
 
     def _ordered_insert_before(
@@ -178,6 +221,7 @@ class GeneratedPyroMountable:
             index = bucket.objects.index(before)
         bucket.objects.insert(index, child)
         self._record_mount_operation(mount_name, "place_before_anchor", before=before, child=child)
+        self._host_surface_place_before(mount_spec, before, child)
         self._update_generation()
 
     def _ordered_sync(self, mount_name: str, children: Iterable[GeneratedPyroMountable]) -> None:
@@ -193,6 +237,7 @@ class GeneratedPyroMountable:
         if not resolved_children:
             bucket_map.pop(bucket_key, None)
             self._record_mount_operation(mount_name, "sync", count=0)
+            self._host_surface_sync(mount_spec, ())
             self._update_generation()
             return
         bucket_map[bucket_key] = _LiveMountBucket(
@@ -201,6 +246,7 @@ class GeneratedPyroMountable:
             objects=resolved_children,
         )
         self._record_mount_operation(mount_name, "sync", count=len(resolved_children))
+        self._host_surface_sync(mount_spec, resolved_children)
         self._update_generation()
 
     def _ordered_detach(self, mount_name: str, child: GeneratedPyroMountable) -> None:
@@ -217,6 +263,7 @@ class GeneratedPyroMountable:
         else:
             existing.objects = updated
         self._record_mount_operation(mount_name, "detach", child=child)
+        self._host_surface_detach(self._mount_spec(mount_name), child)
         self._update_generation()
 
     def _set_single_or_keyed(
@@ -234,6 +281,7 @@ class GeneratedPyroMountable:
                 return
             bucket_map.pop(bucket_key, None)
             self._record_mount_operation(mount_name, "keyed_remove", key=bucket_key)
+            self._host_surface_remove(self._mount_spec(mount_name), child=None)
             self._update_generation()
             return
         self._validate_child(mount_spec, child)
@@ -252,6 +300,7 @@ class GeneratedPyroMountable:
             objects=[child],
         )
         self._record_mount_operation(mount_name, "keyed_set", key=bucket_key, child=child)
+        self._host_surface_keyed_set(mount_spec, child)
         self._update_generation()
 
     def _record_mount_operation(
@@ -278,6 +327,181 @@ class GeneratedPyroMountable:
         self._pyro_mount_operations.append(
             PyroMountOperation(
                 mount_name=mount_name,
+                kind=kind,
+                details=frozendict(normalized),
+            )
+        )
+
+    def _host_surface(self, mount_spec: MountSpec) -> _LiveHostSurface | None:
+        if mount_spec.host_surface_label is None:
+            return None
+        return self._pyro_host_surfaces.setdefault(
+            mount_spec.name,
+            _LiveHostSurface(surface_name=mount_spec.host_surface_label, entries=[]),
+        )
+
+    def _host_surface_append(self, mount_spec: MountSpec, child: GeneratedPyroMountable) -> None:
+        surface = self._host_surface(mount_spec)
+        if surface is None:
+            return
+        self._remove_host_child(surface, child)
+        surface.entries.append(
+            _LiveHostSurfaceEntry(
+                placement_handle=self._next_host_handle(surface),
+                child=child,
+            )
+        )
+        self._record_host_surface_operation(mount_spec.name, "surface_attach", child=child)
+
+    def _host_surface_place_by_index(
+        self,
+        mount_spec: MountSpec,
+        index: int,
+        child: GeneratedPyroMountable,
+    ) -> None:
+        surface = self._host_surface(mount_spec)
+        if surface is None:
+            return
+        handle = self._remove_host_child(surface, child)
+        if handle is None:
+            handle = self._next_host_handle(surface)
+            self._record_host_surface_operation(mount_spec.name, "surface_attach", child=child)
+        bounded_index = max(0, min(index, len(surface.entries)))
+        surface.entries.insert(
+            bounded_index,
+            _LiveHostSurfaceEntry(placement_handle=handle, child=child),
+        )
+        self._record_host_surface_operation(
+            mount_spec.name,
+            "surface_place_index",
+            child=child,
+            index=bounded_index,
+        )
+
+    def _host_surface_place_before(
+        self,
+        mount_spec: MountSpec,
+        before: GeneratedPyroMountable | None,
+        child: GeneratedPyroMountable,
+    ) -> None:
+        surface = self._host_surface(mount_spec)
+        if surface is None:
+            return
+        handle = self._remove_host_child(surface, child)
+        if handle is None:
+            handle = self._next_host_handle(surface)
+            self._record_host_surface_operation(mount_spec.name, "surface_attach", child=child)
+        index = len(surface.entries)
+        if before is not None:
+            for current_index, entry in enumerate(surface.entries):
+                if entry.child is before:
+                    index = current_index
+                    break
+        surface.entries.insert(index, _LiveHostSurfaceEntry(placement_handle=handle, child=child))
+        self._record_host_surface_operation(
+            mount_spec.name,
+            "surface_place_before",
+            child=child,
+            before=before,
+        )
+
+    def _host_surface_sync(
+        self,
+        mount_spec: MountSpec,
+        children: Iterable[GeneratedPyroMountable],
+    ) -> None:
+        surface = self._host_surface(mount_spec)
+        if surface is None:
+            return
+        resolved_children = list(children)
+        if not resolved_children:
+            self._pyro_host_surfaces.pop(mount_spec.name, None)
+            self._record_host_surface_operation(mount_spec.name, "surface_sync", count=0)
+            return
+        existing_handles = {id(entry.child): entry.placement_handle for entry in surface.entries}
+        surface.entries = [
+            _LiveHostSurfaceEntry(
+                placement_handle=existing_handles.get(id(child), self._next_host_handle(surface)),
+                child=child,
+            )
+            for child in resolved_children
+        ]
+        self._record_host_surface_operation(
+            mount_spec.name,
+            "surface_sync",
+            count=len(resolved_children),
+        )
+
+    def _host_surface_detach(self, mount_spec: MountSpec, child: GeneratedPyroMountable) -> None:
+        surface = self._host_surface(mount_spec)
+        if surface is None:
+            return
+        handle = self._remove_host_child(surface, child)
+        if handle is None:
+            return
+        if not surface.entries:
+            self._pyro_host_surfaces.pop(mount_spec.name, None)
+        self._record_host_surface_operation(mount_spec.name, "surface_detach", child=child)
+
+    def _host_surface_keyed_set(self, mount_spec: MountSpec, child: GeneratedPyroMountable) -> None:
+        surface = self._host_surface(mount_spec)
+        if surface is None:
+            return
+        handle = self._remove_host_child(surface, child)
+        if handle is None:
+            handle = self._next_host_handle(surface)
+            self._record_host_surface_operation(mount_spec.name, "surface_attach", child=child)
+        surface.entries.append(_LiveHostSurfaceEntry(placement_handle=handle, child=child))
+
+    def _host_surface_remove(
+        self,
+        mount_spec: MountSpec,
+        *,
+        child: GeneratedPyroMountable | None,
+    ) -> None:
+        surface = self._host_surface(mount_spec)
+        if surface is None:
+            return
+        if child is None:
+            self._pyro_host_surfaces.pop(mount_spec.name, None)
+            self._record_host_surface_operation(mount_spec.name, "surface_detach")
+            return
+        self._host_surface_detach(mount_spec, child)
+
+    def _remove_host_child(
+        self,
+        surface: _LiveHostSurface,
+        child: GeneratedPyroMountable,
+    ) -> object | None:
+        for index, entry in enumerate(surface.entries):
+            if entry.child is child:
+                surface.entries.pop(index)
+                return entry.placement_handle
+        return None
+
+    def _next_host_handle(self, surface: _LiveHostSurface) -> int:
+        handle = surface.next_handle
+        surface.next_handle += 1
+        return handle
+
+    def _record_host_surface_operation(
+        self,
+        surface_name: str,
+        kind: str,
+        **details: Any,
+    ) -> None:
+        normalized: dict[str, Any] = {}
+        for key, value in details.items():
+            if isinstance(value, GeneratedPyroMountable):
+                normalized[f"{key}_type"] = type(value).__node_spec__.name
+                child_name = value._pyro_constructor_kwargs.get("name")
+                if child_name is not None:
+                    normalized[f"{key}_name"] = child_name
+                continue
+            normalized[key] = value
+        self._pyro_host_surface_operations.append(
+            PyroHostSurfaceOperation(
+                surface_name=surface_name,
                 kind=kind,
                 details=frozendict(normalized),
             )
@@ -416,6 +640,24 @@ def _mount_metadata(mount_spec: MountSpec) -> frozendict[str, Any]:
         metadata["mutation_policy"] = mount_spec.mutation_policy.value
     if mount_spec.small_delta_threshold is not None:
         metadata["small_delta_threshold"] = mount_spec.small_delta_threshold
+    if mount_spec.host_surface_label is not None:
+        metadata["host_surface_label"] = mount_spec.host_surface_label
+        metadata["host_surface_ordered"] = mount_spec.host_surface_ordered
+        metadata["host_surface_supports_anchor_before"] = mount_spec.host_surface_supports_anchor_before
+        metadata["host_surface_keyed"] = mount_spec.host_surface_keyed
+    if mount_spec.host_placement_profile_label is not None:
+        metadata["host_placement_profile_label"] = mount_spec.host_placement_profile_label
+    if mount_spec.host_child_kind is not None:
+        metadata["host_child_kind"] = mount_spec.host_child_kind.value
+        metadata["host_stable_slot_identity"] = mount_spec.host_stable_slot_identity
+        metadata["host_separates_structure_from_placement"] = (
+            mount_spec.host_separates_structure_from_placement
+        )
+    return frozendict(metadata)
+
+
+def _host_surface_metadata(mount_spec: MountSpec) -> frozendict[str, Any]:
+    metadata: dict[str, Any] = {}
     if mount_spec.host_surface_label is not None:
         metadata["host_surface_label"] = mount_spec.host_surface_label
         metadata["host_surface_ordered"] = mount_spec.host_surface_ordered

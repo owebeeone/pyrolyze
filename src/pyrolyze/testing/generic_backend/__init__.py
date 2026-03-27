@@ -4,7 +4,16 @@ from .api import BuildPyroNodeBackend
 from .engine import PyroNodeEngine
 from .fuzz import FuzzReplayRecord, FuzzReplayStep, generate_argument_fuzz_replay
 from .harness import PyroRenderHarness, PyroRenderResult
-from .model import PyroArgs, PyroMountBucket, PyroMountEntry, PyroMountOperation, PyroNode
+from .model import (
+    PyroArgs,
+    PyroHostSurface,
+    PyroHostSurfaceEntry,
+    PyroHostSurfaceOperation,
+    PyroMountBucket,
+    PyroMountEntry,
+    PyroMountOperation,
+    PyroNode,
+)
 from .runtime import PyrolyzeMountCompatibilityError
 from .snapshots import PyroUiElement, PyroUiMountAdvertisement, PyroUiMountDirective, run_pyro, run_pyro_ui
 from .specs import (
@@ -29,6 +38,9 @@ __all__ = [
     "HostPlacementChildKind",
     "HostPlacementProfile",
     "HostSurfaceStyle",
+    "PyroHostSurface",
+    "PyroHostSurfaceEntry",
+    "PyroHostSurfaceOperation",
     "MountInterfaceKind",
     "MountParam",
     "MountPointProfile",
