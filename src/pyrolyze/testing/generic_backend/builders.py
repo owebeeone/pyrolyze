@@ -7,7 +7,7 @@ from typing import Any
 
 from frozendict import frozendict
 
-from .model import PyroArgs, PyroMountBucket, PyroMountEntry, PyroNode
+from .model import PyroArgs, PyroMountBucket, PyroMountEntry, PyroMountOperation, PyroNode
 
 
 @dataclass(slots=True)
@@ -52,6 +52,8 @@ class PyroNodeBuilder:
     args: list[Any] = field(default_factory=list)
     kwargs: dict[str, Any] = field(default_factory=dict)
     mounts: dict[object, list[PyroMountBucketBuilder]] = field(default_factory=dict)
+    mount_metadata: dict[object, dict[str, Any]] = field(default_factory=dict)
+    mount_operations: list[PyroMountOperation] = field(default_factory=list)
 
     @classmethod
     def from_node(cls, node: PyroNode) -> PyroNodeBuilder:
@@ -64,6 +66,8 @@ class PyroNodeBuilder:
                 mount_name: [PyroMountBucketBuilder.from_bucket(bucket) for bucket in buckets]
                 for mount_name, buckets in node.mounts.items()
             },
+            mount_metadata={mount_name: dict(metadata) for mount_name, metadata in node.mount_metadata.items()},
+            mount_operations=list(node.mount_operations),
         )
 
     def build(self) -> PyroNode:
@@ -78,6 +82,13 @@ class PyroNodeBuilder:
                     for mount_name, buckets in self.mounts.items()
                 }
             ),
+            mount_metadata=frozendict(
+                {
+                    mount_name: frozendict(metadata)
+                    for mount_name, metadata in self.mount_metadata.items()
+                }
+            ),
+            mount_operations=tuple(self.mount_operations),
         )
 
 

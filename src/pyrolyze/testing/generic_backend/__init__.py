@@ -3,7 +3,7 @@
 from .api import BuildPyroNodeBackend
 from .engine import PyroNodeEngine
 from .harness import PyroRenderHarness, PyroRenderResult
-from .model import PyroArgs, PyroMountBucket, PyroMountEntry, PyroNode
+from .model import PyroArgs, PyroMountBucket, PyroMountEntry, PyroMountOperation, PyroNode
 from .runtime import PyrolyzeMountCompatibilityError
 from .snapshots import PyroUiElement, PyroUiMountAdvertisement, PyroUiMountDirective, run_pyro, run_pyro_ui
 from .specs import (
@@ -33,6 +33,7 @@ __all__ = [
     "PyroRenderResult",
     "PyroMountBucket",
     "PyroMountEntry",
+    "PyroMountOperation",
     "PyroNode",
     "PyroNodeEngine",
     "PyroUiElement",

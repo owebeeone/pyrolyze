@@ -11,7 +11,7 @@ from frozendict import frozendict
 
 from pyrolyze.backends.model import MountReplayKind
 
-from .model import PyroArgs, PyroMountBucket, PyroMountEntry, PyroNode
+from .model import PyroArgs, PyroMountBucket, PyroMountEntry, PyroMountOperation, PyroNode
 from .specs import MountInterfaceKind, MountSpec, NodeGenSpec, validate_node_specs
 
 _CURRENT_GENERATION: ContextVar[int] = ContextVar("pyrolyze_generic_backend_generation", default=0)
@@ -68,6 +68,7 @@ class GeneratedPyroMountable:
         self._pyro_mounts: dict[str, dict[PyroArgs, _LiveMountBucket]] = {
             mount.name: {} for mount in type(self).__node_spec__.mounts
         }
+        self._pyro_mount_operations: list[PyroMountOperation] = []
 
     @property
     def generation(self) -> int:
@@ -99,6 +100,7 @@ class GeneratedPyroMountable:
             kwargs=frozendict(self._pyro_constructor_kwargs),
             mounts=frozendict(mounts),
             mount_metadata=frozendict(mount_metadata),
+            mount_operations=tuple(self._pyro_mount_operations),
         )
 
     def _update_generation(self) -> None:
@@ -138,6 +140,7 @@ class GeneratedPyroMountable:
         bucket_key = PyroArgs()
         bucket = bucket_map.setdefault(bucket_key, _LiveMountBucket(key=bucket_key, values=PyroArgs(), objects=[]))
         bucket.objects.append(child)
+        self._record_mount_operation(mount_name, "append", child=child)
         self._update_generation()
 
     def _ordered_insert(self, mount_name: str, index: int, child: GeneratedPyroMountable) -> None:
@@ -152,6 +155,7 @@ class GeneratedPyroMountable:
         if index > len(bucket.objects):
             index = len(bucket.objects)
         bucket.objects.insert(index, child)
+        self._record_mount_operation(mount_name, "place_by_index", index=index, child=child)
         self._update_generation()
 
     def _ordered_insert_before(
@@ -170,6 +174,7 @@ class GeneratedPyroMountable:
         if before is not None and before in bucket.objects:
             index = bucket.objects.index(before)
         bucket.objects.insert(index, child)
+        self._record_mount_operation(mount_name, "place_before_anchor", before=before, child=child)
         self._update_generation()
 
     def _ordered_sync(self, mount_name: str, children: Iterable[GeneratedPyroMountable]) -> None:
@@ -187,6 +192,7 @@ class GeneratedPyroMountable:
             values=PyroArgs(),
             objects=resolved_children,
         )
+        self._record_mount_operation(mount_name, "sync", count=len(resolved_children))
         self._update_generation()
 
     def _ordered_detach(self, mount_name: str, child: GeneratedPyroMountable) -> None:
@@ -199,6 +205,7 @@ class GeneratedPyroMountable:
         if updated == existing.objects:
             return
         existing.objects = updated
+        self._record_mount_operation(mount_name, "detach", child=child)
         self._update_generation()
 
     def _set_single_or_keyed(
@@ -215,6 +222,7 @@ class GeneratedPyroMountable:
             if bucket_key not in bucket_map:
                 return
             bucket_map.pop(bucket_key, None)
+            self._record_mount_operation(mount_name, "keyed_remove", key=bucket_key)
             self._update_generation()
             return
         self._validate_child(mount_spec, child)
@@ -232,7 +240,37 @@ class GeneratedPyroMountable:
             values=bucket_values,
             objects=[child],
         )
+        self._record_mount_operation(mount_name, "keyed_set", key=bucket_key, child=child)
         self._update_generation()
+
+    def _record_mount_operation(
+        self,
+        mount_name: str,
+        kind: str,
+        **details: Any,
+    ) -> None:
+        normalized: dict[str, Any] = {}
+        for key, value in details.items():
+            if isinstance(value, GeneratedPyroMountable):
+                normalized[f"{key}_type"] = type(value).__node_spec__.name
+                child_name = value._pyro_constructor_kwargs.get("name")
+                if child_name is not None:
+                    normalized[f"{key}_name"] = child_name
+                continue
+            if isinstance(value, PyroArgs):
+                normalized[key] = {
+                    "args": value.args,
+                    "kwargs": dict(value.kwargs),
+                }
+                continue
+            normalized[key] = value
+        self._pyro_mount_operations.append(
+            PyroMountOperation(
+                mount_name=mount_name,
+                kind=kind,
+                details=frozendict(normalized),
+            )
+        )
 
 
 def build_runtime_types(

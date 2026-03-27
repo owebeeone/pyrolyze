@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from frozendict import frozendict
@@ -18,6 +18,13 @@ class PyroArgs:
 class PyroMountEntry:
     placement_id: object
     node: PyroNode
+
+
+@dataclass(frozen=True, slots=True)
+class PyroMountOperation:
+    mount_name: str
+    kind: str
+    details: frozendict[str, Any] = frozendict()
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +47,7 @@ class PyroNode:
     kwargs: frozendict[str, Any] = frozendict()
     mounts: frozendict[object, tuple[PyroMountBucket, ...]] = frozendict()
     mount_metadata: frozendict[object, frozendict[str, Any]] = frozendict()
+    mount_operations: tuple[PyroMountOperation, ...] = field(default=(), compare=False)
 
     def to_builder(self) -> PyroNodeBuilder:
         from .builders import PyroNodeBuilder
@@ -53,5 +61,6 @@ __all__ = [
     "PyroArgs",
     "PyroMountBucket",
     "PyroMountEntry",
+    "PyroMountOperation",
     "PyroNode",
 ]
