@@ -7,6 +7,7 @@ from pyrolyze.testing.generic_backend import (
     BuildPyroNodeBackend,
     HostPlacementChildKind,
     HostPlacementProfile,
+    HostSurfaceReconcileMode,
     HostSurfaceStyle,
     MountInterfaceKind,
     MountPointProfile,
@@ -99,6 +100,96 @@ def _host_surface_backend() -> BuildPyroNodeBackend:
             ),
         ),
         module_name="example.generic_backend.host_surface_runtime",
+    )
+
+
+def _buggy_host_surface_backend() -> BuildPyroNodeBackend:
+    return BuildPyroNodeBackend(
+        (
+            NodeGenSpec(
+                name="node",
+                constructor=(ParamSpec(name="name", annotation=TypeRef("str")),),
+            ),
+            NodeGenSpec(
+                name="text",
+                base_name="node",
+                host_child_kind=HostPlacementChildKind.WIDGET,
+                constructor=(
+                    ParamSpec(name="name", annotation=TypeRef("str")),
+                    ParamSpec(name="text", annotation=TypeRef("str")),
+                ),
+            ),
+            NodeGenSpec(
+                name="row",
+                base_name="node",
+                host_child_kind=HostPlacementChildKind.NESTED_CONTAINER,
+                constructor=(ParamSpec(name="name", annotation=TypeRef("str")),),
+                mounts=(
+                    MountVariantSpec(
+                        name="child",
+                        accepted_base="node",
+                        default=True,
+                        profiles=(
+                            MountPointProfile(
+                                label="buggy_nested_layout_surface",
+                                style=MountStyleVariant(
+                                    label="ordered_index",
+                                    interface=MountInterfaceKind.ORDERED,
+                                    replay_kind=MountReplayKind.INDEX,
+                                ),
+                                mutation_policy=MountMutationPolicy.PLACE_ONLY,
+                                host_surface_style=HostSurfaceStyle(
+                                    label="ordered_slots",
+                                    reconcile_mode=HostSurfaceReconcileMode.STALE_NESTED_SYNC_APPEND,
+                                ),
+                                host_placement_profile=HostPlacementProfile(
+                                    label="nested_container_child",
+                                    allowed_child_kinds=(
+                                        HostPlacementChildKind.WIDGET,
+                                        HostPlacementChildKind.NESTED_CONTAINER,
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+            NodeGenSpec(
+                name="host",
+                base_name="node",
+                constructor=(ParamSpec(name="name", annotation=TypeRef("str")),),
+                mounts=(
+                    MountVariantSpec(
+                        name="child",
+                        accepted_base="node",
+                        default=True,
+                        profiles=(
+                            MountPointProfile(
+                                label="buggy_nested_layout_surface",
+                                style=MountStyleVariant(
+                                    label="ordered_index",
+                                    interface=MountInterfaceKind.ORDERED,
+                                    replay_kind=MountReplayKind.INDEX,
+                                ),
+                                mutation_policy=MountMutationPolicy.PLACE_ONLY,
+                                host_surface_style=HostSurfaceStyle(
+                                    label="ordered_slots",
+                                    reconcile_mode=HostSurfaceReconcileMode.STALE_NESTED_SYNC_APPEND,
+                                ),
+                                host_placement_profile=HostPlacementProfile(
+                                    label="nested_container_child",
+                                    allowed_child_kinds=(
+                                        HostPlacementChildKind.WIDGET,
+                                        HostPlacementChildKind.NESTED_CONTAINER,
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        module_name="example.generic_backend.host_surface_runtime.buggy",
     )
 
 
@@ -327,3 +418,49 @@ def panel(show_bottom):
         for entry in rerendered.host_surfaces["child_nested_layout_surface"].entries
     ) == ("widget", "widget", "nested_container", "widget")
     assert rerendered_host.index("controls") < rerendered_host.index("bottom")
+
+
+def test_buggy_reconcile_mode_keeps_retained_nested_row_above_trailing_sibling() -> None:
+    backend = _buggy_host_surface_backend()
+    namespace = _load_program(
+        backend,
+        "buggy_branch_before",
+        f"""
+from {backend.module_name} import host, row, text
+
+@pyrolyze
+def panel(show_top):
+    with host("root"):
+        if show_top:
+            text("top", "Top")
+        else:
+            text("top", "Top changed")
+        text("page", "Page size: 50")
+        with row("controls"):
+            text("minus", "-")
+            text("count", "Count")
+            text("plus", "+")
+        text("bottom", "Bottom")
+""",
+    )
+
+    rerender_ctx = backend.context(namespace["panel"], True, initial_generation=0)
+    _ = rerender_ctx.get()
+    rerendered = run_pyro(rerender_ctx.run(False).get())
+
+    structural_order = tuple(
+        entry.node.kwargs["name"]
+        for entry in rerendered.mounts["child_buggy_nested_layout_surface"][0].entries
+    )
+    host_order = tuple(
+        entry.node.kwargs["name"]
+        for entry in rerendered.host_surfaces["child_buggy_nested_layout_surface"].entries
+    )
+
+    assert structural_order == ("top", "page", "controls", "bottom")
+    assert host_order == ("top", "page", "controls", "bottom")
+    assert host_order.index("controls") < host_order.index("bottom")
+    assert (
+        rerendered.host_surface_metadata["child_buggy_nested_layout_surface"]["host_surface_reconcile_mode"]
+        == "stale_nested_sync_append"
+    )

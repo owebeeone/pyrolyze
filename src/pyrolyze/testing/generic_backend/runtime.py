@@ -21,8 +21,14 @@ from .model import (
     PyroMountOperation,
     PyroNode,
 )
-from .specs import MountInterfaceKind, MountSpec, NodeGenSpec, validate_node_specs
-from .specs import HostPlacementChildKind
+from .specs import (
+    HostPlacementChildKind,
+    HostSurfaceReconcileMode,
+    MountInterfaceKind,
+    MountSpec,
+    NodeGenSpec,
+    validate_node_specs,
+)
 
 _CURRENT_GENERATION: ContextVar[int] = ContextVar("pyrolyze_generic_backend_generation", default=0)
 _STRICT_COMPATIBILITY: ContextVar[bool] = ContextVar("pyrolyze_generic_backend_strict", default=True)
@@ -434,7 +440,7 @@ class GeneratedPyroMountable:
             self._record_host_surface_operation(mount_spec.name, "surface_sync", count=0)
             return
         existing_handles = {id(entry.child): entry.placement_handle for entry in surface.entries}
-        surface.entries = [
+        resolved_entries = [
             _LiveHostSurfaceEntry(
                 placement_handle=existing_handles.get(id(child), self._next_host_handle(surface)),
                 child_kind=self._resolve_host_child_kind(mount_spec, child),
@@ -442,6 +448,7 @@ class GeneratedPyroMountable:
             )
             for child in resolved_children
         ]
+        surface.entries = self._reconcile_host_surface_sync_entries(mount_spec, resolved_entries)
         self._record_host_surface_operation(
             mount_spec.name,
             "surface_sync",
@@ -529,6 +536,33 @@ class GeneratedPyroMountable:
                 details=frozendict(normalized),
             )
         )
+
+    def _reconcile_host_surface_sync_entries(
+        self,
+        mount_spec: MountSpec,
+        entries: list[_LiveHostSurfaceEntry],
+    ) -> list[_LiveHostSurfaceEntry]:
+        mode = mount_spec.host_surface_reconcile_mode
+        if mode is not HostSurfaceReconcileMode.STALE_NESTED_SYNC_APPEND:
+            return entries
+        if len(entries) < 3:
+            return entries
+        if not any(entry.child_kind is HostPlacementChildKind.WIDGET for entry in entries):
+            return entries
+        nested_indices = [
+            index
+            for index, entry in enumerate(entries)
+            if entry.child_kind is HostPlacementChildKind.NESTED_CONTAINER
+        ]
+        if len(nested_indices) != 1:
+            return entries
+        nested_index = nested_indices[0]
+        if nested_index == len(entries) - 1:
+            return entries
+        nested_entry = entries[nested_index]
+        del entries[nested_index]
+        entries.append(nested_entry)
+        return entries
 
     def _resolve_host_child_kind(
         self,
@@ -693,6 +727,8 @@ def _mount_metadata(mount_spec: MountSpec) -> frozendict[str, Any]:
         metadata["host_surface_ordered"] = mount_spec.host_surface_ordered
         metadata["host_surface_supports_anchor_before"] = mount_spec.host_surface_supports_anchor_before
         metadata["host_surface_keyed"] = mount_spec.host_surface_keyed
+        if mount_spec.host_surface_reconcile_mode is not None:
+            metadata["host_surface_reconcile_mode"] = mount_spec.host_surface_reconcile_mode.value
     if mount_spec.host_placement_profile_label is not None:
         metadata["host_placement_profile_label"] = mount_spec.host_placement_profile_label
     if mount_spec.host_allowed_child_kinds:
@@ -711,6 +747,8 @@ def _host_surface_metadata(mount_spec: MountSpec) -> frozendict[str, Any]:
         metadata["host_surface_ordered"] = mount_spec.host_surface_ordered
         metadata["host_surface_supports_anchor_before"] = mount_spec.host_surface_supports_anchor_before
         metadata["host_surface_keyed"] = mount_spec.host_surface_keyed
+        if mount_spec.host_surface_reconcile_mode is not None:
+            metadata["host_surface_reconcile_mode"] = mount_spec.host_surface_reconcile_mode.value
     if mount_spec.host_placement_profile_label is not None:
         metadata["host_placement_profile_label"] = mount_spec.host_placement_profile_label
     if mount_spec.host_allowed_child_kinds:

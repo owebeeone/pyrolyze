@@ -25,6 +25,7 @@ from .snapshots import PyroUiElement, PyroUiMountAdvertisement, PyroUiMountDirec
 from .specs import (
     HostPlacementChildKind,
     HostPlacementProfile,
+    HostSurfaceReconcileMode,
     HostSurfaceStyle,
     MountInterfaceKind,
     MountParam,
@@ -44,6 +45,7 @@ __all__ = [
     "HostSurfaceReplayState",
     "HostPlacementChildKind",
     "HostPlacementProfile",
+    "HostSurfaceReconcileMode",
     "HostSurfaceStyle",
     "PyroHostSurface",
     "PyroHostSurfaceEntry",

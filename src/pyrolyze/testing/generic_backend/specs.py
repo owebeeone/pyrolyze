@@ -19,6 +19,11 @@ class HostPlacementChildKind(StrEnum):
     NESTED_CONTAINER = "nested_container"
 
 
+class HostSurfaceReconcileMode(StrEnum):
+    REFERENCE = "reference"
+    STALE_NESTED_SYNC_APPEND = "stale_nested_sync_append"
+
+
 @dataclass(frozen=True, slots=True)
 class ParamSpec:
     name: str
@@ -49,6 +54,7 @@ class HostSurfaceStyle:
     ordered: bool = True
     supports_anchor_before: bool = False
     keyed: bool = False
+    reconcile_mode: HostSurfaceReconcileMode = HostSurfaceReconcileMode.REFERENCE
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +93,7 @@ class MountSpec:
     host_surface_ordered: bool | None = None
     host_surface_supports_anchor_before: bool | None = None
     host_surface_keyed: bool | None = None
+    host_surface_reconcile_mode: HostSurfaceReconcileMode | None = None
     host_placement_profile_label: str | None = None
     host_allowed_child_kinds: tuple[HostPlacementChildKind, ...] = ()
     host_stable_slot_identity: bool | None = None
@@ -199,6 +206,11 @@ def _expand_node_spec(spec: NodeGenSpec) -> NodeGenSpec:
                         if profile.host_surface_style is not None
                         else None
                     ),
+                    host_surface_reconcile_mode=(
+                        profile.host_surface_style.reconcile_mode
+                        if profile.host_surface_style is not None
+                        else None
+                    ),
                     host_placement_profile_label=(
                         profile.host_placement_profile.label
                         if profile.host_placement_profile is not None
@@ -264,6 +276,7 @@ def _validate_mount_profile(node_name: str, mount_name: str, profile: MountPoint
 __all__ = [
     "HostPlacementChildKind",
     "HostPlacementProfile",
+    "HostSurfaceReconcileMode",
     "HostSurfaceStyle",
     "MountPointProfile",
     "MountInterfaceKind",
