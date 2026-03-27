@@ -7,6 +7,9 @@ from pyrolyze.backends.model import MountMutationPolicy, MountReplayKind, TypeRe
 from pyrolyze.compiler import load_transformed_namespace
 from pyrolyze.testing.generic_backend import (
     BuildPyroNodeBackend,
+    HostPlacementChildKind,
+    HostPlacementProfile,
+    HostSurfaceStyle,
     MountInterfaceKind,
     MountPointProfile,
     MountStyleVariant,
@@ -48,6 +51,11 @@ def _expanded_specs() -> tuple[NodeGenSpec, ...]:
                                 replay_kind=MountReplayKind.INDEX,
                             ),
                             mutation_policy=MountMutationPolicy.PLACE_ONLY,
+                            host_surface_style=HostSurfaceStyle(label="ordered_slots"),
+                            host_placement_profile=HostPlacementProfile(
+                                label="widget_child",
+                                child_kind=HostPlacementChildKind.WIDGET,
+                            ),
                         ),
                         MountPointProfile(
                             label="tk_pack_surface",
@@ -59,6 +67,11 @@ def _expanded_specs() -> tuple[NodeGenSpec, ...]:
                             ),
                             mutation_policy=MountMutationPolicy.REPLAY_THEN_SYNC,
                             small_delta_threshold=8,
+                            host_surface_style=HostSurfaceStyle(label="ordered_slots"),
+                            host_placement_profile=HostPlacementProfile(
+                                label="nested_container_child",
+                                child_kind=HostPlacementChildKind.NESTED_CONTAINER,
+                            ),
                         ),
                     ),
                 ),
@@ -116,10 +129,16 @@ def test_mount_variant_specs_expand_into_concrete_mount_surfaces() -> None:
     assert host_spec.mounts[0].style_label == "ordered_index"
     assert host_spec.mounts[0].profile_label == "ordered_index"
     assert host_spec.mounts[0].mutation_policy is MountMutationPolicy.PLACE_ONLY
+    assert host_spec.mounts[0].host_surface_label == "ordered_slots"
+    assert host_spec.mounts[0].host_placement_profile_label == "widget_child"
+    assert host_spec.mounts[0].host_child_kind is HostPlacementChildKind.WIDGET
     assert host_spec.mounts[1].style_label == "ordered_sync_preferred"
     assert host_spec.mounts[1].profile_label == "tk_pack_surface"
     assert host_spec.mounts[1].mutation_policy is MountMutationPolicy.REPLAY_THEN_SYNC
     assert host_spec.mounts[1].small_delta_threshold == 8
+    assert host_spec.mounts[1].host_surface_label == "ordered_slots"
+    assert host_spec.mounts[1].host_placement_profile_label == "nested_container_child"
+    assert host_spec.mounts[1].host_child_kind is HostPlacementChildKind.NESTED_CONTAINER
 
     engine = backend.engine()
     mount_point = engine._mountable_specs["host"].mount_points["child_tk_pack_surface"]
@@ -150,6 +169,14 @@ def test_snapshot_exposes_style_and_profile_identity_for_expanded_mount_surface(
     assert metadata["prefer_sync"] is True
     assert metadata["mutation_policy"] == "replay_then_sync"
     assert metadata["small_delta_threshold"] == 8
+    assert metadata["host_surface_label"] == "ordered_slots"
+    assert metadata["host_surface_ordered"] is True
+    assert metadata["host_surface_supports_anchor_before"] is False
+    assert metadata["host_surface_keyed"] is False
+    assert metadata["host_placement_profile_label"] == "nested_container_child"
+    assert metadata["host_child_kind"] == "nested_container"
+    assert metadata["host_stable_slot_identity"] is True
+    assert metadata["host_separates_structure_from_placement"] is True
 
 
 @pytest.mark.parametrize(
@@ -198,7 +225,43 @@ def panel(use_sync_surface):
 
     assert tuple(snapshot.mounts) == (selected_mount,)
     assert snapshot.mount_metadata[selected_mount]["style_label"] == expected_style
+    assert snapshot.mount_metadata[selected_mount]["host_surface_label"] == "ordered_slots"
     assert {operation.mount_name for operation in snapshot.mount_operations} == {selected_mount}
+
+
+def test_mount_variant_profile_rejects_partial_host_surface_descriptor() -> None:
+    with pytest.raises(ValueError, match="must specify host surface style and host placement profile together"):
+        BuildPyroNodeBackend(
+            (
+                NodeGenSpec(
+                    name="node",
+                    constructor=(ParamSpec(name="name", annotation=TypeRef("str")),),
+                ),
+                NodeGenSpec(
+                    name="host",
+                    base_name="node",
+                    constructor=(ParamSpec(name="name", annotation=TypeRef("str")),),
+                    mounts=(
+                        MountVariantSpec(
+                            name="child",
+                            accepted_base="node",
+                            profiles=(
+                                MountPointProfile(
+                                    label="broken",
+                                    style=MountStyleVariant(
+                                        label="ordered_index",
+                                        interface=MountInterfaceKind.ORDERED,
+                                        replay_kind=MountReplayKind.INDEX,
+                                    ),
+                                    host_surface_style=HostSurfaceStyle(label="ordered_slots"),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+            module_name="example.generic_backend.mount_style_expansion.invalid.partial_host_surface",
+        )
 
 
 @pytest.mark.parametrize(

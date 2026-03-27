@@ -14,6 +14,11 @@ class MountInterfaceKind(StrEnum):
     KEYED = "keyed_mount"
 
 
+class HostPlacementChildKind(StrEnum):
+    WIDGET = "widget"
+    NESTED_CONTAINER = "nested_container"
+
+
 @dataclass(frozen=True, slots=True)
 class ParamSpec:
     name: str
@@ -39,11 +44,29 @@ class MountStyleVariant:
 
 
 @dataclass(frozen=True, slots=True)
+class HostSurfaceStyle:
+    label: str
+    ordered: bool = True
+    supports_anchor_before: bool = False
+    keyed: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class HostPlacementProfile:
+    label: str
+    child_kind: HostPlacementChildKind = HostPlacementChildKind.WIDGET
+    stable_slot_identity: bool = True
+    separates_structure_from_placement: bool = True
+
+
+@dataclass(frozen=True, slots=True)
 class MountPointProfile:
     label: str
     style: MountStyleVariant
     mutation_policy: MountMutationPolicy | None = None
     small_delta_threshold: int | None = None
+    host_surface_style: HostSurfaceStyle | None = None
+    host_placement_profile: HostPlacementProfile | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +83,14 @@ class MountSpec:
     profile_label: str | None = None
     mutation_policy: MountMutationPolicy | None = None
     small_delta_threshold: int | None = None
+    host_surface_label: str | None = None
+    host_surface_ordered: bool | None = None
+    host_surface_supports_anchor_before: bool | None = None
+    host_surface_keyed: bool | None = None
+    host_placement_profile_label: str | None = None
+    host_child_kind: HostPlacementChildKind | None = None
+    host_stable_slot_identity: bool | None = None
+    host_separates_structure_from_placement: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,6 +163,7 @@ def _expand_node_spec(spec: NodeGenSpec) -> NodeGenSpec:
             raise ValueError(f"mount variant {mount.name!r} on {spec.name!r} has no profiles")
         use_default = mount.default and len(mount.profiles) == 1
         for profile in mount.profiles:
+            _validate_mount_profile(spec.name, mount.name, profile)
             expanded_mounts.append(
                 MountSpec(
                     name=f"{mount.name}_{profile.label}",
@@ -146,12 +178,88 @@ def _expand_node_spec(spec: NodeGenSpec) -> NodeGenSpec:
                     profile_label=profile.label,
                     mutation_policy=profile.mutation_policy,
                     small_delta_threshold=profile.small_delta_threshold,
+                    host_surface_label=(
+                        profile.host_surface_style.label
+                        if profile.host_surface_style is not None
+                        else None
+                    ),
+                    host_surface_ordered=(
+                        profile.host_surface_style.ordered
+                        if profile.host_surface_style is not None
+                        else None
+                    ),
+                    host_surface_supports_anchor_before=(
+                        profile.host_surface_style.supports_anchor_before
+                        if profile.host_surface_style is not None
+                        else None
+                    ),
+                    host_surface_keyed=(
+                        profile.host_surface_style.keyed
+                        if profile.host_surface_style is not None
+                        else None
+                    ),
+                    host_placement_profile_label=(
+                        profile.host_placement_profile.label
+                        if profile.host_placement_profile is not None
+                        else None
+                    ),
+                    host_child_kind=(
+                        profile.host_placement_profile.child_kind
+                        if profile.host_placement_profile is not None
+                        else None
+                    ),
+                    host_stable_slot_identity=(
+                        profile.host_placement_profile.stable_slot_identity
+                        if profile.host_placement_profile is not None
+                        else None
+                    ),
+                    host_separates_structure_from_placement=(
+                        profile.host_placement_profile.separates_structure_from_placement
+                        if profile.host_placement_profile is not None
+                        else None
+                    ),
                 )
             )
     return replace(spec, mounts=tuple(expanded_mounts))
 
 
+def _validate_mount_profile(node_name: str, mount_name: str, profile: MountPointProfile) -> None:
+    if (profile.host_surface_style is None) != (profile.host_placement_profile is None):
+        raise ValueError(
+            f"mount variant {mount_name!r} on {node_name!r} must specify host surface style "
+            "and host placement profile together"
+        )
+    host_surface = profile.host_surface_style
+    host_placement = profile.host_placement_profile
+    if host_surface is None or host_placement is None:
+        return
+    if host_surface.supports_anchor_before and profile.style.replay_kind is not MountReplayKind.ANCHOR_BEFORE:
+        raise ValueError(
+            f"mount variant {mount_name!r} on {node_name!r} declares anchor-before host "
+            f"surface {host_surface.label!r} without an anchor-before replay style"
+        )
+    if host_surface.keyed and profile.style.interface is not MountInterfaceKind.KEYED:
+        raise ValueError(
+            f"mount variant {mount_name!r} on {node_name!r} declares keyed host surface "
+            f"{host_surface.label!r} without a keyed mount style"
+        )
+    if host_placement.child_kind is HostPlacementChildKind.NESTED_CONTAINER:
+        if not host_placement.stable_slot_identity:
+            raise ValueError(
+                f"mount variant {mount_name!r} on {node_name!r} declares nested-container "
+                "placement without stable slot identity"
+            )
+        if not host_placement.separates_structure_from_placement:
+            raise ValueError(
+                f"mount variant {mount_name!r} on {node_name!r} declares nested-container "
+                "placement without structural/placement separation"
+            )
+
+
 __all__ = [
+    "HostPlacementChildKind",
+    "HostPlacementProfile",
+    "HostSurfaceStyle",
     "MountPointProfile",
     "MountInterfaceKind",
     "MountParam",

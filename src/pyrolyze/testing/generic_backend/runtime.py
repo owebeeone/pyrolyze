@@ -416,6 +416,19 @@ def _mount_metadata(mount_spec: MountSpec) -> frozendict[str, Any]:
         metadata["mutation_policy"] = mount_spec.mutation_policy.value
     if mount_spec.small_delta_threshold is not None:
         metadata["small_delta_threshold"] = mount_spec.small_delta_threshold
+    if mount_spec.host_surface_label is not None:
+        metadata["host_surface_label"] = mount_spec.host_surface_label
+        metadata["host_surface_ordered"] = mount_spec.host_surface_ordered
+        metadata["host_surface_supports_anchor_before"] = mount_spec.host_surface_supports_anchor_before
+        metadata["host_surface_keyed"] = mount_spec.host_surface_keyed
+    if mount_spec.host_placement_profile_label is not None:
+        metadata["host_placement_profile_label"] = mount_spec.host_placement_profile_label
+    if mount_spec.host_child_kind is not None:
+        metadata["host_child_kind"] = mount_spec.host_child_kind.value
+        metadata["host_stable_slot_identity"] = mount_spec.host_stable_slot_identity
+        metadata["host_separates_structure_from_placement"] = (
+            mount_spec.host_separates_structure_from_placement
+        )
     return frozendict(metadata)
 
 

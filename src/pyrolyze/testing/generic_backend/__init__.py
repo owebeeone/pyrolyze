@@ -8,6 +8,9 @@ from .model import PyroArgs, PyroMountBucket, PyroMountEntry, PyroMountOperation
 from .runtime import PyrolyzeMountCompatibilityError
 from .snapshots import PyroUiElement, PyroUiMountAdvertisement, PyroUiMountDirective, run_pyro, run_pyro_ui
 from .specs import (
+    HostPlacementChildKind,
+    HostPlacementProfile,
+    HostSurfaceStyle,
     MountInterfaceKind,
     MountParam,
     MountPointProfile,
@@ -23,6 +26,9 @@ __all__ = [
     "BuildPyroNodeBackend",
     "FuzzReplayRecord",
     "FuzzReplayStep",
+    "HostPlacementChildKind",
+    "HostPlacementProfile",
+    "HostSurfaceStyle",
     "MountInterfaceKind",
     "MountParam",
     "MountPointProfile",
