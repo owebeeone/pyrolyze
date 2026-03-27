@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from pyrolyze.api import mount_key, pyrolyze
-from pyrolyze.backends.model import MountReplayKind, TypeRef
+from pyrolyze.backends.model import MountMutationPolicy, MountReplayKind, TypeRef
 from pyrolyze.compiler import load_transformed_namespace
 from pyrolyze.testing.generic_backend import (
     BuildPyroNodeBackend,
@@ -47,7 +47,7 @@ def _expanded_specs() -> tuple[NodeGenSpec, ...]:
                                 interface=MountInterfaceKind.ORDERED,
                                 replay_kind=MountReplayKind.INDEX,
                             ),
-                            mutation_policy="place_only",
+                            mutation_policy=MountMutationPolicy.PLACE_ONLY,
                         ),
                         MountPointProfile(
                             label="tk_pack_surface",
@@ -57,7 +57,7 @@ def _expanded_specs() -> tuple[NodeGenSpec, ...]:
                                 replay_kind=MountReplayKind.NONE,
                                 prefer_sync=True,
                             ),
-                            mutation_policy="replay_then_sync",
+                            mutation_policy=MountMutationPolicy.REPLAY_THEN_SYNC,
                             small_delta_threshold=8,
                         ),
                     ),
@@ -115,11 +115,16 @@ def test_mount_variant_specs_expand_into_concrete_mount_surfaces() -> None:
     )
     assert host_spec.mounts[0].style_label == "ordered_index"
     assert host_spec.mounts[0].profile_label == "ordered_index"
-    assert host_spec.mounts[0].mutation_policy == "place_only"
+    assert host_spec.mounts[0].mutation_policy is MountMutationPolicy.PLACE_ONLY
     assert host_spec.mounts[1].style_label == "ordered_sync_preferred"
     assert host_spec.mounts[1].profile_label == "tk_pack_surface"
-    assert host_spec.mounts[1].mutation_policy == "replay_then_sync"
+    assert host_spec.mounts[1].mutation_policy is MountMutationPolicy.REPLAY_THEN_SYNC
     assert host_spec.mounts[1].small_delta_threshold == 8
+
+    engine = backend.engine()
+    mount_point = engine._mountable_specs["host"].mount_points["child_tk_pack_surface"]
+    assert mount_point.mutation_policy is MountMutationPolicy.REPLAY_THEN_SYNC
+    assert mount_point.small_delta_threshold == 8
 
 
 def test_snapshot_exposes_style_and_profile_identity_for_expanded_mount_surface() -> None:
@@ -238,7 +243,7 @@ def test_nested_retained_row_stays_before_trailing_sibling_under_branch_churn(
                                     interface=MountInterfaceKind.ORDERED,
                                     replay_kind=MountReplayKind.INDEX,
                                 ),
-                                mutation_policy="place_only",
+                                    mutation_policy=MountMutationPolicy.PLACE_ONLY,
                             ),
                             MountPointProfile(
                                 label="tk_pack_surface",
@@ -248,7 +253,7 @@ def test_nested_retained_row_stays_before_trailing_sibling_under_branch_churn(
                                     replay_kind=MountReplayKind.NONE,
                                     prefer_sync=True,
                                 ),
-                                mutation_policy="replay_then_sync",
+                                    mutation_policy=MountMutationPolicy.REPLAY_THEN_SYNC,
                             ),
                         ),
                     ),
@@ -271,7 +276,7 @@ def test_nested_retained_row_stays_before_trailing_sibling_under_branch_churn(
                                     interface=MountInterfaceKind.ORDERED,
                                     replay_kind=MountReplayKind.INDEX,
                                 ),
-                                mutation_policy="place_only",
+                                    mutation_policy=MountMutationPolicy.PLACE_ONLY,
                             ),
                             MountPointProfile(
                                 label="tk_pack_surface",
@@ -281,7 +286,7 @@ def test_nested_retained_row_stays_before_trailing_sibling_under_branch_churn(
                                     replay_kind=MountReplayKind.NONE,
                                     prefer_sync=True,
                                 ),
-                                mutation_policy="replay_then_sync",
+                                    mutation_policy=MountMutationPolicy.REPLAY_THEN_SYNC,
                             ),
                         ),
                     ),

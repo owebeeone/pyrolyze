@@ -52,6 +52,13 @@ class MountReplayKind(StrEnum):
     ANCHOR_BEFORE = "anchor_before"
 
 
+class MountMutationPolicy(StrEnum):
+    REPLAY_THEN_SYNC = "replay_then_sync"
+    SYNC_PREFERRED = "sync_preferred"
+    PLACE_ONLY = "place_only"
+    ANCHOR_PRESERVING = "anchor_preserving"
+
+
 class ChildPolicy(StrEnum):
     NONE = "none"
     ORDERED = "ordered"
@@ -123,6 +130,8 @@ class MountPointSpec:
     detach_method_name: str | None = None
     replay_kind: MountReplayKind = MountReplayKind.NONE
     prefer_sync: bool = False
+    mutation_policy: MountMutationPolicy = MountMutationPolicy.REPLAY_THEN_SYNC
+    small_delta_threshold: int | None = 8
 
     def instance_key(self, values: dict[str, Any]) -> tuple[object, ...]:
         return (self.name, *(values[param.name] for param in self.params if param.keyed))
@@ -192,6 +201,8 @@ class UiMountPointLearning:
     replay_kind: MountReplayKind | None = None
     append_method_name: str | None = None
     prefer_sync: bool | None = None
+    mutation_policy: MountMutationPolicy | None = None
+    small_delta_threshold: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,6 +242,7 @@ __all__ = [
     "EventPayloadPolicy",
     "FillPolicy",
     "MethodMode",
+    "MountMutationPolicy",
     "MountReplayKind",
     "UiMountParamLearning",
     "UiMountPointLearning",

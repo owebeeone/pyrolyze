@@ -402,7 +402,7 @@ def _mount_metadata(mount_spec: MountSpec) -> frozendict[str, Any]:
     if mount_spec.profile_label is not None:
         metadata["profile_label"] = mount_spec.profile_label
     if mount_spec.mutation_policy is not None:
-        metadata["mutation_policy"] = mount_spec.mutation_policy
+        metadata["mutation_policy"] = mount_spec.mutation_policy.value
     if mount_spec.small_delta_threshold is not None:
         metadata["small_delta_threshold"] = mount_spec.small_delta_threshold
     return frozendict(metadata)

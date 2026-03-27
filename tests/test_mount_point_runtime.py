@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from frozendict import frozendict
 
 from pyrolyze.backends.mounts import (
@@ -11,7 +13,14 @@ from pyrolyze.backends.mounts import (
     choose_mount_applier,
     resolve_mount_ops,
 )
-from pyrolyze.backends.model import MountParamSpec, MountPointSpec, MountReplayKind, MountState, TypeRef
+from pyrolyze.backends.model import (
+    MountMutationPolicy,
+    MountParamSpec,
+    MountPointSpec,
+    MountReplayKind,
+    MountState,
+    TypeRef,
+)
 from pyrolyze.testing.hydo import (
     HYDO_MOUNTABLE_SPECS,
     HydoGridLayout,
@@ -232,6 +241,54 @@ def test_choose_mount_applier_prefers_full_rebuild_for_large_replay_only_delta()
     )
 
     assert plan.kind == "full_rebuild_fallback"
+
+
+def test_choose_mount_applier_uses_mount_point_small_delta_threshold() -> None:
+    standard_mount = HYDO_MOUNTABLE_SPECS["HydoWidget"].mount_points["standard"]
+    tuned_mount = replace(
+        standard_mount,
+        mutation_policy=MountMutationPolicy.REPLAY_THEN_SYNC,
+        small_delta_threshold=1,
+    )
+    old_state = _ordered_state(HydoWidget(name="a"), HydoWidget(name="b"), revision=1)
+
+    builder = OrderedMountStateBuilder.from_state(old_state)
+    moved = old_state.objects[1]
+    builder.place(0, moved)
+    builder.place(1, old_state.objects[0])
+    new_state = builder.build()
+
+    plan = choose_mount_applier(
+        mount_point=tuned_mount,
+        old_state=old_state,
+        new_state=new_state,
+        resolved_ops=resolve_mount_ops(HydoWidget, tuned_mount),
+    )
+
+    assert plan.kind == "direct_sync"
+
+
+def test_choose_mount_applier_can_prefer_sync_even_for_small_replay_delta() -> None:
+    standard_mount = HYDO_MOUNTABLE_SPECS["HydoWidget"].mount_points["standard"]
+    sync_preferred_mount = replace(
+        standard_mount,
+        mutation_policy=MountMutationPolicy.SYNC_PREFERRED,
+    )
+    old_state = _ordered_state(HydoWidget(name="a"), HydoWidget(name="b"), revision=1)
+
+    builder = OrderedMountStateBuilder.from_state(old_state)
+    moved = old_state.objects[1]
+    builder.place(0, moved)
+    new_state = builder.build()
+
+    plan = choose_mount_applier(
+        mount_point=sync_preferred_mount,
+        old_state=old_state,
+        new_state=new_state,
+        resolved_ops=resolve_mount_ops(HydoWidget, sync_preferred_mount),
+    )
+
+    assert plan.kind == "direct_sync"
 
 
 def test_apply_mount_state_uses_sync_for_initial_standard_mount() -> None:

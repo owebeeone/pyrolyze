@@ -8,6 +8,7 @@ from frozendict import frozendict
 
 from pyrolyze.backends.model import (
     ChildPolicy,
+    MountMutationPolicy,
     MountParamSpec,
     MountPointSpec,
     TypeRef,
@@ -160,6 +161,12 @@ def _build_mount_point(
             detach_method_name=f"detach_{mount.name}",
             replay_kind=mount.replay_kind,
             prefer_sync=mount.prefer_sync,
+            mutation_policy=(
+                mount.mutation_policy
+                if mount.mutation_policy is not None
+                else MountMutationPolicy.REPLAY_THEN_SYNC
+            ),
+            small_delta_threshold=mount.small_delta_threshold,
         )
     return MountPointSpec(
         name=mount.name,
@@ -169,6 +176,12 @@ def _build_mount_point(
         apply_method_name=f"set_{mount.name}",
         replay_kind=mount.replay_kind,
         prefer_sync=mount.prefer_sync,
+        mutation_policy=(
+            mount.mutation_policy
+            if mount.mutation_policy is not None
+            else MountMutationPolicy.REPLAY_THEN_SYNC
+        ),
+        small_delta_threshold=mount.small_delta_threshold,
     )
 
 

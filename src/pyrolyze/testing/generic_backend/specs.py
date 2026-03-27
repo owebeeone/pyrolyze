@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from enum import StrEnum
 
-from pyrolyze.backends.model import MountReplayKind, TypeRef
+from pyrolyze.backends.model import MountMutationPolicy, MountReplayKind, TypeRef
 
 
 class MountInterfaceKind(StrEnum):
@@ -42,7 +42,7 @@ class MountStyleVariant:
 class MountPointProfile:
     label: str
     style: MountStyleVariant
-    mutation_policy: str | None = None
+    mutation_policy: MountMutationPolicy | None = None
     small_delta_threshold: int | None = None
 
 
@@ -58,7 +58,7 @@ class MountSpec:
     prefer_sync: bool = False
     style_label: str | None = None
     profile_label: str | None = None
-    mutation_policy: str | None = None
+    mutation_policy: MountMutationPolicy | None = None
     small_delta_threshold: int | None = None
 
 

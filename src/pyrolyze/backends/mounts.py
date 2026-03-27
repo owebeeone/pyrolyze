@@ -7,7 +7,7 @@ from typing import Any, Callable, Generic, Literal, Mapping, Sequence, TypeVar
 
 from frozendict import frozendict
 
-from .model import MountPointSpec, MountState
+from .model import MountMutationPolicy, MountPointSpec, MountState
 
 T = TypeVar("T")
 
@@ -244,7 +244,28 @@ def choose_mount_applier(
             return MountApplierPlan(kind="direct_sync")
         return MountApplierPlan(kind="full_rebuild_fallback")
 
-    if has_replay and _is_small_replay_delta(old_state, new_state):
+    policy = mount_point.mutation_policy
+    threshold = mount_point.small_delta_threshold
+
+    if policy is MountMutationPolicy.SYNC_PREFERRED:
+        if has_sync:
+            return MountApplierPlan(kind="direct_sync")
+        if has_replay and _is_small_replay_delta(old_state, new_state, threshold=threshold):
+            return MountApplierPlan(kind="incremental_ordered_replay")
+        if has_replay:
+            return MountApplierPlan(kind="full_rebuild_fallback")
+        return MountApplierPlan(kind="full_rebuild_fallback")
+
+    if policy is MountMutationPolicy.PLACE_ONLY:
+        if has_replay and _is_small_replay_delta(old_state, new_state, threshold=threshold):
+            return MountApplierPlan(kind="incremental_ordered_replay")
+        if has_replay:
+            return MountApplierPlan(kind="full_rebuild_fallback")
+        if has_sync:
+            return MountApplierPlan(kind="direct_sync")
+        return MountApplierPlan(kind="full_rebuild_fallback")
+
+    if has_replay and _is_small_replay_delta(old_state, new_state, threshold=threshold):
         return MountApplierPlan(kind="incremental_ordered_replay")
     if has_sync:
         return MountApplierPlan(kind="direct_sync")
@@ -615,11 +636,15 @@ def _ordered_append_method_name(place_method_name: str) -> str | None:
 def _is_small_replay_delta(
     old_state: ImmutableOrderedMountState[Any] | None,
     new_state: ImmutableOrderedMountState[Any],
+    *,
+    threshold: int | None = 8,
 ) -> bool:
     op_count = len(new_state.ops)
     if op_count == 0 and old_state is not None and old_state.objects != new_state.objects:
         return False
-    return op_count <= 8
+    if threshold is None:
+        return True
+    return op_count <= threshold
 
 
 def _replay_mount_ops(
