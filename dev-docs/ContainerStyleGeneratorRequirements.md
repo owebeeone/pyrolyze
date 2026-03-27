@@ -34,6 +34,7 @@ It is not yet strong enough to verify:
 - exact mount-style placement semantics
 - stable survivor placement under sibling churn
 - nested ordered surface behavior
+- host-owned placement surfaces separately from structural graph retention
 - mutation-policy differences across adapter styles
 - operation-level replay invariants
 
@@ -78,6 +79,7 @@ The resulting test surface must be able to express:
 
 - the authored tree
 - the mounted graph
+- the host placement surfaces used to place mounted children
 - the active mount-style contract
 - the sequence of placement/mutation operations
 - the final committed state after each render pass
@@ -97,6 +99,8 @@ least:
    backend mount styles
 7. Rollback-capable and non-snapshot fallback variants where behavior differs
 8. Optional readback/current-value surfaces where the runtime depends on them
+9. Host-owned ordered placement surfaces where nested container children occupy
+   stable placement slots distinct from their internal child graphs
 
 If PyRolyze supports more mount styles than are listed here, the implementation
 should treat this list as incomplete and extend it rather than narrowing the
@@ -112,6 +116,7 @@ That interface must let a test assert not only that a tree is legal, but that:
 
 - the mount API exercised only the expected mount style
 - no unintended fallback style was used
+- the host placement surface exercised only the expected concrete surface
 - the placement/mutation log is consistent with the declared style
 
 This is a critical requirement because otherwise the generic backend can appear
@@ -135,6 +140,8 @@ The platform must support deterministic tests for at least these cases:
 8. Rollback restoring last committed placement
 9. Equivalent final-shape rerender converging to the same committed result as a
    fresh render of that shape
+10. Stable retained nested-container child preserving parent-surface placement
+    under sibling churn even when the child remains structurally mounted
 
 These tests must assert more than final tree shape.
 
@@ -147,12 +154,13 @@ For deterministic mutation-sequence tests, the platform must support asserting:
 2. Mounted graph shape
 3. Mount bucket order
 4. Placement order within each relevant surface
-5. Stable survivor placement after churn
-6. No zombie retained children
-7. No duplicate retained children
-8. No illegal placement operations for the active style
-9. Generation locality
-10. Final committed state equivalence against a fresh render of the same final
+5. Host-surface placement order within each relevant parent-owned surface
+6. Stable survivor placement after churn
+7. No zombie retained children
+8. No duplicate retained children
+9. No illegal placement operations for the active style
+10. Generation locality
+11. Final committed state equivalence against a fresh render of the same final
     authored shape
 
 
@@ -169,6 +177,8 @@ At minimum, the log must be able to represent:
 - replace
 - place at index
 - place before anchor
+- host-surface attach/detach for nested container children
+- host-surface placement moves distinct from structural child retention
 - keyed insert/update/remove
 - rollback restore
 - no-op replay
@@ -251,10 +261,12 @@ Required invariants include:
 
 1. Final committed graph equals a fresh render of the same final authored state
 2. Surviving retained children preserve legal placement for the active style
-3. No zombie or duplicate retained nodes remain
-4. Generation changes remain local to actually changed nodes
-5. Rollback restores the previous committed state when triggered
-6. Operation log stays legal for the chosen mount style and policy
+3. Retained nested-container children preserve legal placement in their parent
+   host surface even when their structural subtree survives unchanged
+4. No zombie or duplicate retained nodes remain
+5. Generation changes remain local to actually changed nodes
+6. Rollback restores the previous committed state when triggered
+7. Operation log stays legal for the chosen mount style and policy
 
 
 ## Fuzzer Replay Requirement
@@ -275,6 +287,30 @@ The platform must record enough information to reproduce a failure exactly:
 
 The replay form must be usable to promote a fuzz-discovered failure into a
 fixed deterministic regression test.
+
+
+## Host Surface Placement Requirement
+
+The backend API generator project must also expose host placement surface
+semantics strongly enough to distinguish:
+
+- structural child retention in the mounted graph
+- concrete placement of mounted children within a parent-owned host surface
+
+This is required because a retained nested container child can remain present in
+the graph while still drifting to the wrong parent-surface slot in a real
+backend.
+
+The generic backend must therefore be extendable to model at least:
+
+- parent-owned ordered placement surfaces
+- nested container children that occupy one stable parent-surface placement slot
+- placement handles or equivalent stable identities separate from node identity
+- placement operations logged separately from structural child survival
+
+This requirement is satisfied only when the generic backend can express the
+current PySide6 nested-layout placement bug class without relying on PySide6
+itself.
 
 
 ## Conformance Layer Requirement
