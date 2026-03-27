@@ -2,6 +2,7 @@
 
 from .api import BuildPyroNodeBackend
 from .engine import PyroNodeEngine
+from .fuzz import FuzzReplayRecord, FuzzReplayStep, generate_argument_fuzz_replay
 from .harness import PyroRenderHarness, PyroRenderResult
 from .model import PyroArgs, PyroMountBucket, PyroMountEntry, PyroMountOperation, PyroNode
 from .runtime import PyrolyzeMountCompatibilityError
@@ -20,6 +21,8 @@ from .specs import (
 
 __all__ = [
     "BuildPyroNodeBackend",
+    "FuzzReplayRecord",
+    "FuzzReplayStep",
     "MountInterfaceKind",
     "MountParam",
     "MountPointProfile",
@@ -42,5 +45,6 @@ __all__ = [
     "PyrolyzeMountCompatibilityError",
     "run_pyro",
     "run_pyro_ui",
+    "generate_argument_fuzz_replay",
     "validate_node_specs",
 ]

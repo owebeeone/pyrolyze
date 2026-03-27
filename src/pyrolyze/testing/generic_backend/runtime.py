@@ -91,7 +91,10 @@ class GeneratedPyroMountable:
                     ),
                 )
                 for bucket in _sorted_live_buckets(bucket_map.values())
+                if bucket.objects
             )
+            if not buckets:
+                continue
             mounts[mount_name] = buckets
             mount_metadata[mount_name] = _mount_metadata(mount_spec)
         return PyroNode(
@@ -187,6 +190,11 @@ class GeneratedPyroMountable:
         existing = bucket_map.get(bucket_key)
         if existing is not None and existing.objects == resolved_children:
             return
+        if not resolved_children:
+            bucket_map.pop(bucket_key, None)
+            self._record_mount_operation(mount_name, "sync", count=0)
+            self._update_generation()
+            return
         bucket_map[bucket_key] = _LiveMountBucket(
             key=bucket_key,
             values=PyroArgs(),
@@ -204,7 +212,10 @@ class GeneratedPyroMountable:
         updated = [entry for entry in existing.objects if entry is not child]
         if updated == existing.objects:
             return
-        existing.objects = updated
+        if not updated:
+            bucket_map.pop(bucket_key, None)
+        else:
+            existing.objects = updated
         self._record_mount_operation(mount_name, "detach", child=child)
         self._update_generation()
 
