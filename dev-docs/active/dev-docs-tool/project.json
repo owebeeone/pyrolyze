@@ -1,0 +1,19 @@
+{
+  "slug": "dev-docs-tool",
+  "title": "Dev Docs Tool",
+  "status": "in-progress",
+  "synopsis": "Define and eventually implement a tool that manages structured dev-docs projects, validates metadata, generates indexes, and assists migration from the current flat layout.",
+  "canonical_docs": [
+    "README.md",
+    "DevDocsToolRequirements.md",
+    "DevDocsToolDesign.md"
+  ],
+  "tags": [
+    "docs",
+    "tooling",
+    "metadata"
+  ],
+  "replaced_by": [],
+  "supersedes": [],
+  "updated": "2026-03-27"
+}
