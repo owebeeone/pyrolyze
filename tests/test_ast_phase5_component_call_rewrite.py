@@ -259,6 +259,88 @@ def panel(name: str) -> None:
     updated_dispatch = updated_button_node.props["on_press"]
     assert updated_dispatch is dispatch
 
+
+def test_phase5_lowers_component_ref_variable_call_from_annotated_lookup() -> None:
+    source = """
+from typing import Any
+
+from pyrolyze.api import ComponentRef, UIElement, call_native, pyrolyze
+
+@pyrolyze
+def leaf(*, kwds: dict[str, Any]) -> None:
+    call_native(UIElement)(kind="leaf", props=kwds)
+
+EMITTERS: dict[str, ComponentRef[[dict[str, Any]]]] = {
+    "leaf": leaf,
+}
+
+@pyrolyze
+def panel(label: str) -> None:
+    emit: ComponentRef[[dict[str, Any]]] = EMITTERS["leaf"]
+    emit(kwds={"label": label})
+"""
+
+    transformed = emit_transformed_source(
+        source,
+        module_name="example.phase5.component_ref_lookup",
+        filename="/virtual/example/phase5/component_ref_lookup.py",
+    )
+
+    assert ".component_call(" in transformed
+
+    namespace = load_transformed_namespace(
+        source,
+        module_name="example.phase5.component_ref_lookup",
+        filename="/virtual/example/phase5/component_ref_lookup.py",
+    )
+    panel = namespace["panel"]
+    ctx = RenderContext()
+
+    panel._pyrolyze_meta._func(ctx, dirtyof(label=True), "hello")
+    (node,) = ctx.committed_ui()
+    assert node.kind == "leaf"
+    assert node.props["label"] == "hello"
+
+
+def test_phase5_lowers_component_ref_variable_call_from_annotated_lookup_with_named_kwarg() -> None:
+    source = """
+from pyrolyze.api import ComponentRef, UIElement, call_native, pyrolyze
+
+@pyrolyze
+def leaf(*, label: str) -> None:
+    call_native(UIElement)(kind="leaf", props={"label": label})
+
+EMITTERS: dict[str, ComponentRef[[str]]] = {
+    "leaf": leaf,
+}
+
+@pyrolyze
+def panel(label: str) -> None:
+    emit: ComponentRef[[str]] = EMITTERS["leaf"]
+    emit(label=label)
+"""
+
+    transformed = emit_transformed_source(
+        source,
+        module_name="example.phase5.component_ref_lookup_named_kwarg",
+        filename="/virtual/example/phase5/component_ref_lookup_named_kwarg.py",
+    )
+
+    assert ".component_call(" in transformed
+
+    namespace = load_transformed_namespace(
+        source,
+        module_name="example.phase5.component_ref_lookup_named_kwarg",
+        filename="/virtual/example/phase5/component_ref_lookup_named_kwarg.py",
+    )
+    panel = namespace["panel"]
+    ctx = RenderContext()
+
+    panel._pyrolyze_meta._func(ctx, dirtyof(label=True), "hello")
+    (node,) = ctx.committed_ui()
+    assert node.kind == "leaf"
+    assert node.props["label"] == "hello"
+
     updated_dispatch()
     assert namespace["log"] == ["Ada", "Bea"]
 

@@ -269,3 +269,99 @@ def panel(label):
         ("setup", "alpha"),
         ("setup", "beta"),
     ]
+
+
+def test_phase5_hoists_use_grip_inside_or_expression() -> None:
+    source = """
+from pyrolyze.api import pyrolyze, use_grip
+from pyrolyze.runtime import ExternalStoreRef
+
+log = []
+
+def subscribe(listener):
+    return lambda: None
+
+def get_value():
+    log.append(("get",))
+    return ""
+
+STORE = ExternalStoreRef(identity="weather", subscribe=subscribe, get=get_value)
+
+def record(value):
+    log.append(("record", value))
+
+@pyrolyze
+def panel():
+    value = use_grip(STORE) or "clock"
+    record(value)
+"""
+
+    transformed = emit_transformed_source(
+        source,
+        module_name="example.phase5.use_grip_or_expression",
+        filename="/virtual/example/phase5/use_grip_or_expression.py",
+    )
+
+    assert "__pyr_ctx.call_plain(" in transformed
+
+    namespace = load_transformed_namespace(
+        source,
+        module_name="example.phase5.use_grip_or_expression",
+        filename="/virtual/example/phase5/use_grip_or_expression.py",
+    )
+    panel = namespace["panel"]
+    ctx = RenderContext()
+
+    panel._pyrolyze_meta._func(ctx, dirtyof())
+    assert namespace["log"] == [
+        ("get",),
+        ("record", "clock"),
+    ]
+
+
+def test_phase5_hoists_use_grip_inside_int_coercion_expression() -> None:
+    source = """
+from pyrolyze.api import pyrolyze, use_grip
+from pyrolyze.runtime import ExternalStoreRef
+
+log = []
+
+def subscribe(listener):
+    return lambda: None
+
+def get_value():
+    log.append(("get",))
+    return None
+
+STORE = ExternalStoreRef(identity="count", subscribe=subscribe, get=get_value)
+
+def record(value):
+    log.append(("record", value))
+
+@pyrolyze
+def panel():
+    count = int(use_grip(STORE) or 0)
+    record(count)
+"""
+
+    transformed = emit_transformed_source(
+        source,
+        module_name="example.phase5.use_grip_int_expression",
+        filename="/virtual/example/phase5/use_grip_int_expression.py",
+    )
+
+    assert "__pyr_ctx.call_plain(" in transformed
+
+    namespace = load_transformed_namespace(
+        source,
+        module_name="example.phase5.use_grip_int_expression",
+        filename="/virtual/example/phase5/use_grip_int_expression.py",
+    )
+    panel = namespace["panel"]
+    ctx = RenderContext()
+
+    panel._pyrolyze_meta._func(ctx, dirtyof())
+    assert namespace["log"] == [
+        ("get",),
+        ("record", 0),
+    ]
