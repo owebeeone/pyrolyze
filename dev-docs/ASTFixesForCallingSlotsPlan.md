@@ -147,6 +147,8 @@ Create the new runtime pieces without changing current compiler lowering.
 
 ### Deliverables
 
+- `pyrolyze/src/pyrolyze/runtime/dirt.py`
+- `pyrolyze/src/pyrolyze/runtime/slot_expr.py`
 - `Args[T]`
 - `DM`
 - `SlotExpr`
@@ -159,9 +161,9 @@ These tests should be runtime-only tests. They should not rely on transformed so
 
 Suggested files:
 
-- `pyrolyze/tests/test_slot_expr_runtime.py`
-- `pyrolyze/tests/test_slot_expr_dirty_manager.py`
-- `pyrolyze/tests/test_slot_expr_shapes.py`
+- `pyrolyze/tests/test_runtime_slot_expr.py`
+- `pyrolyze/tests/test_runtime_dirt.py`
+- optional: `pyrolyze/tests/test_runtime_slot_expr_shapes.py`
 
 #### Args tests
 
