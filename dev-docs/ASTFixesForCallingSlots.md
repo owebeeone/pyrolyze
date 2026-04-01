@@ -97,7 +97,9 @@ In design examples, human-readable names may still be shown without the prefix f
 For this design specifically:
 
 - the central dirt manager in lowered code should be `__pyr_dm`
-- deletion helpers should lower under that same namespace, for example `__pyr_dm.__pyr_del(...)`
+- bound dirt writes should lower through `__pyr_dm.bind`
+- initial-render/literal dirt should come from the existing slot-context surface
+- call-site identity should use a compiler-generated `SlotId`, not only a temporary evaluator variable name
 
 ## Core Runtime Carriers
 
@@ -181,6 +183,7 @@ The `slot_expr`:
 - evaluates the expression using lazy, memoized per-call evaluator objects
 - carries a dirtiness sink for final bound outputs
 - binds final results only at the end
+- should stage lifecycle updates and final dirty bindings until a successful pass commit
 
 ## Call Sites
 
@@ -192,6 +195,14 @@ Important:
 - it is a call inside the current slot
 - it still needs a stable per-expression call-site identity
 - it is evaluated lazily only if the expression requests it
+
+That identity should be a real compiler-generated call-site `SlotId`.
+
+So conceptually:
+
+- evaluator lambda names like `v1` are just rewrite conveniences
+- the persistent runtime identity should be the full call-site `SlotId`
+- `slot_call(...)` should ultimately carry that `SlotId`
 
 So for:
 
@@ -240,10 +251,10 @@ Then:
 
 ```python
 .slot_call(
-    "v1",
+    call_slot_id_v1,
     use_grip,
     lambda: slot_params(STORE),
-    lambda: slot_params_dirt(dm.literal()),
+    lambda: slot_params_dirt(slot_ctx.literal(STORE).dirty),
 )
 ```
 
@@ -259,6 +270,12 @@ The evaluator must be lazy and memoized:
 - the call site is evaluated only the first time `eval()` or `dirty()` needs it
 - later accesses reuse cached results
 - Python control flow such as short-circuiting determines which call sites are actually evaluated
+
+Memoization here should match `plain_call` semantics rather than merely skipping all work:
+
+- if function identity, schema, and input values do not require reinvocation, the original function call may be skipped
+- binding-specific refresh behavior must still run when applicable
+- for example, an external-store-backed call may refresh from the store without reinvoking the original callable
 
 This is essential. Call sites must not execute eagerly in registration order.
 
@@ -311,8 +328,8 @@ slot_ctx
         lambda a, b: a.eval() + b.eval(),
         lambda a, b: a.dirty() or b.dirty(),
     )
-    .slot_call("a", use_grip, lambda: slot_params(A), lambda: slot_params_dirt(dm.A))
-    .slot_call("b", use_grip, lambda: slot_params(B), lambda: slot_params_dirt(dm.B))
+    .slot_call(call_slot_id_a, use_grip, lambda: slot_params(A), lambda: slot_params_dirt(dm.A))
+    .slot_call(call_slot_id_b, use_grip, lambda: slot_params(B), lambda: slot_params_dirt(dm.B))
 ```
 
 ## Nested Extraction
@@ -384,7 +401,7 @@ Literal or constant:
 
 ```python
 V(3) = 3
-D(3) = dm.literal()
+D(3) = slot_ctx.literal(3).dirty
 ```
 
 Local name:
@@ -578,7 +595,7 @@ value = (
         "v1",
         use_grip,
         lambda: slot_params(STORE),
-        lambda: slot_params_dirt(dm.literal()),
+        lambda: slot_params_dirt(slot_ctx.literal("clock").dirty),
     )
     .apply_dirt_sink(dirt_sink)
     .evaluate("value")
@@ -621,7 +638,7 @@ val, func = (
         "v1",
         use_state,
         lambda: slot_params(3),
-        lambda: slot_params_dirt(dm.literal()),
+        lambda: slot_params_dirt(dm.__pyr_literal()),
     )
     .apply_dirt_sink(dirt_sink)
     .evaluate("val", "func")
@@ -746,7 +763,7 @@ Examples:
 
 ```python
 slot_params(prefix, label=name, visible=True)
-slot_params_dirt(dm.prefix, label=dm.name, visible=dm.literal())
+slot_params_dirt(dm.prefix, label=dm.name, visible=dm.__pyr_literal())
 ```
 
 That means:
@@ -773,7 +790,7 @@ value = (
         "v1",
         use_grip,
         lambda: slot_params(STORE),
-        lambda: slot_params_dirt(dm.literal()),
+        lambda: slot_params_dirt(dm.__pyr_literal()),
     )
     .apply_dirt_sink(dirt_sink)
     .evaluate("value")
@@ -798,7 +815,7 @@ val, func = (
         "v1",
         use_state,
         lambda: slot_params(3),
-        lambda: slot_params_dirt(dm.literal()),
+        lambda: slot_params_dirt(dm.__pyr_literal()),
     )
     .apply_dirt_sink(dirt_sink)
     .evaluate("val", "func")
@@ -865,7 +882,7 @@ result = (
         "v1",
         use_state,
         lambda: slot_params(3),
-        lambda: slot_params_dirt(dm.literal()),
+        lambda: slot_params_dirt(dm.__pyr_literal()),
     )
     .apply_dirt_sink(dirt_sink)
     .evaluate("result")
@@ -906,7 +923,7 @@ val, func = (
         "v1",
         use_state,
         lambda: slot_params(3),
-        lambda: slot_params_dirt(dm.literal()),
+        lambda: slot_params_dirt(dm.__pyr_literal()),
     )
     .apply_dirt_sink(dirt_sink)
     .evaluate("val", "func")
@@ -920,14 +937,15 @@ So the binding rule is:
 - one output name: store the whole dirty shape under that one name
 - many output names: unpack dirty shape structurally across those names
 
-The sink therefore needs structure-aware bind operations, conceptually like:
+The sink therefore needs an assignment-shaped binding surface, conceptually like:
 
 ```python
-dirt_sink.bind(name, dirty_value)
-dirt_sink.bind_many(names, dirty_value)
+dirt_sink.bind.value = True
+dirt_sink.bind.val, dirt_sink.bind.func = (True, False)
+del dirt_sink.bind.value
 ```
 
-The exact surface can vary as long as `evaluate(...)` owns that behavior.
+`evaluate(...)` should still own the structural unpacking logic, but the sink itself should look like ordinary binding rather than a custom public `bind_many(...)` API.
 
 ### Rerender shape preservation
 
@@ -1014,7 +1032,7 @@ The design needs one consistent way to answer:
 
 The recommended answer is:
 
-- use the dirt manager directly as the single source of truth
+- use the dirt manager directly as the single source of truth for bound dirt values
 
 In lowered compiler output this should be a single central manager for the function scope:
 
@@ -1026,12 +1044,12 @@ In examples below, `dm` is used as the human-readable stand-in for that lowered 
 
 ### Literals and constants
 
-Literals/constants should be dirty on initial render only.
+Literals/constants should be dirty on initial render only, using the existing slot-context literal surface.
 
 Conceptually:
 
 ```python
-dm.literal()
+slot_ctx.literal(3).dirty
 ```
 
 This is the dirt-manager surface for "dirty on initial render only".
@@ -1039,9 +1057,9 @@ This is the dirt-manager surface for "dirty on initial render only".
 Examples:
 
 ```python
-dm.literal()  # for 3
-dm.literal()  # for True
-dm.literal()  # for "clock"
+slot_ctx.literal(3).dirty  # for 3
+slot_ctx.literal(True).dirty  # for True
+slot_ctx.literal("clock").dirty  # for "clock"
 ```
 
 ### Globals
@@ -1056,7 +1074,7 @@ That is:
 Conceptually:
 
 ```python
-dm.literal()  # when the source term is a global
+slot_ctx.literal(GLOBAL_LABEL).dirty  # when the source term is a global
 ```
 
 This is intentionally conservative and simple.
@@ -1068,7 +1086,7 @@ Locals should default to dirty unless overridden by tracked binding.
 Conceptually:
 
 ```python
-dm.local_name
+dm.bind.local_name
 ```
 
 or more abstractly:
@@ -1100,7 +1118,7 @@ value = slot_expr(...).evaluate("value")
 
 means:
 
-- `dm.value` is whatever the slot expression bound
+- `dm.bind.value` is whatever the slot expression bound
 
 and:
 
@@ -1110,8 +1128,8 @@ val, func = slot_expr(...).evaluate("val", "func")
 
 means:
 
-- `dm.val`
-- `dm.func`
+- `dm.bind.val`
+- `dm.bind.func`
 
 are explicitly bound from that expression's dirty result
 
@@ -1122,8 +1140,8 @@ Tracked unpacking should also write through the dirt manager.
 For example, when `evaluate("val", "func")` destructures a tuple result, it should:
 
 - bind the logical values
-- bind `dm.val`
-- bind `dm.func`
+- bind `dm.bind.val`
+- bind `dm.bind.func`
 
 This is one of the main ways a local stops using the default "dirty unless overridden" rule.
 
@@ -1140,9 +1158,9 @@ value = slot_expr(...).evaluate("value")
 the Phase 1 model should behave like:
 
 ```python
-dm.literal()  # for GLOBAL_LABEL
-dm.prefix     # default local path
-dm.value      # explicit slot_expr binding
+slot_ctx.literal(GLOBAL_LABEL).dirty  # for GLOBAL_LABEL
+dm.bind.prefix  # default local path
+dm.bind.value   # explicit slot_expr binding
 ```
 
 And for:
@@ -1154,17 +1172,17 @@ val, func = slot_expr(...).evaluate("val", "func")
 the model should behave like:
 
 ```python
-dm.val
-dm.func
+dm.bind.val
+dm.bind.func
 ```
 
 ## Why This Matters
 
 This gives one uniform rule for building `slot_params_dirt(...)`:
 
-- literals/constants: `dm.literal()`
-- globals: `dm.literal()`
-- locals: `dm.name`
+- literals/constants: `slot_ctx.literal(value).dirty`
+- globals: `slot_ctx.literal(global_value).dirty`
+- locals: `dm.bind.name`
 - slot-expression outputs/unpacked names: whatever explicit dirty binding was written there
 
 That should make compiler lowering much simpler and more predictable.
@@ -1180,7 +1198,7 @@ Conceptually:
     "v1",
     use_grip,
     lambda: slot_params(STORE),
-    lambda: slot_params_dirt(dm.literal()),
+    lambda: slot_params_dirt(slot_ctx.literal("clock").dirty),
 )
 ```
 
@@ -1219,6 +1237,127 @@ That means:
 - the bound dirt result produced by that slot expression is what updates the relevant names on `__pyr_dm`
 
 This should be modeled consistently with ordinary slot-bearing expressions, not as a special one-off path.
+
+## Pass Staging And Commit
+
+`SlotExpr` should behave as a staged per-pass transaction.
+
+For each pass:
+
+1. begin expression pass
+2. lazily evaluate reachable call sites
+3. stage:
+   - updated call-site state
+   - newly created registrations/subscriptions/effects/adverts
+   - deactivations for previously-live but now-unvisited call sites
+   - final dirty bindings for `evaluate(...)`
+4. if evaluation succeeds:
+   - commit staged call-site updates
+   - commit staged registrations/deactivations
+   - commit final dirty bindings
+5. if evaluation fails:
+   - discard staged updates
+   - discard staged deactivations
+   - discard staged final dirt bindings
+   - preserve the previously committed state
+
+This means:
+
+- expression exceptions abort the whole `SlotExpr` pass
+- partial evaluation must not leak partially-updated bindings
+- deactivation is a staged lifecycle effect, not an immediate side effect
+
+## Reachability And Deactivation
+
+Call-site liveness follows actual evaluation reachability.
+
+That means:
+
+- a call site visited on the current successful pass stays live
+- a call site that was live in the previous committed pass but is not visited in the current successful pass must deactivate
+- deactivation is applied only on the successful commit boundary
+
+Example:
+
+```python
+ab = use_grip(A) or use_grip(B)
+```
+
+Pass 1:
+
+- `A` is falsy
+- `B` is evaluated
+- `B` becomes live
+
+Pass 2:
+
+- `A` is truthy
+- `B` is not evaluated
+- after successful pass commit, `B` deactivates
+
+This is equivalent in liveness terms to:
+
+```python
+ab = use_grip(A)
+if not ab:
+    ab = use_grip(B)
+```
+
+By contrast, eager forms keep all calls reachable:
+
+```python
+ab = any((use_grip(A), use_grip(B)))
+```
+
+or:
+
+```python
+a = use_grip(A)
+b = use_grip(B)
+ab = a or b
+```
+
+Those evaluate both call sites every pass, so both remain live.
+
+## Handler Parity With plain_call
+
+`SlotCallEvaluator` needs the full semantic coverage of the current `plain_call` handler family:
+
+```python
+_PLAIN_CALL_HANDLERS = (
+    ExternalStoreHandler(),
+    PyrolyzeMountAdvertisementHandler(),
+    UseEffectAsyncHandler(),
+    UseEffectHandler(),
+    PlainValueHandler(),
+)
+```
+
+This means `SlotExpr` should not only reproduce value projection. It should also reproduce the lifecycle semantics of those handlers, including:
+
+- external store refresh without reinvoking the original callable
+- staged registration and deregistration
+- effect/update staging
+- advertisement staging
+- plain value rebinding
+
+The handler/binding infrastructure should be extracted from `runtime/context.py` and reused or mirrored in a way that preserves those semantics.
+
+## Registration Pairing And Reference Retention
+
+Registration and deactivation must pair on commit boundaries.
+
+That means:
+
+- no registration/subscription/effect activation should become committed without a matching later deactivation path
+- no deactivation of previously-committed state should happen before successful pass commit
+- lifecycle transitions should be staged and committed atomically
+
+Also:
+
+- `SlotCallEvaluator` should expose dereferenced logical values to the expression
+- binding objects may retain lifecycle state where required
+- but raw returned values should not be retained more broadly than necessary, to avoid unnecessary reference retention and leaks
 
 ## What This Simplifies
 
@@ -1331,10 +1470,10 @@ Conceptually:
 del var
 ```
 
-maps to something like:
+maps to deletion through the dirt-manager binding surface:
 
 ```python
-__pyr_dm.__pyr_del("var")
+del __pyr_dm.bind.var
 ```
 
 Tuple unpacks outside `evaluate(...)`, attribute writes, and subscript writes are part of Phase 1. The general principle is:

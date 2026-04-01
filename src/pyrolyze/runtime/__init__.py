@@ -47,7 +47,9 @@ from .context import (
     dirtyof,
     module_registry,
 )
+from .dirt import DM
 from .drip import Drip
+from .slot_expr import Args, SlotExpr, slot_params, slot_params_dirt
 from .trace import (
     TraceChannel,
     TraceRecord,
@@ -99,11 +101,13 @@ __all__ = [
     "OverlayAppContextLookup",
     "AppContextOverrideSlotContext",
     "AppContextOverrideStructureError",
+    "Args",
     "CompValue",
     "ComponentCallSlotContext",
     "ContextBase",
     "ContainerSlotContext",
     "DirectiveSlotContext",
+    "DM",
     "DirtyStateContext",
     "Drip",
     "DuplicateKeyError",
@@ -128,6 +132,7 @@ __all__ = [
     "RerunnableSlotContext",
     "SlotContext",
     "SlotId",
+    "SlotExpr",
     "SlotOwnershipError",
     "TraceChannel",
     "TraceRecord",
@@ -144,6 +149,8 @@ __all__ = [
     "enable_trace",
     "module_registry",
     "reset_trace",
+    "slot_params",
+    "slot_params_dirt",
     "trace_enabled",
     "BackendId",
     "changed_events",

@@ -7,6 +7,7 @@ This document turns the slot-call redesign from `ASTFixesForCallingSlots.md` int
 The goal is to replace the current slot-bearing `plain_call` model with:
 
 - a central dirt manager (`__pyr_dm`)
+- slot-context-owned literal/initial-render dirt
 - a new `SlotExpr` runtime
 - memoized `slot_call` evaluators
 - structural dirty binding at `evaluate(...)`
@@ -34,9 +35,10 @@ Those remain unsupported in Phase 1 of the design.
 The migration should be done in four phases:
 
 1. build the new runtime structures independently of the current compiler/lowering
-2. move dirt handling onto the new dirt manager first
-3. move slot-bearing expression lowering from `plain_call` to `SlotExpr`
-4. remove `plain_call` completely
+2. complete the lifecycle/handler parity work for `SlotExpr`
+3. move dirt handling onto the new dirt manager first
+4. move slot-bearing expression lowering from `plain_call` to `SlotExpr`
+5. remove `plain_call` completely
 
 The key constraint is:
 
@@ -53,6 +55,7 @@ The new runtime surface should include at least:
 - memoized `slot_call` evaluators
 - unevaluated/clean-shape support
 - optional single-call fast-path support within the `SlotExpr` model
+- use of the existing slot-context literal surface for constant/global dirt
 
 ### Args
 
@@ -83,16 +86,13 @@ Required properties:
 
 The central dirt manager should conceptually provide:
 
-- `__pyr_literal()`
-- name lookup/bind
-- structural bind
-- structural unpack
-- deletion
+- name lookup
+- a `bind` object used for assignment-shaped writes and deletes
 - structural dirty checks
 
 Required behaviors:
 
-- literals/constants/globals dirty on initial render only
+- literals/constants/globals dirty on initial render only via slot-context `literal(...)`
 - locals default dirty unless explicitly rebound
 - `slot_expr.evaluate(...)` overrides default dirt for bound names
 - tuple/list/dict dirt checks are structural
@@ -173,16 +173,16 @@ Suggested files:
 
 #### DM tests: literals and defaults
 
-- `__pyr_literal()` is dirty on initial render
-- `__pyr_literal()` is clean on rerender
+- slot-context `literal(...)` is dirty on initial render
+- slot-context `literal(...)` is clean on rerender
 - globals follow the same rule as literals
 - ordinary locals default dirty unless rebound
 
 #### DM tests: bind and lookup
 
-- scalar bind writes dirt for a name
-- tuple bind stores structured dirt under one name
-- unpack bind writes structured dirt across multiple names
+- scalar bind writes dirt through `dm.bind.name = ...`
+- tuple bind stores structured dirt under one name through `dm.bind.result = (...)`
+- unpack bind writes structured dirt across multiple names through tuple assignment on `dm.bind`
 - rebinding a name replaces previous dirt
 - shadowing semantics match value binding
 
@@ -197,7 +197,7 @@ Suggested files:
 
 #### DM tests: deletion
 
-- deleting a tracked name removes it from the manager
+- deleting a tracked name with `del dm.bind.name` removes it from the manager
 - deleting an untracked name is a defined no-op or defined error, whichever is chosen
 - deletion after rebinding behaves consistently
 
@@ -224,6 +224,7 @@ Suggested files:
 - conditional expression only evaluates the selected branch
 - unevaluated branch dirt is clean
 - `dirty()` does not force evaluation of untaken branches
+- eager forms like `any((a, b))` keep both call sites reachable
 
 #### SlotExpr tests: multi-result returns
 
@@ -265,6 +266,79 @@ Phase A is complete when:
 - no compiler lowering has been changed yet
 - the runtime API feels stable enough to target from the AST transformer
 
+## Phase AA: Lifecycle And Handler Parity
+
+### Goal
+
+Bring `SlotExpr`/`SlotCallEvaluator` up to the full lifecycle semantics currently carried by `plain_call`.
+
+### Deliverables
+
+- staged per-pass `SlotExpr` commit/rollback behavior
+- staged deactivation of previously-live but now-unvisited call sites
+- extraction or reuse of the `plain_call` handler/binding infrastructure from `runtime/context.py`
+- call-site identity carried as a real compiler-generated `SlotId`
+- memoization behavior matching `plain_call` semantics, including refresh-without-reinvoke for external stores
+- registration/deactivation pairing on commit boundaries
+- avoidance of unnecessary retained raw-result references
+
+### Phase AA Tests
+
+Suggested additions to:
+
+- `pyrolyze/tests/test_runtime_slot_expr.py`
+- optional: `pyrolyze/tests/test_runtime_slot_expr_lifecycle.py`
+
+#### Reachability and deactivation tests
+
+- `use_grip(A) or use_grip(B)`:
+  - first pass reaches `B`
+  - second pass skips `B`
+  - `B` deactivates only after successful commit
+- `use_grip(A) and use_grip(B)`:
+  - symmetric reachability behavior
+- `any((use_grip(A), use_grip(B)))`:
+  - both call sites remain reachable every pass
+- explicit `if`/assignment form equivalent to the short-circuit version matches liveness semantics
+
+#### Exception and staging tests
+
+- one call site evaluates, later expression step raises
+- staged dirty bindings are not committed
+- staged deactivations are not committed
+- previously committed call-site state remains intact
+
+#### Handler parity tests
+
+- plain value handler parity
+- external store handler parity:
+  - refresh without reinvoking original callable
+  - deactivate when unreachable after commit
+- use effect handler parity:
+  - staged activation
+  - staged deactivation when unreachable
+- async effect handler parity
+- mount advertisement handler parity
+
+#### Call-site identity tests
+
+- each `slot_call` carries a persistent call-site `SlotId`
+- evaluator parameter name changes do not change runtime identity
+
+#### Registration pairing tests
+
+- no committed registration without later possible deactivation
+- lifecycle changes appear only after successful commit
+
+### Phase AA Completion Gate
+
+Phase AA is complete when:
+
+- `SlotExpr` lifecycle semantics match `plain_call` for the handler families in scope
+- reachability/deactivation semantics are covered by runtime tests
+- staged commit/rollback behavior is verified
+- the runtime surface is trustworthy enough to begin compiler migration
+
 ## Phase B: Move Dirt Handling To DM First
 
 ### Goal
@@ -294,7 +368,7 @@ Suggested files:
 
 - existing slotted call path updates `DM` instead of old hidden dirt channel storage
 - rebinding and unpacking through transformed code land in `DM`
-- deletion lowers to `__pyr_dm.__pyr_del(...)`
+- deletion lowers to `del __pyr_dm.bind.name`
 - attribute/subscript paths update `DM`
 
 #### Golden expectations
