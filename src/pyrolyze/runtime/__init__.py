@@ -47,7 +47,7 @@ from .context import (
     dirtyof,
     module_registry,
 )
-from .dirt import DM
+from .dirt import DM, dm_from_dirty_state
 from .drip import Drip
 from .slot_expr import Args, SlotExpr, slot_params, slot_params_dirt
 from .trace import (
@@ -144,6 +144,7 @@ __all__ = [
     "configure_trace",
     "configure_trace_from_env",
     "disable_trace",
+    "dm_from_dirty_state",
     "dirtyof",
     "emit_trace",
     "enable_trace",

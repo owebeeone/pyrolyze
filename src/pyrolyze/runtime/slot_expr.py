@@ -18,6 +18,7 @@ from .dirt import DM
 from .plain_call_semantics import (
     ExternalStoreRef,
     PlainCallBinding,
+    PlainCallBindingHost,
     UseEffectAsyncRequest,
     UseEffectRequest,
     select_plain_call_handler,
@@ -124,27 +125,38 @@ def _signature_names(func: Callable[..., Any]) -> tuple[str, ...]:
 @dataclass(slots=True)
 class _SlotExprPlainCallHost:
     expr: SlotExpr
-    call_id: str
+    slot_id: Any
     advertisement: PyrolyzeMountAdvertisement | None = None
+    delegate: PlainCallBindingHost | None = None
 
     def queue_plain_call_invalidation(self) -> None:
+        if self.delegate is not None:
+            self.delegate.queue_plain_call_invalidation()
         return None
 
     def enqueue_plain_call_post_commit(self, callback: Callable[[], None]) -> None:
-        self.expr._staged_post_commit_callbacks.append(callback)
+        if self.delegate is None:
+            self.expr._staged_post_commit_callbacks.append(callback)
+        else:
+            self.expr._staged_post_commit_callbacks.append(lambda: self.delegate.enqueue_plain_call_post_commit(callback))
 
     def publish_plain_call_mount_advertisement(
         self,
         request: PyrolyzeMountAdvertisementRequest,
     ) -> PyrolyzeMountAdvertisement:
-        self.advertisement = PyrolyzeMountAdvertisement(
-            key=request.key,
-            selectors=request.selectors,
-            default=request.default,
-        )
+        if self.delegate is None:
+            self.advertisement = PyrolyzeMountAdvertisement(
+                key=request.key,
+                selectors=request.selectors,
+                default=request.default,
+            )
+        else:
+            self.advertisement = self.delegate.publish_plain_call_mount_advertisement(request)
         return self.advertisement
 
     def withdraw_plain_call_mount_advertisement(self) -> None:
+        if self.delegate is not None:
+            self.delegate.withdraw_plain_call_mount_advertisement()
         self.advertisement = None
 
 
@@ -155,11 +167,7 @@ class _SlotExprRuntimeContextSlot:
 
     @property
     def slot_id(self) -> Any:
-        slot_ctx = self.evaluator.expr.slot_ctx
-        current_slot_id = getattr(slot_ctx, "current_slot_id", None)
-        if callable(current_slot_id):
-            return current_slot_id()
-        return ("slot_expr", self.evaluator.call_id)
+        return self.evaluator.slot_id
 
     def _mark_binding_dirty(self) -> None:
         self.evaluator.mark_invoke_dirty()
@@ -197,6 +205,8 @@ class SlotExpr:
     dm: DM | None = None
     slot_ctx: SlotExprLiteralContext | None = None
     evaluators: dict[str, SlotCallEvaluator] = field(default_factory=dict)
+    evaluators_by_slot_id: dict[Any, SlotCallEvaluator] = field(default_factory=dict)
+    host_factory: Callable[[Any], PlainCallBindingHost] | None = None
     _pass_id: int = 0
     _staged_post_commit_callbacks: list[Callable[[], None]] = field(default_factory=list)
 
@@ -208,12 +218,13 @@ class SlotExpr:
         dirt_args_lambda: Callable[..., Args[Any]],
         *,
         call_id: str = "v1",
+        slot_id: Any | None = None,
     ) -> SlotExpr:
         expr = cls(
             value_lambda=lambda v1: v1.eval(),
             dirty_lambda=lambda v1: v1.dirty(),
         )
-        expr.slot_call(call_id, func_provider, args_lambda, dirt_args_lambda)
+        expr.slot_call(call_id, func_provider, args_lambda, dirt_args_lambda, slot_id=slot_id)
         return expr
 
     def slot_call(
@@ -222,14 +233,30 @@ class SlotExpr:
         func_provider: SlotCallFunctionProvider,
         args_lambda: Callable[..., Args[Any]],
         dirt_args_lambda: Callable[..., Args[Any]],
+        *,
+        slot_id: Any | None = None,
     ) -> SlotExpr:
-        self.evaluators[call_id] = SlotCallEvaluator(
-            call_id=call_id,
-            _func_provider=func_provider,
-            args_lambda=args_lambda,
-            dirt_args_lambda=dirt_args_lambda,
-            expr=self,
-        )
+        resolved_slot_id = slot_id if slot_id is not None else ("slot_expr", call_id)
+        existing = self.evaluators_by_slot_id.get(resolved_slot_id)
+        if existing is None:
+            existing = SlotCallEvaluator(
+                call_id=call_id,
+                slot_id=resolved_slot_id,
+                _func_provider=func_provider,
+                args_lambda=args_lambda,
+                dirt_args_lambda=dirt_args_lambda,
+                expr=self,
+            )
+            self.evaluators_by_slot_id[resolved_slot_id] = existing
+        else:
+            existing.call_id = call_id
+            existing._func_provider = func_provider
+            existing.args_lambda = args_lambda
+            existing.dirt_args_lambda = dirt_args_lambda
+        stale_names = [name for name, evaluator in self.evaluators.items() if evaluator is existing and name != call_id]
+        for stale_name in stale_names:
+            self.evaluators.pop(stale_name, None)
+        self.evaluators[call_id] = existing
         return self
 
     def apply_dirt_sink(self, dm: DM) -> SlotExpr:
@@ -240,13 +267,19 @@ class SlotExpr:
         self.slot_ctx = slot_ctx
         return self
 
+    def apply_host_factory(self, host_factory: Callable[[Any], PlainCallBindingHost]) -> SlotExpr:
+        self.host_factory = host_factory
+        for evaluator in self.evaluators_by_slot_id.values():
+            evaluator.host.delegate = host_factory(evaluator.slot_id)
+        return self
+
     def evaluate(self, *names: str) -> Any:
         if self.dm is None:
             raise RuntimeError("slot_expr requires apply_dirt_sink() before evaluate()")
         if self.slot_ctx is None:
             raise RuntimeError("slot_expr requires apply_slot_context() before evaluate()")
         self._pass_id += 1
-        for evaluator in self.evaluators.values():
+        for evaluator in self.evaluators_by_slot_id.values():
             evaluator.begin_pass(self._pass_id)
         try:
             value = self._invoke_expr(self.value_lambda)
@@ -263,12 +296,12 @@ class SlotExpr:
                     tuple(zip(names, unpacked_dirty, strict=True)),
                 )
         except BaseException:
-            for evaluator in self.evaluators.values():
+            for evaluator in self.evaluators_by_slot_id.values():
                 evaluator.rollback_pass()
             self._staged_post_commit_callbacks.clear()
             raise
 
-        for evaluator in self.evaluators.values():
+        for evaluator in self.evaluators_by_slot_id.values():
             evaluator.commit_pass()
         callbacks = tuple(self._staged_post_commit_callbacks)
         self._staged_post_commit_callbacks.clear()
@@ -310,6 +343,7 @@ class SlotExpr:
 @dataclass(slots=True)
 class SlotCallEvaluator:
     call_id: str
+    slot_id: Any
     _func_provider: SlotCallFunctionProvider
     args_lambda: Callable[..., Args[Any]]
     dirt_args_lambda: Callable[..., Args[Any]]
@@ -334,7 +368,8 @@ class SlotCallEvaluator:
     _runtime_context_slot: _SlotExprRuntimeContextSlot | None = None
 
     def __post_init__(self) -> None:
-        self.host = _SlotExprPlainCallHost(expr=self.expr, call_id=self.call_id)
+        delegate = self.expr.host_factory(self.slot_id) if self.expr.host_factory is not None else None
+        self.host = _SlotExprPlainCallHost(expr=self.expr, slot_id=self.slot_id, delegate=delegate)
 
     @property
     def func_provider(self) -> SlotCallFunctionProvider:

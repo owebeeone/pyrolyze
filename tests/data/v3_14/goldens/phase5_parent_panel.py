@@ -1,5 +1,5 @@
 from pyrolyze.api import CallFromNonPyrolyzeContext as __pyr_CallFromNonPyrolyzeContext, ComponentMetadata as __pyr_ComponentMetadata, pyrolyze_component_ref as __pyr_component_ref
-from pyrolyze.runtime import SlotId as __pyr_SlotId, dirtyof as __pyr_dirtyof, module_registry as __pyr_module_registry
+from pyrolyze.runtime import SlotId as __pyr_SlotId, dm_from_dirty_state as __pyr_dm_from_dirty_state, dirtyof as __pyr_dirtyof, module_registry as __pyr_module_registry
 __pyr_module_id = __pyr_module_registry.module_id(__name__)
 __pyr_slot_1 = __pyr_SlotId(__pyr_module_id, 1, line_no=20, is_top_level=True)
 from pyrolyze.api import pyrolyze
@@ -10,6 +10,7 @@ def badge(text: str, *, tone: str) -> None:
 
 def __pyr_child_badge(__pyr_ctx, __pyr_dirty_state, text: str):
     with __pyr_ctx.pass_scope():
+        __pyr_dm = globals()['__pyr_dm_from_dirty_state'](__pyr_dirty_state)
         badge(text, tone='info')
 
 @__pyr_component_ref(__pyr_ComponentMetadata('child_badge', __pyr_child_badge))
@@ -18,8 +19,9 @@ def child_badge(text: str) -> None:
 
 def __pyr_parent_panel(__pyr_ctx, __pyr_dirty_state, text: str):
     with __pyr_ctx.pass_scope():
-        if __pyr_dirty_state.text or __pyr_ctx.visit_slot_and_dirty(__pyr_slot_1):
-            __pyr_ctx.component_call(__pyr_slot_1, child_badge, text, dirty_state=__pyr_dirtyof(text=__pyr_dirty_state.text))
+        __pyr_dm = globals()['__pyr_dm_from_dirty_state'](__pyr_dirty_state)
+        if __pyr_dm.bind.text or __pyr_ctx.visit_slot_and_dirty(__pyr_slot_1):
+            __pyr_ctx.component_call(__pyr_slot_1, child_badge, text, dirty_state=__pyr_dirtyof(text=__pyr_dm.bind.text))
 
 @__pyr_component_ref(__pyr_ComponentMetadata('parent_panel', __pyr_parent_panel))
 def parent_panel(text: str) -> None:

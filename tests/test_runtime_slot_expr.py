@@ -5,15 +5,18 @@ import gc
 from typing import Callable
 import weakref
 
-from pyrolyze.api import PyrolyzeMountAdvertisementRequest
+from pyrolyze.api import PyrolyzeMountAdvertisement, PyrolyzeMountAdvertisementRequest
 from pyrolyze.runtime.context import (
     CompValue,
     ExternalStoreRef,
+    ModuleId,
     PlainCallRuntimeContext,
+    SlotId,
     UseEffectAsyncRequest,
     UseEffectRequest,
 )
 from pyrolyze.runtime.dirt import DM
+from pyrolyze.runtime.plain_call_semantics import PlainCallBindingHost
 from pyrolyze.runtime.slot_expr import (
     Args,
     LambdaFunctionProvider,
@@ -33,6 +36,40 @@ class FakeSlotContext:
 
     def current_slot_id(self):
         return ("fake-slot",)
+
+
+@dataclass
+class SpyPlainCallHost(PlainCallBindingHost):
+    invalidations: int = 0
+    post_commit_callbacks: list[Callable[[], None]] = None
+    published_requests: list[PyrolyzeMountAdvertisementRequest] = None
+    withdraws: int = 0
+
+    def __post_init__(self) -> None:
+        if self.post_commit_callbacks is None:
+            self.post_commit_callbacks = []
+        if self.published_requests is None:
+            self.published_requests = []
+
+    def queue_plain_call_invalidation(self) -> None:
+        self.invalidations += 1
+
+    def enqueue_plain_call_post_commit(self, callback: Callable[[], None]) -> None:
+        self.post_commit_callbacks.append(callback)
+
+    def publish_plain_call_mount_advertisement(
+        self,
+        request: PyrolyzeMountAdvertisementRequest,
+    ) -> PyrolyzeMountAdvertisement:
+        self.published_requests.append(request)
+        return PyrolyzeMountAdvertisement(
+            key=request.key,
+            selectors=request.selectors,
+            default=request.default,
+        )
+
+    def withdraw_plain_call_mount_advertisement(self) -> None:
+        self.withdraws += 1
 
 
 def test_args_capture_and_call() -> None:
@@ -453,6 +490,8 @@ def test_slot_expr_runtime_context_injection_matches_general_slot_call() -> None
     slot_ctx = FakeSlotContext(initial_render=False)
     fast_dm = DM()
     general_dm = DM()
+    module_id = ModuleId("slot_expr_runtime_ctx")
+    slot_id = SlotId(module_id=module_id, slot_index=1)
 
     def source(*, runtime: PlainCallRuntimeContext) -> tuple[object, tuple[object, str]]:
         return runtime.current_slot_id(), runtime.stable_local_id("count")
@@ -461,6 +500,7 @@ def test_slot_expr_runtime_context_injection_matches_general_slot_call() -> None
         LiteralFunctionProvider(source),
         lambda: slot_params(),
         lambda: slot_params_dirt(False),
+        slot_id=slot_id,
     ).apply_slot_context(slot_ctx).apply_dirt_sink(fast_dm)
 
     general = (
@@ -473,6 +513,7 @@ def test_slot_expr_runtime_context_injection_matches_general_slot_call() -> None
             LiteralFunctionProvider(source),
             lambda: slot_params(),
             lambda: slot_params_dirt(False),
+            slot_id=slot_id,
         )
         .apply_slot_context(slot_ctx)
         .apply_dirt_sink(general_dm)
@@ -481,8 +522,8 @@ def test_slot_expr_runtime_context_injection_matches_general_slot_call() -> None
     fast_value = fast.evaluate("value")
     general_value = general.evaluate("value")
 
-    assert fast_value[0] == general_value[0] == ("fake-slot",)
-    assert fast_value[1] == general_value[1] == (("fake-slot",), "count")
+    assert fast_value[0] == general_value[0] == slot_id
+    assert fast_value[1] == general_value[1] == (slot_id, "count")
 
 
 def test_slot_expr_replacement_does_not_retain_old_plain_value_result() -> None:
@@ -516,6 +557,221 @@ def test_slot_expr_replacement_does_not_retain_old_plain_value_result() -> None:
     del first
     gc.collect()
     assert first_ref() is None
+
+
+def test_slot_expr_call_site_identity_uses_slot_id_not_parameter_name() -> None:
+    dm = DM()
+    slot_ctx = FakeSlotContext(initial_render=False)
+    calls = {"count": 0}
+    module_id = ModuleId("slot_expr_identity")
+    slot_id = SlotId(module_id=module_id, slot_index=1)
+
+    def source() -> str:
+        calls["count"] += 1
+        return "clock"
+
+    expr = (
+        SlotExpr(
+            value_lambda=lambda first: first.eval(),
+            dirty_lambda=lambda first: first.dirty(),
+        )
+        .slot_call(
+            "first",
+            LiteralFunctionProvider(source),
+            lambda: slot_params(),
+            lambda: slot_params_dirt(False),
+            slot_id=slot_id,
+        )
+        .apply_slot_context(slot_ctx)
+        .apply_dirt_sink(dm)
+    )
+
+    assert expr.evaluate("value") == "clock"
+    evaluator = expr.evaluators["first"]
+    binding = evaluator.binding
+    assert evaluator.slot_id == slot_id
+
+    expr.value_lambda = lambda renamed: renamed.eval()
+    expr.dirty_lambda = lambda renamed: renamed.dirty()
+    expr.slot_call(
+        "renamed",
+        LiteralFunctionProvider(source),
+        lambda: slot_params(),
+        lambda: slot_params_dirt(False),
+        slot_id=slot_id,
+    )
+
+    assert expr.evaluate("value") == "clock"
+    assert calls["count"] == 1
+    assert "first" not in expr.evaluators
+    assert expr.evaluators["renamed"] is evaluator
+    assert evaluator.binding is binding
+
+
+def test_slot_expr_changed_slot_id_replaces_previous_call_site() -> None:
+    dm = DM()
+    slot_ctx = FakeSlotContext(initial_render=False)
+    calls = {"count": 0}
+    module_id = ModuleId("slot_expr_identity_replace")
+    first_slot_id = SlotId(module_id=module_id, slot_index=1)
+    second_slot_id = SlotId(module_id=module_id, slot_index=2)
+
+    def source() -> str:
+        calls["count"] += 1
+        return "clock"
+
+    expr = (
+        SlotExpr(
+            value_lambda=lambda value: value.eval(),
+            dirty_lambda=lambda value: value.dirty(),
+        )
+        .slot_call(
+            "value",
+            LiteralFunctionProvider(source),
+            lambda: slot_params(),
+            lambda: slot_params_dirt(False),
+            slot_id=first_slot_id,
+        )
+        .apply_slot_context(slot_ctx)
+        .apply_dirt_sink(dm)
+    )
+
+    assert expr.evaluate("value") == "clock"
+    first_evaluator = expr.evaluators["value"]
+    assert first_evaluator.binding is not None
+
+    expr.slot_call(
+        "value",
+        LiteralFunctionProvider(source),
+        lambda: slot_params(),
+        lambda: slot_params_dirt(False),
+        slot_id=second_slot_id,
+    )
+
+    assert expr.evaluate("value") == "clock"
+    second_evaluator = expr.evaluators["value"]
+    assert second_evaluator is not first_evaluator
+    assert second_evaluator.slot_id == second_slot_id
+    assert first_evaluator.binding is None
+    assert calls["count"] == 2
+
+
+def test_slot_expr_host_factory_routes_external_store_invalidation_to_host() -> None:
+    dm = DM()
+    slot_ctx = FakeSlotContext(initial_render=False)
+    store = {"value": 1}
+    listeners: list[Callable[[], None]] = []
+    host = SpyPlainCallHost()
+
+    def subscribe(listener):
+        listeners.append(listener)
+        return lambda: listeners.remove(listener)
+
+    def source() -> ExternalStoreRef[int]:
+        return ExternalStoreRef(identity="store", subscribe=subscribe, get=lambda: store["value"])
+
+    expr = SlotExpr.single_call(
+        LiteralFunctionProvider(source),
+        lambda: slot_params(),
+        lambda: slot_params_dirt(False),
+    ).apply_slot_context(slot_ctx).apply_dirt_sink(dm).apply_host_factory(lambda slot_id: host)
+
+    assert expr.evaluate("value") == 1
+    for listener in tuple(listeners):
+        listener()
+    assert host.invalidations == 1
+
+
+def test_slot_expr_host_factory_stages_post_commit_callbacks_through_host() -> None:
+    dm = DM()
+    slot_ctx = FakeSlotContext(initial_render=False)
+    host = SpyPlainCallHost()
+    events: list[str] = []
+
+    expr = SlotExpr.single_call(
+        LiteralFunctionProvider(lambda: UseEffectRequest(effect_fn=lambda: (events.append("run"), None)[1], deps=("x",))),
+        lambda: slot_params(),
+        lambda: slot_params_dirt(False),
+    ).apply_slot_context(slot_ctx).apply_dirt_sink(dm).apply_host_factory(lambda slot_id: host)
+
+    assert expr.evaluate("value") is None
+    assert events == []
+    assert len(host.post_commit_callbacks) == 1
+    host.post_commit_callbacks.pop()()
+    assert events == ["run"]
+
+
+def test_slot_expr_host_factory_routes_mount_advert_publish_and_withdraw() -> None:
+    dm = DM()
+    slot_ctx = FakeSlotContext(initial_render=False)
+    host = SpyPlainCallHost()
+    gate = {"value": False}
+    gate_dirty = {"value": False}
+
+    expr = (
+        SlotExpr(
+            value_lambda=lambda a, b: a.eval() or b.eval(),
+            dirty_lambda=lambda a, b: a.dirty() or b.dirty(),
+        )
+        .slot_call(
+            "a",
+            LambdaFunctionProvider(lambda: (lambda: gate["value"]), lambda: gate_dirty["value"]),
+            lambda: slot_params(),
+            lambda: slot_params_dirt(False),
+        )
+        .slot_call(
+            "b",
+            LiteralFunctionProvider(lambda: PyrolyzeMountAdvertisementRequest(key="mount-key", default=True)),
+            lambda: slot_params(),
+            lambda: slot_params_dirt(False),
+        )
+        .apply_slot_context(slot_ctx)
+        .apply_dirt_sink(dm)
+        .apply_host_factory(lambda slot_id: host)
+    )
+
+    assert expr.evaluate("value").key == "mount-key"
+    assert [request.key for request in host.published_requests] == ["mount-key"]
+
+    gate["value"] = True
+    gate_dirty["value"] = True
+    assert expr.evaluate("value") is True
+    assert host.withdraws == 1
+
+
+def test_slot_expr_host_factory_is_identical_between_single_call_and_general_slot_call() -> None:
+    slot_ctx = FakeSlotContext(initial_render=False)
+    fast_dm = DM()
+    general_dm = DM()
+    fast_host = SpyPlainCallHost()
+    general_host = SpyPlainCallHost()
+
+    fast = SlotExpr.single_call(
+        LiteralFunctionProvider(lambda: UseEffectRequest(effect_fn=lambda: None, deps=("x",))),
+        lambda: slot_params(),
+        lambda: slot_params_dirt(False),
+    ).apply_slot_context(slot_ctx).apply_dirt_sink(fast_dm).apply_host_factory(lambda slot_id: fast_host)
+
+    general = (
+        SlotExpr(
+            value_lambda=lambda v1: v1.eval(),
+            dirty_lambda=lambda v1: v1.dirty(),
+        )
+        .slot_call(
+            "v1",
+            LiteralFunctionProvider(lambda: UseEffectRequest(effect_fn=lambda: None, deps=("x",))),
+            lambda: slot_params(),
+            lambda: slot_params_dirt(False),
+        )
+        .apply_slot_context(slot_ctx)
+        .apply_dirt_sink(general_dm)
+        .apply_host_factory(lambda slot_id: general_host)
+    )
+
+    assert fast.evaluate("value") is None
+    assert general.evaluate("value") is None
+    assert len(fast_host.post_commit_callbacks) == 1
+    assert len(general_host.post_commit_callbacks) == 1
 
 
 def test_slot_expr_external_store_ref_does_not_refresh_without_notification() -> None:

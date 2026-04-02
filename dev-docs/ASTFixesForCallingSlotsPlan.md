@@ -509,6 +509,10 @@ This isolates dirt-tracking migration from expression-lowering migration.
 - existing lowering writes dirt through `DM`
 - compatibility path from current call model to the new dirt manager
 - focused tests showing existing transformed behavior still works with `DM`
+- explicit boundary rule:
+  - keep `__pyr_dirty_state` as the caller/callee transport parameter
+  - materialize `__pyr_dm = __pyr_dm_from_dirty_state(__pyr_dirty_state)` at function entry
+  - use `__pyr_dm.bind.*` for in-function dirt reads and writes
 
 ### Phase B Tests
 
@@ -521,10 +525,12 @@ Suggested files:
 
 #### Integration tests
 
+- transformed output initializes `__pyr_dm` from incoming `__pyr_dirty_state`
 - existing slotted call path updates `DM` instead of old hidden dirt channel storage
 - rebinding and unpacking through transformed code land in `DM`
 - deletion lowers to `del __pyr_dm.bind.name`
 - attribute/subscript paths update `DM`
+- child/component/container calls still project outgoing dirt through `dirtyof(...)` in Phase B
 
 #### Golden expectations
 

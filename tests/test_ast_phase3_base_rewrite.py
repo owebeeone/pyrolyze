@@ -46,7 +46,7 @@ def greeting(name):
     assert "__pyr_greeting" in transformed
     assert "__pyr_CallFromNonPyrolyzeContext(" in transformed
     assert "with __pyr_ctx.pass_scope():" in transformed
-    assert "__pyr_title_dirty, title = __pyr_ctx.call_plain(" in transformed
+    assert "__pyr_dm.bind.title, title = __pyr_ctx.call_plain(" in transformed
     assert "record(label)" in transformed
     assert ".leaf_call(" not in transformed
 
@@ -124,7 +124,7 @@ def pair_panel(label):
     )
 
     assert "result_shape=('tuple', 2)" in transformed
-    assert "(__pyr_value_dirty, __pyr_setter_dirty), (value, setter) = __pyr_ctx.call_plain(" in transformed
+    assert "(__pyr_dm.bind.value, __pyr_dm.bind.setter), (value, setter) = __pyr_ctx.call_plain(" in transformed
 
     namespace = load_transformed_namespace(
         source,
@@ -526,7 +526,7 @@ def panel(label):
     )
 
     assert "def __pyr_panel(__pyr_ctx, __pyr_dirty_state, label):" in transformed
-    assert "__pyr_value_dirty, value = __pyr_ctx.call_plain(" in transformed
+    assert "__pyr_dm.bind.value, value = __pyr_ctx.call_plain(" in transformed
 
     namespace = load_transformed_namespace(
         source,
@@ -599,8 +599,40 @@ def greeting(name):
         node
         for node in ast.walk(module_ast)
         if isinstance(node, ast.Assign)
-        and any(isinstance(target, ast.Name) and target.id == "__pyr_label_dirty" for target in node.targets)
+        and any(
+            isinstance(target, ast.Attribute)
+            and isinstance(target.value, ast.Attribute)
+            and isinstance(target.value.value, ast.Name)
+            and target.value.value.id == "__pyr_dm"
+            and target.value.attr == "bind"
+            and target.attr == "label"
+            for target in node.targets
+        )
     )
 
     assert dirty_assign.lineno == 14
     assert dirty_assign.col_offset == 4
+
+
+def test_phase3_lowers_delete_to_remove_dm_binding() -> None:
+    source = """
+from pyrolyze.api import pyrolyze, pyrolyze_slotted
+
+@pyrolyze_slotted
+def format_title(name):
+    return f"Hello {name}"
+
+@pyrolyze
+def greeting(name):
+    title = format_title(name)
+    del title
+"""
+
+    transformed = emit_transformed_source(
+        source,
+        module_name="example.delete_binding",
+        filename="/virtual/example/delete_binding.py",
+    )
+
+    assert "del title" in transformed
+    assert "del __pyr_dm.bind.title" in transformed

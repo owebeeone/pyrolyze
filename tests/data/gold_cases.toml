@@ -1,4 +1,5 @@
 [cases]
+"phase3_delete_binding.py" = "golden.phase3.delete_binding"
 "phase3_greeting.py" = "golden.phase3.greeting"
 "phase3_panel_methods.py" = "golden.phase3.panel_methods"
 "phase3_nested_factory.py" = "golden.phase3.nested_factory"

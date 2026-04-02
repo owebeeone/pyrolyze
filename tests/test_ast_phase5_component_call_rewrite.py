@@ -32,7 +32,7 @@ def parent_panel(text):
     )
 
     assert ".component_call(" in transformed
-    assert "dirty_state=__pyr_dirtyof(text=__pyr_dirty_state.text)" in transformed
+    assert "dirty_state=__pyr_dirtyof(text=__pyr_dm.bind.text)" in transformed
     assert "__pyr_slot_1 = __pyr_SlotId(__pyr_module_id, 1, line_no=15, is_top_level=True)" in transformed
     assert "__pyr_slot_2 =" not in transformed
 

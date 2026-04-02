@@ -45,3 +45,12 @@ class DM:
 
     def clean_shape_like(self, value: Any) -> Any:
         return _clean_shape_like(value)
+
+
+def dm_from_dirty_state(dirty_state: Any) -> DM:
+    bind = _DMBind()
+    values = getattr(dirty_state, "values", {})
+    if isinstance(values, dict):
+        for name, value in values.items():
+            setattr(bind, name, value)
+    return DM(bind=bind)

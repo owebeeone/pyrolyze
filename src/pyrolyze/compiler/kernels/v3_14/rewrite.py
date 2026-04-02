@@ -588,6 +588,7 @@ def _lower_component_body(
         shared=shared,
     )
     lowered = _lower_block(component.body, state=state)
+    lowered = [_initialize_dm_statement(), *lowered]
     if not lowered:
         lowered.append(ast.Pass())
     return lowered
@@ -638,6 +639,8 @@ def _lower_statement(statement: ast.stmt, *, state: _LoweringState) -> list[ast.
         return _lower_assign(statement, state=state)
     if isinstance(statement, ast.AnnAssign):
         return _lower_ann_assign(statement, state=state)
+    if isinstance(statement, ast.Delete):
+        return _lower_delete(statement, state=state)
     if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call):
         return _lower_expr_call(statement, state=state)
 
@@ -1076,20 +1079,16 @@ def _lower_assign(statement: ast.Assign, *, state: _LoweringState) -> list[ast.s
     lowered = [copy.deepcopy(statement)]
     if isinstance(target, ast.Name):
         dirty_expr = _dirty_expr_for_value(statement.value, state.dirty_by_name)
-        if _is_false_expr(dirty_expr):
-            state.dirty_by_name[target.id] = ast.Constant(False)
-        else:
-            dirty_name = _dirty_name_for(target.id)
-            lowered.append(
-                copy_reason_location(
-                    ast.Assign(
-                        targets=[ast.Name(id=dirty_name, ctx=ast.Store())],
-                        value=dirty_expr,
-                    ),
-                    statement,
-                )
+        lowered.append(
+            copy_reason_location(
+                ast.Assign(
+                    targets=[_dm_bind_store_target(target.id)],
+                    value=dirty_expr,
+                ),
+                statement,
             )
-            state.dirty_by_name[target.id] = ast.Name(id=dirty_name, ctx=ast.Load())
+        )
+        state.dirty_by_name[target.id] = _dm_bind_attr(target.id)
         _update_callable_kind_from_assignment(target, statement.value, state=state)
 
     ast.copy_location(lowered[0], statement)
@@ -1129,12 +1128,11 @@ def _lower_slotted_assign(
 
     names = _bound_names(target)
     if len(names) == 1 and isinstance(target, ast.Name):
-        dirty_name = _dirty_name_for(names[0])
         lowered_assign = ast.Assign(
             targets=[
                 ast.Tuple(
                     elts=[
-                        ast.Name(id=dirty_name, ctx=ast.Store()),
+                        _dm_bind_store_target(target.id),
                         ast.Name(id=target.id, ctx=ast.Store()),
                     ],
                     ctx=ast.Store(),
@@ -1142,10 +1140,10 @@ def _lower_slotted_assign(
             ],
             value=call_expr,
         )
-        state.dirty_by_name[target.id] = ast.Name(id=dirty_name, ctx=ast.Load())
+        state.dirty_by_name[target.id] = _dm_bind_attr(target.id)
     elif isinstance(target, ast.Tuple) and all(isinstance(element, ast.Name) for element in target.elts):
         dirty_tuple = ast.Tuple(
-            elts=[ast.Name(id=_dirty_name_for(name), ctx=ast.Store()) for name in names],
+            elts=[_dm_bind_store_target(name) for name in names],
             ctx=ast.Store(),
         )
         value_tuple = ast.Tuple(
@@ -1166,7 +1164,7 @@ def _lower_slotted_assign(
             value=call_expr,
         )
         for name in names:
-            state.dirty_by_name[name] = ast.Name(id=_dirty_name_for(name), ctx=ast.Load())
+            state.dirty_by_name[name] = _dm_bind_attr(name)
     else:
         raise error_from_node(
             statement,
@@ -1176,7 +1174,10 @@ def _lower_slotted_assign(
             suggested_fix="simplify_assignment_shape",
         )
 
-    return [*slot_setup, copy_reason_location(lowered_assign, statement)]
+    return [
+        *slot_setup,
+        copy_reason_location(lowered_assign, statement),
+    ]
 
 
 def _lower_expr_call(statement: ast.Expr, *, state: _LoweringState) -> list[ast.stmt]:
@@ -1348,6 +1349,20 @@ def _lower_call_native_expr(
     return [copy_reason_location(lowered, statement)]
 
 
+def _lower_delete(statement: ast.Delete, *, state: _LoweringState) -> list[ast.stmt]:
+    lowered: list[ast.stmt] = [copy.deepcopy(statement)]
+    for target in statement.targets:
+        if isinstance(target, ast.Name):
+            lowered.append(
+                copy_reason_location(
+                    ast.Delete(targets=[_dm_bind_store_target(target.id)]),
+                    statement,
+                )
+            )
+            state.dirty_by_name[target.id] = ast.Constant(False)
+    return lowered
+
+
 def _inject_module_scaffold(
     body: list[ast.stmt],
     *,
@@ -1378,6 +1393,7 @@ def _inject_module_scaffold(
             module="pyrolyze.runtime",
             names=[
                 ast.alias(name="SlotId", asname="__pyr_SlotId"),
+                ast.alias(name="dm_from_dirty_state", asname="__pyr_dm_from_dirty_state"),
                 ast.alias(name="dirtyof", asname="__pyr_dirtyof"),
                 ast.alias(name="module_registry", asname="__pyr_module_registry"),
             ],
@@ -1520,13 +1536,56 @@ def _initial_dirty_map(
         args = args[1:]
     source_args = [*component.args.posonlyargs, *args, *component.args.kwonlyargs]
     return {
-        argument.arg: ast.Attribute(
-            value=ast.Name(id="__pyr_dirty_state", ctx=ast.Load()),
-            attr=argument.arg,
-            ctx=ast.Load(),
-        )
+        argument.arg: _dm_bind_attr(argument.arg)
         for argument in source_args
     }
+
+
+def _dm_bind_attr(name: str) -> ast.Attribute:
+    return ast.Attribute(
+        value=ast.Attribute(
+            value=ast.Name(id="__pyr_dm", ctx=ast.Load()),
+            attr="bind",
+            ctx=ast.Load(),
+        ),
+        attr=name,
+        ctx=ast.Load(),
+    )
+
+
+def _dm_bind_store_target(name: str) -> ast.Attribute:
+    return ast.Attribute(
+        value=ast.Attribute(
+            value=ast.Name(id="__pyr_dm", ctx=ast.Load()),
+            attr="bind",
+            ctx=ast.Load(),
+        ),
+        attr=name,
+        ctx=ast.Store(),
+    )
+
+
+def _initialize_dm_statement() -> ast.Assign:
+    return ast.Assign(
+        targets=[ast.Name(id="__pyr_dm", ctx=ast.Store())],
+        value=ast.Call(
+            func=_runtime_global_name("__pyr_dm_from_dirty_state"),
+            args=[ast.Name(id="__pyr_dirty_state", ctx=ast.Load())],
+            keywords=[],
+        ),
+    )
+
+
+def _runtime_global_name(name: str) -> ast.Subscript:
+    return ast.Subscript(
+        value=ast.Call(
+            func=ast.Name(id="globals", ctx=ast.Load()),
+            args=[],
+            keywords=[],
+        ),
+        slice=ast.Constant(name),
+        ctx=ast.Load(),
+    )
 
 
 def _component_parameter_names(component: ComponentTransformPlan) -> tuple[str, ...]:

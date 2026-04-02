@@ -1,5 +1,5 @@
 from pyrolyze.api import CallFromNonPyrolyzeContext as __pyr_CallFromNonPyrolyzeContext, ComponentMetadata as __pyr_ComponentMetadata, pyrolyze_component_ref as __pyr_component_ref
-from pyrolyze.runtime import SlotId as __pyr_SlotId, dirtyof as __pyr_dirtyof, module_registry as __pyr_module_registry
+from pyrolyze.runtime import SlotId as __pyr_SlotId, dm_from_dirty_state as __pyr_dm_from_dirty_state, dirtyof as __pyr_dirtyof, module_registry as __pyr_module_registry
 __pyr_module_id = __pyr_module_registry.module_id(__name__)
 __pyr_slot_1 = __pyr_SlotId(__pyr_module_id, 1, line_no=16, is_top_level=True)
 from pyrolyze.api import app_context_override, pyrolyze
@@ -11,7 +11,8 @@ def badge(text: str) -> None:
 
 def __pyr_panel(__pyr_ctx, __pyr_dirty_state, theme: str, locale: str, show: bool):
     with __pyr_ctx.pass_scope():
-        if (__pyr_dirty_state.theme or __pyr_dirty_state.locale) or __pyr_dirty_state.show or __pyr_ctx.visit_slot_and_dirty(__pyr_slot_1):
+        __pyr_dm = globals()['__pyr_dm_from_dirty_state'](__pyr_dirty_state)
+        if (__pyr_dm.bind.theme or __pyr_dm.bind.locale) or __pyr_dm.bind.show or __pyr_ctx.visit_slot_and_dirty(__pyr_slot_1):
             with __pyr_ctx.open_app_context_override(__pyr_slot_1, (THEME_KEY, LOCALE_KEY), theme, locale) as __pyr_ctx_slot_1:
                 badge('body')
                 if show:

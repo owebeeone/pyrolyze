@@ -29,7 +29,7 @@ def panel():
     )
 
     assert "__pyr_SlotId(__pyr_module_id, 1, line_no=13, is_top_level=True)" in transformed
-    assert "(__pyr_count_dirty, __pyr_set_count_dirty), (count, set_count) = __pyr_ctx.call_plain(" in transformed
+    assert "(__pyr_dm.bind.count, __pyr_dm.bind.set_count), (count, set_count) = __pyr_ctx.call_plain(" in transformed
     assert "use_state" in transformed
     assert "result_shape=('tuple', 2)" in transformed
     assert "record, count" in transformed
@@ -80,7 +80,7 @@ def panel():
     )
 
     assert "my_us_state" in transformed
-    assert "(__pyr_count_dirty, __pyr_set_count_dirty), (count, set_count) = __pyr_ctx.call_plain(" in transformed
+    assert "(__pyr_dm.bind.count, __pyr_dm.bind.set_count), (count, set_count) = __pyr_ctx.call_plain(" in transformed
     assert "result_shape=('tuple', 2)" in transformed
 
     namespace = load_transformed_namespace(
@@ -151,7 +151,7 @@ def panel():
 
     assert "my_us_state" in transformed
     assert (
-        "(__pyr_left_dirty, __pyr_right_dirty, __pyr_set_both_dirty), "
+        "(__pyr_dm.bind.left, __pyr_dm.bind.right, __pyr_dm.bind.set_both), "
         "(left, right, set_both) = __pyr_ctx.call_plain("
     ) in transformed
     assert "result_shape=('tuple', 3)" in transformed
@@ -208,7 +208,7 @@ def panel():
         filename="/virtual/example/phase5/imported_use_grip.py",
     )
 
-    assert "__pyr_value_dirty, value = __pyr_ctx.call_plain(" in transformed
+    assert "__pyr_dm.bind.value, value = __pyr_ctx.call_plain(" in transformed
     assert "use_grip" in transformed
 
     namespace = load_transformed_namespace(

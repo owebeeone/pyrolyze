@@ -1,5 +1,5 @@
 from pyrolyze.api import CallFromNonPyrolyzeContext as __pyr_CallFromNonPyrolyzeContext, ComponentMetadata as __pyr_ComponentMetadata, pyrolyze_component_ref as __pyr_component_ref
-from pyrolyze.runtime import SlotId as __pyr_SlotId, dirtyof as __pyr_dirtyof, module_registry as __pyr_module_registry
+from pyrolyze.runtime import SlotId as __pyr_SlotId, dm_from_dirty_state as __pyr_dm_from_dirty_state, dirtyof as __pyr_dirtyof, module_registry as __pyr_module_registry
 __pyr_module_id = __pyr_module_registry.module_id(__name__)
 __pyr_slot_1 = __pyr_SlotId(__pyr_module_id, 1, line_no=21, is_top_level=True)
 from pyrolyze.api import UIElement, call_native, pyrolyze
@@ -7,6 +7,7 @@ log: list[tuple[object, ...]] = []
 
 def __pyr_section(__pyr_ctx, __pyr_dirty_state, title: str, *, accent: str):
     with __pyr_ctx.pass_scope():
+        __pyr_dm = globals()['__pyr_dm_from_dirty_state'](__pyr_dirty_state)
         log.append(('section', title, accent))
         __pyr_ctx.call_native(UIElement, kind='section', props={'title': title, 'accent': accent}, __pyr_call_site_id=1)
 
@@ -19,7 +20,8 @@ def badge(text: str, *, tone: str) -> None:
 
 def __pyr_stats_panel(__pyr_ctx, __pyr_dirty_state, show_extra: bool, count: int):
     with __pyr_ctx.pass_scope():
-        if (__pyr_dirty_state.count or __pyr_dirty_state.show_extra) or __pyr_ctx.visit_slot_and_dirty(__pyr_slot_1):
+        __pyr_dm = globals()['__pyr_dm_from_dirty_state'](__pyr_dirty_state)
+        if (__pyr_dm.bind.count or __pyr_dm.bind.show_extra) or __pyr_ctx.visit_slot_and_dirty(__pyr_slot_1):
             with __pyr_ctx.container_call(__pyr_slot_1, section, 'Stats', accent='green', dirty_state=__pyr_dirtyof(title=False, accent=False)) as __pyr_ctx_slot_1:
                 badge(f'Count: {count}', tone='info')
                 if show_extra:

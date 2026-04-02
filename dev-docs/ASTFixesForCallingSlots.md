@@ -108,6 +108,47 @@ For this design specifically:
 - initial-render/literal dirt should come from the existing slot-context surface
 - call-site identity should use a compiler-generated `SlotId`, not only a temporary evaluator variable name
 
+## Caller/Callee Dirt Boundary
+
+Phase B keeps the current cross-function dirt parameter shape:
+
+- the caller still passes `__pyr_dirty_state`
+- the callee still accepts `__pyr_dirty_state`
+
+But inside the callee, that object is no longer the authoritative dirt store.
+
+Instead, the lowered function should immediately materialize a local dirt manager:
+
+```python
+__pyr_dm = __pyr_dm_from_dirty_state(__pyr_dirty_state)
+```
+
+After that:
+
+- local dirt reads should use `__pyr_dm.bind.name`
+- local dirt writes should update `__pyr_dm.bind.name`
+- tuple-shaped local dirt writes should unpack onto `__pyr_dm.bind`
+- deletes should lower through `del __pyr_dm.bind.name`
+
+So the rule becomes:
+
+- `DirtyStateContext` remains the transport format between lowered functions
+- `DM` is the in-function source of truth
+
+For child calls in Phase B, the outgoing dirt payload still uses the current boundary format, for example:
+
+```python
+__pyr_ctx.component_call(
+    __pyr_slot_1,
+    child,
+    value,
+    dirty_state=__pyr_dirtyof(value=__pyr_dm.bind.value),
+)
+```
+
+That means Phase B does not redesign the caller/callee function signature yet.
+It only changes where dirt is stored and read inside the lowered function body.
+
 ## Core Runtime Carriers
 
 The parameter carrier for both value-side arguments and dirty-side arguments should be one normalized dataclass shape.
