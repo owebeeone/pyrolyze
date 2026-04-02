@@ -39,6 +39,16 @@ from .plain_call_semantics import (
     UseEffectRequest,
     select_plain_call_handler,
 )
+from .plain_call_core import (
+    _CALLABLE_CACHE_MISSING,
+    _read_callable_annotation_cache,
+    _write_callable_annotation_cache,
+    PlainCallStateSnapshot,
+    call_with_optional_runtime_context,
+    prepare_plain_call,
+    runtime_context_param_name,
+    should_invoke_plain_call,
+)
 from .trace import TraceChannel, emit_trace, trace_enabled
 
 
@@ -247,50 +257,12 @@ class PlainCallRuntimeContext:
         return self.slot.slot_id
 
 
-_PLAIN_CALL_RUNTIME_CONTEXT_ATTR = "_pyrolyze_plain_call_runtime_ctx_param"
-_CALLABLE_CACHE_MISSING = object()
-
-
-def _read_callable_annotation_cache(func: Callable[..., Any], attr_name: str) -> object:
-    try:
-        return getattr(func, attr_name)
-    except AttributeError:
-        return _CALLABLE_CACHE_MISSING
-
-
-def _write_callable_annotation_cache(
-    func: Callable[..., Any],
-    attr_name: str,
-    value: str | None,
-) -> None:
-    try:
-        setattr(func, attr_name, value)
-    except (AttributeError, TypeError):
-        # Builtins/C-backed callables can reject attribute writes.
-        return
-
-
 def _plain_call_runtime_context_param_name(func: Callable[..., Any]) -> str | None:
-    cached = _read_callable_annotation_cache(func, _PLAIN_CALL_RUNTIME_CONTEXT_ATTR)
-    if cached is not _CALLABLE_CACHE_MISSING:
-        return cast(str | None, cached)
-
-    found_name: str | None = None
-    try:
-        signature = inspect.signature(func)
-    except (TypeError, ValueError):
-        found_name = None
-    else:
-        for parameter in signature.parameters.values():
-            annotation = parameter.annotation
-            annotation_name = getattr(annotation, "__forward_arg__", annotation)
-            if annotation is PlainCallRuntimeContext or annotation_name == "PlainCallRuntimeContext":
-                if found_name is not None:
-                    raise TypeError("plain-call runtime context injection supports only one annotated parameter")
-                found_name = parameter.name
-
-    _write_callable_annotation_cache(func, _PLAIN_CALL_RUNTIME_CONTEXT_ATTR, found_name)
-    return found_name
+    return runtime_context_param_name(
+        func,
+        cache_attr_name="_pyrolyze_plain_call_runtime_ctx_param",
+        runtime_context_annotation=PlainCallRuntimeContext,
+    )
 @dataclass(slots=True)
 class _InvalidationScheduler:
     queue: list[RenderContext] = field(default_factory=list)
@@ -1104,39 +1076,34 @@ class PlainCallSlotContext(RerunnableSlotContext):
         *,
         result_shape: object | None = None,
     ) -> PlainCallResult[T]:
-        raw_func, func_dirty = _unwrap(func)
-        normalized_args = tuple(_unwrap(arg) for arg in args)
-        normalized_kwargs = {key: _unwrap(value) for key, value in kwargs.items()}
-
-        raw_args = tuple(value for value, _ in normalized_args)
-        raw_kwargs = {key: value for key, (value, _) in normalized_kwargs.items()}
-        kwargs_items = tuple(sorted(raw_kwargs.items()))
-        schema = (len(raw_args), tuple(sorted(raw_kwargs)))
-
-        should_invoke = (
-            self.invoke_dirty
-            or func_dirty
-            or any(dirty for _, dirty in normalized_args)
-            or any(dirty for _, dirty in normalized_kwargs.values())
-            or self.binding is None
-            or self.function_identity is not raw_func
-            or self.schema != schema
-            or self.last_args != raw_args
-            or self.last_kwargs != kwargs_items
+        prepared = prepare_plain_call(func, args, kwargs, unwrap=_unwrap)
+        should_invoke = should_invoke_plain_call(
+            PlainCallStateSnapshot(
+                invoke_dirty=self.invoke_dirty,
+                function_identity=self.function_identity,
+                schema=self.schema,
+                last_args=self.last_args,
+                last_kwargs=self.last_kwargs,
+                has_binding=self.binding is not None,
+            ),
+            prepared,
         )
 
         if should_invoke:
-            call_kwargs = dict(raw_kwargs)
-            runtime_context_param = _plain_call_runtime_context_param_name(cast(Callable[..., Any], raw_func))
-            if runtime_context_param is not None and runtime_context_param not in call_kwargs:
-                call_kwargs[runtime_context_param] = PlainCallRuntimeContext(self)
-
-            next_result = cast(Callable[..., T], raw_func)(*raw_args, **call_kwargs)
+            next_result = cast(
+                T,
+                call_with_optional_runtime_context(
+                    prepared,
+                    cache_attr_name="_pyrolyze_plain_call_runtime_ctx_param",
+                    runtime_context_annotation=PlainCallRuntimeContext,
+                    runtime_context_factory=lambda: PlainCallRuntimeContext(self),
+                ),
+            )
             result_dirty = self._commit_evaluated_result(next_result)
-            self.function_identity = raw_func
-            self.schema = schema
-            self.last_args = raw_args
-            self.last_kwargs = kwargs_items
+            self.function_identity = prepared.raw_func
+            self.schema = prepared.schema
+            self.last_args = prepared.raw_args
+            self.last_kwargs = prepared.kwargs_items
         else:
             result_dirty = False
             binding = self.binding

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import gc
 from typing import Callable
+import weakref
 
 from pyrolyze.api import PyrolyzeMountAdvertisementRequest
 from pyrolyze.runtime.context import (
     CompValue,
     ExternalStoreRef,
+    PlainCallRuntimeContext,
     UseEffectAsyncRequest,
     UseEffectRequest,
 )
@@ -27,6 +30,9 @@ class FakeSlotContext:
 
     def literal(self, value):
         return CompValue(value=value, dirty=self.initial_render)
+
+    def current_slot_id(self):
+        return ("fake-slot",)
 
 
 def test_args_capture_and_call() -> None:
@@ -332,6 +338,184 @@ def test_slot_expr_single_call_reinvokes_when_function_dirt_is_true_even_if_inpu
     func_dirty["value"] = True
     assert expr.evaluate("value") == "clock"
     assert calls["count"] == 2
+
+
+def test_slot_expr_single_call_reinvokes_when_invoke_dirty_is_set_even_if_inputs_are_stable() -> None:
+    dm = DM()
+    slot_ctx = FakeSlotContext(initial_render=False)
+    calls = {"count": 0}
+
+    def source(value: str) -> str:
+        calls["count"] += 1
+        return value
+
+    expr = SlotExpr.single_call(
+        LiteralFunctionProvider(source),
+        lambda: slot_params("clock"),
+        lambda: slot_params_dirt(False),
+    ).apply_slot_context(slot_ctx).apply_dirt_sink(dm)
+
+    assert expr.evaluate("value") == "clock"
+    expr.evaluators["v1"].mark_invoke_dirty()
+    assert expr.evaluate("value") == "clock"
+    assert calls["count"] == 2
+
+
+def test_slot_expr_runtime_context_injection_supports_locals_and_invalidate() -> None:
+    dm = DM()
+    slot_ctx = FakeSlotContext(initial_render=False)
+    calls = {"count": 0}
+
+    def source(*, runtime: PlainCallRuntimeContext) -> int:
+        calls["count"] += 1
+        seen = runtime.get_or_init_local("count", lambda: 0)
+        runtime.set_local("count", seen + 1)
+        if seen == 0:
+            runtime.invalidate()
+        return runtime.get_local("count")
+
+    expr = SlotExpr.single_call(
+        LiteralFunctionProvider(source),
+        lambda: slot_params(),
+        lambda: slot_params_dirt(False),
+    ).apply_slot_context(slot_ctx).apply_dirt_sink(dm)
+
+    assert expr.evaluate("value") == 1
+    assert expr.evaluate("value") == 2
+    assert calls["count"] == 2
+
+
+def test_slot_expr_runtime_context_is_not_double_injected_when_explicitly_supplied() -> None:
+    dm = DM()
+    slot_ctx = FakeSlotContext(initial_render=False)
+    seen = {"same": False}
+
+    def source(*, runtime: PlainCallRuntimeContext) -> bool:
+        seen["same"] = isinstance(runtime, PlainCallRuntimeContext)
+        return True
+
+    explicit_runtime = PlainCallRuntimeContext(type("SlotAdapter", (), {"_runtime_locals": {}, "_mark_binding_dirty": lambda self: None, "slot_id": ("explicit",)})())
+    expr = SlotExpr.single_call(
+        LiteralFunctionProvider(source),
+        lambda: slot_params(runtime=explicit_runtime),
+        lambda: slot_params_dirt(runtime=False),
+    ).apply_slot_context(slot_ctx).apply_dirt_sink(dm)
+
+    assert expr.evaluate("value") is True
+    assert seen["same"] is True
+
+
+def test_slot_expr_invoke_dirty_fast_path_matches_general_slot_call() -> None:
+    slot_ctx = FakeSlotContext(initial_render=False)
+    fast_dm = DM()
+    general_dm = DM()
+    fast_calls = {"count": 0}
+    general_calls = {"count": 0}
+
+    def fast_source(value: str) -> str:
+        fast_calls["count"] += 1
+        return value
+
+    def general_source(value: str) -> str:
+        general_calls["count"] += 1
+        return value
+
+    fast = SlotExpr.single_call(
+        LiteralFunctionProvider(fast_source),
+        lambda: slot_params("clock"),
+        lambda: slot_params_dirt(False),
+    ).apply_slot_context(slot_ctx).apply_dirt_sink(fast_dm)
+
+    general = (
+        SlotExpr(
+            value_lambda=lambda v1: v1.eval(),
+            dirty_lambda=lambda v1: v1.dirty(),
+        )
+        .slot_call(
+            "v1",
+            LiteralFunctionProvider(general_source),
+            lambda: slot_params("clock"),
+            lambda: slot_params_dirt(False),
+        )
+        .apply_slot_context(slot_ctx)
+        .apply_dirt_sink(general_dm)
+    )
+
+    assert fast.evaluate("value") == general.evaluate("value") == "clock"
+    fast.evaluators["v1"].mark_invoke_dirty()
+    general.evaluators["v1"].mark_invoke_dirty()
+    assert fast.evaluate("value") == general.evaluate("value") == "clock"
+    assert fast_calls["count"] == 2
+    assert general_calls["count"] == 2
+
+
+def test_slot_expr_runtime_context_injection_matches_general_slot_call() -> None:
+    slot_ctx = FakeSlotContext(initial_render=False)
+    fast_dm = DM()
+    general_dm = DM()
+
+    def source(*, runtime: PlainCallRuntimeContext) -> tuple[object, tuple[object, str]]:
+        return runtime.current_slot_id(), runtime.stable_local_id("count")
+
+    fast = SlotExpr.single_call(
+        LiteralFunctionProvider(source),
+        lambda: slot_params(),
+        lambda: slot_params_dirt(False),
+    ).apply_slot_context(slot_ctx).apply_dirt_sink(fast_dm)
+
+    general = (
+        SlotExpr(
+            value_lambda=lambda v1: v1.eval(),
+            dirty_lambda=lambda v1: v1.dirty(),
+        )
+        .slot_call(
+            "v1",
+            LiteralFunctionProvider(source),
+            lambda: slot_params(),
+            lambda: slot_params_dirt(False),
+        )
+        .apply_slot_context(slot_ctx)
+        .apply_dirt_sink(general_dm)
+    )
+
+    fast_value = fast.evaluate("value")
+    general_value = general.evaluate("value")
+
+    assert fast_value[0] == general_value[0] == ("fake-slot",)
+    assert fast_value[1] == general_value[1] == (("fake-slot",), "count")
+
+
+def test_slot_expr_replacement_does_not_retain_old_plain_value_result() -> None:
+    class Box:
+        __slots__ = ("value", "__weakref__")
+
+        def __init__(self, value: int) -> None:
+            self.value = value
+
+    dm = DM()
+    slot_ctx = FakeSlotContext(initial_render=False)
+    func_dirty = {"value": False}
+    counter = {"value": 0}
+
+    def source() -> Box:
+        counter["value"] += 1
+        return Box(counter["value"])
+
+    expr = SlotExpr.single_call(
+        LambdaFunctionProvider(lambda: source, lambda: func_dirty["value"]),
+        lambda: slot_params(),
+        lambda: slot_params_dirt(False),
+    ).apply_slot_context(slot_ctx).apply_dirt_sink(dm)
+
+    first = expr.evaluate("value")
+    first_ref = weakref.ref(first)
+    func_dirty["value"] = True
+    second = expr.evaluate("value")
+
+    assert second.value == 2
+    del first
+    gc.collect()
+    assert first_ref() is None
 
 
 def test_slot_expr_external_store_ref_does_not_refresh_without_notification() -> None:

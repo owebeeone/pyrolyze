@@ -7,7 +7,13 @@ from typing import Any, Callable, Generic, TypeVar
 
 from pyrolyze.api import PyrolyzeMountAdvertisement, PyrolyzeMountAdvertisementRequest
 
-from .context import CompValue
+from .context import CompValue, PlainCallRuntimeContext
+from .plain_call_core import (
+    PlainCallStateSnapshot,
+    call_with_optional_runtime_context,
+    prepare_plain_call,
+    should_invoke_plain_call,
+)
 from .dirt import DM
 from .plain_call_semantics import (
     ExternalStoreRef,
@@ -143,6 +149,48 @@ class _SlotExprPlainCallHost:
 
 
 @dataclass(slots=True)
+class _SlotExprRuntimeContextSlot:
+    evaluator: SlotCallEvaluator
+    _runtime_locals: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def slot_id(self) -> Any:
+        slot_ctx = self.evaluator.expr.slot_ctx
+        current_slot_id = getattr(slot_ctx, "current_slot_id", None)
+        if callable(current_slot_id):
+            return current_slot_id()
+        return ("slot_expr", self.evaluator.call_id)
+
+    def _mark_binding_dirty(self) -> None:
+        self.evaluator.mark_invoke_dirty()
+
+    @property
+    def root_context(self) -> Any:
+        slot_ctx = self.evaluator.expr.slot_ctx
+        if slot_ctx is None or not hasattr(slot_ctx, "root_context"):
+            raise RuntimeError("slot_expr runtime context requires slot_ctx.root_context for app-context access")
+        return slot_ctx.root_context
+
+    def get_authored_app_context(self, key: Any) -> Any:
+        slot_ctx = self.evaluator.expr.slot_ctx
+        if slot_ctx is None or not hasattr(slot_ctx, "get_authored_app_context"):
+            raise RuntimeError("slot_expr runtime context requires authored app-context support on slot context")
+        return slot_ctx.get_authored_app_context(key)
+
+    def has_authored_app_context(self, key: Any) -> bool:
+        slot_ctx = self.evaluator.expr.slot_ctx
+        if slot_ctx is None or not hasattr(slot_ctx, "has_authored_app_context"):
+            raise RuntimeError("slot_expr runtime context requires authored app-context support on slot context")
+        return bool(slot_ctx.has_authored_app_context(key))
+
+    def authored_app_context_ref(self, key: Any) -> ExternalStoreRef[Any]:
+        slot_ctx = self.evaluator.expr.slot_ctx
+        if slot_ctx is None or not hasattr(slot_ctx, "authored_app_context_ref"):
+            raise RuntimeError("slot_expr runtime context requires authored app-context refs on slot context")
+        return slot_ctx.authored_app_context_ref(key)
+
+
+@dataclass(slots=True)
 class SlotExpr:
     value_lambda: Callable[..., Any]
     dirty_lambda: Callable[..., Any]
@@ -275,11 +323,15 @@ class SlotCallEvaluator:
     _staged_function_identity: Any = None
     _staged_last_args: tuple[Any, ...] = ()
     _staged_last_kwargs: tuple[tuple[str, Any], ...] = ()
+    invoke_dirty: bool = False
+    _pass_invoke_dirty: bool = False
+    _staged_invoke_dirty: bool = False
     current_pass_id: int = -1
     _visited: bool = False
     _evaluated: bool = False
     _current_value: Any = None
     _current_dirty: Any = False
+    _runtime_context_slot: _SlotExprRuntimeContextSlot | None = None
 
     def __post_init__(self) -> None:
         self.host = _SlotExprPlainCallHost(expr=self.expr, call_id=self.call_id)
@@ -294,6 +346,8 @@ class SlotCallEvaluator:
         self._evaluated = False
         self._current_value = None
         self._current_dirty = False
+        self._pass_invoke_dirty = self.invoke_dirty
+        self._staged_invoke_dirty = False
         self._staged_binding = self.binding
         self._staged_function_identity = self.function_identity
         self._staged_last_args = self.last_args
@@ -307,6 +361,7 @@ class SlotCallEvaluator:
             self.function_identity = self._staged_function_identity
             self.last_args = self._staged_last_args
             self.last_kwargs = self._staged_last_kwargs
+            self.invoke_dirty = self._staged_invoke_dirty
             return
         if self.binding is not None:
             self.binding.deactivate()
@@ -314,6 +369,7 @@ class SlotCallEvaluator:
         self.function_identity = None
         self.last_args = ()
         self.last_kwargs = ()
+        self.invoke_dirty = False
 
     def rollback_pass(self) -> None:
         if self._staged_binding is not None:
@@ -326,6 +382,7 @@ class SlotCallEvaluator:
         self._evaluated = False
         self._current_value = None
         self._current_dirty = False
+        self._staged_invoke_dirty = False
 
     def eval(self) -> Any:
         if self._evaluated:
@@ -342,34 +399,38 @@ class SlotCallEvaluator:
 
     def _run_call(self) -> None:
         self._visited = True
-        raw_func = self._func_provider.get_func(self.expr)
         args_carrier = self._invoke_builder(self.args_lambda)
         dirt_carrier = self._invoke_builder(self.dirt_args_lambda)
-        raw_args = args_carrier.args
-        raw_kwargs = args_carrier.kwds
-        kwargs_items = tuple(sorted(raw_kwargs.items()))
-        input_dirty = any(self._is_dirty(value) for value in dirt_carrier.args) or any(
-            self._is_dirty(value) for value in dirt_carrier.kwds.values()
+        prepared = prepare_plain_call(
+            CompValue(self._func_provider.get_func(self.expr), dirty=False),
+            tuple(CompValue(value, dirty=self._is_dirty(dirty)) for value, dirty in zip(args_carrier.args, dirt_carrier.args, strict=False)),
+            {
+                key: CompValue(raw_value, dirty=self._is_dirty(dirt_carrier.kwds.get(key, False)))
+                for key, raw_value in args_carrier.kwds.items()
+            },
+            unwrap=lambda value: (value.value, value.dirty) if isinstance(value, CompValue) else (value, False),
         )
-        func_identity_changed = self._staged_function_identity is not raw_func
-        args_changed = self._staged_last_args != raw_args
-        kwargs_changed = self._staged_last_kwargs != kwargs_items
-        needs_invoke_without_func_dirt = (
-            self._staged_binding is None
-            or func_identity_changed
-            or args_changed
-            or kwargs_changed
-            or input_dirty
+        needs_invoke_without_func_dirt = should_invoke_plain_call(
+            PlainCallStateSnapshot(
+                invoke_dirty=self._pass_invoke_dirty,
+                function_identity=self._staged_function_identity,
+                schema=(len(self._staged_last_args), tuple(sorted(key for key, _ in self._staged_last_kwargs))),
+                last_args=self._staged_last_args,
+                last_kwargs=self._staged_last_kwargs,
+                has_binding=self._staged_binding is not None,
+            ),
+            prepared,
         )
-        func_dirty = False
-        if not needs_invoke_without_func_dirt:
-            func_dirty = self._is_dirty(self._func_provider.get_dirty(self.expr))
-        should_invoke = (
-            needs_invoke_without_func_dirt
-            or func_dirty
-        )
+        should_invoke = needs_invoke_without_func_dirt
+        if not should_invoke:
+            should_invoke = self._is_dirty(self._func_provider.get_dirty(self.expr))
         if should_invoke:
-            result = args_carrier.call(raw_func)
+            result = call_with_optional_runtime_context(
+                prepared,
+                cache_attr_name="_pyrolyze_plain_call_runtime_ctx_param",
+                runtime_context_annotation=PlainCallRuntimeContext,
+                runtime_context_factory=self._runtime_context_factory,
+            )
             previous_binding = self._staged_binding
             previous_value = previous_binding.exposed_value() if previous_binding is not None else None
             initialized = previous_binding is not None
@@ -384,9 +445,9 @@ class SlotCallEvaluator:
                 current=current_value,
                 initialized=initialized,
             )
-            self._staged_function_identity = raw_func
-            self._staged_last_args = raw_args
-            self._staged_last_kwargs = kwargs_items
+            self._staged_function_identity = prepared.raw_func
+            self._staged_last_args = prepared.raw_args
+            self._staged_last_kwargs = prepared.kwargs_items
         else:
             assert self._staged_binding is not None
             refreshed = self._staged_binding.refresh()
@@ -411,3 +472,12 @@ class SlotCallEvaluator:
         if self.expr.dm is None:
             return bool(value)
         return self.expr.dm.is_dirty(value)
+
+    def mark_invoke_dirty(self) -> None:
+        self.invoke_dirty = True
+        self._staged_invoke_dirty = True
+
+    def _runtime_context_factory(self) -> PlainCallRuntimeContext:
+        if self._runtime_context_slot is None:
+            self._runtime_context_slot = _SlotExprRuntimeContextSlot(evaluator=self)
+        return PlainCallRuntimeContext(self._runtime_context_slot)
