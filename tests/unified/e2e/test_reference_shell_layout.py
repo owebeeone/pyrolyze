@@ -69,7 +69,9 @@ def _run_transformed_shell(
         module_name=module_name,
         filename=filename,
     )
-    assert ".call_plain(" in transformed
+    assert ".slot_expr(" in transformed
+    assert ".slot_call(" in transformed
+    assert ".evaluate()" in transformed
     assert "advertise_mount" in transformed
 
     namespace = load_transformed_namespace(

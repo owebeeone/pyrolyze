@@ -23,7 +23,7 @@ def test_advertise_mount_returns_public_request_shape() -> None:
     )
 
 
-def test_imported_advertise_mount_lowers_to_call_plain_and_publishes() -> None:
+def test_imported_advertise_mount_lowers_to_slot_expr_and_publishes() -> None:
     source = """
 from pyrolyze.api import MountSelector, UIElement, advertise_mount, call_native, pyrolyze
 
@@ -45,7 +45,9 @@ def panel():
         filename="/virtual/example/mount_advert/panel.py",
     )
 
-    assert ".call_plain(" in transformed
+    assert ".slot_expr(" in transformed
+    assert ".slot_call(" in transformed
+    assert ".evaluate()" in transformed
     assert "advertise_mount" in transformed
 
     namespace = load_transformed_namespace(
@@ -98,7 +100,9 @@ def panel():
         filename="/virtual/example/mount_advert/imported_request.py",
     )
 
-    assert ".call_plain(" in transformed
+    assert ".slot_expr(" in transformed
+    assert ".slot_call(" in transformed
+    assert ".evaluate()" in transformed
     assert "imported_advert_request" in transformed
 
     namespace = load_transformed_namespace(

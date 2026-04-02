@@ -46,7 +46,9 @@ def greeting(name):
     assert "__pyr_greeting" in transformed
     assert "__pyr_CallFromNonPyrolyzeContext(" in transformed
     assert "with __pyr_ctx.pass_scope():" in transformed
-    assert "__pyr_dm.bind.title, title = __pyr_ctx.call_plain(" in transformed
+    assert "__pyr_ctx.slot_expr(" in transformed
+    assert ".slot_call(" in transformed
+    assert ".evaluate('title')" in transformed or '.evaluate("title")' in transformed
     assert "record(label)" in transformed
     assert ".leaf_call(" not in transformed
 
@@ -123,8 +125,9 @@ def pair_panel(label):
         filename="/virtual/example/pair_panel.py",
     )
 
-    assert "result_shape=('tuple', 2)" in transformed
-    assert "(__pyr_dm.bind.value, __pyr_dm.bind.setter), (value, setter) = __pyr_ctx.call_plain(" in transformed
+    assert "__pyr_ctx.slot_expr(" in transformed
+    assert ".slot_call(" in transformed
+    assert ".evaluate('value', 'setter')" in transformed or '.evaluate("value", "setter")' in transformed
 
     namespace = load_transformed_namespace(
         source,
@@ -180,7 +183,7 @@ def panel(prefix: str, formatter: SlotCallable[[str], str], plain: Callable[[str
         filename="/virtual/example/phase3/slot_callable_param.py",
     )
 
-    assert transformed.count(".call_plain(") == 2
+    assert transformed.count(".slot_expr(") == 2
     assert "plain_value = plain(selected_value)" in transformed
 
     namespace = load_transformed_namespace(
@@ -526,7 +529,9 @@ def panel(label):
     )
 
     assert "def __pyr_panel(__pyr_ctx, __pyr_dirty_state, label):" in transformed
-    assert "__pyr_dm.bind.value, value = __pyr_ctx.call_plain(" in transformed
+    assert "__pyr_ctx.slot_expr(" in transformed
+    assert ".slot_call(" in transformed
+    assert ".evaluate('value')" in transformed or '.evaluate("value")' in transformed
 
     namespace = load_transformed_namespace(
         source,

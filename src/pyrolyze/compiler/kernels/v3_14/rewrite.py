@@ -117,6 +117,16 @@ class _PackedNativeComponentSpec:
     kind_keyword: ast.keyword
 
 
+@dataclass(slots=True)
+class _SlotExprCallSiteSpec:
+    call_id: str
+    slot_id_expr: ast.expr
+    slot_setup: list[ast.stmt]
+    func_provider_expr: ast.expr
+    args_lambda: ast.Lambda
+    dirt_args_lambda: ast.Lambda
+
+
 def _collect_packed_native_helper_names(body: list[ast.stmt]) -> set[str]:
     return {
         statement.name
@@ -1073,6 +1083,16 @@ def _lower_assign(statement: ast.Assign, *, state: _LoweringState) -> list[ast.s
         return [copy.deepcopy(statement)]
 
     target = statement.targets[0]
+    if _contains_slot_expr_call(statement.value, state=state):
+        if _contains_unsupported_slot_expr_form(statement.value, state=state):
+            raise error_from_node(
+                statement.value,
+                code="PYR-E-PHASEC-SLOT-EXPR-FORM",
+                message="slot-bearing expressions do not support walrus operators or comprehensions in Phase C",
+                module_name=state.module_name,
+                suggested_fix="simplify_slot_expression",
+            )
+        return _lower_slot_expr_assign(statement, target=target, value=statement.value, state=state)
     if isinstance(statement.value, ast.Call) and _is_slotted_helper_call(statement.value, state=state):
         return _lower_slotted_assign(statement, target=target, call=statement.value, state=state)
 
@@ -1180,6 +1200,234 @@ def _lower_slotted_assign(
     ]
 
 
+def _lower_slot_expr_assign(
+    statement: ast.Assign,
+    *,
+    target: ast.expr,
+    value: ast.expr,
+    state: _LoweringState,
+) -> list[ast.stmt]:
+    names = _bound_names(target)
+    if not names:
+        raise error_from_node(
+            statement,
+            code="PYR-E-PHASEC-SLOT-EXPR-TARGET",
+            message="Phase C slot-expression lowering requires name or tuple-name assignment targets",
+            module_name=state.module_name,
+            suggested_fix="simplify_assignment_shape",
+        )
+
+    call_sites: list[_SlotExprCallSiteSpec] = []
+    value_expr, dirty_expr = _transform_slot_expr(value, state=state, call_sites=call_sites)
+    lambda_names = tuple(call_site.call_id for call_site in call_sites)
+    slot_expr_expr: ast.expr = ast.Call(
+        func=ast.Attribute(value=state.context_ref(), attr="slot_expr", ctx=ast.Load()),
+        args=[
+            _lambda_with_names(lambda_names, value_expr),
+            _lambda_with_names(lambda_names, dirty_expr),
+        ],
+        keywords=[],
+    )
+
+    slot_setup: list[ast.stmt] = []
+    for call_site in call_sites:
+        slot_setup.extend(call_site.slot_setup)
+        slot_expr_expr = ast.Call(
+            func=ast.Attribute(value=slot_expr_expr, attr="slot_call", ctx=ast.Load()),
+            args=[
+                ast.Constant(call_site.call_id),
+                call_site.func_provider_expr,
+                call_site.args_lambda,
+                call_site.dirt_args_lambda,
+            ],
+            keywords=[ast.keyword(arg="slot_id", value=copy.deepcopy(call_site.slot_id_expr))],
+        )
+
+    slot_expr_expr = ast.Call(
+        func=ast.Attribute(value=slot_expr_expr, attr="apply_dirt_sink", ctx=ast.Load()),
+        args=[ast.Name(id="__pyr_dm", ctx=ast.Load())],
+        keywords=[],
+    )
+    slot_expr_expr = ast.Call(
+        func=ast.Attribute(value=slot_expr_expr, attr="evaluate", ctx=ast.Load()),
+        args=[ast.Constant(name) for name in names],
+        keywords=[],
+    )
+    lowered_assign = ast.Assign(
+        targets=[copy.deepcopy(target)],
+        value=slot_expr_expr,
+    )
+    for name in names:
+        state.dirty_by_name[name] = _dm_bind_attr(name)
+    return [*slot_setup, copy_reason_location(lowered_assign, statement)]
+
+
+def _transform_slot_expr(
+    value: ast.expr,
+    *,
+    state: _LoweringState,
+    call_sites: list[_SlotExprCallSiteSpec],
+) -> tuple[ast.expr, ast.expr]:
+    if isinstance(value, ast.Call) and _is_slotted_helper_call(value, state=state):
+        return _extract_slot_expr_call_site(value, state=state, call_sites=call_sites)
+    if isinstance(value, ast.BoolOp):
+        transformed = [_transform_slot_expr(node, state=state, call_sites=call_sites) for node in value.values]
+        return (
+            ast.BoolOp(op=copy.deepcopy(value.op), values=[item[0] for item in transformed]),
+            _or_expression([item[1] for item in transformed]),
+        )
+    if isinstance(value, ast.BinOp):
+        left_value, left_dirty = _transform_slot_expr(value.left, state=state, call_sites=call_sites)
+        right_value, right_dirty = _transform_slot_expr(value.right, state=state, call_sites=call_sites)
+        return (
+            ast.BinOp(left=left_value, op=copy.deepcopy(value.op), right=right_value),
+            _or_expression([left_dirty, right_dirty]),
+        )
+    if isinstance(value, ast.UnaryOp):
+        operand_value, operand_dirty = _transform_slot_expr(value.operand, state=state, call_sites=call_sites)
+        return (
+            ast.UnaryOp(op=copy.deepcopy(value.op), operand=operand_value),
+            operand_dirty,
+        )
+    if isinstance(value, ast.Call):
+        func_value, func_dirty = _transform_slot_expr(value.func, state=state, call_sites=call_sites)
+        arg_pairs = [_transform_slot_expr(arg, state=state, call_sites=call_sites) for arg in value.args]
+        kw_pairs = [
+            (
+                keyword.arg,
+                *_transform_slot_expr(keyword.value, state=state, call_sites=call_sites),
+            )
+            for keyword in value.keywords
+        ]
+        return (
+            ast.Call(
+                func=func_value,
+                args=[pair[0] for pair in arg_pairs],
+                keywords=[ast.keyword(arg=arg, value=value_expr) for arg, value_expr, _dirty in kw_pairs],
+            ),
+            _or_expression([func_dirty, *[pair[1] for pair in arg_pairs], *[dirty for _arg, _value, dirty in kw_pairs]]),
+        )
+    if isinstance(value, ast.Tuple):
+        transformed = [_transform_slot_expr(node, state=state, call_sites=call_sites) for node in value.elts]
+        return (
+            ast.Tuple(elts=[item[0] for item in transformed], ctx=ast.Load()),
+            ast.Tuple(elts=[item[1] for item in transformed], ctx=ast.Load()),
+        )
+    if isinstance(value, ast.List):
+        transformed = [_transform_slot_expr(node, state=state, call_sites=call_sites) for node in value.elts]
+        return (
+            ast.List(elts=[item[0] for item in transformed], ctx=ast.Load()),
+            ast.List(elts=[item[1] for item in transformed], ctx=ast.Load()),
+        )
+    if isinstance(value, ast.Dict):
+        key_pairs = [
+            _transform_slot_expr(cast(ast.expr, key), state=state, call_sites=call_sites) if key is not None else (None, ast.Constant(False))
+            for key in value.keys
+        ]
+        value_pairs = [_transform_slot_expr(node, state=state, call_sites=call_sites) for node in value.values]
+        return (
+            ast.Dict(
+                keys=[pair[0] if pair[0] is not None else None for pair in key_pairs],
+                values=[pair[0] for pair in value_pairs],
+            ),
+            ast.Dict(
+                keys=[pair[0] if pair[0] is not None else None for pair in key_pairs],
+                values=[pair[1] for pair in value_pairs],
+            ),
+        )
+    return (copy.deepcopy(value), _dirty_expr_for_value(value, state.dirty_by_name))
+
+
+def _extract_slot_expr_call_site(
+    call: ast.Call,
+    *,
+    state: _LoweringState,
+    call_sites: list[_SlotExprCallSiteSpec],
+) -> tuple[ast.expr, ast.expr]:
+    arg_pairs = [_transform_slot_expr(arg, state=state, call_sites=call_sites) for arg in call.args]
+    kw_pairs = [
+        (
+            keyword.arg,
+            *_transform_slot_expr(keyword.value, state=state, call_sites=call_sites),
+        )
+        for keyword in call.keywords
+    ]
+    call_index = state.next_call_site_id(reason=call)
+    call_id = f"v{call_index}"
+    _slot_index, slot_id_expr, slot_setup = state.next_slot_id(reason=call)
+    dependency_names = tuple(existing.call_id for existing in call_sites)
+    call_sites.append(
+        _SlotExprCallSiteSpec(
+            call_id=call_id,
+            slot_id_expr=slot_id_expr,
+            slot_setup=slot_setup,
+            func_provider_expr=ast.Call(
+                func=_support_reference("__pyr_LiteralFunctionProvider", in_class_scope=state.in_class_scope),
+                args=[copy.deepcopy(call.func)],
+                keywords=[],
+            ),
+            args_lambda=_lambda_with_names(
+                dependency_names,
+                ast.Call(
+                    func=_support_reference("__pyr_slot_params", in_class_scope=state.in_class_scope),
+                    args=[pair[0] for pair in arg_pairs],
+                    keywords=[ast.keyword(arg=arg, value=value_expr) for arg, value_expr, _dirty in kw_pairs],
+                ),
+            ),
+            dirt_args_lambda=_lambda_with_names(
+                dependency_names,
+                ast.Call(
+                    func=_support_reference("__pyr_slot_params_dirt", in_class_scope=state.in_class_scope),
+                    args=[pair[1] for pair in arg_pairs],
+                    keywords=[ast.keyword(arg=arg, value=dirty_expr) for arg, _value, dirty_expr in kw_pairs],
+                ),
+            ),
+        )
+    )
+    evaluator_ref = ast.Name(id=call_id, ctx=ast.Load())
+    return (
+        ast.Call(func=ast.Attribute(value=copy.deepcopy(evaluator_ref), attr="eval", ctx=ast.Load()), args=[], keywords=[]),
+        ast.Call(func=ast.Attribute(value=evaluator_ref, attr="dirty", ctx=ast.Load()), args=[], keywords=[]),
+    )
+
+
+def _lambda_with_names(names: tuple[str, ...], body: ast.expr) -> ast.Lambda:
+    return ast.Lambda(
+        args=ast.arguments(
+            posonlyargs=[],
+            args=[ast.arg(arg=name) for name in names],
+            vararg=None,
+            kwonlyargs=[],
+            kw_defaults=[],
+            kwarg=None,
+            defaults=[],
+        ),
+        body=body,
+    )
+
+
+def _contains_slot_expr_call(value: ast.AST, *, state: _LoweringState) -> bool:
+    return any(isinstance(node, ast.Call) and _is_slotted_helper_call(node, state=state) for node in ast.walk(value))
+
+
+def _contains_unsupported_slot_expr_form(value: ast.AST, *, state: _LoweringState) -> bool:
+    if not _contains_slot_expr_call(value, state=state):
+        return False
+    return any(isinstance(node, (ast.NamedExpr, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)) for node in ast.walk(value))
+
+
+def _is_simple_slotted_helper_call(call: ast.Call, *, state: _LoweringState) -> bool:
+    if not _is_slotted_helper_call(call, state=state):
+        return False
+    for arg in call.args:
+        if _contains_slot_expr_call(arg, state=state):
+            return False
+    for keyword in call.keywords:
+        if _contains_slot_expr_call(keyword.value, state=state):
+            return False
+    return True
+
+
 def _lower_expr_call(statement: ast.Expr, *, state: _LoweringState) -> list[ast.stmt]:
     call = statement.value
     if _is_call_native_expr(call):
@@ -1200,14 +1448,49 @@ def _lower_slotted_expr_call(
     call: ast.Call,
     state: _LoweringState,
 ) -> list[ast.stmt]:
-    _slot_index, slot_name, slot_setup = state.next_slot_id(reason=statement)
-    lowered = ast.Expr(
-        value=ast.Call(
-            func=ast.Attribute(value=state.context_ref(), attr="call_plain", ctx=ast.Load()),
-            args=[slot_name, copy.deepcopy(call.func), *[copy.deepcopy(arg) for arg in call.args]],
-            keywords=[copy.deepcopy(keyword) for keyword in call.keywords],
+    if _contains_unsupported_slot_expr_form(call, state=state):
+        raise error_from_node(
+            call,
+            code="PYR-E-PHASEC-SLOT-EXPR-FORM",
+            message="slot-bearing expressions do not support walrus operators or comprehensions in Phase C",
+            module_name=state.module_name,
+            suggested_fix="simplify_slot_expression",
         )
+    call_sites: list[_SlotExprCallSiteSpec] = []
+    value_expr, dirty_expr = _transform_slot_expr(call, state=state, call_sites=call_sites)
+    lambda_names = tuple(call_site.call_id for call_site in call_sites)
+    slot_expr_expr: ast.expr = ast.Call(
+        func=ast.Attribute(value=state.context_ref(), attr="slot_expr", ctx=ast.Load()),
+        args=[
+            _lambda_with_names(lambda_names, value_expr),
+            _lambda_with_names(lambda_names, dirty_expr),
+        ],
+        keywords=[],
     )
+    slot_setup: list[ast.stmt] = []
+    for call_site in call_sites:
+        slot_setup.extend(call_site.slot_setup)
+        slot_expr_expr = ast.Call(
+            func=ast.Attribute(value=slot_expr_expr, attr="slot_call", ctx=ast.Load()),
+            args=[
+                ast.Constant(call_site.call_id),
+                call_site.func_provider_expr,
+                call_site.args_lambda,
+                call_site.dirt_args_lambda,
+            ],
+            keywords=[ast.keyword(arg="slot_id", value=copy.deepcopy(call_site.slot_id_expr))],
+        )
+    slot_expr_expr = ast.Call(
+        func=ast.Attribute(value=slot_expr_expr, attr="apply_dirt_sink", ctx=ast.Load()),
+        args=[ast.Name(id="__pyr_dm", ctx=ast.Load())],
+        keywords=[],
+    )
+    slot_expr_expr = ast.Call(
+        func=ast.Attribute(value=slot_expr_expr, attr="evaluate", ctx=ast.Load()),
+        args=[],
+        keywords=[],
+    )
+    lowered = ast.Expr(value=slot_expr_expr)
     return [*slot_setup, copy_reason_location(lowered, statement)]
 
 
@@ -1392,10 +1675,13 @@ def _inject_module_scaffold(
         ast.ImportFrom(
             module="pyrolyze.runtime",
             names=[
+                ast.alias(name="LiteralFunctionProvider", asname="__pyr_LiteralFunctionProvider"),
                 ast.alias(name="SlotId", asname="__pyr_SlotId"),
                 ast.alias(name="dm_from_dirty_state", asname="__pyr_dm_from_dirty_state"),
                 ast.alias(name="dirtyof", asname="__pyr_dirtyof"),
                 ast.alias(name="module_registry", asname="__pyr_module_registry"),
+                ast.alias(name="slot_params", asname="__pyr_slot_params"),
+                ast.alias(name="slot_params_dirt", asname="__pyr_slot_params_dirt"),
             ],
             level=0,
         ),
@@ -1643,6 +1929,21 @@ def _collect_legacy_container_names(module_ast: ast.Module) -> set[str]:
 
 
 def _dirty_expr_for_value(value: ast.AST, dirty_by_name: dict[str, ast.expr]) -> ast.expr:
+    if isinstance(value, ast.Tuple):
+        return ast.Tuple(
+            elts=[_dirty_expr_for_value(element, dirty_by_name) for element in value.elts],
+            ctx=ast.Load(),
+        )
+    if isinstance(value, ast.List):
+        return ast.List(
+            elts=[_dirty_expr_for_value(element, dirty_by_name) for element in value.elts],
+            ctx=ast.Load(),
+        )
+    if isinstance(value, ast.Dict):
+        return ast.Dict(
+            keys=[copy.deepcopy(key) if key is not None else None for key in value.keys],
+            values=[_dirty_expr_for_value(element, dirty_by_name) for element in value.values],
+        )
     dirty_parts: list[ast.expr] = []
     seen_names: set[str] = set()
     for node in ast.walk(value):

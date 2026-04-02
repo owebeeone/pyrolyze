@@ -98,7 +98,21 @@ never passes through the `call_plain(...)` lowering path for the inner call.
 
 ## Proposed Fix
 
-## Fix A: Runtime-Resolved Dynamic ComponentRef Calls
+This work should now be treated as two adjacent compiler phases:
+
+- Phase C:
+  - lower slot-bearing expressions to `slot_expr`
+  - reject walrus/comprehension forms in slot-bearing expressions
+- Phase CA:
+  - fix annotated local `ComponentRef` alias/lookup calls whose parameter names are not recoverable from the current static table
+  - specifically patterns like:
+
+```python
+emit: ComponentRef[[dict[str, Any]]] = EMITTERS["leaf"]
+emit(kwds={"label": label})
+```
+
+## Fix A / Phase CA: Runtime-Resolved Dynamic ComponentRef Calls
 
 The chosen solution for indirect `ComponentRef` calls is:
 
@@ -171,7 +185,7 @@ This should support:
 - matches the intended dynamic function-table use case
 - keeps the static path fast for direct component refs
 
-## Fix B: Hoist Recognized Slotted Calls Out Of Enclosing Expressions
+## Fix B / Phase C: Hoist Recognized Slotted Calls Out Of Enclosing Expressions
 
 Add an expression-rewrite pass in Phase 5 that:
 

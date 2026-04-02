@@ -20,6 +20,7 @@ Active:
 
 Remaining:
 
+- Phase CA
 - Phase D
 
 The goal is to replace the current slot-bearing `plain_call` model with:
@@ -58,7 +59,8 @@ The migration should be done in staged phases:
 4. finish the remaining identity and host-integration parity gaps
 5. move dirt handling onto the new dirt manager first
 6. move slot-bearing expression lowering from `plain_call` to `SlotExpr`
-7. remove `plain_call` completely
+7. close the remaining Phase 5 annotated-lookup `ComponentRef` lowering gap
+8. remove `plain_call` completely
 
 The key constraint is:
 

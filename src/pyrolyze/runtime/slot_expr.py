@@ -173,6 +173,18 @@ class _SlotExprRuntimeContextSlot:
         self.evaluator.mark_invoke_dirty()
 
     @property
+    def invoke_dirty(self) -> bool:
+        return self.evaluator.invoke_dirty
+
+    @invoke_dirty.setter
+    def invoke_dirty(self, value: bool) -> None:
+        if value:
+            self.evaluator.mark_invoke_dirty()
+        else:
+            self.evaluator.invoke_dirty = False
+            self.evaluator._staged_invoke_dirty = False
+
+    @property
     def root_context(self) -> Any:
         slot_ctx = self.evaluator.expr.slot_ctx
         if slot_ctx is None or not hasattr(slot_ctx, "root_context"):
@@ -285,8 +297,8 @@ class SlotExpr:
             value = self._invoke_expr(self.value_lambda)
             dirty = self._invoke_expr(self.dirty_lambda)
             if len(names) == 0:
-                raise ValueError("evaluate() requires at least one binding name")
-            if len(names) == 1:
+                staged_result = (value, ())
+            elif len(names) == 1:
                 staged_result = (value, ((names[0], dirty),))
             else:
                 unpacked_values = self._unpack_exact(names, value)
@@ -436,6 +448,32 @@ class SlotCallEvaluator:
         self._visited = True
         args_carrier = self._invoke_builder(self.args_lambda)
         dirt_carrier = self._invoke_builder(self.dirt_args_lambda)
+        slot_ctx = self.expr.slot_ctx
+        if slot_ctx is not None and hasattr(slot_ctx, "call_plain"):
+            raw_func = self._func_provider.get_func(self.expr)
+            func_dirty = self._is_dirty(self._func_provider.get_dirty(self.expr))
+            result = slot_ctx.call_plain(
+                self.slot_id,
+                CompValue(raw_func, dirty=func_dirty),
+                *tuple(
+                    CompValue(value, dirty=self._is_dirty(dirty))
+                    for value, dirty in zip(args_carrier.args, dirt_carrier.args, strict=False)
+                ),
+                **{
+                    key: CompValue(raw_value, dirty=self._is_dirty(dirt_carrier.kwds.get(key, False)))
+                    for key, raw_value in args_carrier.kwds.items()
+                },
+            )
+            current_value = result.value
+            current_dirty = result.dirty
+            if isinstance(current_dirty, bool) and isinstance(current_value, (tuple, list, dict)):
+                current_dirty = _all_dirty_projection(current_value) if current_dirty else (
+                    self.expr.dm.clean_shape_like(current_value) if self.expr.dm is not None else False
+                )
+            self._current_value = current_value
+            self._current_dirty = current_dirty
+            self._evaluated = True
+            return
         prepared = prepare_plain_call(
             CompValue(self._func_provider.get_func(self.expr), dirty=False),
             tuple(CompValue(value, dirty=self._is_dirty(dirty)) for value, dirty in zip(args_carrier.args, dirt_carrier.args, strict=False)),

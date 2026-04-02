@@ -80,7 +80,9 @@ def imported_panel(text):
         filename="/virtual/example/phase5/imported_panel.py",
     )
 
-    assert ".call_plain(" in transformed
+    assert "__pyr_ctx.slot_expr(" in transformed
+    assert ".slot_call(" in transformed
+    assert ".evaluate('value')" in transformed or '.evaluate("value")' in transformed
     assert "imported_upper" in transformed
     assert ".component_call(" in transformed
     assert "imported_child" in transformed

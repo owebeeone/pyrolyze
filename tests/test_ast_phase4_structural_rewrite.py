@@ -115,7 +115,8 @@ def values_panel(items):
     assert "with __pyr_ctx_slot_1_k.pass_scope():" in transformed
     assert "current_value()" in transformed
     assert "visit_self_and_dirty()" in transformed
-    assert ".call_plain(" in transformed
+    assert ".slot_expr(" in transformed
+    assert ".slot_call(" in transformed
 
     namespace = load_transformed_namespace(
         source,
@@ -502,6 +503,7 @@ def panel(items):
         filename="/virtual/example/phase4/loop_use_state.py",
     )
 
-    assert "call_plain(" in transformed
+    assert ".slot_expr(" in transformed
     assert "use_state" in transformed
-    assert "result_shape=('tuple', 2)" in transformed
+    assert ".slot_call(" in transformed
+    assert ".evaluate('on', 'set_on')" in transformed or '.evaluate("on", "set_on")' in transformed

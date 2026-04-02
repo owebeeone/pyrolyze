@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import pytest
+
 from pyrolyze.compiler import emit_transformed_source, load_transformed_namespace
+from pyrolyze.compiler.diagnostics import PyRolyzeCompileError
 from pyrolyze.runtime import RenderContext, dirtyof
 
 
@@ -29,10 +32,12 @@ def panel():
     )
 
     assert "__pyr_SlotId(__pyr_module_id, 1, line_no=13, is_top_level=True)" in transformed
-    assert "(__pyr_dm.bind.count, __pyr_dm.bind.set_count), (count, set_count) = __pyr_ctx.call_plain(" in transformed
+    assert "__pyr_ctx.slot_expr(" in transformed
+    assert ".slot_call(" in transformed
+    assert ".evaluate('count', 'set_count')" in transformed or '.evaluate("count", "set_count")' in transformed
     assert "use_state" in transformed
-    assert "result_shape=('tuple', 2)" in transformed
-    assert "record, count" in transformed
+    assert "__pyr_LiteralFunctionProvider(record)" in transformed
+    assert ".evaluate()" in transformed
 
     namespace = load_transformed_namespace(
         source,
@@ -80,8 +85,9 @@ def panel():
     )
 
     assert "my_us_state" in transformed
-    assert "(__pyr_dm.bind.count, __pyr_dm.bind.set_count), (count, set_count) = __pyr_ctx.call_plain(" in transformed
-    assert "result_shape=('tuple', 2)" in transformed
+    assert "__pyr_ctx.slot_expr(" in transformed
+    assert ".slot_call(" in transformed
+    assert ".evaluate('count', 'set_count')" in transformed or '.evaluate("count", "set_count")' in transformed
 
     namespace = load_transformed_namespace(
         source,
@@ -150,11 +156,12 @@ def panel():
     )
 
     assert "my_us_state" in transformed
+    assert "__pyr_ctx.slot_expr(" in transformed
+    assert ".slot_call(" in transformed
     assert (
-        "(__pyr_dm.bind.left, __pyr_dm.bind.right, __pyr_dm.bind.set_both), "
-        "(left, right, set_both) = __pyr_ctx.call_plain("
-    ) in transformed
-    assert "result_shape=('tuple', 3)" in transformed
+        ".evaluate('left', 'right', 'set_both')" in transformed
+        or '.evaluate("left", "right", "set_both")' in transformed
+    )
 
     namespace = load_transformed_namespace(
         source,
@@ -208,7 +215,9 @@ def panel():
         filename="/virtual/example/phase5/imported_use_grip.py",
     )
 
-    assert "__pyr_dm.bind.value, value = __pyr_ctx.call_plain(" in transformed
+    assert "__pyr_ctx.slot_expr(" in transformed
+    assert ".slot_call(" in transformed
+    assert ".evaluate('value')" in transformed or '.evaluate("value")' in transformed
     assert "use_grip" in transformed
 
     namespace = load_transformed_namespace(
@@ -250,7 +259,9 @@ def panel(label):
         filename="/virtual/example/phase5/imported_use_effect.py",
     )
 
-    assert "__pyr_ctx.call_plain(" in transformed
+    assert "__pyr_ctx.slot_expr(" in transformed
+    assert ".slot_call(" in transformed
+    assert ".evaluate()" in transformed
     assert "use_effect" in transformed
 
     namespace = load_transformed_namespace(
@@ -302,7 +313,9 @@ def panel():
         filename="/virtual/example/phase5/use_grip_or_expression.py",
     )
 
-    assert "__pyr_ctx.call_plain(" in transformed
+    assert "__pyr_ctx.slot_expr(" in transformed
+    assert ".slot_call(" in transformed
+    assert ".evaluate('value')" in transformed or '.evaluate("value")' in transformed
 
     namespace = load_transformed_namespace(
         source,
@@ -350,7 +363,9 @@ def panel():
         filename="/virtual/example/phase5/use_grip_int_expression.py",
     )
 
-    assert "__pyr_ctx.call_plain(" in transformed
+    assert "__pyr_ctx.slot_expr(" in transformed
+    assert ".slot_call(" in transformed
+    assert ".evaluate('count')" in transformed or '.evaluate("count")' in transformed
 
     namespace = load_transformed_namespace(
         source,
@@ -365,3 +380,131 @@ def panel():
         ("get",),
         ("record", 0),
     ]
+
+
+def test_phase5_lowers_multiple_slot_calls_inside_binop_expression() -> None:
+    source = """
+from pyrolyze.api import pyrolyze, pyrolyze_slotted
+
+log = []
+
+@pyrolyze_slotted
+def slot_fa(x, y):
+    log.append(("a", x, y))
+    return x + y
+
+@pyrolyze_slotted
+def slot_fb(x, y):
+    log.append(("b", x, y))
+    return x * y
+
+def record(value):
+    log.append(("record", value))
+
+@pyrolyze
+def panel(x, y):
+    value = slot_fa(x, y) + slot_fb(1, 2)
+    record(value)
+"""
+
+    transformed = emit_transformed_source(
+        source,
+        module_name="example.phase5.slot_expr_binop",
+        filename="/virtual/example/phase5/slot_expr_binop.py",
+    )
+
+    assert "__pyr_ctx.slot_expr(" in transformed
+    assert transformed.count(".slot_call(") >= 2
+
+    namespace = load_transformed_namespace(
+        source,
+        module_name="example.phase5.slot_expr_binop",
+        filename="/virtual/example/phase5/slot_expr_binop.py",
+    )
+    panel = namespace["panel"]
+    ctx = RenderContext()
+
+    panel._pyrolyze_meta._func(ctx, dirtyof(x=True, y=True), 3, 4)
+
+    assert namespace["log"] == [
+        ("a", 3, 4),
+        ("b", 1, 2),
+        ("record", 9),
+    ]
+
+
+def test_phase5_lowers_nested_slot_call_arguments() -> None:
+    source = """
+from pyrolyze.api import pyrolyze, pyrolyze_slotted
+
+log = []
+
+@pyrolyze_slotted
+def slot_f2(x, y):
+    log.append(("f2", x, y))
+    return x + y
+
+@pyrolyze_slotted
+def slot_f1(value):
+    log.append(("f1", value))
+    return value, value * 2
+
+@pyrolyze
+def panel(a):
+    v1, v2 = slot_f1(slot_f2(1, a))
+    log.append(("pair", v1, v2))
+"""
+
+    transformed = emit_transformed_source(
+        source,
+        module_name="example.phase5.slot_expr_nested_args",
+        filename="/virtual/example/phase5/slot_expr_nested_args.py",
+    )
+
+    assert "__pyr_ctx.slot_expr(" in transformed
+    assert transformed.count(".slot_call(") >= 2
+
+    namespace = load_transformed_namespace(
+        source,
+        module_name="example.phase5.slot_expr_nested_args",
+        filename="/virtual/example/phase5/slot_expr_nested_args.py",
+    )
+    panel = namespace["panel"]
+    ctx = RenderContext()
+
+    panel._pyrolyze_meta._func(ctx, dirtyof(a=True), 5)
+
+    assert namespace["log"] == [
+        ("f2", 1, 5),
+        ("f1", 6),
+        ("pair", 6, 12),
+    ]
+
+
+def test_phase5_rejects_walrus_inside_slot_bearing_expression() -> None:
+    source = """
+from pyrolyze.api import pyrolyze, use_grip
+from pyrolyze.runtime import ExternalStoreRef
+
+def subscribe(listener):
+    return lambda: None
+
+def get_value():
+    return "warm"
+
+STORE = ExternalStoreRef(identity="weather", subscribe=subscribe, get=get_value)
+
+@pyrolyze
+def panel():
+    value = (current := use_grip(STORE)) or "clock"
+"""
+
+    with pytest.raises(
+        PyRolyzeCompileError,
+        match="slot-bearing expressions do not support walrus operators or comprehensions in Phase C",
+    ):
+        emit_transformed_source(
+            source,
+            module_name="example.phase5.slot_expr_walrus_rejected",
+            filename="/virtual/example/phase5/slot_expr_walrus_rejected.py",
+        )

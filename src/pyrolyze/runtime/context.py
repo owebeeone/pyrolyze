@@ -433,6 +433,16 @@ class ContextBase:
 
         return CompValue(value=value, dirty=False)
 
+    def slot_expr(
+        self,
+        value_lambda: Callable[..., Any],
+        dirty_lambda: Callable[..., Any],
+    ) -> Any:
+        self._require_active_scope()
+        from .slot_expr import SlotExpr
+
+        return SlotExpr(value_lambda, dirty_lambda).apply_slot_context(self)
+
     def visit_slot_and_dirty(self, slot_id: SlotId) -> bool:
         self._require_active_scope()
         slot = self._ensure_slot(slot_id, SlotContext)

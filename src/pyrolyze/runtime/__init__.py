@@ -49,7 +49,14 @@ from .context import (
 )
 from .dirt import DM, dm_from_dirty_state
 from .drip import Drip
-from .slot_expr import Args, SlotExpr, slot_params, slot_params_dirt
+from .slot_expr import (
+    Args,
+    LambdaFunctionProvider,
+    LiteralFunctionProvider,
+    SlotExpr,
+    slot_params,
+    slot_params_dirt,
+)
 from .trace import (
     TraceChannel,
     TraceRecord,
@@ -118,7 +125,9 @@ __all__ = [
     "GENERATION_TRACKER_KEY",
     "GenerationTracker",
     "KeyedLoopSlotContext",
+    "LambdaFunctionProvider",
     "LeafSlotContext",
+    "LiteralFunctionProvider",
     "LoopItemSlotContext",
     "MountAdvertisementContextError",
     "ModuleId",
