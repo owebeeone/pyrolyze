@@ -36,10 +36,11 @@ The migration should be done in staged phases:
 
 1. build the new runtime structures independently of the current compiler/lowering
 2. complete the first runtime-parity layer for `SlotExpr`
-3. finish the remaining `plain_call` parity gaps
-4. move dirt handling onto the new dirt manager first
-5. move slot-bearing expression lowering from `plain_call` to `SlotExpr`
-6. remove `plain_call` completely
+3. finish the remaining runtime-only parity gaps
+4. finish the remaining identity and host-integration parity gaps
+5. move dirt handling onto the new dirt manager first
+6. move slot-bearing expression lowering from `plain_call` to `SlotExpr`
+7. remove `plain_call` completely
 
 The key constraint is:
 
@@ -386,20 +387,20 @@ Phase AA is complete when:
 - callable-dirt support is green in direct runtime tests
 - provider optimization is implemented and covered by tests
 
-## Phase AB: Remaining Plain-Call Parity Gaps
+## Phase AB: Remaining Runtime-Only Parity Gaps
 
 ### Goal
 
-Finish the remaining `plain_call` parity items that go beyond the first runtime-parity layer in Phase AB.
+Finish the remaining `plain_call` parity items that do not require real
+compiler-generated call-site identity or real host integration.
 
 ### Deliverables
 
-- call-site identity carried as a real compiler-generated `SlotId`
 - `invoke_dirty` parity
 - `PlainCallRuntimeContext` parity or an explicit documented replacement
-- real runtime host integration for invalidation and mount-advert publication if Phase AB still uses local host shims
 - registration/deactivation pairing on commit boundaries
 - avoidance of unnecessary retained raw-result references
+- fast-path/general-path parity for `single_call(...)` vs `slot_call(...)`
 
 ### Phase AB Tests
 
@@ -427,16 +428,11 @@ Suggested additions to:
 - staged deactivations are not committed
 - previously committed call-site state remains intact
 
-#### Call-site identity tests
-
-- each `slot_call` carries a persistent call-site `SlotId`
-- evaluator parameter name changes do not change runtime identity
-
 #### Remaining plain-call parity tests
 
 - `invoke_dirty` forces reinvocation in `SlotExpr`
 - runtime-context injection parity for callables that request it
-- local host shim removal or explicit proof it is equivalent where retained
+- `single_call(...)` and `slot_call(...)` have identical reinvocation and lifecycle behavior
 
 #### Registration pairing tests
 
@@ -447,9 +443,56 @@ Suggested additions to:
 
 Phase AB is complete when:
 
-- the remaining semantic gaps relative to `plain_call` are closed or explicitly documented as intentional differences
-- call-site identity/invoke-dirty/runtime-context behavior is covered by tests
+- the remaining runtime-only semantic gaps relative to `plain_call` are closed or explicitly documented as intentional differences
+- `invoke_dirty` and runtime-context behavior are covered by tests
+- pairing and retained-reference behavior are covered by tests
+- the only remaining parity gaps are call-site identity and host integration
 - the runtime surface is trustworthy enough to begin compiler migration
+
+## Phase AC: Identity And Host Integration Parity Gaps
+
+### Goal
+
+Finish the remaining `plain_call` parity items that require:
+
+- real call-site identity
+- real host/runtime integration
+
+### Deliverables
+
+- call-site identity carried as a real compiler-generated `SlotId`
+- real runtime host integration for invalidation and mount-advert publication, or an explicit documented shim-equivalence boundary
+- proof that runtime identity is keyed by `SlotId`, not evaluator parameter naming
+- proof that fast-path and general-path evaluation use identical host semantics
+
+### Phase AC Tests
+
+Suggested additions to:
+
+- `pyrolyze/tests/test_runtime_slot_expr.py`
+- optional: `pyrolyze/tests/test_runtime_slot_expr_lifecycle.py`
+
+#### Call-site identity tests
+
+- each `slot_call` carries a persistent call-site `SlotId`
+- evaluator parameter name changes do not change runtime identity
+- different `SlotId`s do change runtime identity
+- cached binding reuse and deactivation are keyed by `SlotId`
+
+#### Host integration or shim-equivalence tests
+
+- external-store invalidation reaches the real runtime host, or the shim is proven equivalent
+- mount-advert publish/withdraw uses the real runtime host, or the shim is proven equivalent
+- post-commit callbacks use the real runtime host, or the shim is proven equivalent
+- `single_call(...)` and `slot_call(...)` use the same host path
+
+### Phase AC Completion Gate
+
+Phase AC is complete when:
+
+- runtime identity is carried by real `SlotId`
+- host behavior is integrated or explicitly justified by shim-equivalence tests
+- no remaining `plain_call` parity gap depends on runtime identity or host behavior
 
 ## Phase B: Move Dirt Handling To DM First
 
