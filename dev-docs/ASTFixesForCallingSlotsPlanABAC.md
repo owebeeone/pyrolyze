@@ -1,5 +1,16 @@
 # AST Fixes For Calling Slots Plan AB/AC
 
+## Status
+
+Phases AB and AC are complete.
+
+This document is retained as archival context for the runtime-parity work that
+was finished before compiler Phase C started.
+
+The active migration plan now lives in:
+
+- `dev-docs/ASTFixesForCallingSlotsPlan.md`
+
 ## Purpose
 
 This addendum narrows Phases AB and AC to the specific remaining parity gaps between:
@@ -16,8 +27,8 @@ Phase AA already covered:
 - callable dirt support
 - provider optimization
 
-Phases AB and AC are the remaining runtime-parity work needed before compiler
-migration should start.
+At the time this document was written, Phases AB and AC were the remaining
+runtime-parity work needed before compiler migration could start.
 
 ## Remaining AB Scope
 

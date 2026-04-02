@@ -4,6 +4,24 @@
 
 This document turns the slot-call redesign from `ASTFixesForCallingSlots.md` into an execution plan.
 
+## Current Status
+
+Completed:
+
+- Phase A
+- Phase AA
+- Phase AB
+- Phase AC
+- Phase B
+
+Active:
+
+- Phase C
+
+Remaining:
+
+- Phase D
+
 The goal is to replace the current slot-bearing `plain_call` model with:
 
 - a central dirt manager (`__pyr_dm`)
@@ -513,6 +531,11 @@ This isolates dirt-tracking migration from expression-lowering migration.
   - keep `__pyr_dirty_state` as the caller/callee transport parameter
   - materialize `__pyr_dm = __pyr_dm_from_dirty_state(__pyr_dirty_state)` at function entry
   - use `__pyr_dm.bind.*` for in-function dirt reads and writes
+- direct slotted-call lowering writes dirty results straight into `__pyr_dm.bind.*`
+- delete lowering mirrors value deletion with:
+  - `del name`
+  - `del __pyr_dm.bind.name`
+- golden coverage includes a dedicated delete case
 
 ### Phase B Tests
 
@@ -529,6 +552,7 @@ Suggested files:
 - existing slotted call path updates `DM` instead of old hidden dirt channel storage
 - rebinding and unpacking through transformed code land in `DM`
 - deletion lowers to `del __pyr_dm.bind.name`
+- direct slotted assignments no longer require intermediate dirty temp locals before writing to `DM`
 - attribute/subscript paths update `DM`
 - child/component/container calls still project outgoing dirt through `dirtyof(...)` in Phase B
 
@@ -544,6 +568,8 @@ Phase B is complete when:
 
 - transformed code can use `DM` successfully while `plain_call` still exists
 - expected goldens are updated
+- compiler-emitted slotted assignments bind dirty results directly into `DM`
+- compiler-emitted deletes mirror into `del __pyr_dm.bind.name`
 - unrelated goldens remain intentionally untouched
 
 ## Phase C: Replace Slot-Bearing Expression Lowering With SlotExpr
@@ -560,6 +586,9 @@ Move slot-bearing expressions from `plain_call` lowering to `SlotExpr`.
   - `.slot_call(...)` chain
   - `.apply_dirt_sink(...)`
   - `.evaluate(...)`
+- compiler-emitted call sites use the current provider API:
+  - `LiteralFunctionProvider(...)` by default
+  - `LambdaFunctionProvider(...)` only for genuinely dynamic callable identity or callable dirt
 - recursive extraction of nested slot-bearing calls
 - unsupported diagnostics for:
   - slot-bearing walrus
@@ -606,6 +635,7 @@ Suggested files:
 
 - transformed output contains `slot_expr(...)`
 - transformed output contains `.slot_call(...)`
+- transformed output contains the correct provider choice for each call site
 - transformed output contains `.apply_dirt_sink(...)`
 - transformed output contains `.evaluate(...)`
 - transformed output no longer lowers slot-bearing expressions through `plain_call`

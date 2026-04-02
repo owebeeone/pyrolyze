@@ -318,8 +318,7 @@ Then:
 ```python
 .slot_call(
     call_slot_id_v1,
-    lambda: use_grip,
-    lambda: dm.use_grip,
+    LiteralFunctionProvider(use_grip),
     lambda: slot_params(STORE),
     lambda: slot_params_dirt(slot_ctx.literal(STORE).dirty),
 )
@@ -410,8 +409,20 @@ slot_ctx
         lambda a, b: a.eval() + b.eval(),
         lambda a, b: a.dirty() or b.dirty(),
     )
-    .slot_call(call_slot_id_a, lambda: use_grip, lambda: dm.use_grip, lambda: slot_params(A), lambda: slot_params_dirt(dm.A))
-    .slot_call(call_slot_id_b, lambda: use_grip, lambda: dm.use_grip, lambda: slot_params(B), lambda: slot_params_dirt(dm.B))
+    .slot_call(
+        "a",
+        LiteralFunctionProvider(use_grip),
+        lambda: slot_params(A),
+        lambda: slot_params_dirt(dm.bind.A),
+        slot_id=call_slot_id_a,
+    )
+    .slot_call(
+        "b",
+        LiteralFunctionProvider(use_grip),
+        lambda: slot_params(B),
+        lambda: slot_params_dirt(dm.bind.B),
+        slot_id=call_slot_id_b,
+    )
 ```
 
 ## Nested Extraction
@@ -490,7 +501,7 @@ Local name:
 
 ```python
 V(x) = x
-D(x) = dm.x
+D(x) = dm.bind.x
 ```
 
 Slot-bearing call site replaced by evaluator:
@@ -675,9 +686,10 @@ value = (
     )
     .slot_call(
         "v1",
-        use_grip,
+        LiteralFunctionProvider(use_grip),
         lambda: slot_params(STORE),
-        lambda: slot_params_dirt(slot_ctx.literal("clock").dirty),
+        lambda: slot_params_dirt(slot_ctx.literal(STORE).dirty),
+        slot_id=call_slot_id_v1,
     )
     .apply_dirt_sink(dirt_sink)
     .evaluate("value")
@@ -718,9 +730,10 @@ val, func = (
     )
     .slot_call(
         "v1",
-        use_state,
+        LiteralFunctionProvider(use_state),
         lambda: slot_params(3),
-        lambda: slot_params_dirt(dm.__pyr_literal()),
+        lambda: slot_params_dirt(slot_ctx.literal(3).dirty),
+        slot_id=call_slot_id_v1,
     )
     .apply_dirt_sink(dirt_sink)
     .evaluate("val", "func")
@@ -760,15 +773,17 @@ total = (
     )
     .slot_call(
         "a",
-        use_grip,
+        LiteralFunctionProvider(use_grip),
         lambda: slot_params(A),
-        lambda: slot_params_dirt(dm.A),
+        lambda: slot_params_dirt(dm.bind.A),
+        slot_id=call_slot_id_a,
     )
     .slot_call(
         "b",
-        use_grip,
+        LiteralFunctionProvider(use_grip),
         lambda: slot_params(B),
-        lambda: slot_params_dirt(dm.B),
+        lambda: slot_params_dirt(dm.bind.B),
+        slot_id=call_slot_id_b,
     )
     .apply_dirt_sink(dirt_sink)
     .evaluate("total")
@@ -826,11 +841,12 @@ Each `slot_call(...)` therefore needs:
 - a function provider
 - a lazy value-parameter lambda
 - a lazy dirty-parameter lambda
+- a real call-site `SlotId`
 
 Conceptually:
 
 ```python
-.slot_call(call_id, func_provider, args_lambda, dirt_args_lambda)
+.slot_call(call_id, func_provider, args_lambda, dirt_args_lambda, slot_id=call_slot_id)
 ```
 
 where:
@@ -860,7 +876,7 @@ Examples:
 
 ```python
 slot_params(prefix, label=name, visible=True)
-slot_params_dirt(dm.prefix, label=dm.name, visible=dm.__pyr_literal())
+slot_params_dirt(dm.bind.prefix, label=dm.bind.name, visible=slot_ctx.literal(True).dirty)
 ```
 
 That means:
@@ -873,6 +889,7 @@ That means:
 ## Dirtiness Sink
 
 The dirtiness sink is the scoped object that receives final expression dirtiness for the names passed to `evaluate(...)`.
+In the current runtime surface, that sink is a `DM`, and final values are written under `dm.bind.*`.
 
 Example:
 
@@ -885,10 +902,10 @@ value = (
     )
     .slot_call(
         "v1",
-        lambda: use_grip,
-        lambda: dm.use_grip,
+        LiteralFunctionProvider(use_grip),
         lambda: slot_params(STORE),
-        lambda: slot_params_dirt(dm.__pyr_literal()),
+        lambda: slot_params_dirt(slot_ctx.literal(STORE).dirty),
+        slot_id=call_slot_id_v1,
     )
     .apply_dirt_sink(dirt_sink)
     .evaluate("value")
@@ -911,10 +928,10 @@ val, func = (
     )
     .slot_call(
         "v1",
-        lambda: use_state,
-        lambda: dm.use_state,
+        LiteralFunctionProvider(use_state),
         lambda: slot_params(3),
-        lambda: slot_params_dirt(dm.__pyr_literal()),
+        lambda: slot_params_dirt(slot_ctx.literal(3).dirty),
+        slot_id=call_slot_id_v1,
     )
     .apply_dirt_sink(dirt_sink)
     .evaluate("val", "func")
@@ -979,9 +996,10 @@ result = (
     )
     .slot_call(
         "v1",
-        use_state,
+        LiteralFunctionProvider(use_state),
         lambda: slot_params(3),
-        lambda: slot_params_dirt(dm.__pyr_literal()),
+        lambda: slot_params_dirt(slot_ctx.literal(3).dirty),
+        slot_id=call_slot_id_v1,
     )
     .apply_dirt_sink(dirt_sink)
     .evaluate("result")
@@ -1020,9 +1038,10 @@ val, func = (
     )
     .slot_call(
         "v1",
-        use_state,
+        LiteralFunctionProvider(use_state),
         lambda: slot_params(3),
-        lambda: slot_params_dirt(dm.__pyr_literal()),
+        lambda: slot_params_dirt(slot_ctx.literal(3).dirty),
+        slot_id=call_slot_id_v1,
     )
     .apply_dirt_sink(dirt_sink)
     .evaluate("val", "func")
@@ -1188,12 +1207,6 @@ Conceptually:
 dm.bind.local_name
 ```
 
-or more abstractly:
-
-```python
-dm.lookup("local_name")
-```
-
 with the default rule:
 
 - locals are dirty unless there is explicit tracked dirt metadata saying otherwise
@@ -1295,9 +1308,10 @@ Conceptually:
 ```python
 .slot_call(
     "v1",
-    use_grip,
+    LiteralFunctionProvider(use_grip),
     lambda: slot_params(STORE),
-    lambda: slot_params_dirt(slot_ctx.literal("clock").dirty),
+    lambda: slot_params_dirt(slot_ctx.literal(STORE).dirty),
+    slot_id=call_slot_id_v1,
 )
 ```
 
@@ -1314,9 +1328,10 @@ The argument lambda may eventually need access to earlier evaluators for nested 
 ```python
 .slot_call(
     "v2",
-    helper,
+    LiteralFunctionProvider(helper),
     lambda v1: slot_params(v1.eval()),
     lambda v1: slot_params_dirt(v1.dirty()),
+    slot_id=call_slot_id_v2,
 )
 ```
 
