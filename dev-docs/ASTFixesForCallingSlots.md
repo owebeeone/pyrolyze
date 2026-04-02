@@ -57,6 +57,13 @@ The chosen direction is:
 6. a scoped dirtiness sink is attached explicitly with `apply_dirt_sink(...)`
 7. final value binding and final dirty binding happen at a distinct `evaluate(...)` step
 
+For callable selection specifically:
+
+- `single_call(...)` should take a `SlotCallFunctionProvider`
+- `slot_call(...)` should also take a `SlotCallFunctionProvider`
+- most compiler-emitted call sites should use a literal-function provider
+- dynamic callable/dirt cases should use a lambda-backed provider
+
 This is not a “dirty sink” model in the loose sense. The core abstraction is the slotted expression plus its call-site evaluators.
 
 ## Compiler-Inserted Names
@@ -149,6 +156,24 @@ Instead:
 - the semantic model remains `slot_expr`
 - the compiler may choose a simplified lowering shape for the single-call case
 - the runtime may choose a specialized implementation that avoids unnecessary lambda or object overhead
+
+For the callable side specifically, the dominant path should use a provider object rather than paired lambdas:
+
+- `LiteralFunctionProvider(func)` for direct callable references
+- `LambdaFunctionProvider(func_lambda, dirt_lambda)` for dynamic callable selection
+
+Compiler lowering rule:
+
+- prefer `LiteralFunctionProvider(...)` by default
+- emit `LiteralFunctionProvider(func_ref)` when the lowered call target is a direct, stable callable reference already identified by the compiler as the slot-bearing target
+- emit `LambdaFunctionProvider(func_lambda, dirt_lambda)` only when callable identity or callable dirt depends on dynamic lowered state and cannot be represented as one direct stable callable reference
+
+In other words:
+
+- direct recognized slot helpers should lower to `LiteralFunctionProvider(...)`
+- dynamic callable selection is the fallback, not the default
+
+This is important so the AST transform consistently gets the intended allocation optimization rather than treating both forms as equally normal.
 
 The key rule is:
 
@@ -252,7 +277,8 @@ Then:
 ```python
 .slot_call(
     call_slot_id_v1,
-    use_grip,
+    lambda: use_grip,
+    lambda: dm.use_grip,
     lambda: slot_params(STORE),
     lambda: slot_params_dirt(slot_ctx.literal(STORE).dirty),
 )
@@ -280,6 +306,21 @@ Memoization here should match `plain_call` semantics rather than merely skipping
 This is essential. Call sites must not execute eagerly in registration order.
 
 For the single-call fast path, the implementation may bypass parts of the general lambda-wrapper machinery internally, but it must preserve the same externally visible behavior as the general `slot_expr` model.
+
+For readability and allocation behavior, the single-call fast path should use the same provider surface as the general path:
+
+```python
+SlotExpr.single_call(
+    LiteralFunctionProvider(use_grip),
+    args_lambda,
+    dirt_args_lambda,
+)
+```
+
+The compiler should use that same rule here:
+
+- `single_call(LiteralFunctionProvider(...), ...)` for the normal direct-call case
+- `single_call(LambdaFunctionProvider(...), ...)` only for genuinely dynamic callable identity/dirt cases
 
 ## Expression Transform
 
@@ -328,8 +369,8 @@ slot_ctx
         lambda a, b: a.eval() + b.eval(),
         lambda a, b: a.dirty() or b.dirty(),
     )
-    .slot_call(call_slot_id_a, use_grip, lambda: slot_params(A), lambda: slot_params_dirt(dm.A))
-    .slot_call(call_slot_id_b, use_grip, lambda: slot_params(B), lambda: slot_params_dirt(dm.B))
+    .slot_call(call_slot_id_a, lambda: use_grip, lambda: dm.use_grip, lambda: slot_params(A), lambda: slot_params_dirt(dm.A))
+    .slot_call(call_slot_id_b, lambda: use_grip, lambda: dm.use_grip, lambda: slot_params(B), lambda: slot_params_dirt(dm.B))
 ```
 
 ## Nested Extraction
@@ -739,23 +780,38 @@ That way the runtime can update dirtiness in a way that matches:
 - return shape
 - final assigned target names
 
-Each `slot_call(...)` therefore needs both:
+Each `slot_call(...)` therefore needs:
 
+- a function provider
 - a lazy value-parameter lambda
 - a lazy dirty-parameter lambda
 
 Conceptually:
 
 ```python
-.slot_call(call_id, func, args_lambda, dirt_args_lambda)
+.slot_call(call_id, func_provider, args_lambda, dirt_args_lambda)
 ```
 
 where:
 
+- `func_provider.get_func(...)` produces the callable to invoke
+- `func_provider.get_dirty(...)` produces the dirtiness of the callable binding itself
 - `args_lambda` produces the value-side bound call parameters
 - `dirt_args_lambda` produces the corresponding dirty-side parameter mapping
 
-This keeps value and dirt routing paired at the call-site boundary.
+This keeps function/value/dirt routing paired at the call-site boundary.
+
+Callable dirt should only be evaluated if the runtime has not already decided it must invoke for another reason.
+
+That means the runtime should first check:
+
+- missing binding
+- changed callable identity
+- changed value args
+- changed value kwargs
+- dirty value parameters
+
+Only if none of those require invocation should it evaluate `func_dirt_lambda()` and use that as a final reinvocation trigger.
 
 `slot_params_dirt(...)` should mirror the normal parameter binding shape exactly.
 
@@ -788,7 +844,8 @@ value = (
     )
     .slot_call(
         "v1",
-        use_grip,
+        lambda: use_grip,
+        lambda: dm.use_grip,
         lambda: slot_params(STORE),
         lambda: slot_params_dirt(dm.__pyr_literal()),
     )
@@ -813,7 +870,8 @@ val, func = (
     )
     .slot_call(
         "v1",
-        use_state,
+        lambda: use_state,
+        lambda: dm.use_state,
         lambda: slot_params(3),
         lambda: slot_params_dirt(dm.__pyr_literal()),
     )

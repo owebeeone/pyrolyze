@@ -32,13 +32,14 @@ Those remain unsupported in Phase 1 of the design.
 
 ## High-Level Strategy
 
-The migration should be done in four phases:
+The migration should be done in staged phases:
 
 1. build the new runtime structures independently of the current compiler/lowering
-2. complete the lifecycle/handler parity work for `SlotExpr`
-3. move dirt handling onto the new dirt manager first
-4. move slot-bearing expression lowering from `plain_call` to `SlotExpr`
-5. remove `plain_call` completely
+2. complete the first runtime-parity layer for `SlotExpr`
+3. finish the remaining `plain_call` parity gaps
+4. move dirt handling onto the new dirt manager first
+5. move slot-bearing expression lowering from `plain_call` to `SlotExpr`
+6. remove `plain_call` completely
 
 The key constraint is:
 
@@ -53,6 +54,7 @@ The new runtime surface should include at least:
 - `DM`
 - `SlotExpr`
 - memoized `slot_call` evaluators
+- function providers for callable value/dirt
 - unevaluated/clean-shape support
 - optional single-call fast-path support within the `SlotExpr` model
 - use of the existing slot-context literal surface for constant/global dirt
@@ -102,7 +104,8 @@ Required behaviors:
 `SlotExpr` should provide:
 
 - `slot_expr(value_lambda, dirty_lambda)`
-- `.slot_call(call_id, func, args_lambda, dirt_args_lambda)`
+- `.slot_call(call_id, func_provider, args_lambda, dirt_args_lambda)`
+- `single_call(func_provider, args_lambda, dirt_args_lambda)`
 - `.apply_dirt_sink(dm_or_sink)`
 - `.evaluate(*names)`
 
@@ -110,6 +113,8 @@ Required behaviors:
 
 - per-call-site memoization
 - lazy evaluation
+- callable dirt support through the function provider
+- callable dirt is only evaluated if no other reinvocation reason already applies
 - `dirty()` must not force unevaluated branches
 - same structural shape for `eval()` and `dirty()`
 - one output name stores the full dirty structure
@@ -207,6 +212,10 @@ Suggested files:
 - `int(use_grip(STORE) or 0)` shape
 - bare `value = use_grip(STORE)` through the single-call fast path
 - fast-path single-call semantics match the general `slot_expr` path exactly
+- literal function provider is the common fast path
+- lambda-backed function provider supports dynamic callable dirt
+- stable inputs do not reinvoke the callable
+- dirty function binding reinvokes even when args are stable
 - direct scalar `slot_expr(...).evaluate("value")`
 - single output name binds full dirty result under one name
 
@@ -216,6 +225,7 @@ Suggested files:
 - `use_grip(A) and use_grip(B)`
 - `use_grip(A) or use_grip(B)`
 - tuple/list/dict value construction from multiple slot calls
+- callable dirt can be supplied independently of value-arg dirt
 
 #### SlotExpr tests: lazy control flow
 
@@ -245,6 +255,8 @@ Suggested files:
 - rerender with unchanged inputs yields clean scalar dirt
 - rerender with unchanged tuple result yields clean tuple dirt of same shape
 - rerender with skipped branch preserves clean shape
+- external stores do not refresh without notification
+- external stores refresh without reinvocation after notification
 
 #### SlotExpr tests: component-style argument boundaries
 
@@ -258,6 +270,21 @@ Suggested files:
 - subscript write followed by dirt lookup
 - structural updates propagate dirt in parallel with value updates
 
+#### SlotExpr tests: handler parity and callable dirt
+
+- plain value handler reinvokes when function dirt is true
+- external store handler reinvokes source when function dirt is true
+- use-effect handler reinvokes source when function dirt is true
+- async-effect handler reinvokes source when function dirt is true
+- mount-advert handler reinvokes source when function dirt is true
+
+#### Compiler-lowering tests for provider choice
+
+- direct recognized slot-helper calls lower to `LiteralFunctionProvider(...)`
+- dynamic callable identity lowers to `LambdaFunctionProvider(...)`
+- dynamic callable dirt lowers to `LambdaFunctionProvider(...)`
+- ordinary direct calls do not lower to `LambdaFunctionProvider(...)` accidentally
+
 ### Phase A Completion Gate
 
 Phase A is complete when:
@@ -266,21 +293,37 @@ Phase A is complete when:
 - no compiler lowering has been changed yet
 - the runtime API feels stable enough to target from the AST transformer
 
-## Phase AA: Lifecycle And Handler Parity
+Phase A does not include:
+
+- shared `plain_call` handler extraction/reuse
+- staged lifecycle/handler parity
+- callable-dirt parity
+- real call-site `SlotId`
+- `invoke_dirty` parity
+- `PlainCallRuntimeContext` parity
+
+## Phase AA: Runtime Lifecycle And Handler Parity
 
 ### Goal
 
-Bring `SlotExpr`/`SlotCallEvaluator` up to the full lifecycle semantics currently carried by `plain_call`.
+Bring `SlotExpr`/`SlotCallEvaluator` up to the first runtime-parity layer needed before compiler migration starts.
+
+This phase is intentionally larger than Phase A and captures the work that should not be claimed as part of the initial foundations checkpoint.
 
 ### Deliverables
 
 - staged per-pass `SlotExpr` commit/rollback behavior
 - staged deactivation of previously-live but now-unvisited call sites
 - extraction or reuse of the `plain_call` handler/binding infrastructure from `runtime/context.py`
-- call-site identity carried as a real compiler-generated `SlotId`
-- memoization behavior matching `plain_call` semantics, including refresh-without-reinvoke for external stores
-- registration/deactivation pairing on commit boundaries
-- avoidance of unnecessary retained raw-result references
+- memoization behavior matching `plain_call` semantics for:
+  - stable-input elision
+  - dirty-arg reinvocation
+  - callable-dirt reinvocation
+  - external-store refresh without reinvocation after notification
+- provider-based callable optimization:
+  - `LiteralFunctionProvider`
+  - `LambdaFunctionProvider`
+- runtime tests covering handler parity and callable dirt
 
 ### Phase AA Tests
 
@@ -312,31 +355,100 @@ Suggested additions to:
 
 - plain value handler parity
 - external store handler parity:
-  - refresh without reinvoking original callable
-  - deactivate when unreachable after commit
+  - no reinvoke on stable inputs
+  - no refresh without notification
+  - refresh without reinvoking original callable after notification
 - use effect handler parity:
-  - staged activation
-  - staged deactivation when unreachable
-- async effect handler parity
-- mount advertisement handler parity
+  - post-commit run
+  - cleanup on deactivation
+- async effect handler parity:
+  - post-commit start
+  - cancellation on deactivation
+- mount advertisement handler parity:
+  - publish on commit
+  - withdraw on deactivation
+
+#### Callable-dirt and provider tests
+
+- stable inputs do not reinvoke the callable
+- callable dirt reinvokes even when args are stable
+- literal function provider is the common fast path
+- lambda-backed function provider supports dynamic callable dirt
+- direct stable call sites do not accidentally use the lambda-backed provider
+
+### Phase AA Completion Gate
+
+Phase AA is complete when:
+
+- `SlotExpr` reuses the shared handler family instead of a local duplicate
+- handler-family parity is green in direct runtime tests
+- staged commit/rollback behavior is verified
+- callable-dirt support is green in direct runtime tests
+- provider optimization is implemented and covered by tests
+
+## Phase AB: Remaining Plain-Call Parity Gaps
+
+### Goal
+
+Finish the remaining `plain_call` parity items that go beyond the first runtime-parity layer in Phase AB.
+
+### Deliverables
+
+- call-site identity carried as a real compiler-generated `SlotId`
+- `invoke_dirty` parity
+- `PlainCallRuntimeContext` parity or an explicit documented replacement
+- real runtime host integration for invalidation and mount-advert publication if Phase AB still uses local host shims
+- registration/deactivation pairing on commit boundaries
+- avoidance of unnecessary retained raw-result references
+
+### Phase AB Tests
+
+Suggested additions to:
+
+- `pyrolyze/tests/test_runtime_slot_expr.py`
+- optional: `pyrolyze/tests/test_runtime_slot_expr_lifecycle.py`
+
+#### Reachability and deactivation tests
+
+- `use_grip(A) or use_grip(B)`:
+  - first pass reaches `B`
+  - second pass skips `B`
+  - `B` deactivates only after successful commit
+- `use_grip(A) and use_grip(B)`:
+  - symmetric reachability behavior
+- `any((use_grip(A), use_grip(B)))`:
+  - both call sites remain reachable every pass
+- explicit `if`/assignment form equivalent to the short-circuit version matches liveness semantics
+
+#### Exception and staging tests
+
+- one call site evaluates, later expression step raises
+- staged dirty bindings are not committed
+- staged deactivations are not committed
+- previously committed call-site state remains intact
 
 #### Call-site identity tests
 
 - each `slot_call` carries a persistent call-site `SlotId`
 - evaluator parameter name changes do not change runtime identity
 
+#### Remaining plain-call parity tests
+
+- `invoke_dirty` forces reinvocation in `SlotExpr`
+- runtime-context injection parity for callables that request it
+- local host shim removal or explicit proof it is equivalent where retained
+
 #### Registration pairing tests
 
 - no committed registration without later possible deactivation
 - lifecycle changes appear only after successful commit
 
-### Phase AA Completion Gate
+### Phase AB Completion Gate
 
-Phase AA is complete when:
+Phase AB is complete when:
 
-- `SlotExpr` lifecycle semantics match `plain_call` for the handler families in scope
-- reachability/deactivation semantics are covered by runtime tests
-- staged commit/rollback behavior is verified
+- the remaining semantic gaps relative to `plain_call` are closed or explicitly documented as intentional differences
+- call-site identity/invoke-dirty/runtime-context behavior is covered by tests
 - the runtime surface is trustworthy enough to begin compiler migration
 
 ## Phase B: Move Dirt Handling To DM First
@@ -552,3 +664,11 @@ The key discipline in this plan is:
 - then remove the old path
 
 That keeps the redesign technically testable at every stage instead of trying to swap the entire compiler/runtime contract at once.
+Callable provider selection rule for compiler lowering:
+
+- `LiteralFunctionProvider(...)` is the default and expected lowering
+- use `LiteralFunctionProvider(func_ref)` when the compiler already knows the slot-bearing callable as one direct stable reference
+- use `LambdaFunctionProvider(func_lambda, dirt_lambda)` only when callable identity or callable dirt depends on dynamic lowered state
+- do not emit `LambdaFunctionProvider(...)` for ordinary direct slot-helper calls just because it is more general
+
+This rule should be treated as part of the optimization contract, not as an optional implementation detail.
