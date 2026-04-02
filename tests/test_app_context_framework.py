@@ -6,6 +6,7 @@ from typing import Callable
 import pytest
 
 from pyrolyze.api import CallFromNonPyrolyzeContext, ComponentMetadata, pyrolyze_component_ref
+from pyrolyze.api import UIElement
 from pyrolyze.runtime import (
     AppContextKey,
     AppContextStore,
@@ -232,4 +233,38 @@ def test_generation_tracker_is_shared_and_advances_on_committed_boundary_reruns(
         ("value", "cold"),
         ("generation", 2),
         ("value", "warm"),
+    ]
+
+
+def test_container_component_context_shares_app_context() -> None:
+    key = AppContextKey("shared.container", factory=lambda host_app: SharedState(values=[f"host:{host_app}"]))
+
+    def __pyr_child(child_ctx: RenderContext, __pyr_dirty_state: DirtyStateContext, label: str) -> None:
+        _ = __pyr_dirty_state
+        with child_ctx.pass_scope():
+            child_ctx.get_app_context(key).values.append(f"container:{label}")
+            child_ctx.call_native(
+                UIElement,
+                kind="container_child",
+                props={"label": label},
+            )
+
+    @pyrolyze_component_ref(ComponentMetadata("container_child", __pyr_child))
+    def child(label: str) -> None:
+        raise CallFromNonPyrolyzeContext("container_child")
+
+    ctx = RenderContext(app_context_store=AppContextStore(host_app="APP"))
+
+    with ctx.pass_scope():
+        with ctx.container_call(
+            _COMPONENT_SLOT,
+            child,
+            "gamma",
+            dirty_state=dirtyof(label=True),
+        ):
+            pass
+
+    assert ctx.get_app_context(key).values == [
+        "host:APP",
+        "container:gamma",
     ]

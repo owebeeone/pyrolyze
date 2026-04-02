@@ -20,7 +20,6 @@ Active:
 
 Remaining:
 
-- Phase CA
 - Phase D
 
 The goal is to replace the current slot-bearing `plain_call` model with:
@@ -59,10 +58,57 @@ The migration should be done in staged phases:
 4. finish the remaining identity and host-integration parity gaps
 5. move dirt handling onto the new dirt manager first
 6. move slot-bearing expression lowering from `plain_call` to `SlotExpr`
-7. close the remaining Phase 5 annotated-lookup `ComponentRef` lowering gap
-8. remove `plain_call` completely
+7. remove `plain_call` completely
 
-The key constraint is:
+### ComponentRef Follow-On Work
+
+The remaining annotated local `ComponentRef` lowering gap is no longer part of
+the slot-call migration plan.
+
+That work has moved to:
+
+- `dev-docs/ASTFixesForComponentCall.md`
+- `dev-docs/ASTFixesForComponentCallPlan.md`
+
+The moved work covers dynamic annotated local `ComponentRef` calls, for example:
+
+```python
+emit: ComponentRef[[str], None] = EMITTERS["leaf"]
+emit(label=label)
+```
+
+The compiler should not try to recover formal parameter names from the annotation. Instead it should:
+
+- preserve value arguments in an `Args`-shaped carrier
+- preserve parallel dirt in `__pyr_dyn_dirty_args`
+- defer parameter-name resolution to runtime metadata on the `ComponentRef`
+- keep using the existing `leaf_call(...)` / `container_call(...)` runtime surfaces
+
+Conceptually:
+
+```python
+__pyr_ctx.leaf_call(
+    __pyr_slot_1,
+    emit,
+    label=label,
+    __pyr_dyn_dirty_args=__pyr_Args.capture(label=__pyr_dm.bind.label),
+)
+```
+
+That follow-on plan uses the same runtime ideas already introduced here:
+
+- `Args`
+- `__pyr_dyn_dirty_args`
+- runtime metadata on `ComponentRef`
+
+Then runtime should:
+
+- read `_pyrolyze_meta`
+- recover parameter names and component kind
+- build the correct callee dirty state
+- continue through the existing `leaf_call(...)` or `container_call(...)` machinery
+
+The key constraint remains:
 
 - do not start by rewriting the compiler to the new model
 - first make the new runtime model directly testable without AST transformation

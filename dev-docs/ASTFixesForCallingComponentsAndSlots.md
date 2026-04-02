@@ -117,9 +117,11 @@ emit(kwds={"label": label})
 The chosen solution for indirect `ComponentRef` calls is:
 
 - keep the current static path for direct named component calls
-- add a dynamic fallback path for valid `ComponentRef` calls whose parameter names cannot be resolved statically
+- keep using the existing `leaf_call(...)` / `container_call(...)` runtime surfaces
+- add a dynamic dirty-args path for valid `ComponentRef` calls whose parameter names cannot be resolved statically
 
 This is preferred over trying to infer parameter names from `ComponentRef[[...]]` annotations, because those annotations carry argument types, not source parameter names.
+It also avoids runtime `inspect.signature(...)` work, because `ComponentRef` values already carry `_pyrolyze_meta`, and that metadata should be the authoritative source of parameter names and component kind.
 
 ### Trigger
 
@@ -128,48 +130,53 @@ If Phase 5 sees:
 - a call through a local/name typed as `ComponentRef[...]`
 - but `state.component_param_names` has no entry for that name
 
-then it should lower to a runtime helper instead of raising `PYR-E-PHASE5-COMPONENT-CALL`.
+then it should lower to the existing component call path with dynamic dirty args instead of raising `PYR-E-PHASE5-COMPONENT-CALL`.
 
 ### Lowering shape
 
-Conceptually:
+Conceptually, for a leaf component call:
 
 ```python
-__pyr_ctx.component_call_dynamic(
-    slot_id=__pyr_slot_1,
-    component_ref=emit,
-    args=(),
-    kwargs={"label": label},
-    dirty_kwargs={"label": __pyr_dirty_state.label},
+__pyr_ctx.leaf_call(
+    __pyr_slot_1,
+    emit,
+    label=label,
+    __pyr_dyn_dirty_args=__pyr_Args.capture(label=__pyr_dm.bind.label),
 )
 ```
 
 or for packed kwargs:
 
 ```python
-__pyr_ctx.component_call_dynamic(
-    slot_id=__pyr_slot_1,
-    component_ref=emit,
-    args=(),
-    kwargs={"kwds": {"label": label}},
-    dirty_kwargs={"kwds": __pyr_dirtyof(label=__pyr_dirty_state.label)},
+__pyr_ctx.leaf_call(
+    __pyr_slot_1,
+    emit,
+    kwds={"label": label},
+    __pyr_dyn_dirty_args=__pyr_Args.capture(
+        kwds={"label": __pyr_dm.bind.label},
+    ),
 )
 ```
 
 Exact helper signature is flexible, but the important part is:
 
-- compiler preserves slot id and dirty information
-- runtime resolves the callable signature
+- compiler preserves slot id and dirt information
+- compiler passes dynamic dirt as an `Args`-shaped parallel carrier
+- runtime resolves parameter names and component kind from `ComponentRef._pyrolyze_meta`
+- runtime builds the callee dirty state from metadata plus `__pyr_dyn_dirty_args`
 
 ### Runtime resolution
 
-The helper should:
+The existing `leaf_call(...)` / `container_call(...)` machinery should:
 
-1. inspect the component ref runtime object
-2. prefer `_pyrolyze_meta` / known component metadata when available
-3. otherwise fall back to `inspect.signature(...)`
-4. recover ordered parameter names
-5. dispatch through existing component-call machinery
+1. read `_pyrolyze_meta` from the runtime `ComponentRef`
+2. recover:
+   - component kind (`leaf` vs `container`)
+   - ordered parameter names
+3. map runtime `Args` + `kwargs` onto those parameter names
+4. map `__pyr_dyn_dirty_args` onto those same parameter names
+5. construct the correct callee dirty state object
+6. dispatch through the existing `leaf_call` / `container_call` machinery
 
 This should support:
 
@@ -178,10 +185,118 @@ This should support:
 - callable objects / functors
 - class constructor-like callables where that is already valid in runtime
 
+It should not require Python signature inspection in the normal `ComponentRef` path. All supported `ComponentRef` values should already have the needed metadata through `pyrolyze_component_ref(...)`.
+
+### Why names are needed
+
+The key problem is not ordinary Python invocation. The runtime already knows how to call a function with positional and keyword arguments.
+
+The missing piece is dirty-state construction.
+
+For dynamic `ComponentRef` calls, `leaf_call(...)` and `container_call(...)` need to know which dirt flag belongs to which formal parameter name so they can build the callee dirty state correctly.
+
+That is why the dynamic fallback should pass:
+
+- normal value arguments
+- parallel `__pyr_dyn_dirty_args`
+
+instead of trying to pre-build a statically shaped dirty-state object in the compiler.
+
+### Dynamic dirty transport
+
+For dynamic `ComponentRef` calls, the compiler should preserve the current value-side argument structure and add a parallel `__pyr_dyn_dirty_args` carrier.
+
+Conceptually:
+
+```python
+emit: ComponentRef[[str, int], None] = EMITTERS["leaf"]
+emit(formatted_text, maxwidth=width)
+```
+
+lowers roughly to:
+
+```python
+__pyr_ctx.leaf_call(
+    __pyr_slot_1,
+    emit,
+    formatted_text,
+    maxwidth=width,
+    __pyr_dyn_dirty_args=__pyr_Args.capture(
+        __pyr_dm.bind.formatted_text,
+        maxwidth=__pyr_dm.bind.width,
+    ),
+)
+```
+
+At runtime:
+
+- metadata provides the formal parameter names
+- value args bind to those names
+- `__pyr_dyn_dirty_args` binds to those same names
+- the runtime builds the real callee dirty-state object from that mapping
+
+### Leaf and container dispatch
+
+There are currently two `ComponentRef` call families:
+
+- leaf
+- container
+
+The dynamic helper should use metadata to decide which path to take.
+
+Leaf example:
+
+```python
+emit: ComponentRef[[str], None] = EMITTERS["leaf"]
+emit(label)
+```
+
+lowers roughly to:
+
+```python
+__pyr_ctx.leaf_call(
+    __pyr_slot_1,
+    emit,
+    label,
+    __pyr_dyn_dirty_args=__pyr_Args.capture(__pyr_dm.bind.label),
+)
+```
+
+Container example:
+
+```python
+wrap: ComponentRef[[str], None] = CONTAINERS["card"]
+wrap(title, children=body)
+```
+
+lowers roughly to:
+
+```python
+__pyr_ctx.container_call(
+    __pyr_slot_1,
+    wrap,
+    title,
+    children=body,
+    __pyr_dyn_dirty_args=__pyr_Args.capture(
+        __pyr_dm.bind.title,
+        children=__pyr_dm.bind.body,
+    ),
+)
+```
+
+Then runtime:
+
+- reads `_pyrolyze_meta`
+- resolves parameter names
+- builds the correct dirty state
+- continues through the existing `leaf_call(...)` or `container_call(...)` path
+
 ### Why this is the chosen solution
 
 - handles dict lookups and other indirect refs naturally
 - avoids overloading `ComponentRef[[...]]` annotations with information they do not actually contain
+- uses existing `_pyrolyze_meta` instead of runtime signature inspection
+- keeps dirty-state construction where it belongs: inside the existing leaf/container runtime boundary
 - matches the intended dynamic function-table use case
 - keeps the static path fast for direct component refs
 
@@ -253,9 +368,9 @@ However, the current failing `use_grip(...) or fallback` case does always evalua
 1. Teach Phase 5 to distinguish:
    - direct named component calls with known parameter names
    - indirect `ComponentRef` calls with unresolved parameter names
-2. Add runtime helper, for example `component_call_dynamic(...)`.
-3. Lower unresolved-but-valid `ComponentRef` calls to that helper instead of raising.
-4. Reuse existing component child bookkeeping once runtime signature resolution succeeds.
+2. Extend `leaf_call(...)` / `container_call(...)` to accept dynamic dirty args.
+3. Lower unresolved-but-valid `ComponentRef` calls to those existing helpers instead of raising.
+4. Reuse existing component child bookkeeping once runtime metadata resolution succeeds.
 
 ### Part 2: Slotted Expression Hoisting
 

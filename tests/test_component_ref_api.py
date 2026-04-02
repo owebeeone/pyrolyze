@@ -35,6 +35,18 @@ def test_component_ref_decorator_attaches_metadata_and_preserves_function_object
     meta = decorated._pyrolyze_meta
     assert meta.name == "neutral_badge"
     assert meta._func is _runtime_neutral_badge
+    assert meta.param_names == ("text",)
+
+
+def test_component_ref_decorator_populates_param_names_from_original_signature() -> None:
+    def runtime_impl(ctx: object, dirty_state: object, text: object, *, tone: object = None) -> None:
+        del ctx, dirty_state, text, tone
+
+    @pyrolyze_component_ref(ComponentMetadata("badge", runtime_impl))
+    def badge(text: str, *, tone: str = "info") -> None:
+        raise CallFromNonPyrolyzeContext("badge")
+
+    assert badge._pyrolyze_meta.param_names == ("text", "tone")
 
 
 def test_component_ref_direct_call_raises_plain_python_exception() -> None:
