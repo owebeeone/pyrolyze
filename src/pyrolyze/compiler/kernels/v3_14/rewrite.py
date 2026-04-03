@@ -702,15 +702,6 @@ def _lower_container_with(statement: ast.With, *, state: _LoweringState) -> list
 
     slot_index, slot_name, slot_setup = state.next_slot_id(reason=statement)
     context_expr = cast(ast.Call, item.context_expr)
-    if _is_mount_call(context_expr, state=state):
-        return _lower_mount_with(
-            statement,
-            slot_index=slot_index,
-            slot_name=slot_name,
-            slot_setup=slot_setup,
-            call=context_expr,
-            state=state,
-        )
     if _is_app_context_override_call(context_expr):
         return _lower_app_context_override_with(
             statement,
@@ -2581,7 +2572,11 @@ def _is_pyrolyze_sensitive_call(call: ast.Call, *, state: _LoweringState) -> boo
 
 def _is_container_candidate_call(call: ast.Call, *, state: _LoweringState) -> bool:
     call_name = _call_name(call)
-    return call_name is not None and _callable_kind_for_name(call_name, state=state) == _CALLABLE_KIND_COMPONENT_REF
+    if call_name is None:
+        return False
+    if call_name in state.mount_helper_names:
+        return True
+    return _callable_kind_for_name(call_name, state=state) == _CALLABLE_KIND_COMPONENT_REF
 
 
 def _is_mount_call(call: ast.Call, *, state: _LoweringState) -> bool:

@@ -176,11 +176,16 @@ def validate_mount_selectors(*selectors: SlotSelector) -> tuple[SlotSelector, ..
     return selectors
 
 
-def mount(*selectors: SlotSelector) -> object:
+def mount(
+    *selectors: SlotSelector,
+    runtime: "ContainerCallRuntimeContext" = None,
+) -> object:
     validate_mount_selectors(*selectors)
-    raise CallFromNonPyrolyzeContext(
-        "mount() may only be used inside a transformed @pyrolyze function"
-    )
+    if runtime is None:
+        raise CallFromNonPyrolyzeContext(
+            "mount() may only be used inside a transformed @pyrolyze function"
+        )
+    return runtime.open_directive(*selectors)
 
 
 class _AppContextOverrideSpecialForm:

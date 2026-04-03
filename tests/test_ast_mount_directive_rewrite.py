@@ -5,7 +5,7 @@ from pyrolyze.compiler import emit_transformed_source, load_transformed_namespac
 from pyrolyze.runtime import RenderContext, dirtyof
 
 
-def test_mount_with_lowers_to_open_directive_and_emits_mount_directive_tree() -> None:
+def test_mount_with_lowers_to_container_call_and_emits_mount_directive_tree() -> None:
     source = """
 from pyrolyze.api import MountSelector, UIElement, call_native, default, mount, pyrolyze
 
@@ -31,10 +31,10 @@ def panel(show_inner):
         filename="/virtual/example/mount/panel.py",
     )
 
-    assert "with __pyr_ctx.open_directive(" in transformed
-    assert "__pyr_validate_mount_selectors" in transformed
-    assert transformed.count("open_directive(") == 2
-    assert ".container_call(" not in transformed
+    assert ".container_call(" in transformed
+    assert transformed.count("container_call(") == 2
+    assert "open_directive(" not in transformed
+    assert "__pyr_validate_mount_selectors" not in transformed
 
     namespace = load_transformed_namespace(
         source,
@@ -88,7 +88,7 @@ def panel(sels):
         filename="/virtual/example/mount/splat_panel.py",
     )
 
-    assert "open_directive(" in transformed
+    assert "container_call(" in transformed
     assert "*sels" in transformed
 
     namespace = load_transformed_namespace(

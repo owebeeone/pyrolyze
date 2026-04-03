@@ -259,6 +259,21 @@ class SlotRuntimeContext:
         return self.slot.slot_id
 
 
+@dataclass(frozen=True, slots=True)
+class ContainerCallRuntimeContext:
+    slot: DirectiveSlotContext
+
+    def open_directive(self, *selectors: SlotSelector) -> _DirectiveCallHandle:
+        from pyrolyze.api import validate_mount_selectors
+
+        return _DirectiveCallHandle(
+            slot=self.slot,
+            directive_fn=validate_mount_selectors,
+            args=selectors,
+            kwargs={},
+        )
+
+
 @dataclass(slots=True)
 class _SlotExprHostSlotProxy:
     slot_id: SlotId
@@ -526,8 +541,21 @@ class ContextBase:
         **kwargs: CompValue[Any] | Any,
     ) -> _ContainerCallHandle:
         self._require_active_scope()
-        slot = self._ensure_slot(slot_id, ContainerSlotContext)
         raw_container_fn, _ = _unwrap(container_fn)
+        mount_context_param = _container_runtime_context_param_name(cast(Callable[..., Any], raw_container_fn))
+        if mount_context_param is not None:
+            raw_args = tuple(_unwrap(arg)[0] for arg in args)
+            raw_kwargs = {key: _unwrap(value)[0] for key, value in kwargs.items()}
+            slot = self._ensure_slot(slot_id, DirectiveSlotContext)
+            return _MountContainerCallHandle(
+                slot=slot,
+                container_fn=cast(Callable[..., Any], raw_container_fn),
+                args=raw_args,
+                kwargs=raw_kwargs,
+                context_param=mount_context_param,
+            )
+
+        slot = self._ensure_slot(slot_id, ContainerSlotContext)
         metadata, bound_receiver = _component_call_key(raw_container_fn)
         runtime_func = _resolve_runtime_component_func(getattr(metadata, "_func", None))
         if metadata is not None and runtime_func is not None:
@@ -927,6 +955,14 @@ def _native_context_param_name(func: Callable[..., Any]) -> str | None:
 
     _write_callable_annotation_cache(func, _NATIVE_CONTEXT_PARAM_ATTR, found_name)
     return found_name
+
+
+def _container_runtime_context_param_name(func: Callable[..., Any]) -> str | None:
+    return runtime_context_param_name(
+        func,
+        cache_attr_name="_pyrolyze_container_runtime_ctx_param",
+        runtime_context_annotation=ContainerCallRuntimeContext,
+    )
 
 
 def _callback_key(callback: Callable[..., Any]) -> object:
@@ -1964,6 +2000,39 @@ class _DirectiveCallHandle(AbstractContextManager[DirectiveSlotContext]):
                 _finish_context_pass(self.slot, commit=False)
             raise
         return False
+
+
+@dataclass(slots=True)
+class _MountContainerCallHandle(AbstractContextManager[DirectiveSlotContext]):
+    slot: DirectiveSlotContext
+    container_fn: Callable[..., Any]
+    args: tuple[Any, ...]
+    kwargs: dict[str, Any]
+    context_param: str
+    _host_context: Any = None
+
+    def __enter__(self) -> DirectiveSlotContext:
+        bound_args = tuple(_bind_pending_event_plain_value(self.slot, value) for value in self.args)
+        bound_kwargs = {
+            key: _bind_pending_event_plain_value(self.slot, value)
+            for key, value in self.kwargs.items()
+        }
+        if self.context_param not in bound_kwargs:
+            bound_kwargs[self.context_param] = ContainerCallRuntimeContext(self.slot)
+        self._host_context = self.container_fn(*bound_args, **bound_kwargs)
+        host_enter = getattr(self._host_context, "__enter__", None)
+        if not callable(host_enter):
+            raise TypeError("mount() container helpers must return a context manager")
+        entered = host_enter()
+        if isinstance(entered, DirectiveSlotContext):
+            return entered
+        return self.slot
+
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
+        host_exit = getattr(self._host_context, "__exit__", None)
+        if not callable(host_exit):
+            raise RuntimeError("mount() container helper host context is missing __exit__")
+        return bool(host_exit(exc_type, exc, tb))
 
 
 @dataclass(slots=True)

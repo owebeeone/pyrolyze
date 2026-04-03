@@ -14,6 +14,13 @@ from .slot_call_semantics import (
 _CALLABLE_CACHE_MISSING = object()
 
 
+def _normalize_annotation_name(annotation: Any) -> Any:
+    annotation_name = getattr(annotation, "__forward_arg__", annotation)
+    if isinstance(annotation_name, str):
+        return annotation_name.strip("'\"")
+    return annotation_name
+
+
 def _read_callable_annotation_cache(func: Callable[..., Any], attr_name: str) -> object:
     try:
         return getattr(func, attr_name)
@@ -50,7 +57,7 @@ def runtime_context_param_name(
     else:
         for parameter in signature.parameters.values():
             annotation = parameter.annotation
-            annotation_name = getattr(annotation, "__forward_arg__", annotation)
+            annotation_name = _normalize_annotation_name(annotation)
             if annotation is runtime_context_annotation or annotation_name == runtime_context_annotation.__name__:
                 if found_name is not None:
                     raise TypeError("slot-call runtime context injection supports only one annotated parameter")
