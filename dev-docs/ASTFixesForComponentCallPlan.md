@@ -181,6 +181,233 @@ The following should be deleted by the end of this plan:
 
 ## Execution Plan
 
+### Phase A0: Introduce Runtime Container/Mount Dispatch
+
+Goal:
+- make containerization vs mount emission a runtime decision independent of the old `component_call(...)` path
+
+Rationale:
+- `with CF(...):` is the only compiler-visible container form
+- runtime must decide whether the invoked callable:
+  - behaves like an ordinary container helper
+  - creates a retained child component boundary
+  - emits a `MountDirective`
+- a mount is structurally a kind of container, so the public compiler surface should still be only `container_call(...)`
+
+Runtime rule:
+- `container_call(...)` is the single runtime entry point for all `with ...:` calls
+- after invocation begins, runtime decides whether the result path is:
+  - native/container helper behavior
+  - retained `ComponentRef` child-boundary behavior
+  - `MountDirective` emission
+
+Important consequence:
+- `mount(...)` should not need a separate compiler-lowered `open_directive(...)` path once this seam exists
+- the runtime branch should be driven by callable contract and emitted-node behavior, not helper-name matching
+
+Changes:
+- define a runtime dispatch seam inside `container_call(...)` for:
+  - ordinary container helper
+  - `ComponentRef`
+  - `PyrolyzeMountFunction`
+- treat `MountDirective` as a runtime-emitted container outcome
+- leave `advertise_mount(...)` on the slot-call path
+  - it already resolves through `PyrolyzeMountAdvertisementRequest` -> `PyrolyzeMountAdvertisement`
+- keep this phase independent of removing `component_call(...)`
+  - the purpose is to create the runtime target first
+
+#### A0 Concrete Runtime Shape
+
+The current `container_call(...)` branch point in `runtime/context.py` is:
+
+1. `ComponentRef` / `_pyrolyze_meta` => `_PyrolyzeContainerCallHandle`
+2. native-context helper => `_NativeContainerCallHandle`
+3. ordinary helper => `_ContainerCallHandle`
+
+Phase A0 should replace this ad hoc split with one explicit dispatch function,
+for example conceptually:
+
+```python
+def _resolve_container_runtime_mode(raw_callable, *, args, kwargs, dirty_state):
+    ...
+```
+
+which returns one of:
+
+- `ContainerRuntimeMode.COMPONENT_REF`
+- `ContainerRuntimeMode.MOUNT`
+- `ContainerRuntimeMode.NATIVE_CONTAINER`
+- `ContainerRuntimeMode.PLAIN_CONTAINER`
+
+and a corresponding handle payload.
+
+The important design point is:
+
+- `container_call(...)` remains the only public/runtime entry point for `with ...:`
+- mode selection is entirely runtime-owned
+
+#### A0 Handle Strategy
+
+Do not try to invent unrelated public APIs.
+
+Instead:
+
+- keep `container_call(...) -> context manager handle`
+- preserve the existing handle pattern
+- unify dispatch behind a small number of internal handles
+
+Concretely:
+
+- `_PyrolyzeContainerCallHandle`
+  - retained child `ComponentRef` behavior
+- `_ContainerCallHandle`
+  - plain helper behavior
+- `_NativeContainerCallHandle`
+  - current native-context helper behavior
+- introduce one mount-specific handle only if needed, for example:
+  - `_MountContainerCallHandle`
+
+If the existing `DirectiveSlotContext` can be adapted cleanly, the mount handle
+may simply wrap that path at runtime instead of inventing a completely new slot type.
+
+The requirement is not “one handle only.” The requirement is:
+
+- one public entry surface
+- runtime-selected handle/behavior
+
+#### A0 Dispatch Order
+
+Dispatch should be explicit and stable.
+
+Recommended order:
+
+1. `ComponentRef`
+   - if `_component_call_key(...)` + runtime func resolution succeeds
+   - choose retained component-boundary handling
+
+2. `PyrolyzeMountFunction`
+   - if callable contract indicates mount
+   - choose runtime mount-directive handling
+
+3. native container helper
+   - if first parameter is a native/runtime context
+   - choose `_NativeContainerCallHandle`
+
+4. plain helper
+   - fallback `_ContainerCallHandle`
+
+Why this order:
+
+- `ComponentRef` is the strongest semantic contract
+- mount is a distinct runtime contract and should be recognized before generic native/plain helper fallback
+- native/plain fallback remains the last branch
+
+#### A0 Mount Runtime Behavior
+
+The mount path should emit `MountDirective` as a committed runtime result.
+
+Conceptually, runtime should do the equivalent of today’s `DirectiveSlotContext`
+without needing compiler-only `open_directive(...)`.
+
+That means the mount branch must own:
+
+- selector validation/normalization
+- retained mount slot identity
+- child-body capture
+- commit/rollback of the retained `MountDirective`
+
+So the mount handle must:
+
+1. enter a nested scope for the `with` body
+2. retain selectors for the call site
+3. on commit, publish:
+
+```python
+MountDirective(
+    selectors=...,
+    children=...,
+    slot_id=...,
+)
+```
+
+4. on rollback, restore the previous directive state
+
+#### A0 Relationship To Existing `DirectiveSlotContext`
+
+Phase A0 does not require deleting `DirectiveSlotContext` immediately.
+
+The lowest-risk implementation is:
+
+- preserve `DirectiveSlotContext` as the retained mount-state owner
+- stop requiring the compiler to call `open_directive(...)`
+- let `container_call(...)` runtime mount dispatch create/use a `DirectiveSlotContext` internally
+
+So A0 should be viewed as:
+
+- move mount selection into runtime
+- not necessarily rewrite the retained directive slot storage on the first pass
+
+That keeps the change scoped.
+
+#### A0 Relationship To `component_call(...)`
+
+This phase must not be blocked on removing `component_call(...)`.
+
+The deliverable is:
+
+- `container_call(...)` has a proper runtime dispatch seam for both:
+  - retained `ComponentRef`
+  - runtime mount
+
+Only after that should compiler emission stop targeting `component_call(...)`.
+
+That sequencing matters because it gives the compiler a real runtime target.
+
+#### A0 Implementation Sequence
+
+1. Introduce explicit runtime dispatch classification in `container_call(...)`.
+2. Add contract check for `PyrolyzeMountFunction`.
+3. Route mount contract to a runtime mount handle.
+4. Make that mount handle produce retained `MountDirective` output using existing directive slot machinery where possible.
+5. Add runtime tests for:
+   - plain container helper
+   - `with ComponentRef(...):`
+   - `with mount(...):`
+6. Only after those are green, begin changing compiler lowering.
+
+#### A0 Test Matrix
+
+Minimum new tests:
+
+- `test_runtime_container_call_dispatches_plain_container_helper`
+- `test_runtime_container_call_dispatches_component_ref`
+- `test_runtime_container_call_dispatches_mount_contract`
+- `test_runtime_mount_container_call_retains_mount_directive_on_rerender`
+- `test_runtime_mount_container_call_rolls_back_on_failure`
+
+Important assertions:
+
+- container mode is selected by runtime contract, not helper name
+- `MountDirective` appears in committed UI
+- rerender keeps mount slot identity stable
+- rollback restores previous committed directive state
+- advert bindings continue to flow through slot-call semantics, untouched by this change
+
+Tests:
+- runtime container-call tests that prove:
+  - ordinary container helpers still work
+  - `with ComponentRef(...):` still works through `container_call(...)`
+  - `with mount(...):` can emit `MountDirective` through runtime dispatch
+- emitted-node assertions remain:
+  - `UIElement`
+  - `MountDirective`
+  - `PyrolyzeMountAdvertisement`
+
+Completion gate:
+- runtime has one clear `container_call(...)` dispatch seam for containerization vs mount emission
+- mount behavior is representable as a runtime branch, not a compiler-only lowering trick
+- runtime tests prove retained `MountDirective` behavior through `container_call(...)`
+
 ### Phase 1: Introduce Runtime Contracts
 
 Goal:
@@ -252,6 +479,7 @@ Goal:
 - stop lowering `mount(...)` through a bespoke compiler-only path
 
 Changes:
+- rely on the runtime dispatch seam introduced in Phase A0
 - remove `_lower_mount_with(...)`
 - stop lowering mount through `open_directive(...)` from the compiler
 - lower `with mount(...):` through the same syntax-based container-call path used for other `with` forms
@@ -344,9 +572,10 @@ Tests:
 
 The safest first slice is:
 
-1. add `PyrolyzeMountFunction`
-2. update `mount(...)` to return it
-3. add `ComponentMetadata.param_names`
-4. add tests for the two contracts before changing compiler lowering
+1. add the Phase A0 runtime dispatch seam inside `container_call(...)`
+2. add `PyrolyzeMountFunction`
+3. update `mount(...)` to return it
+4. add `ComponentMetadata.param_names`
+5. add tests for those contracts before changing compiler lowering
 
 That gives a clear runtime/typing contract before removing the compiler’s helper-name and mount-special-case logic.
