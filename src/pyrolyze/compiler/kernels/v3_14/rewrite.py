@@ -2393,6 +2393,9 @@ def _collect_imported_annotated_symbols(
                             inspect.Parameter.POSITIONAL_OR_KEYWORD,
                             inspect.Parameter.KEYWORD_ONLY,
                         }
+                        and not _is_component_runtime_context_annotation(
+                            resolved_hints.get(parameter.name, parameter.annotation)
+                        )
                     )
                     component_event_params[local_name] = frozenset(
                         parameter.name
@@ -2403,6 +2406,9 @@ def _collect_imported_annotated_symbols(
                             inspect.Parameter.POSITIONAL_OR_KEYWORD,
                             inspect.Parameter.KEYWORD_ONLY,
                         }
+                        and not _is_component_runtime_context_annotation(
+                            resolved_hints.get(parameter.name, parameter.annotation)
+                        )
                         and _runtime_annotation_is_event_handler(
                             resolved_hints.get(parameter.name, parameter.annotation)
                         )
@@ -2495,6 +2501,10 @@ def _is_slot_runtime_context_annotation(annotation: Any) -> bool:
     return _runtime_annotation_matches(annotation, {"SlotRuntimeContext"})
 
 
+def _is_component_runtime_context_annotation(annotation: Any) -> bool:
+    return _runtime_annotation_matches(annotation, {"ContainerCallRuntimeContext"})
+
+
 def _is_slot_call_carrier_annotation(annotation: Any) -> bool:
     return _runtime_annotation_matches(
         annotation,
@@ -2564,8 +2574,6 @@ def _is_pyrolyze_sensitive_call(call: ast.Call, *, state: _LoweringState) -> boo
     call_name = _call_name(call)
     if call_name is None:
         return False
-    if call_name in state.mount_helper_names:
-        return True
     callable_kind = _callable_kind_for_name(call_name, state=state)
     return callable_kind in {_CALLABLE_KIND_COMPONENT_REF, _CALLABLE_KIND_SLOT_CALLABLE}
 
@@ -2574,8 +2582,6 @@ def _is_container_candidate_call(call: ast.Call, *, state: _LoweringState) -> bo
     call_name = _call_name(call)
     if call_name is None:
         return False
-    if call_name in state.mount_helper_names:
-        return True
     return _callable_kind_for_name(call_name, state=state) == _CALLABLE_KIND_COMPONENT_REF
 
 

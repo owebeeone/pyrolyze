@@ -176,6 +176,12 @@ def validate_mount_selectors(*selectors: SlotSelector) -> tuple[SlotSelector, ..
     return selectors
 
 
+def pyrolyze_intrinsic_ref(fn: Callable[P, None]) -> ComponentRef[P]:
+    setattr(fn, "_pyrolyze_meta", ComponentMetadata(fn.__name__, fn))
+    return cast(ComponentRef[P], fn)
+
+
+@pyrolyze_intrinsic_ref
 def mount(
     *selectors: SlotSelector,
     runtime: "ContainerCallRuntimeContext" = None,
