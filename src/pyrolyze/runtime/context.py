@@ -61,6 +61,17 @@ S = TypeVar("S", bound="SlotContext")
 
 @dataclass(frozen=True, slots=True)
 class CompValue(Generic[T]):
+    """Deprecated legacy value+dirty carrier.
+
+    Do not use this for new runtime or compiler work.
+
+    New code should prefer:
+    - raw values
+    - `DirtyStateContext`
+    - `DM`/slot_expr dirt plumbing
+    - explicit arg/dirty carriers
+    """
+
     value: T
     dirty: bool = False
 
