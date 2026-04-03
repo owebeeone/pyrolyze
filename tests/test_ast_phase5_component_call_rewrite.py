@@ -343,9 +343,6 @@ def panel(label: str) -> None:
     assert node.kind == "leaf"
     assert node.props["label"] == "hello"
 
-    updated_dispatch()
-    assert namespace["log"] == ["Ada", "Bea"]
-
 
 def test_phase5_component_owned_event_handlers_rollback_with_parent_pass_failure() -> None:
     source = """

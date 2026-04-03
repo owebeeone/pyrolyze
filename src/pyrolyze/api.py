@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace as dataclass_replace
+import inspect
 from typing import Annotated, Any, Callable, Generic, Iterable, Literal, ParamSpec, Protocol, TypeVar, cast
 
 from frozendict import frozendict
@@ -56,6 +57,7 @@ class ComponentMetadata(Generic[P]):
 
     name: str
     _func: Callable[..., None]
+    param_names: tuple[str, ...] = ()
     packed_kwargs: bool = False
     packed_kwarg_param_names: tuple[str, ...] = ()
 
@@ -291,7 +293,11 @@ def pyrolyze_component_ref(
     meta: ComponentMetadata[P],
 ) -> Callable[[Callable[P, None]], ComponentRef[P]]:
     def decorate(fn: Callable[P, None]) -> ComponentRef[P]:
-        setattr(fn, "_pyrolyze_meta", meta)
+        param_names = meta.param_names
+        if not param_names:
+            signature = inspect.signature(fn)
+            param_names = tuple(signature.parameters)
+        setattr(fn, "_pyrolyze_meta", dataclass_replace(meta, param_names=param_names))
         return cast(ComponentRef[P], fn)
 
     return decorate

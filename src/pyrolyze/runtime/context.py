@@ -28,6 +28,7 @@ from .app_context import (
 )
 from .call_site_context import CallSiteContextManager
 from .drip import Drip
+from .function_arg_helpers import build_function_arg_dirty_map, pack_function_args
 from .slot_call_semantics import (
     ExternalStoreBinding,
     ExternalStoreRef,
@@ -76,6 +77,10 @@ class DirtyStateContext:
 
 
 def dirtyof(**values: bool) -> DirtyStateContext:
+    return DirtyStateContext(values={key: bool(value) for key, value in values.items()})
+
+
+def dirtyof_values(values: dict[str, Any]) -> DirtyStateContext:
     return DirtyStateContext(values={key: bool(value) for key, value in values.items()})
 
 
@@ -538,6 +543,9 @@ class ContextBase:
         container_fn: CompValue[Callable[..., Any]] | Callable[..., Any],
         *args: CompValue[Any] | Any,
         dirty_state: DirtyStateContext | None = None,
+        _pyr_param_names: tuple[str, ...] | None = None,
+        _pyr_args_dirty: tuple[Any, ...] | None = None,
+        _pyr_kwargs_dirty: dict[str, Any] | None = None,
         **kwargs: CompValue[Any] | Any,
     ) -> _ContainerCallHandle:
         self._require_active_scope()
@@ -568,6 +576,10 @@ class ContextBase:
                 args=raw_args,
                 kwargs=raw_kwargs,
                 dirty_state=dirty_state or dirtyof(),
+                param_names=tuple(getattr(metadata, "param_names", ())),
+                dynamic_param_names=_pyr_param_names,
+                dynamic_args_dirty=_pyr_args_dirty,
+                dynamic_kwargs_dirty=_pyr_kwargs_dirty,
                 packed_kwargs=bool(getattr(metadata, "packed_kwargs", False)),
                 packed_kwarg_param_names=tuple(getattr(metadata, "packed_kwarg_param_names", ())),
             )
@@ -627,11 +639,22 @@ class ContextBase:
         component: CompValue[Callable[..., Any]] | Callable[..., Any],
         *args: CompValue[Any] | Any,
         dirty_state: DirtyStateContext | None = None,
+        _pyr_param_names: tuple[str, ...] | None = None,
+        _pyr_args_dirty: tuple[Any, ...] | None = None,
+        _pyr_kwargs_dirty: dict[str, Any] | None = None,
         **kwargs: CompValue[Any] | Any,
     ) -> None:
         self._require_active_scope()
         slot = self._ensure_slot(slot_id, ComponentCallSlotContext)
-        slot.invoke(component, args, kwargs, dirty_state=dirty_state)
+        slot.invoke(
+            component,
+            args,
+            kwargs,
+            dirty_state=dirty_state,
+            _pyr_param_names=_pyr_param_names,
+            _pyr_args_dirty=_pyr_args_dirty,
+            _pyr_kwargs_dirty=_pyr_kwargs_dirty,
+        )
 
     def event_handler(
         self,
@@ -968,21 +991,6 @@ def _clean_dirty_state(previous: DirtyStateContext | None) -> DirtyStateContext:
     if previous is None:
         return dirtyof()
     return dirtyof(**{key: False for key in previous.values})
-
-
-def _pack_component_kwargs(
-    param_names: tuple[str, ...],
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any],
-) -> dict[str, Any]:
-    if len(args) > len(param_names):
-        raise TypeError("too many positional arguments for packed component call")
-    packed = {param_names[index]: value for index, value in enumerate(args)}
-    for key, value in kwargs.items():
-        if key in packed:
-            raise TypeError(f"multiple values for argument {key!r}")
-        packed[key] = value
-    return packed
 
 
 def _resolve_runtime_component_func(runtime_func: object) -> Callable[..., Any] | None:
@@ -1605,6 +1613,7 @@ class ComponentCallSlotContext(RerunnableSlotContext):
     uses_dirty_state_api: bool = False
     packed_kwargs: bool = False
     packed_kwarg_param_names: tuple[str, ...] = ()
+    param_names: tuple[str, ...] = ()
     _pass_owned_event_handler_order: tuple[SlotId, ...] = ()
 
     def invoke(
@@ -1614,6 +1623,9 @@ class ComponentCallSlotContext(RerunnableSlotContext):
         kwargs: dict[str, CompValue[Any] | Any],
         *,
         dirty_state: DirtyStateContext | None = None,
+        _pyr_param_names: tuple[str, ...] | None = None,
+        _pyr_args_dirty: tuple[Any, ...] | None = None,
+        _pyr_kwargs_dirty: dict[str, Any] | None = None,
     ) -> None:
         raw_component, _ = _unwrap(component)
         metadata, bound_receiver = _component_call_key(raw_component)
@@ -1646,10 +1658,20 @@ class ComponentCallSlotContext(RerunnableSlotContext):
         try:
             self.last_runtime_func = runtime_func
             self.last_bound_receiver = bound_receiver
+            self.param_names = tuple(getattr(metadata, "param_names", ()))
             self.packed_kwargs = bool(getattr(metadata, "packed_kwargs", False))
             self.packed_kwarg_param_names = tuple(
                 getattr(metadata, "packed_kwarg_param_names", ())
             )
+            effective_param_names = _pyr_param_names or self.param_names
+            if dirty_state is None and effective_param_names:
+                dirty_state = dirtyof_values(
+                    build_function_arg_dirty_map(
+                        effective_param_names,
+                        _pyr_args_dirty or (),
+                        _pyr_kwargs_dirty or {},
+                    )
+                )
             if dirty_state is None:
                 normalized_args = tuple(
                     _bind_pending_event_comp_value(self, _wrap_comp_value(arg))
@@ -1751,7 +1773,7 @@ class ComponentCallSlotContext(RerunnableSlotContext):
             else:
                 self.pending_dirty_state = None
             if self.packed_kwargs:
-                packed_kwargs = _pack_component_kwargs(
+                packed_kwargs = pack_function_args(
                     self.packed_kwarg_param_names,
                     self.last_plain_args,
                     self.last_plain_kwargs,
@@ -1794,7 +1816,7 @@ class ComponentCallSlotContext(RerunnableSlotContext):
             return
 
         if self.packed_kwargs:
-            packed_kwargs = _pack_component_kwargs(
+            packed_kwargs = pack_function_args(
                 self.packed_kwarg_param_names,
                 self.last_args,
                 self.last_kwargs,
@@ -2072,6 +2094,10 @@ class _PyrolyzeContainerCallHandle(AbstractContextManager[ContainerSlotContext])
     args: tuple[Any, ...]
     kwargs: dict[str, Any]
     dirty_state: DirtyStateContext
+    param_names: tuple[str, ...] = ()
+    dynamic_param_names: tuple[str, ...] | None = None
+    dynamic_args_dirty: tuple[Any, ...] | None = None
+    dynamic_kwargs_dirty: dict[str, Any] | None = None
     packed_kwargs: bool = False
     packed_kwarg_param_names: tuple[str, ...] = ()
 
@@ -2079,13 +2105,23 @@ class _PyrolyzeContainerCallHandle(AbstractContextManager[ContainerSlotContext])
         self.slot.expects_native_root = True
         self.slot._begin_scope_pass()
         try:
+            dirty_state = self.dirty_state
+            effective_param_names = self.dynamic_param_names or self.param_names
+            if effective_param_names and not dirty_state.values:
+                dirty_state = dirtyof_values(
+                    build_function_arg_dirty_map(
+                        effective_param_names,
+                        self.dynamic_args_dirty or (),
+                        self.dynamic_kwargs_dirty or {},
+                    )
+                )
             bound_args = tuple(_bind_pending_event_plain_value(self.slot, value) for value in self.args)
             bound_kwargs = {
                 key: _bind_pending_event_plain_value(self.slot, value)
                 for key, value in self.kwargs.items()
             }
             if self.packed_kwargs:
-                packed_kwargs = _pack_component_kwargs(
+                packed_kwargs = pack_function_args(
                     self.packed_kwarg_param_names,
                     bound_args,
                     bound_kwargs,
@@ -2093,21 +2129,21 @@ class _PyrolyzeContainerCallHandle(AbstractContextManager[ContainerSlotContext])
                 if self.bound_receiver is _BOUND_METHOD_SELF_MISSING:
                     result = self.runtime_func(
                         self.slot,
-                        self.dirty_state,
+                        dirty_state,
                         **packed_kwargs,
                     )
                 else:
                     result = self.runtime_func(
                         self.bound_receiver,
                         self.slot,
-                        self.dirty_state,
+                        dirty_state,
                         **packed_kwargs,
                     )
             else:
                 if self.bound_receiver is _BOUND_METHOD_SELF_MISSING:
                     result = self.runtime_func(
                         self.slot,
-                        self.dirty_state,
+                        dirty_state,
                         *bound_args,
                         **bound_kwargs,
                     )
@@ -2115,7 +2151,7 @@ class _PyrolyzeContainerCallHandle(AbstractContextManager[ContainerSlotContext])
                     result = self.runtime_func(
                         self.bound_receiver,
                         self.slot,
-                        self.dirty_state,
+                        dirty_state,
                         *bound_args,
                         **bound_kwargs,
                     )

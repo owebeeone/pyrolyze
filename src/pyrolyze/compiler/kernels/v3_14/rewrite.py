@@ -726,6 +726,7 @@ def _lower_container_with(statement: ast.With, *, state: _LoweringState) -> list
     param_names = state.component_param_names.get(call_name) if call_name is not None else None
     event_param_names = state.component_event_params.get(call_name, frozenset()) if call_name is not None else frozenset()
     dirty_keywords: list[ast.keyword] = []
+    extra_dirty_keywords: list[ast.keyword] = []
     if param_names is not None:
         for param_name, arg in zip(param_names, context_expr.args):
             dirty_keywords.append(
@@ -743,6 +744,28 @@ def _lower_container_with(statement: ast.With, *, state: _LoweringState) -> list
                     value=_dirty_expr_for_value(keyword.value, state.dirty_by_name),
                 )
             )
+    else:
+        extra_dirty_keywords = [
+            ast.keyword(arg="_pyr_param_names", value=ast.Constant(None)),
+            ast.keyword(
+                arg="_pyr_args_dirty",
+                value=ast.Tuple(
+                    elts=[_dirty_expr_for_value(arg, state.dirty_by_name) for arg in context_expr.args],
+                    ctx=ast.Load(),
+                ),
+            ),
+            ast.keyword(
+                arg="_pyr_kwargs_dirty",
+                value=ast.Dict(
+                    keys=[ast.Constant(keyword.arg) for keyword in context_expr.keywords if keyword.arg is not None],
+                    values=[
+                        _dirty_expr_for_value(keyword.value, state.dirty_by_name)
+                        for keyword in context_expr.keywords
+                        if keyword.arg is not None
+                    ],
+                ),
+            ),
+        ]
 
     event_slot_setup, lowered_args, lowered_keywords = _lower_eventful_call_arguments(
         args=list(context_expr.args),
@@ -776,6 +799,7 @@ def _lower_container_with(statement: ast.With, *, state: _LoweringState) -> list
                                 keywords=dirty_keywords,
                             ),
                         ),
+                        *extra_dirty_keywords,
                     ],
                 ),
                 optional_vars=ast.Name(id=container_ctx_name, ctx=ast.Store()),
@@ -1527,14 +1551,6 @@ def _lower_component_expr_call(
         )
 
     param_names = state.component_param_names.get(call_name)
-    if param_names is None:
-        raise error_from_node(
-            statement,
-            code="PYR-E-PHASE5-COMPONENT-CALL",
-            message="Phase 05 could not resolve parameter names for this component call",
-            module_name=state.module_name,
-            suggested_fix="use_direct_component_ref_call",
-        )
 
     if any(keyword.arg is None for keyword in call.keywords):
         raise error_from_node(
@@ -1547,22 +1563,46 @@ def _lower_component_expr_call(
 
     _slot_index, slot_name, slot_setup = state.next_slot_id(reason=statement)
     dirty_keywords: list[ast.keyword] = []
-    for param_name, arg in zip(param_names, call.args):
-        dirty_keywords.append(
-            ast.keyword(
-                arg=param_name,
-                value=_dirty_expr_for_value(arg, state.dirty_by_name),
+    extra_dirty_keywords: list[ast.keyword] = []
+    if param_names is not None:
+        for param_name, arg in zip(param_names, call.args):
+            dirty_keywords.append(
+                ast.keyword(
+                    arg=param_name,
+                    value=_dirty_expr_for_value(arg, state.dirty_by_name),
+                )
             )
-        )
-    for keyword in call.keywords:
-        if keyword.arg is None:
-            continue
-        dirty_keywords.append(
-            ast.keyword(
-                arg=keyword.arg,
-                value=_dirty_expr_for_value(keyword.value, state.dirty_by_name),
+        for keyword in call.keywords:
+            if keyword.arg is None:
+                continue
+            dirty_keywords.append(
+                ast.keyword(
+                    arg=keyword.arg,
+                    value=_dirty_expr_for_value(keyword.value, state.dirty_by_name),
+                )
             )
-        )
+    else:
+        extra_dirty_keywords = [
+            ast.keyword(arg="_pyr_param_names", value=ast.Constant(None)),
+            ast.keyword(
+                arg="_pyr_args_dirty",
+                value=ast.Tuple(
+                    elts=[_dirty_expr_for_value(arg, state.dirty_by_name) for arg in call.args],
+                    ctx=ast.Load(),
+                ),
+            ),
+            ast.keyword(
+                arg="_pyr_kwargs_dirty",
+                value=ast.Dict(
+                    keys=[ast.Constant(keyword.arg) for keyword in call.keywords if keyword.arg is not None],
+                    values=[
+                        _dirty_expr_for_value(keyword.value, state.dirty_by_name)
+                        for keyword in call.keywords
+                        if keyword.arg is not None
+                    ],
+                ),
+            ),
+        ]
 
     event_param_names = state.component_event_params.get(call_name, frozenset())
     event_slot_setup, lowered_args, lowered_keywords = _lower_eventful_call_arguments(
@@ -1591,6 +1631,7 @@ def _lower_component_expr_call(
                         keywords=dirty_keywords,
                     ),
                 ),
+                *extra_dirty_keywords,
             ],
         )
     )
