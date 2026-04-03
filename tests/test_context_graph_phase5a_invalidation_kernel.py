@@ -20,6 +20,7 @@ from pyrolyze.runtime.context import (
     SlotId,
     dirtyof,
 )
+from pyrolyze_testsupport import pyrolize_test_wrap
 from tests.slot_expr_test_utils import eval_single_slot_expr
 
 
@@ -142,6 +143,7 @@ def _make_weather_program(
         finally:
             log.append(("section.exit", title, accent))
 
+    @pyrolize_test_wrap
     def _badge(text: str, *, tone: str) -> None:
         log.append(("badge", text, tone))
         if on_badge is not None:
@@ -173,11 +175,12 @@ def _make_weather_program(
                     accent="blue",
                 ) as section_ctx:
                     if __pyr_location_dirty or section_ctx.visit_slot_and_dirty(_ROOT_BADGE_SLOT):
-                        section_ctx.leaf_call(
+                        section_ctx.component_call(
                             _ROOT_BADGE_SLOT,
                             _badge,
                             location,
                             tone="info",
+                            dirty_state=dirtyof(text=__pyr_location_dirty, tone=False),
                         )
 
     return lambda ctx: _pyr_weather_panel(ctx, dirtyof())
@@ -196,6 +199,7 @@ def _make_parent_child_program(
         finally:
             log.append(("section.exit", title, accent))
 
+    @pyrolize_test_wrap
     def _badge(text: str, *, tone: str) -> None:
         log.append(("badge", text, tone))
 
@@ -222,11 +226,12 @@ def _make_parent_child_program(
             )
 
             if __pyr_value_dirty or ctx.visit_slot_and_dirty(_CHILD_BADGE_SLOT):
-                ctx.leaf_call(
+                ctx.component_call(
                     _CHILD_BADGE_SLOT,
                     _badge,
                     value,
                     tone="child",
+                    dirty_state=dirtyof(text=__pyr_value_dirty, tone=False),
                 )
 
     @pyrolyze_component_ref(ComponentMetadata("child_badge", __pyr_child_badge))
@@ -255,11 +260,12 @@ def _make_parent_child_program(
                     accent="green",
                 ) as section_ctx:
                     if __pyr_parent_dirty or section_ctx.visit_slot_and_dirty(_ROOT_BADGE_SLOT):
-                        section_ctx.leaf_call(
+                        section_ctx.component_call(
                             _ROOT_BADGE_SLOT,
                             _badge,
                             parent_value,
                             tone="parent",
+                            dirty_state=dirtyof(text=__pyr_parent_dirty, tone=False),
                         )
 
                     if section_ctx.visit_slot_and_dirty(_CHILD_COMPONENT_SLOT):
@@ -277,6 +283,7 @@ def _make_sibling_component_program(
     left_store: _StoreProbe,
     right_store: _StoreProbe,
 ) -> Callable[[RenderContext], None]:
+    @pyrolize_test_wrap
     def _badge(text: str, *, tone: str) -> None:
         log.append(("badge", text, tone))
 
@@ -302,11 +309,12 @@ def _make_sibling_component_program(
                 result_name="value",
             )
             if __pyr_value_dirty or ctx.visit_slot_and_dirty(_LEFT_BADGE_SLOT):
-                ctx.leaf_call(
+                ctx.component_call(
                     _LEFT_BADGE_SLOT,
                     _badge,
                     value,
                     tone="left",
+                    dirty_state=dirtyof(text=__pyr_value_dirty, tone=False),
                 )
 
     @pyrolyze_component_ref(ComponentMetadata("left_badge", __pyr_left_badge))
@@ -327,11 +335,12 @@ def _make_sibling_component_program(
                 result_name="value",
             )
             if __pyr_value_dirty or ctx.visit_slot_and_dirty(_RIGHT_BADGE_SLOT):
-                ctx.leaf_call(
+                ctx.component_call(
                     _RIGHT_BADGE_SLOT,
                     _badge,
                     value,
                     tone="right",
+                    dirty_state=dirtyof(text=__pyr_value_dirty, tone=False),
                 )
 
     @pyrolyze_component_ref(ComponentMetadata("right_badge", __pyr_right_badge))

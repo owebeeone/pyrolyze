@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pyrolyze.api import MountSelector, PyrolyzeMountAdvertisement, UIElement, advertise_mount
 from pyrolyze.runtime import ContextBase, ModuleRegistry, RenderContext, SlotId, dirtyof
+from pyrolyze_testsupport import pyrolize_test_native
 from tests.slot_expr_test_utils import eval_single_slot_expr
 
 
@@ -15,6 +16,7 @@ _SECOND_TEXT_SLOT = SlotId(_MODULE_ID, 4, line_no=13)
 _SECOND_ADVERT_SLOT = SlotId(_MODULE_ID, 5, line_no=14)
 
 
+@pyrolize_test_native
 def _pyr_section(ctx: ContextBase, title: str) -> None:
     ctx.call_native(
         UIElement,
@@ -22,6 +24,7 @@ def _pyr_section(ctx: ContextBase, title: str) -> None:
         props={"title": title},
     )
 
+@pyrolize_test_native
 def _pyr_text(ctx: ContextBase, value: str) -> None:
     ctx.call_native(
         UIElement,
@@ -36,8 +39,8 @@ def test_advertise_mount_is_retained_at_exact_anchor_sites_in_container_order() 
     second = MountSelector.named("second")
 
     with ctx.pass_scope():
-        with ctx.container_call(_CONTAINER_SLOT, _pyr_section, "Greeting") as section_ctx:
-            section_ctx.leaf_call(_FIRST_TEXT_SLOT, _pyr_text, "hello")
+        with ctx.container_call(_CONTAINER_SLOT, _pyr_section, "Greeting", dirty_state=dirtyof(title=False)) as section_ctx:
+            section_ctx.component_call(_FIRST_TEXT_SLOT, _pyr_text, "hello", dirty_state=dirtyof(value=False))
             _ = eval_single_slot_expr(
                 section_ctx,
                 dirtyof(),
@@ -48,7 +51,12 @@ def test_advertise_mount_is_retained_at_exact_anchor_sites_in_container_order() 
                 default=True,
                 result_name="advert",
             )
-            section_ctx.leaf_call(_SECOND_TEXT_SLOT, _pyr_text, "hope you have a")
+            section_ctx.component_call(
+                _SECOND_TEXT_SLOT,
+                _pyr_text,
+                "hope you have a",
+                dirty_state=dirtyof(value=False),
+            )
             _ = eval_single_slot_expr(
                 section_ctx,
                 dirtyof(),
@@ -91,7 +99,7 @@ def test_advertise_mount_key_mapping_updates_legal_public_shape_on_rerender() ->
     target = MountSelector.named("widget")
 
     with ctx.pass_scope():
-        with ctx.container_call(_CONTAINER_SLOT, _pyr_section, "Wrapper") as section_ctx:
+        with ctx.container_call(_CONTAINER_SLOT, _pyr_section, "Wrapper", dirty_state=dirtyof(title=False)) as section_ctx:
             _ = eval_single_slot_expr(
                 section_ctx,
                 dirtyof(),
@@ -106,7 +114,7 @@ def test_advertise_mount_key_mapping_updates_legal_public_shape_on_rerender() ->
     assert [advertisement.key for advertisement in first_pass] == ["first_name"]
 
     with ctx.pass_scope():
-        with ctx.container_call(_CONTAINER_SLOT, _pyr_section, "Wrapper") as section_ctx:
+        with ctx.container_call(_CONTAINER_SLOT, _pyr_section, "Wrapper", dirty_state=dirtyof(title=False)) as section_ctx:
             _ = eval_single_slot_expr(
                 section_ctx,
                 dirtyof(),

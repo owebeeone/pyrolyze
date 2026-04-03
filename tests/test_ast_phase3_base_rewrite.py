@@ -50,7 +50,7 @@ def greeting(name):
     assert ".slot_call(" in transformed
     assert ".evaluate('title')" in transformed or '.evaluate("title")' in transformed
     assert "record(label)" in transformed
-    assert ".leaf_call(" not in transformed
+    assert ".native_call(" not in transformed
 
 
 def test_phase3_runtime_bridge_executes_generated_component_and_reuses_clean_pass() -> None:

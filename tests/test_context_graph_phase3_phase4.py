@@ -14,6 +14,7 @@ from pyrolyze.runtime.context import (
     SlotId,
     dirtyof,
 )
+from pyrolyze_testsupport import pyrolize_test_wrap
 from tests.slot_expr_test_utils import eval_single_slot_expr
 
 
@@ -82,6 +83,7 @@ def _make_container_reorder_program(log: list[tuple[object, ...]]):
         finally:
             log.append(("section.exit", title, accent))
 
+    @pyrolize_test_wrap
     def _badge(text: str, *, tone: str) -> None:
         log.append(("badge", text, tone))
 
@@ -105,11 +107,12 @@ def _make_container_reorder_program(log: list[tuple[object, ...]]):
                     )
                     for slot_id, label in ordered:
                         if __pyr_dirty_state.reverse or section_ctx.visit_slot_and_dirty(slot_id):
-                            section_ctx.leaf_call(
+                            section_ctx.component_call(
                                 slot_id,
                                 _badge,
                                 label,
                                 tone="info",
+                                dirty_state=dirtyof(text=__pyr_dirty_state.reverse, tone=False),
                             )
 
     return _pyr_container_reorder
@@ -138,6 +141,7 @@ def _make_nested_keyed_program(
         log.append(("use_grip", grip))
         return resolve_store(grip).ref()
 
+    @pyrolize_test_wrap
     def _badge(text: str, *, tone: str) -> None:
         log.append(("badge", text, tone))
 
@@ -197,11 +201,12 @@ def _make_nested_keyed_program(
                                             )
 
                                             if __pyr_value_dirty or bar_item.visit_slot_and_dirty(_BADGE_SLOT):
-                                                bar_item.leaf_call(
+                                                bar_item.component_call(
                                                     _BADGE_SLOT,
                                                     _badge,
                                                     value,
                                                     tone="neutral",
+                                                    dirty_state=dirtyof(text=__pyr_value_dirty, tone=False),
                                                 )
 
     return _pyr_nested_values

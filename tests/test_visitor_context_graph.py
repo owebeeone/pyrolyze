@@ -5,6 +5,7 @@ from pathlib import Path
 from pyrolyze.api import UIElement
 from pyrolyze.compiler import load_transformed_namespace
 from pyrolyze.runtime import ContextBase, ModuleRegistry, RenderContext, SlotId, dirtyof
+from pyrolyze_testsupport import pyrolize_test_native
 from pyrolyze.visitor import capture_context_graph, compare_context_graphs
 
 
@@ -16,10 +17,12 @@ _ITEM_LOOP_SLOT = SlotId(_MODULE_ID, 2, line_no=11)
 _BADGE_SLOT = SlotId(_MODULE_ID, 3, line_no=12)
 
 
+@pyrolize_test_native
 def section(ctx: ContextBase, title: str) -> None:
     ctx.call_native(UIElement, kind="section", props={"title": title})
 
 
+@pyrolize_test_native
 def badge(ctx: ContextBase, text: str) -> None:
     ctx.call_native(UIElement, kind="badge", props={"text": text})
 
@@ -35,7 +38,7 @@ def test_capture_context_graph_records_context_kinds_and_render_owners() -> None
     def render() -> None:
         with ctx.pass_scope():
             if ctx.visit_slot_and_dirty(_SECTION_SLOT):
-                with ctx.container_call(_SECTION_SLOT, section, "Stats") as section_ctx:
+                with ctx.container_call(_SECTION_SLOT, section, "Stats", dirty_state=dirtyof(title=False)) as section_ctx:
                     if section_ctx.visit_slot_and_dirty(_ITEM_LOOP_SLOT):
                         for item_ctx in section_ctx.keyed_loop(_ITEM_LOOP_SLOT, ["a", "b"], key_fn=lambda value: value):
                             with item_ctx.pass_scope():
@@ -43,7 +46,12 @@ def test_capture_context_graph_records_context_kinds_and_render_owners() -> None
                                 if not (item_dirty or item_ctx.visit_self_and_dirty()):
                                     continue
                                 if item_ctx.visit_slot_and_dirty(_BADGE_SLOT):
-                                    item_ctx.leaf_call(_BADGE_SLOT, badge, value.upper())
+                                    item_ctx.component_call(
+                                        _BADGE_SLOT,
+                                        badge,
+                                        value.upper(),
+                                        dirty_state=dirtyof(text=False),
+                                    )
 
     ctx.mount(render)
     graph = capture_context_graph(ctx)
@@ -71,8 +79,8 @@ def test_capture_context_graph_records_context_kinds_and_render_owners() -> None
 
     first_leaf = first_item.children[0]
     second_leaf = second_item.children[0]
-    assert first_leaf.kind == "leaf"
-    assert second_leaf.kind == "leaf"
+    assert first_leaf.kind == "component_call"
+    assert second_leaf.kind == "component_call"
     assert first_leaf.ui[0].slot_id == SlotId(_MODULE_ID, 3, key_path=("a",), line_no=12)
     assert second_leaf.ui[0].slot_id == SlotId(_MODULE_ID, 3, key_path=("b",), line_no=12)
     assert first_leaf.ui[0].render_owner_slot_id == _SECTION_SLOT

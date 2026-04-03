@@ -12,6 +12,7 @@ from pyrolyze.runtime.context import (
     SlotOwnershipError,
     dirtyof,
 )
+from pyrolyze_testsupport import pyrolize_test_wrap
 from tests.slot_expr_test_utils import eval_single_slot_expr
 
 
@@ -40,6 +41,7 @@ def _make_welcome_program(log: list[tuple[object, ...]]):
         log.append(("format_title", name))
         return f"Hello {name}"
 
+    @pyrolize_test_wrap
     def _badge(text: str, *, tone: str) -> None:
         log.append(("badge", text, tone))
 
@@ -67,11 +69,12 @@ def _make_welcome_program(log: list[tuple[object, ...]]):
                     accent="blue",
                 ) as section_ctx:
                     if __pyr_title_dirty or section_ctx.visit_slot_and_dirty(_BADGE_SLOT):
-                        section_ctx.leaf_call(
+                        section_ctx.component_call(
                             _BADGE_SLOT,
                             _badge,
                             title,
                             tone="info",
+                            dirty_state=dirtyof(text=__pyr_title_dirty, tone=False),
                         )
 
     return _pyr_welcome
@@ -90,6 +93,7 @@ def _make_welcome_conditional_program(log: list[tuple[object, ...]]):
         log.append(("format_title", name))
         return f"Hello {name}"
 
+    @pyrolize_test_wrap
     def _badge(text: str, *, tone: str) -> None:
         log.append(("badge", text, tone))
 
@@ -127,11 +131,15 @@ def _make_welcome_conditional_program(log: list[tuple[object, ...]]):
                             or __pyr_dirty_state.show_badge
                             or section_ctx.visit_slot_and_dirty(_BADGE_SLOT)
                         ):
-                            section_ctx.leaf_call(
+                            section_ctx.component_call(
                                 _BADGE_SLOT,
                                 _badge,
                                 title,
                                 tone="info",
+                                dirty_state=dirtyof(
+                                    text=__pyr_title_dirty or __pyr_dirty_state.show_badge,
+                                    tone=False,
+                                ),
                             )
 
     return _pyr_welcome_conditional
@@ -150,6 +158,7 @@ def _make_wrong_child_owner_program(log: list[tuple[object, ...]]):
         log.append(("format_title", name))
         return f"Hello {name}"
 
+    @pyrolize_test_wrap
     def _badge(text: str, *, tone: str) -> None:
         log.append(("badge", text, tone))
 
@@ -182,11 +191,15 @@ def _make_wrong_child_owner_program(log: list[tuple[object, ...]]):
                     accent=accent,
                 ) as section_ctx:
                     if __pyr_title_dirty or ctx.visit_slot_and_dirty(_BADGE_SLOT):
-                        section_ctx.leaf_call(
+                        section_ctx.component_call(
                             _BADGE_SLOT,
                             _badge,
                             title,
                             tone="info",
+                            dirty_state=dirtyof(
+                                text=__pyr_title_dirty,
+                                tone=False,
+                            ),
                         )
 
     return _pyr_wrong_child_owner
@@ -298,12 +311,16 @@ def test_skipped_clean_subtree_preserves_event_handler_slots() -> None:
     def _button():
         yield
 
+    @pyrolize_test_wrap
+    def _noop() -> None:
+        return None
+
     def _render(counter_dirty: bool, button_dirty: bool) -> None:
         with ctx.pass_scope():
             if counter_dirty or button_dirty or ctx.visit_slot_and_dirty(_PANEL_SLOT):
                 with ctx.container_call(_PANEL_SLOT, _panel) as panel_ctx:
                     if counter_dirty or panel_ctx.visit_slot_and_dirty(_COUNTER_SLOT):
-                        panel_ctx.leaf_call(_COUNTER_SLOT, lambda: None)
+                        panel_ctx.component_call(_COUNTER_SLOT, _noop, dirty_state=dirtyof())
                     if button_dirty or panel_ctx.visit_slot_and_dirty(_BUTTON_SLOT):
                         with panel_ctx.container_call(_BUTTON_SLOT, _button) as button_ctx:
                             captured_dispatch["value"] = button_ctx.event_handler(

@@ -12,6 +12,7 @@ from pyrolyze.api import (
     pyrolyze_component_ref,
 )
 from pyrolyze.runtime.context import DirtyStateContext, ModuleRegistry, RenderContext, SlotId, dirtyof
+from pyrolyze_testsupport import pyrolize_test_wrap
 from tests.slot_expr_test_utils import eval_single_slot_expr
 
 
@@ -40,6 +41,7 @@ def _make_component_program(log: list[tuple[object, ...]]):
         finally:
             log.append(("section.exit", title, accent))
 
+    @pyrolize_test_wrap
     def _badge(text: str, *, tone: str) -> None:
         log.append(("badge", text, tone))
 
@@ -51,11 +53,12 @@ def _make_component_program(log: list[tuple[object, ...]]):
         log.append(("render", "neutral", text, __pyr_dirty_state.text))
         with ctx.pass_scope():
             if __pyr_dirty_state.text or ctx.visit_slot_and_dirty(_NEUTRAL_BADGE_LEAF_SLOT):
-                ctx.leaf_call(
+                ctx.component_call(
                     _NEUTRAL_BADGE_LEAF_SLOT,
                     _badge,
                     text,
                     tone="neutral",
+                    dirty_state=dirtyof(text=__pyr_dirty_state.text, tone=False),
                 )
 
     @pyrolyze_component_ref(
@@ -72,11 +75,12 @@ def _make_component_program(log: list[tuple[object, ...]]):
         log.append(("render", "info", text, __pyr_dirty_state.text))
         with ctx.pass_scope():
             if __pyr_dirty_state.text or ctx.visit_slot_and_dirty(_INFO_BADGE_LEAF_SLOT):
-                ctx.leaf_call(
+                ctx.component_call(
                     _INFO_BADGE_LEAF_SLOT,
                     _badge,
                     text,
                     tone="info",
+                    dirty_state=dirtyof(text=__pyr_dirty_state.text, tone=False),
                 )
 
     @pyrolyze_component_ref(

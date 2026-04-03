@@ -19,6 +19,7 @@ from pyrolyze.runtime import (
     SlotId,
     dirtyof,
 )
+from pyrolyze_testsupport import pyrolize_test_native
 from tests.slot_expr_test_utils import eval_single_slot_expr
 
 
@@ -154,6 +155,7 @@ def test_plain_native_and_child_component_contexts_share_app_context() -> None:
     def snapshot(*, __pyrolyze_ctx: SlotRuntimeContext) -> tuple[str, ...]:
         return tuple(__pyrolyze_ctx.get_app_context(key).values)
 
+    @pyrolize_test_native
     def mark_native(ctx: ContextBase, value: str) -> None:
         ctx.get_app_context(key).values.append(f"native:{value}")
 
@@ -178,7 +180,12 @@ def test_plain_native_and_child_component_contexts_share_app_context() -> None:
             result_name="count",
         )
         _ = __pyr_count_dirty
-        ctx.leaf_call(_NATIVE_SLOT, mark_native, "beta")
+        ctx.component_call(
+            _NATIVE_SLOT,
+            mark_native,
+            "beta",
+            dirty_state=dirtyof(value=False),
+        )
         ctx.component_call(
             _COMPONENT_SLOT,
             child,

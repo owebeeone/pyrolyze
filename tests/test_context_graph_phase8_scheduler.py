@@ -16,6 +16,7 @@ from pyrolyze.runtime.context import (
     UseEffectAsyncRequest,
     dirtyof,
 )
+from pyrolyze_testsupport import pyrolize_test_native
 from tests.slot_expr_test_utils import eval_single_slot_expr
 
 
@@ -65,6 +66,7 @@ class _AsyncHandle:
         self.cancelled = True
 
 
+@pyrolize_test_native
 def _pyr_button(ctx: ContextBase, label: str, *, on_press: object) -> None:
     ctx.call_native(
         UIElement,
@@ -93,7 +95,7 @@ def test_host_posting_dedupes_and_defers_rerun_until_posted_flush() -> None:
                 result_name="value",
             )
             log.append(("render", value))
-            ctx.leaf_call(
+            ctx.component_call(
                 _BUTTON_SLOT,
                 _pyr_button,
                 "refresh",
@@ -105,6 +107,7 @@ def test_host_posting_dedupes_and_defers_rerun_until_posted_flush() -> None:
                         store.notify("hot"),
                     ),
                 ),
+                dirty_state=dirtyof(label=False, on_press=False),
             )
 
     ctx.set_flush_poster(posted.append)
@@ -156,11 +159,12 @@ def test_committed_ui_exposes_non_debug_snapshot_api() -> None:
 
     with ctx.pass_scope():
         assert ctx.visit_slot_and_dirty(_BUTTON_SLOT) is True
-        ctx.leaf_call(
+        ctx.component_call(
             _BUTTON_SLOT,
             _pyr_button,
             "run",
             on_press=lambda: None,
+            dirty_state=dirtyof(label=False, on_press=False),
         )
 
     committed = ctx.committed_ui()

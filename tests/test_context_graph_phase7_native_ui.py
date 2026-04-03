@@ -10,6 +10,7 @@ from pyrolyze.runtime.context import (
     SlotId,
     dirtyof,
 )
+from pyrolyze_testsupport import pyrolize_test_native
 
 
 module_registry = ModuleRegistry()
@@ -21,10 +22,9 @@ _BUTTON_SLOT = SlotId(_MODULE_ID, 3, line_no=12)
 _NONE_SLOT = SlotId(_MODULE_ID, 4, line_no=13)
 _BAD_SLOT = SlotId(_MODULE_ID, 5, line_no=14)
 _DOUBLE_SECTION_SLOT = SlotId(_MODULE_ID, 6, line_no=15)
-_BUILTIN_LEAF_SLOT = SlotId(_MODULE_ID, 7, line_no=16)
-_BUILTIN_CONTAINER_SLOT = SlotId(_MODULE_ID, 8, line_no=17)
 
 
+@pyrolize_test_native
 def _pyr_badge(ctx: ContextBase, text: str, *, tone: str) -> None:
     ctx.call_native(
         UIElement,
@@ -33,6 +33,7 @@ def _pyr_badge(ctx: ContextBase, text: str, *, tone: str) -> None:
     )
 
 
+@pyrolize_test_native
 def _pyr_button(
     ctx: ContextBase,
     label: str,
@@ -51,6 +52,7 @@ def _pyr_button(
     )
 
 
+@pyrolize_test_native
 def _pyr_section(
     ctx: ContextBase,
     title: str,
@@ -64,10 +66,12 @@ def _pyr_section(
     )
 
 
+@pyrolize_test_native
 def _pyr_none(ctx: ContextBase) -> None:
     ctx.call_native(lambda: None)
 
 
+@pyrolize_test_native
 def _pyr_invalid(ctx: ContextBase) -> None:
     ctx.call_native(lambda: "not-a-ui-element")
 
@@ -86,17 +90,19 @@ def _make_toolbar_program() -> callable:
                     _pyr_section,
                     "Toolbar",
                     accent="cyan",
+                    dirty_state=dirtyof(title=False, accent=False),
                 ) as section_ctx:
                     if __pyr_dirty_state.active or section_ctx.visit_slot_and_dirty(_BADGE_SLOT):
-                        section_ctx.leaf_call(
+                        section_ctx.component_call(
                             _BADGE_SLOT,
                             _pyr_badge,
                             "Ready" if active else "Paused",
                             tone="info",
+                            dirty_state=dirtyof(text=__pyr_dirty_state.active, tone=False),
                         )
 
                     if __pyr_dirty_state.active or section_ctx.visit_slot_and_dirty(_BUTTON_SLOT):
-                        section_ctx.leaf_call(
+                        section_ctx.component_call(
                             _BUTTON_SLOT,
                             _pyr_button,
                             "Run",
@@ -105,6 +111,11 @@ def _make_toolbar_program() -> callable:
                                 "tags": ["primary", "toolbar"],
                                 "status": {"active": active},
                             },
+                            dirty_state=dirtyof(
+                                label=__pyr_dirty_state.active,
+                                enabled=__pyr_dirty_state.active,
+                                meta=__pyr_dirty_state.active,
+                            ),
                         )
 
     return _pyr_toolbar
@@ -161,19 +172,19 @@ def test_native_ui_helpers_build_committed_tree_and_retain_on_stable_pass() -> N
     )
 
 
-def test_call_native_none_is_ignored_and_invalid_result_raises() -> None:
+def test_component_wrapped_none_is_ignored_and_invalid_result_raises() -> None:
     ctx = RenderContext()
 
     with ctx.pass_scope():
         assert ctx.visit_slot_and_dirty(_NONE_SLOT) is True
-        ctx.leaf_call(_NONE_SLOT, _pyr_none)
+        ctx.component_call(_NONE_SLOT, _pyr_none, dirty_state=dirtyof())
 
     assert ctx.debug_ui() == ()
 
     with pytest.raises(TypeError, match="UIElement or None"):
         with ctx.pass_scope():
             assert ctx.visit_slot_and_dirty(_BAD_SLOT) is True
-            ctx.leaf_call(_BAD_SLOT, _pyr_invalid)
+            ctx.component_call(_BAD_SLOT, _pyr_invalid, dirty_state=dirtyof())
 
     assert ctx.debug_ui() == ()
 
@@ -198,11 +209,12 @@ def test_failed_native_rerun_rolls_back_to_last_committed_ui() -> None:
 
     with ctx.pass_scope():
         assert ctx.visit_slot_and_dirty(_BADGE_SLOT) is True
-        ctx.leaf_call(
+        ctx.component_call(
             _BADGE_SLOT,
             _pyr_badge,
             "Ready",
             tone="info",
+            dirty_state=dirtyof(text=False, tone=False),
         )
 
     assert ctx.debug_ui() == (
@@ -212,30 +224,19 @@ def test_failed_native_rerun_rolls_back_to_last_committed_ui() -> None:
     with pytest.raises(TypeError, match="UIElement or None"):
         with ctx.pass_scope():
             assert ctx.visit_slot_and_dirty(_BADGE_SLOT) is False
-            ctx.leaf_call(_BADGE_SLOT, _pyr_invalid)
+            ctx.component_call(_BADGE_SLOT, _pyr_invalid, dirty_state=dirtyof())
 
     assert ctx.debug_ui() == (
         UIElement(kind="badge", props={"text": "Ready", "tone": "info"}),
     )
 
-
-def test_leaf_call_accepts_builtin_function_without_attribute_cache_support() -> None:
-    ctx = RenderContext()
-
-    with ctx.pass_scope():
-        assert ctx.visit_slot_and_dirty(_BUILTIN_LEAF_SLOT) is True
-        result = ctx.leaf_call(_BUILTIN_LEAF_SLOT, len, [1, 2, 3])
-
-    assert result == 3
-    assert ctx.debug_ui() == ()
-
-
 def test_container_call_accepts_builtin_function_without_attribute_cache_support() -> None:
     ctx = RenderContext()
 
     with ctx.pass_scope():
-        assert ctx.visit_slot_and_dirty(_BUILTIN_CONTAINER_SLOT) is True
-        with ctx.container_call(_BUILTIN_CONTAINER_SLOT, len, [1, 2, 3]) as slot:
+        builtin_container_slot = SlotId(_MODULE_ID, 8, line_no=17)
+        assert ctx.visit_slot_and_dirty(builtin_container_slot) is True
+        with ctx.container_call(builtin_container_slot, len, [1, 2, 3]) as slot:
             slot.call_native(
                 UIElement,
                 kind="badge",
@@ -245,21 +246,3 @@ def test_container_call_accepts_builtin_function_without_attribute_cache_support
     assert ctx.debug_ui() == (
         UIElement(kind="badge", props={"text": "Builtins supported", "tone": "info"}),
     )
-
-
-def test_leaf_call_tolerates_callable_with_invalid_signature_metadata() -> None:
-    ctx = RenderContext()
-
-    class _NoAttrBadSignatureLeaf:
-        __slots__ = ()
-        __signature__ = "invalid"
-
-        def __call__(self, values: list[int]) -> int:
-            return len(values)
-
-    with ctx.pass_scope():
-        assert ctx.visit_slot_and_dirty(_BUILTIN_LEAF_SLOT) is True
-        result = ctx.leaf_call(_BUILTIN_LEAF_SLOT, _NoAttrBadSignatureLeaf(), [1, 2, 3])
-
-    assert result == 3
-    assert ctx.debug_ui() == ()

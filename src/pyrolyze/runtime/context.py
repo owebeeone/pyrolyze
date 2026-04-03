@@ -621,30 +621,6 @@ class ContextBase:
             values=values,
         )
 
-    def leaf_call(
-        self,
-        slot_id: SlotId,
-        leaf_fn: CompValue[Callable[..., Any]] | Callable[..., Any],
-        *args: CompValue[Any] | Any,
-        **kwargs: CompValue[Any] | Any,
-    ) -> Any:
-        self._require_active_scope()
-        slot = self._ensure_slot(slot_id, LeafSlotContext)
-        raw_leaf_fn, _ = _unwrap(leaf_fn)
-        native_context_param = _native_context_param_name(cast(Callable[..., Any], raw_leaf_fn))
-        if native_context_param is not None:
-            raw_args = tuple(_unwrap(arg)[0] for arg in args)
-            raw_kwargs = {key: _unwrap(value)[0] for key, value in kwargs.items()}
-            return slot.invoke_native(
-                cast(Callable[..., Any], raw_leaf_fn),
-                raw_args,
-                raw_kwargs,
-                context_param=native_context_param,
-            )
-        raw_args = tuple(_unwrap(arg)[0] for arg in args)
-        raw_kwargs = {key: _unwrap(value)[0] for key, value in kwargs.items()}
-        return slot.invoke(cast(Callable[..., Any], raw_leaf_fn), raw_args, raw_kwargs)
-
     def component_call(
         self,
         slot_id: SlotId,

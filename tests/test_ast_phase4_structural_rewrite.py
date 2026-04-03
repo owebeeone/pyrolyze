@@ -45,7 +45,7 @@ def stats_panel(show_extra, count):
     assert "dirty_state=__pyr_dirtyof(title=False, accent=False)" in transformed
     assert "if show_extra:" in transformed
     assert "badge(f'Count: {count}', tone='info')" in transformed
-    assert ".leaf_call(" not in transformed
+    assert ".native_call(" not in transformed
     assert "__pyr_slot_2 =" not in transformed
 
     namespace = load_transformed_namespace(
