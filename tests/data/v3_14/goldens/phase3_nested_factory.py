@@ -2,6 +2,7 @@ from pyrolyze.api import CallFromNonPyrolyzeContext as __pyr_CallFromNonPyrolyze
 from pyrolyze.runtime import LiteralFunctionProvider as __pyr_LiteralFunctionProvider, SlotId as __pyr_SlotId, dm_from_dirty_state as __pyr_dm_from_dirty_state, dirtyof as __pyr_dirtyof, module_registry as __pyr_module_registry, slot_params as __pyr_slot_params, slot_params_dirt as __pyr_slot_params_dirt
 __pyr_module_id = __pyr_module_registry.module_id(__name__)
 __pyr_slot_1 = __pyr_SlotId(__pyr_module_id, 1, line_no=18, is_top_level=True)
+__pyr_slot_2 = __pyr_SlotId(__pyr_module_id, 2, line_no=18, is_top_level=True)
 from pyrolyze.api import ComponentRef, pyrolyze, pyrolyze_slotted
 
 @pyrolyze_slotted
@@ -16,7 +17,7 @@ def make_panel(prefix: str) -> ComponentRef[[str]]:
     def __pyr_make_panel___locals___panel(__pyr_ctx, __pyr_dirty_state, label: str):
         with __pyr_ctx.pass_scope():
             __pyr_dm = globals()['__pyr_dm_from_dirty_state'](__pyr_dirty_state)
-            value = __pyr_ctx.slot_expr(lambda v1: v1.eval(), lambda v1: v1.dirty()).slot_call('v1', __pyr_LiteralFunctionProvider(upper), lambda: __pyr_slot_params(label), lambda: __pyr_slot_params_dirt(__pyr_dm.bind.label), slot_id=__pyr_slot_1).apply_dirt_sink(__pyr_dm).evaluate('value')
+            value = __pyr_ctx.slot_expr(__pyr_slot_1, lambda v1: v1.eval(), lambda v1: v1.dirty()).slot_call('v1', __pyr_LiteralFunctionProvider(upper), lambda: __pyr_slot_params(label), lambda: __pyr_slot_params_dirt(__pyr_dm.bind.label), slot_id=__pyr_slot_2).apply_dirt_sink(__pyr_dm).evaluate('value')
             record(prefix + ':' + value)
 
     @__pyr_component_ref(__pyr_ComponentMetadata('make_panel.<locals>.panel', __pyr_make_panel___locals___panel))

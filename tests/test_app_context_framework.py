@@ -19,6 +19,7 @@ from pyrolyze.runtime import (
     SlotId,
     dirtyof,
 )
+from tests.slot_expr_test_utils import eval_single_slot_expr
 
 
 module_registry = ModuleRegistry()
@@ -168,7 +169,14 @@ def test_plain_native_and_child_component_contexts_share_app_context() -> None:
     ctx = RenderContext(app_context_store=AppContextStore(host_app="APP"))
 
     with ctx.pass_scope():
-        __pyr_count_dirty, count = ctx.call_plain(_PLAIN_WRITE_SLOT, remember, "alpha")
+        __pyr_count_dirty, count = eval_single_slot_expr(
+            ctx,
+            dirtyof(),
+            _PLAIN_WRITE_SLOT,
+            remember,
+            "alpha",
+            result_name="count",
+        )
         _ = __pyr_count_dirty
         ctx.leaf_call(_NATIVE_SLOT, mark_native, "beta")
         ctx.component_call(
@@ -177,7 +185,13 @@ def test_plain_native_and_child_component_contexts_share_app_context() -> None:
             "gamma",
             dirty_state=dirtyof(label=True),
         )
-        __pyr_values_dirty, values = ctx.call_plain(_PLAIN_READ_SLOT, snapshot)
+        __pyr_values_dirty, values = eval_single_slot_expr(
+            ctx,
+            dirtyof(),
+            _PLAIN_READ_SLOT,
+            snapshot,
+            result_name="values",
+        )
         _ = __pyr_values_dirty
 
     assert count == 2
@@ -201,7 +215,13 @@ def test_generation_tracker_is_shared_and_advances_on_committed_boundary_reruns(
         _ = __pyr_dirty_state
         with child_ctx.pass_scope():
             log.append(("generation", child_ctx.current_generation_id()))
-            __pyr_store_dirty, value = child_ctx.call_plain(_STORE_SLOT, use_store)
+            __pyr_store_dirty, value = eval_single_slot_expr(
+                child_ctx,
+                dirtyof(),
+                _STORE_SLOT,
+                use_store,
+                result_name="value",
+            )
             _ = __pyr_store_dirty
             log.append(("value", value))
 

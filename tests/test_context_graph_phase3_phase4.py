@@ -14,6 +14,7 @@ from pyrolyze.runtime.context import (
     SlotId,
     dirtyof,
 )
+from tests.slot_expr_test_utils import eval_single_slot_expr
 
 
 T = TypeVar("T")
@@ -177,8 +178,23 @@ def _make_nested_keyed_program(
                                             ):
                                                 continue
 
-                                            __pyr_grip_dirty, grip = bar_item.call_plain(_GRIP_SLOT, make_grip, foo, bar)
-                                            __pyr_value_dirty, value = bar_item.call_plain(_VALUE_SLOT, use_grip, grip)
+                                            __pyr_grip_dirty, grip = eval_single_slot_expr(
+                                                bar_item,
+                                                dirtyof(),
+                                                _GRIP_SLOT,
+                                                make_grip,
+                                                foo,
+                                                bar,
+                                                result_name="grip",
+                                            )
+                                            __pyr_value_dirty, value = eval_single_slot_expr(
+                                                bar_item,
+                                                dirtyof(),
+                                                _VALUE_SLOT,
+                                                use_grip,
+                                                grip,
+                                                result_name="value",
+                                            )
 
                                             if __pyr_value_dirty or bar_item.visit_slot_and_dirty(_BADGE_SLOT):
                                                 bar_item.leaf_call(

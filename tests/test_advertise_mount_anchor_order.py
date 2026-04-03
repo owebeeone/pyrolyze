@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from pyrolyze.api import MountSelector, PyrolyzeMountAdvertisement, UIElement, advertise_mount
-from pyrolyze.runtime import ContextBase, ModuleRegistry, RenderContext, SlotId
+from pyrolyze.runtime import ContextBase, ModuleRegistry, RenderContext, SlotId, dirtyof
+from tests.slot_expr_test_utils import eval_single_slot_expr
 
 
 module_registry = ModuleRegistry()
@@ -37,19 +38,25 @@ def test_advertise_mount_is_retained_at_exact_anchor_sites_in_container_order() 
     with ctx.pass_scope():
         with ctx.container_call(_CONTAINER_SLOT, _pyr_section, "Greeting") as section_ctx:
             section_ctx.leaf_call(_FIRST_TEXT_SLOT, _pyr_text, "hello")
-            _ = section_ctx.call_plain(
+            _ = eval_single_slot_expr(
+                section_ctx,
+                dirtyof(),
                 _FIRST_ADVERT_SLOT,
                 advertise_mount,
                 name="first_name",
                 target=first,
                 default=True,
+                result_name="advert",
             )
             section_ctx.leaf_call(_SECOND_TEXT_SLOT, _pyr_text, "hope you have a")
-            _ = section_ctx.call_plain(
+            _ = eval_single_slot_expr(
+                section_ctx,
+                dirtyof(),
                 _SECOND_ADVERT_SLOT,
                 advertise_mount,
                 name="type_of_day",
                 target=second,
+                result_name="advert",
             )
 
     advertisements = ctx.debug_mount_advertisements()
@@ -85,11 +92,14 @@ def test_advertise_mount_key_mapping_updates_legal_public_shape_on_rerender() ->
 
     with ctx.pass_scope():
         with ctx.container_call(_CONTAINER_SLOT, _pyr_section, "Wrapper") as section_ctx:
-            _ = section_ctx.call_plain(
+            _ = eval_single_slot_expr(
+                section_ctx,
+                dirtyof(),
                 _FIRST_ADVERT_SLOT,
                 advertise_mount,
                 name="first_name",
                 target=target,
+                result_name="advert",
             )
 
     first_pass = ctx.debug_mount_advertisements()
@@ -97,11 +107,14 @@ def test_advertise_mount_key_mapping_updates_legal_public_shape_on_rerender() ->
 
     with ctx.pass_scope():
         with ctx.container_call(_CONTAINER_SLOT, _pyr_section, "Wrapper") as section_ctx:
-            _ = section_ctx.call_plain(
+            _ = eval_single_slot_expr(
+                section_ctx,
+                dirtyof(),
                 _FIRST_ADVERT_SLOT,
                 advertise_mount,
                 name="display_name",
                 target=target,
+                result_name="advert",
             )
 
     second_pass = ctx.debug_mount_advertisements()

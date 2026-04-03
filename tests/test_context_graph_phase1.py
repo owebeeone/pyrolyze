@@ -12,6 +12,7 @@ from pyrolyze.runtime.context import (
     SlotOwnershipError,
     dirtyof,
 )
+from tests.slot_expr_test_utils import eval_single_slot_expr
 
 
 module_registry = ModuleRegistry()
@@ -48,10 +49,14 @@ def _make_welcome_program(log: list[tuple[object, ...]]):
         name: str,
     ) -> None:
         with ctx.pass_scope():
-            __pyr_title_dirty, title = ctx.call_plain(
+            __pyr_title_dirty, title = eval_single_slot_expr(
+                ctx,
+                __pyr_dirty_state,
                 _TITLE_SLOT,
                 _format_title,
                 name,
+                args_dirty=(__pyr_dirty_state.name,),
+                result_name="title",
             )
 
             if __pyr_title_dirty or ctx.visit_slot_and_dirty(_SECTION_SLOT):
@@ -95,10 +100,14 @@ def _make_welcome_conditional_program(log: list[tuple[object, ...]]):
         show_badge: bool,
     ) -> None:
         with ctx.pass_scope():
-            __pyr_title_dirty, title = ctx.call_plain(
+            __pyr_title_dirty, title = eval_single_slot_expr(
+                ctx,
+                __pyr_dirty_state,
                 _TITLE_SLOT,
                 _format_title,
                 name,
+                args_dirty=(__pyr_dirty_state.name,),
+                result_name="title",
             )
 
             if (
@@ -151,10 +160,14 @@ def _make_wrong_child_owner_program(log: list[tuple[object, ...]]):
         accent: str,
     ) -> None:
         with ctx.pass_scope():
-            __pyr_title_dirty, title = ctx.call_plain(
+            __pyr_title_dirty, title = eval_single_slot_expr(
+                ctx,
+                __pyr_dirty_state,
                 _TITLE_SLOT,
                 _format_title,
                 name,
+                args_dirty=(__pyr_dirty_state.name,),
+                result_name="title",
             )
 
             if (

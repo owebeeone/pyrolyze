@@ -7,6 +7,12 @@ This file defines repository-specific coding instructions for `py-rolyze`.
 - Prefer `@dataclass` for classes that primarily hold state.
 - Keep transport clients small and explicit; protocol conversion should be easy to inspect.
 - Keep type annotations complete and precise so IDE inference remains strong.
+- Organize modules by cohesive responsibility and change boundary.
+- Keep generic/shared modules limited to neutral abstractions, stable data carriers, and utilities that are genuinely shared across subsystems.
+- Keep subsystem-specific concrete implementations with the subsystem that owns their behavior.
+- Promote a concrete implementation into a shared module only when there is clear multi-consumer reuse or it defines a stable cross-cutting concept.
+- Split modules when doing so improves change isolation, testing, or architectural clarity; do not split so aggressively that closely related behavior becomes scattered across tiny files.
+- Plans do not override sound architectural separation. If implementation reveals that a planned module boundary is wrong or overly coupled, stop widening the mistake, update the plan/docs, and adopt the cleaner boundary instead.
 
 ## Paths in version control
 - Do not store absolute filesystem paths in any committed file; use paths relative to this repository (the `pyrolyze` submodule root). If a path would cross into a parent monorepo checkout, truncate to the closest submodule root instead of embedding machine-specific prefixes.

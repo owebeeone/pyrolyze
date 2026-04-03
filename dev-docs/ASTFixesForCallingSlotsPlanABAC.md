@@ -34,7 +34,7 @@ runtime-parity work needed before compiler migration could start.
 
 ### 1. `invoke_dirty` parity
 
-Old `plain_call` reinvokes when `self.invoke_dirty` is true, even if:
+Old `slot_call` reinvokes when `self.invoke_dirty` is true, even if:
 
 - function identity is unchanged
 - args/kwargs are unchanged
@@ -50,7 +50,7 @@ Phase AB needs:
 
 ### 2. `PlainCallRuntimeContext` parity or explicit replacement
 
-Old `plain_call` inspects the callable signature and automatically injects `PlainCallRuntimeContext` when requested.
+Old `slot_call` inspects the callable signature and automatically injects `PlainCallRuntimeContext` when requested.
 
 `SlotExpr` does not currently do this.
 
@@ -112,7 +112,7 @@ Phase AC needs:
 
 ### 2. Real host integration instead of local host shim
 
-`SlotExpr` currently uses a local `_SlotExprPlainCallHost` that provides:
+`SlotExpr` currently uses a local `_SlotExprSlotCallHost` that provides:
 
 - no-op invalidation
 - local staged post-commit callback handling
@@ -190,7 +190,7 @@ Each test below should validate both:
 - the immediate expression-visible result/value behavior
 - the lifecycle side effects on staged state, committed state, and deactivation
 
-Where a behavior is expected to match old `plain_call`, the test should compare against the legacy runtime behavior directly when practical, or else encode the same externally visible contract in the assertion set.
+Where a behavior is expected to match old `slot_call`, the test should compare against the legacy runtime behavior directly when practical, or else encode the same externally visible contract in the assertion set.
 
 ### `invoke_dirty` parity tests
 
@@ -301,9 +301,9 @@ If real integration is implemented, add:
 
 If the shim remains, replace the above with:
 
-1. `test_slot_expr_host_shim_matches_plain_call_invalidation_contract`
-2. `test_slot_expr_host_shim_matches_plain_call_mount_advert_contract`
-3. `test_slot_expr_host_shim_matches_plain_call_post_commit_contract`
+1. `test_slot_expr_host_shim_matches_slot_call_invalidation_contract`
+2. `test_slot_expr_host_shim_matches_slot_call_mount_advert_contract`
+3. `test_slot_expr_host_shim_matches_slot_call_post_commit_contract`
 
 In either case, also add:
 
@@ -376,7 +376,7 @@ Implement all of these:
 
 Implement all of these:
 
-1. `test_slot_expr_reachability_contract_matches_plain_call_branch_behavior`
+1. `test_slot_expr_reachability_contract_matches_slot_call_branch_behavior`
    - short-circuit form deactivates previously reached branch call sites
    - eager form keeps them reachable
 

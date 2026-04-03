@@ -22,7 +22,7 @@ Remaining:
 
 - Phase D
 
-The goal is to replace the current slot-bearing `plain_call` model with:
+The goal is to replace the current slot-bearing `slot_call` model with:
 
 - a central dirt manager (`__pyr_dm`)
 - slot-context-owned literal/initial-render dirt
@@ -39,7 +39,7 @@ This plan covers:
 - runtime structures needed for the new model
 - runtime-only tests that validate the model before compiler work starts
 - compiler migration phases
-- final removal of `plain_call`
+- final removal of `slot_call`
 
 This plan does not include:
 
@@ -57,8 +57,8 @@ The migration should be done in staged phases:
 3. finish the remaining runtime-only parity gaps
 4. finish the remaining identity and host-integration parity gaps
 5. move dirt handling onto the new dirt manager first
-6. move slot-bearing expression lowering from `plain_call` to `SlotExpr`
-7. remove `plain_call` completely
+6. move slot-bearing expression lowering from `slot_call` to `SlotExpr`
+7. remove `slot_call` completely
 
 ### ComponentRef Follow-On Work
 
@@ -201,7 +201,7 @@ Required behaviors:
 - memoized dirty result
 - no re-execution on repeated access
 - clean dirt result for unevaluated path
-- support the same return-shape families currently supported by `plain_call`
+- support the same return-shape families currently supported by `slot_call`
 
 This includes at least:
 
@@ -219,8 +219,8 @@ Create the new runtime pieces without changing current compiler lowering.
 
 ### Deliverables
 
-- `pyrolyze/src/pyrolyze/runtime/dirt.py`
-- `pyrolyze/src/pyrolyze/runtime/slot_expr.py`
+- `src/pyrolyze/runtime/dirt.py`
+- `src/pyrolyze/runtime/slot_expr.py`
 - `Args[T]`
 - `DM`
 - `SlotExpr`
@@ -233,9 +233,9 @@ These tests should be runtime-only tests. They should not rely on transformed so
 
 Suggested files:
 
-- `pyrolyze/tests/test_runtime_slot_expr.py`
-- `pyrolyze/tests/test_runtime_dirt.py`
-- optional: `pyrolyze/tests/test_runtime_slot_expr_shapes.py`
+- `tests/test_runtime_slot_expr.py`
+- `tests/test_runtime_dirt.py`
+- optional: `tests/test_runtime_slot_expr_shapes.py`
 
 #### Args tests
 
@@ -362,7 +362,7 @@ Phase A is complete when:
 
 Phase A does not include:
 
-- shared `plain_call` handler extraction/reuse
+- shared `slot_call` handler extraction/reuse
 - staged lifecycle/handler parity
 - callable-dirt parity
 - real call-site `SlotId`
@@ -381,8 +381,8 @@ This phase is intentionally larger than Phase A and captures the work that shoul
 
 - staged per-pass `SlotExpr` commit/rollback behavior
 - staged deactivation of previously-live but now-unvisited call sites
-- extraction or reuse of the `plain_call` handler/binding infrastructure from `runtime/context.py`
-- memoization behavior matching `plain_call` semantics for:
+- extraction or reuse of the `slot_call` handler/binding infrastructure from `runtime/context.py`
+- memoization behavior matching `slot_call` semantics for:
   - stable-input elision
   - dirty-arg reinvocation
   - callable-dirt reinvocation
@@ -396,8 +396,8 @@ This phase is intentionally larger than Phase A and captures the work that shoul
 
 Suggested additions to:
 
-- `pyrolyze/tests/test_runtime_slot_expr.py`
-- optional: `pyrolyze/tests/test_runtime_slot_expr_lifecycle.py`
+- `tests/test_runtime_slot_expr.py`
+- optional: `tests/test_runtime_slot_expr_lifecycle.py`
 
 #### Reachability and deactivation tests
 
@@ -457,7 +457,7 @@ Phase AA is complete when:
 
 ### Goal
 
-Finish the remaining `plain_call` parity items that do not require real
+Finish the remaining `slot_call` parity items that do not require real
 compiler-generated call-site identity or real host integration.
 
 ### Deliverables
@@ -472,8 +472,8 @@ compiler-generated call-site identity or real host integration.
 
 Suggested additions to:
 
-- `pyrolyze/tests/test_runtime_slot_expr.py`
-- optional: `pyrolyze/tests/test_runtime_slot_expr_lifecycle.py`
+- `tests/test_runtime_slot_expr.py`
+- optional: `tests/test_runtime_slot_expr_lifecycle.py`
 
 #### Reachability and deactivation tests
 
@@ -509,7 +509,7 @@ Suggested additions to:
 
 Phase AB is complete when:
 
-- the remaining runtime-only semantic gaps relative to `plain_call` are closed or explicitly documented as intentional differences
+- the remaining runtime-only semantic gaps relative to `slot_call` are closed or explicitly documented as intentional differences
 - `invoke_dirty` and runtime-context behavior are covered by tests
 - pairing and retained-reference behavior are covered by tests
 - the only remaining parity gaps are call-site identity and host integration
@@ -519,7 +519,7 @@ Phase AB is complete when:
 
 ### Goal
 
-Finish the remaining `plain_call` parity items that require:
+Finish the remaining `slot_call` parity items that require:
 
 - real call-site identity
 - real host/runtime integration
@@ -535,8 +535,8 @@ Finish the remaining `plain_call` parity items that require:
 
 Suggested additions to:
 
-- `pyrolyze/tests/test_runtime_slot_expr.py`
-- optional: `pyrolyze/tests/test_runtime_slot_expr_lifecycle.py`
+- `tests/test_runtime_slot_expr.py`
+- optional: `tests/test_runtime_slot_expr_lifecycle.py`
 
 #### Call-site identity tests
 
@@ -558,13 +558,13 @@ Phase AC is complete when:
 
 - runtime identity is carried by real `SlotId`
 - host behavior is integrated or explicitly justified by shim-equivalence tests
-- no remaining `plain_call` parity gap depends on runtime identity or host behavior
+- no remaining `slot_call` parity gap depends on runtime identity or host behavior
 
 ## Phase B: Move Dirt Handling To DM First
 
 ### Goal
 
-Adopt the new dirt manager before replacing `plain_call`.
+Adopt the new dirt manager before replacing `slot_call`.
 
 ### Why
 
@@ -591,7 +591,7 @@ These tests should target current transformed behavior but verify the new dirt m
 
 Suggested files:
 
-- `pyrolyze/tests/test_ast_phaseX_dirty_manager_integration.py`
+- `tests/test_ast_phaseX_dirty_manager_integration.py`
 - plus updates to existing AST/compiler execution tests
 
 #### Integration tests
@@ -614,7 +614,7 @@ Suggested files:
 
 Phase B is complete when:
 
-- transformed code can use `DM` successfully while `plain_call` still exists
+- transformed code can use `DM` successfully while `slot_call` still exists
 - expected goldens are updated
 - compiler-emitted slotted assignments bind dirty results directly into `DM`
 - compiler-emitted deletes mirror into `del __pyr_dm.bind.name`
@@ -624,7 +624,7 @@ Phase B is complete when:
 
 ### Goal
 
-Move slot-bearing expressions from `plain_call` lowering to `SlotExpr`.
+Move slot-bearing expressions from `slot_call` lowering to `SlotExpr`.
 
 ### Deliverables
 
@@ -675,8 +675,8 @@ Cover:
 
 Suggested files:
 
-- `pyrolyze/tests/test_ast_slot_expr_rewrite.py`
-- `pyrolyze/tests/test_ast_slot_expr_execution.py`
+- `tests/test_ast_slot_expr_rewrite.py`
+- `tests/test_ast_slot_expr_execution.py`
 - updates to existing compiler golden tests
 
 #### Rewrite tests
@@ -686,8 +686,8 @@ Suggested files:
 - transformed output contains the correct provider choice for each call site
 - transformed output contains `.apply_dirt_sink(...)`
 - transformed output contains `.evaluate(...)`
-- transformed output no longer lowers slot-bearing expressions through `plain_call`
-- if a single-call fast path is emitted, it is still part of the `SlotExpr` runtime contract rather than a `plain_call` fallback
+- transformed output no longer lowers slot-bearing expressions through `slot_call`
+- if a single-call fast path is emitted, it is still part of the `SlotExpr` runtime contract rather than a `slot_call` fallback
 
 #### Execution tests mirroring doc examples
 
@@ -719,24 +719,24 @@ Phase C is complete when:
 - slot-bearing expressions lower through `SlotExpr`
 - unsupported forms fail with intentional diagnostics
 - expected goldens are updated
-- `plain_call` is no longer needed for slot-bearing expression lowering
+- `slot_call` is no longer needed for slot-bearing expression lowering
 
-## Phase D: Remove plain_call Completely
+## Phase D: Remove slot_call Completely
 
 ### Goal
 
-Delete the old `plain_call` path and finish the migration.
+Delete the old `slot_call` path and finish the migration.
 
 ### Deliverables
 
 - all remaining lowering paths use `SlotExpr`
-- `plain_call` removed
+- `slot_call` removed
 - compatibility shims removed
 - dead tests removed or updated
 
 ### Phase D Tests
 
-- search-based test or audit confirming no runtime/compiler path still targets `plain_call`
+- search-based test or audit confirming no runtime/compiler path still targets `slot_call`
 - full compiler execution suite where expected
 - full relevant golden suite where expected
 - regression check for all slot-expression examples from earlier phases
@@ -745,7 +745,7 @@ Delete the old `plain_call` path and finish the migration.
 
 Phase D is complete when:
 
-- `plain_call` no longer exists
+- `slot_call` no longer exists
 - all intended lowering goes through `SlotExpr`
 - expected goldens and regression tests pass
 
@@ -770,15 +770,15 @@ Phase C must specifically add diagnostics for:
 3. stabilize `SlotExpr`
 4. wire `DM` under current lowering
 5. wire `SlotExpr` under new lowering
-6. remove `plain_call`
+6. remove `slot_call`
 
 ## Stop Conditions
 
 Pause and revise if:
 
 - `DM` semantics become inconsistent with current compiler assumptions
-- `SlotExpr` cannot represent one of the current `plain_call` return-shape families cleanly
-- golden fallout suggests hidden dependence on `plain_call` behavior not covered in the design
+- `SlotExpr` cannot represent one of the current `slot_call` return-shape families cleanly
+- golden fallout suggests hidden dependence on `slot_call` behavior not covered in the design
 - keyed loop + dirt interaction for attribute/subscript assignment proves materially different from the current assumptions
 
 ## Summary

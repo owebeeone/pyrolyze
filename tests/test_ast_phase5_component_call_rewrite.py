@@ -113,7 +113,7 @@ def imported_panel(text):
     ]
 
 
-def test_phase5_lowers_pyrolyze_handler_event_params_and_keeps_plain_callables_plain() -> None:
+def test_phase5_lowers_pyrolyze_handler_event_params_and_keeps_slot_callables_plain() -> None:
     source = """
 from typing import Callable
 

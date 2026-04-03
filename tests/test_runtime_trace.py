@@ -21,7 +21,9 @@ from pyrolyze.runtime import (
     reconcile_owner,
     reset_trace,
     trace_enabled,
+    dirtyof,
 )
+from tests.slot_expr_test_utils import eval_single_slot_expr
 
 
 module_registry = ModuleRegistry()
@@ -128,11 +130,13 @@ def test_render_context_emits_invalidation_flush_and_boundary_records() -> None:
 
         def render() -> None:
             with ctx.pass_scope():
-                _, pair = ctx.call_plain(
+                _, pair = eval_single_slot_expr(
+                    ctx,
+                    dirtyof(),
                     _STATE_SLOT,
                     use_state,
                     0,
-                    result_shape=("tuple", 2),
+                    result_name="pair",
                 )
                 _count, setter = pair
                 setters[:] = [setter]

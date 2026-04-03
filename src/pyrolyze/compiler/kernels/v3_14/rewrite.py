@@ -19,7 +19,7 @@ _MOUNT_HELPERS = {"mount"}
 _APP_CONTEXT_OVERRIDE_HELPER = "app_context_override"
 _CALLABLE_KIND_COMPONENT_REF = "component_ref"
 _CALLABLE_KIND_SLOT_CALLABLE = "slot_callable"
-_CALLABLE_KIND_PLAIN_CALLABLE = "plain_callable"
+_CALLABLE_KIND_PLAIN_CALLABLE = "slot_callable"
 
 
 @dataclass(slots=True)
@@ -1217,19 +1217,21 @@ def _lower_slot_expr_assign(
             suggested_fix="simplify_assignment_shape",
         )
 
+    _slot_expr_slot_index, slot_expr_slot_id_expr, slot_expr_slot_setup = state.next_slot_id(reason=value)
     call_sites: list[_SlotExprCallSiteSpec] = []
     value_expr, dirty_expr = _transform_slot_expr(value, state=state, call_sites=call_sites)
     lambda_names = tuple(call_site.call_id for call_site in call_sites)
     slot_expr_expr: ast.expr = ast.Call(
         func=ast.Attribute(value=state.context_ref(), attr="slot_expr", ctx=ast.Load()),
         args=[
+            copy.deepcopy(slot_expr_slot_id_expr),
             _lambda_with_names(lambda_names, value_expr),
             _lambda_with_names(lambda_names, dirty_expr),
         ],
         keywords=[],
     )
 
-    slot_setup: list[ast.stmt] = []
+    slot_setup: list[ast.stmt] = [*slot_expr_slot_setup]
     for call_site in call_sites:
         slot_setup.extend(call_site.slot_setup)
         slot_expr_expr = ast.Call(
@@ -1288,6 +1290,27 @@ def _transform_slot_expr(
         return (
             ast.UnaryOp(op=copy.deepcopy(value.op), operand=operand_value),
             operand_dirty,
+        )
+    if isinstance(value, ast.IfExp):
+        test_value, test_dirty = _transform_slot_expr(value.test, state=state, call_sites=call_sites)
+        body_value, body_dirty = _transform_slot_expr(value.body, state=state, call_sites=call_sites)
+        orelse_value, orelse_dirty = _transform_slot_expr(value.orelse, state=state, call_sites=call_sites)
+        return (
+            ast.IfExp(
+                test=test_value,
+                body=body_value,
+                orelse=orelse_value,
+            ),
+            _or_expression(
+                [
+                    test_dirty,
+                    ast.IfExp(
+                        test=copy.deepcopy(test_value),
+                        body=body_dirty,
+                        orelse=orelse_dirty,
+                    ),
+                ]
+            ),
         )
     if isinstance(value, ast.Call):
         func_value, func_dirty = _transform_slot_expr(value.func, state=state, call_sites=call_sites)
@@ -1456,18 +1479,20 @@ def _lower_slotted_expr_call(
             module_name=state.module_name,
             suggested_fix="simplify_slot_expression",
         )
+    _slot_expr_slot_index, slot_expr_slot_id_expr, slot_expr_slot_setup = state.next_slot_id(reason=call)
     call_sites: list[_SlotExprCallSiteSpec] = []
     value_expr, dirty_expr = _transform_slot_expr(call, state=state, call_sites=call_sites)
     lambda_names = tuple(call_site.call_id for call_site in call_sites)
     slot_expr_expr: ast.expr = ast.Call(
         func=ast.Attribute(value=state.context_ref(), attr="slot_expr", ctx=ast.Load()),
         args=[
+            copy.deepcopy(slot_expr_slot_id_expr),
             _lambda_with_names(lambda_names, value_expr),
             _lambda_with_names(lambda_names, dirty_expr),
         ],
         keywords=[],
     )
-    slot_setup: list[ast.stmt] = []
+    slot_setup: list[ast.stmt] = [*slot_expr_slot_setup]
     for call_site in call_sites:
         slot_setup.extend(call_site.slot_setup)
         slot_expr_expr = ast.Call(

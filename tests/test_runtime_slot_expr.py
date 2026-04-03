@@ -39,7 +39,7 @@ class FakeSlotContext:
 
 
 @dataclass
-class SpyPlainCallHost(PlainCallBindingHost):
+class SpySlotCallHost(PlainCallBindingHost):
     invalidations: int = 0
     post_commit_callbacks: list[Callable[[], None]] = None
     published_requests: list[PyrolyzeMountAdvertisementRequest] = None
@@ -52,6 +52,9 @@ class SpyPlainCallHost(PlainCallBindingHost):
             self.published_requests = []
 
     def queue_plain_call_invalidation(self) -> None:
+        self.invalidations += 1
+
+    def mark_plain_call_refresh_only(self) -> None:
         self.invalidations += 1
 
     def enqueue_plain_call_post_commit(self, callback: Callable[[], None]) -> None:
@@ -661,7 +664,7 @@ def test_slot_expr_host_factory_routes_external_store_invalidation_to_host() -> 
     slot_ctx = FakeSlotContext(initial_render=False)
     store = {"value": 1}
     listeners: list[Callable[[], None]] = []
-    host = SpyPlainCallHost()
+    host = SpySlotCallHost()
 
     def subscribe(listener):
         listeners.append(listener)
@@ -685,7 +688,7 @@ def test_slot_expr_host_factory_routes_external_store_invalidation_to_host() -> 
 def test_slot_expr_host_factory_stages_post_commit_callbacks_through_host() -> None:
     dm = DM()
     slot_ctx = FakeSlotContext(initial_render=False)
-    host = SpyPlainCallHost()
+    host = SpySlotCallHost()
     events: list[str] = []
 
     expr = SlotExpr.single_call(
@@ -704,7 +707,7 @@ def test_slot_expr_host_factory_stages_post_commit_callbacks_through_host() -> N
 def test_slot_expr_host_factory_routes_mount_advert_publish_and_withdraw() -> None:
     dm = DM()
     slot_ctx = FakeSlotContext(initial_render=False)
-    host = SpyPlainCallHost()
+    host = SpySlotCallHost()
     gate = {"value": False}
     gate_dirty = {"value": False}
 
@@ -743,8 +746,8 @@ def test_slot_expr_host_factory_is_identical_between_single_call_and_general_slo
     slot_ctx = FakeSlotContext(initial_render=False)
     fast_dm = DM()
     general_dm = DM()
-    fast_host = SpyPlainCallHost()
-    general_host = SpyPlainCallHost()
+    fast_host = SpySlotCallHost()
+    general_host = SpySlotCallHost()
 
     fast = SlotExpr.single_call(
         LiteralFunctionProvider(lambda: UseEffectRequest(effect_fn=lambda: None, deps=("x",))),
@@ -877,6 +880,63 @@ def test_slot_expr_external_store_ref_refreshes_without_reinvoking_call() -> Non
         listener()
     assert expr.evaluate("value") == 2
     assert call_count["count"] == 1
+    assert get_count["count"] == 2
+    assert dm.bind.value is True
+
+
+def test_slot_expr_invoke_get_shortcuts_provider_and_builder_evaluation() -> None:
+    store = {"value": 1}
+    listeners: list[callable] = []
+    source_call_count = {"count": 0}
+    provider_count = {"count": 0}
+    provider_dirty_count = {"count": 0}
+    args_builder_count = {"count": 0}
+    dirt_builder_count = {"count": 0}
+    get_count = {"count": 0}
+
+    def subscribe(listener):
+        listeners.append(listener)
+        return lambda: listeners.remove(listener)
+
+    def source() -> ExternalStoreRef[int]:
+        source_call_count["count"] += 1
+        return ExternalStoreRef(
+            identity="store",
+            subscribe=subscribe,
+            get=lambda: _counted_get(store, get_count),
+        )
+
+    dm = DM()
+    slot_ctx = FakeSlotContext(initial_render=True)
+    expr = SlotExpr.single_call(
+        LambdaFunctionProvider(
+            lambda: _count_provider(provider_count, source),
+            lambda: _count_provider_dirty(provider_dirty_count, False),
+        ),
+        lambda: _count_args_builder(args_builder_count),
+        lambda: _count_dirt_args_builder(dirt_builder_count),
+        slot_id=SlotId(ModuleId("test"), 1, line_no=1),
+    ).apply_slot_context(slot_ctx).apply_dirt_sink(dm)
+
+    assert expr.evaluate("value") == 1
+    assert source_call_count["count"] == 1
+    assert provider_count["count"] == 1
+    assert provider_dirty_count["count"] == 1
+    assert args_builder_count["count"] == 1
+    assert dirt_builder_count["count"] == 1
+    assert get_count["count"] == 1
+
+    expr.apply_slot_context(FakeSlotContext(initial_render=False))
+    store["value"] = 2
+    for listener in tuple(listeners):
+        listener()
+
+    assert expr.evaluate("value") == 2
+    assert source_call_count["count"] == 1
+    assert provider_count["count"] == 1
+    assert provider_dirty_count["count"] == 1
+    assert args_builder_count["count"] == 1
+    assert dirt_builder_count["count"] == 1
     assert get_count["count"] == 2
     assert dm.bind.value is True
 
@@ -1234,6 +1294,26 @@ class Box:
 def _counted_get(store: dict[str, int], counter: dict[str, int]) -> int:
     counter["count"] += 1
     return store["value"]
+
+
+def _count_provider(counter: dict[str, int], value):
+    counter["count"] += 1
+    return value
+
+
+def _count_provider_dirty(counter: dict[str, int], value: bool) -> bool:
+    counter["count"] += 1
+    return value
+
+
+def _count_args_builder(counter: dict[str, int]) -> Args[int]:
+    counter["count"] += 1
+    return slot_params()
+
+
+def _count_dirt_args_builder(counter: dict[str, int]) -> Args[bool]:
+    counter["count"] += 1
+    return slot_params_dirt(False)
 
 
 def test_phase_a_attribute_and_subscript_behaviors_can_be_tracked_in_parallel() -> None:

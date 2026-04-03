@@ -16,6 +16,7 @@ from pyrolyze.runtime.context import (
     UseEffectAsyncRequest,
     dirtyof,
 )
+from tests.slot_expr_test_utils import eval_single_slot_expr
 
 
 module_registry = ModuleRegistry()
@@ -84,7 +85,13 @@ def test_host_posting_dedupes_and_defers_rerun_until_posted_flush() -> None:
     def render(__pyr_dirty_state: DirtyStateContext) -> None:
         _ = __pyr_dirty_state
         with ctx.pass_scope():
-            __pyr_value_dirty, value = ctx.call_plain(_VALUE_SLOT, use_store)
+            __pyr_value_dirty, value = eval_single_slot_expr(
+                ctx,
+                dirtyof(),
+                _VALUE_SLOT,
+                use_store,
+                result_name="value",
+            )
             log.append(("render", value))
             ctx.leaf_call(
                 _BUTTON_SLOT,
@@ -187,7 +194,14 @@ def test_async_effect_completion_posts_invalidation_and_replacement_cancels_prev
         _ = __pyr_dirty_state
         with ctx.pass_scope():
             renders.append(label)
-            ctx.call_plain(_ASYNC_SLOT, register_async, label)
+            eval_single_slot_expr(
+                ctx,
+                dirtyof(),
+                _ASYNC_SLOT,
+                register_async,
+                label,
+                result_name="async_effect",
+            )
 
     def root_render() -> None:
         render(state["label"], dirtyof(label=state["dirty"]))

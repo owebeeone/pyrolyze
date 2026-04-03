@@ -12,6 +12,7 @@ from pyrolyze.api import (
     pyrolyze_component_ref,
 )
 from pyrolyze.runtime.context import DirtyStateContext, ModuleRegistry, RenderContext, SlotId, dirtyof
+from tests.slot_expr_test_utils import eval_single_slot_expr
 
 
 module_registry = ModuleRegistry()
@@ -94,10 +95,14 @@ def _make_component_program(log: list[tuple[object, ...]]):
         text: str,
     ) -> None:
         with ctx.pass_scope():
-            __pyr_chosen_dirty, chosen = ctx.call_plain(
+            __pyr_chosen_dirty, chosen = eval_single_slot_expr(
+                ctx,
+                __pyr_dirty_state,
                 _PICK_BADGE_SLOT,
                 pick_badge,
                 kind,
+                args_dirty=(__pyr_dirty_state.kind,),
+                result_name="chosen",
             )
 
             if __pyr_chosen_dirty or __pyr_dirty_state.text or ctx.visit_slot_and_dirty(_SECTION_SLOT):
@@ -119,10 +124,13 @@ def _make_component_program(log: list[tuple[object, ...]]):
                             dirty_state=dirtyof(text=__pyr_dirty_state.text),
                         )
 
-                    __pyr_fallback_dirty, fallback = section_ctx.call_plain(
+                    __pyr_fallback_dirty, fallback = eval_single_slot_expr(
+                        section_ctx,
+                        dirtyof(),
                         _FALLBACK_PICK_SLOT,
                         pick_badge,
                         "neutral",
+                        result_name="fallback",
                     )
 
                     if __pyr_fallback_dirty or section_ctx.visit_slot_and_dirty(_FALLBACK_COMPONENT_SLOT):

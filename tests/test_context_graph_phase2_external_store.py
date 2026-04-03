@@ -8,12 +8,12 @@ from pyrolyze.runtime.context import (
     ExternalStoreRef,
     ModuleRegistry,
     PlainCallRuntimeContext,
-    PlainCallSlotContext,
     PlainValueBinding,
     RenderContext,
     SlotId,
     dirtyof,
 )
+from tests.slot_expr_test_utils import eval_single_slot_expr, slot_expr_binding_for
 
 
 T = TypeVar("T")
@@ -84,10 +84,14 @@ def _make_external_reader_program(
 
     def _pyr_reader(ctx: RenderContext, __pyr_dirty_state, grip_name: str) -> None:
         with ctx.pass_scope():
-            __pyr_value_dirty, value = ctx.call_plain(
+            __pyr_value_dirty, value = eval_single_slot_expr(
+                ctx,
+                __pyr_dirty_state,
                 _STORE_SLOT,
                 use_grip,
                 grip_name,
+                args_dirty=(__pyr_dirty_state.grip_name,),
+                result_name="value",
             )
             observed.append((value, __pyr_value_dirty))
 
@@ -99,10 +103,14 @@ def _make_switching_helper_program(log: list[tuple[object, ...]]):
 
     def _pyr_reader(ctx: RenderContext, __pyr_dirty_state, helper: Callable[[str], object], grip_name: str) -> None:
         with ctx.pass_scope():
-            __pyr_value_dirty, value = ctx.call_plain(
+            __pyr_value_dirty, value = eval_single_slot_expr(
+                ctx,
+                __pyr_dirty_state,
                 _STORE_SLOT,
                 helper,
                 grip_name,
+                args_dirty=(__pyr_dirty_state.grip_name,),
+                result_name="value",
             )
             observed.append((value, __pyr_value_dirty))
 
@@ -110,9 +118,7 @@ def _make_switching_helper_program(log: list[tuple[object, ...]]):
 
 
 def _binding_for(ctx: RenderContext):
-    slot = ctx._slots_by_id[_STORE_SLOT]
-    assert isinstance(slot, PlainCallSlotContext)
-    return slot.binding
+    return slot_expr_binding_for(ctx, _STORE_SLOT)
 
 
 def _make_conditional_program(
@@ -133,10 +139,14 @@ def _make_conditional_program(
     ) -> None:
         with ctx.pass_scope():
             if show:
-                __pyr_value_dirty, value = ctx.call_plain(
+                __pyr_value_dirty, value = eval_single_slot_expr(
+                    ctx,
+                    __pyr_dirty_state,
                     _STORE_SLOT,
                     use_grip,
                     grip_name,
+                    args_dirty=(__pyr_dirty_state.grip_name,),
+                    result_name="value",
                 )
                 observed.append((value, __pyr_value_dirty))
 
@@ -177,7 +187,6 @@ def test_external_store_notification_refreshes_via_get_without_helper_rerun() ->
         ("helper", "weather"),
         ("subscribe", "weather"),
         ("get", "weather", "sunny"),
-        ("helper", "weather"),
         ("get", "weather", "rain"),
     ]
 
@@ -193,8 +202,6 @@ def test_external_store_notification_refreshes_via_get_without_helper_rerun() ->
         ("helper", "weather"),
         ("subscribe", "weather"),
         ("get", "weather", "sunny"),
-        ("helper", "weather"),
-        ("get", "weather", "rain"),
         ("get", "weather", "rain"),
     ]
 
@@ -253,7 +260,7 @@ def test_switching_from_external_helper_to_plain_helper_unsubscribes_old_binding
     assert isinstance(_binding_for(ctx), PlainValueBinding)
 
 
-def test_plain_call_runtime_context_injects_slot_local_storage() -> None:
+def test_slot_call_runtime_context_injects_slot_local_storage() -> None:
     ctx = RenderContext()
     observed: list[tuple[str, int, bool]] = []
 
@@ -264,7 +271,15 @@ def test_plain_call_runtime_context_injects_slot_local_storage() -> None:
 
     def _pyr_reader(ctx: RenderContext, __pyr_dirty_state, label: str) -> None:
         with ctx.pass_scope():
-            __pyr_value_dirty, value = ctx.call_plain(_STORE_SLOT, helper, label)
+            __pyr_value_dirty, value = eval_single_slot_expr(
+                ctx,
+                __pyr_dirty_state,
+                _STORE_SLOT,
+                helper,
+                label,
+                args_dirty=(__pyr_dirty_state.label,),
+                result_name="value",
+            )
             observed.append((value, id(_binding_for(ctx)), __pyr_value_dirty))
 
     _pyr_reader(ctx, dirtyof(label=True), "alpha")
@@ -290,7 +305,15 @@ def test_plain_result_uses_plain_value_binding() -> None:
 
     def pyr_reader(name: str, __pyr_dirty_state) -> None:
         with ctx.pass_scope():
-            __pyr_value_dirty, value = ctx.call_plain(_STORE_SLOT, plain_helper, name)
+            __pyr_value_dirty, value = eval_single_slot_expr(
+                ctx,
+                __pyr_dirty_state,
+                _STORE_SLOT,
+                plain_helper,
+                name,
+                args_dirty=(getattr(__pyr_dirty_state, "name", False),),
+                result_name="value",
+            )
             observed.append((value, __pyr_value_dirty))
 
     pyr_reader("weather", dirtyof(name=True))
@@ -306,7 +329,7 @@ def test_plain_result_uses_plain_value_binding() -> None:
     assert isinstance(_binding_for(ctx), PlainValueBinding)
 
 
-def test_deactivating_an_external_plain_call_unsubscribes_the_store() -> None:
+def test_deactivating_an_external_slot_call_unsubscribes_the_store() -> None:
     ctx = RenderContext()
     log: list[tuple[object, ...]] = []
     store = _StoreProbe(name="weather", initial_value="sunny", log=log)
@@ -334,14 +357,21 @@ def test_deactivating_an_external_plain_call_unsubscribes_the_store() -> None:
     assert log[-1] == ("unsubscribe", "weather")
 
 
-def test_plain_call_accepts_builtin_function_without_attribute_cache_support() -> None:
+def test_slot_call_accepts_builtin_function_without_attribute_cache_support() -> None:
     ctx = RenderContext()
     observed: list[tuple[int, bool]] = []
 
     def _pyr_reader(ctx: RenderContext, __pyr_dirty_state) -> None:
         _ = __pyr_dirty_state
         with ctx.pass_scope():
-            __pyr_value_dirty, value = ctx.call_plain(_STORE_SLOT, len, [1, 2, 3])
+            __pyr_value_dirty, value = eval_single_slot_expr(
+                ctx,
+                dirtyof(),
+                _STORE_SLOT,
+                len,
+                [1, 2, 3],
+                result_name="value",
+            )
             observed.append((value, __pyr_value_dirty))
 
     _pyr_reader(ctx, dirtyof())
@@ -353,7 +383,7 @@ def test_plain_call_accepts_builtin_function_without_attribute_cache_support() -
     ]
 
 
-def test_plain_call_tolerates_callable_with_invalid_signature_metadata() -> None:
+def test_slot_call_tolerates_callable_with_invalid_signature_metadata() -> None:
     ctx = RenderContext()
     observed: list[tuple[int, bool]] = []
 
@@ -369,7 +399,14 @@ def test_plain_call_tolerates_callable_with_invalid_signature_metadata() -> None
     def _pyr_reader(ctx: RenderContext, __pyr_dirty_state) -> None:
         _ = __pyr_dirty_state
         with ctx.pass_scope():
-            __pyr_value_dirty, value = ctx.call_plain(_STORE_SLOT, helper, [1, 2, 3])
+            __pyr_value_dirty, value = eval_single_slot_expr(
+                ctx,
+                dirtyof(),
+                _STORE_SLOT,
+                helper,
+                [1, 2, 3],
+                result_name="value",
+            )
             observed.append((value, __pyr_value_dirty))
 
     _pyr_reader(ctx, dirtyof())

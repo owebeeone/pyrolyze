@@ -15,6 +15,9 @@ class PlainCallBindingHost(ABC):
     def queue_plain_call_invalidation(self) -> None: ...
 
     @abstractmethod
+    def mark_plain_call_refresh_only(self) -> None: ...
+
+    @abstractmethod
     def enqueue_plain_call_post_commit(self, callback: Callable[[], None]) -> None: ...
 
     @abstractmethod
@@ -135,7 +138,7 @@ class ExternalStoreBinding(PlainCallBinding):
 
     def _mark_dirty(self) -> None:
         self.dirty = True
-        self.host.queue_plain_call_invalidation()
+        self.host.mark_plain_call_refresh_only()
 
     def _update_from_get(self) -> bool:
         next_value = self.ref.get()

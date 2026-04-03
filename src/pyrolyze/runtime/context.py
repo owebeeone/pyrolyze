@@ -26,6 +26,7 @@ from .app_context import (
     GENERATION_TRACKER_KEY,
     OverlayAppContextLookup,
 )
+from .call_site_context import CallSiteContextManager
 from .drip import Drip
 from .plain_call_semantics import (
     ExternalStoreBinding,
@@ -45,7 +46,9 @@ from .plain_call_core import (
     _write_callable_annotation_cache,
     PlainCallStateSnapshot,
     call_with_optional_runtime_context,
+    commit_plain_call_invocation,
     prepare_plain_call,
+    refresh_plain_call_binding,
     runtime_context_param_name,
     should_invoke_plain_call,
 )
@@ -257,6 +260,48 @@ class PlainCallRuntimeContext:
         return self.slot.slot_id
 
 
+@dataclass(slots=True)
+class _SlotExprHostSlotProxy:
+    slot_id: SlotId
+    parent: ContextBase | None
+    render_context: RenderContext
+    invoke_dirty: bool = False
+
+
+@dataclass(slots=True)
+class _ContextSlotExprHost:
+    owner: ContextBase
+    slot_id: SlotId
+    _proxy: _SlotExprHostSlotProxy = field(init=False)
+
+    def __post_init__(self) -> None:
+        render_context = self.owner if isinstance(self.owner, RenderContext) else self.owner.root_context
+        parent = None if isinstance(self.owner, RenderContext) else self.owner
+        self._proxy = _SlotExprHostSlotProxy(
+            slot_id=self.slot_id,
+            parent=parent,
+            render_context=render_context,
+        )
+
+    def queue_plain_call_invalidation(self) -> None:
+        self._proxy.render_context._queue_invalidation_from(self._proxy, include_source=False)
+
+    def mark_plain_call_refresh_only(self) -> None:
+        self.queue_plain_call_invalidation()
+
+    def enqueue_plain_call_post_commit(self, callback: Callable[[], None]) -> None:
+        self._proxy.render_context._enqueue_post_commit(callback)
+
+    def publish_plain_call_mount_advertisement(
+        self,
+        request: PyrolyzeMountAdvertisementRequest,
+    ) -> PyrolyzeMountAdvertisement:
+        return self._proxy.render_context._publish_mount_advertisement(self._proxy, request)
+
+    def withdraw_plain_call_mount_advertisement(self) -> None:
+        self._proxy.render_context._withdraw_mount_advertisement(self.slot_id)
+
+
 def _plain_call_runtime_context_param_name(func: Callable[..., Any]) -> str | None:
     return runtime_context_param_name(
         func,
@@ -435,13 +480,28 @@ class ContextBase:
 
     def slot_expr(
         self,
+        slot_id: SlotId,
         value_lambda: Callable[..., Any],
         dirty_lambda: Callable[..., Any],
     ) -> Any:
         self._require_active_scope()
         from .slot_expr import SlotExpr
 
-        return SlotExpr(value_lambda, dirty_lambda).apply_slot_context(self)
+        expr_slot = self._ensure_slot(slot_id, SlotExprSlotContext)
+        return (
+            SlotExpr(value_lambda, dirty_lambda)
+            .apply_slot_context(self)
+            .apply_host_factory(
+                lambda call_site_slot_id: _ContextSlotExprHost(
+                    expr_slot,
+                    expr_slot._resolve_slot_id(cast(SlotId, call_site_slot_id)),
+                )
+            )
+            .apply_call_site_context_manager(expr_slot.call_site_context_manager)
+            .apply_runtime_locals_provider(expr_slot.runtime_locals)
+            .apply_committed_ui_sync(expr_slot.sync_committed_ui)
+            .apply_lifecycle_slot_context(expr_slot)
+        )
 
     def visit_slot_and_dirty(self, slot_id: SlotId) -> bool:
         self._require_active_scope()
@@ -646,6 +706,8 @@ class ContextBase:
         for child in self._children.values():
             if isinstance(child, PlainCallSlotContext):
                 child.commit_binding()
+            elif isinstance(child, SlotExprSlotContext):
+                child.commit_binding()
             elif isinstance(child, EventHandlerSlotContext):
                 child.commit_handler()
             elif isinstance(child, ComponentCallSlotContext):
@@ -680,6 +742,8 @@ class ContextBase:
                 continue
 
             if isinstance(child, PlainCallSlotContext):
+                child.rollback_binding()
+            elif isinstance(child, SlotExprSlotContext):
                 child.rollback_binding()
             elif isinstance(child, EventHandlerSlotContext):
                 child.rollback_handler()
@@ -1070,6 +1134,87 @@ class RerunnableSlotContext(SlotContext, ContextBase):
 
 
 @dataclass(slots=True)
+class SlotExprSlotContext(RerunnableSlotContext):
+    call_site_context_manager: CallSiteContextManager = field(default_factory=CallSiteContextManager)
+    _runtime_locals_by_slot_id: dict[Any, dict[str, Any]] = field(default_factory=dict)
+    _staged_call_site_ids: tuple[Any, ...] = ()
+    _staged_post_commit_callbacks: tuple[Callable[[], None], ...] = ()
+
+    def runtime_locals(self, slot_id: Any) -> dict[str, Any]:
+        return self._runtime_locals_by_slot_id.setdefault(slot_id, {})
+
+    def stage_slot_expr_pass(
+        self,
+        *,
+        visited_call_site_ids: tuple[Any, ...],
+        post_commit_callbacks: tuple[Callable[[], None], ...],
+    ) -> None:
+        merged_ids = list(self._staged_call_site_ids)
+        for slot_id in visited_call_site_ids:
+            if slot_id not in merged_ids:
+                merged_ids.append(slot_id)
+        self._staged_call_site_ids = tuple(merged_ids)
+        if post_commit_callbacks:
+            self._staged_post_commit_callbacks += post_commit_callbacks
+
+    def append_slot_expr_post_commit_callback(self, callback: Callable[[], None]) -> None:
+        self._staged_post_commit_callbacks += (callback,)
+
+    def commit_binding(self) -> None:
+        for call_site_id in self._staged_call_site_ids:
+            call_site_context = (
+                self.call_site_context_manager._staged.get(call_site_id)
+                or self.call_site_context_manager._current.get(call_site_id)
+            )
+            binding = call_site_context.binding if call_site_context is not None else None
+            commit = getattr(binding, "commit", None)
+            if callable(commit):
+                commit()
+        self.call_site_context_manager.commit_pass()
+        self.sync_committed_ui()
+        callbacks = self._staged_post_commit_callbacks
+        self._staged_call_site_ids = ()
+        self._staged_post_commit_callbacks = ()
+        for callback in callbacks:
+            callback()
+
+    def rollback_binding(self) -> None:
+        for call_site_id in self._staged_call_site_ids:
+            call_site_context = (
+                self.call_site_context_manager._staged.get(call_site_id)
+                or self.call_site_context_manager._current.get(call_site_id)
+            )
+            binding = call_site_context.binding if call_site_context is not None else None
+            rollback = getattr(binding, "rollback", None)
+            if callable(rollback):
+                rollback()
+        self.call_site_context_manager.rollback_pass()
+        self.sync_committed_ui()
+        self._staged_call_site_ids = ()
+        self._staged_post_commit_callbacks = ()
+
+    def sync_committed_ui(self) -> None:
+        advertisements: list[PyrolyzeMountAdvertisement] = []
+        for call_site_context in self.call_site_context_manager._current.values():
+            binding = call_site_context.binding
+            wrapped_binding = getattr(binding, "binding", None) if binding is not None else None
+            if not isinstance(wrapped_binding, PyrolyzeMountAdvertisementBinding):
+                continue
+            advertisement = wrapped_binding.retained_advertisement()
+            if advertisement is not None:
+                advertisements.append(advertisement)
+        self._committed_ui = tuple(advertisements)
+
+    def deactivate(self) -> None:
+        self._staged_call_site_ids = ()
+        self._staged_post_commit_callbacks = ()
+        self.call_site_context_manager.close_all()
+        self._runtime_locals_by_slot_id.clear()
+        self._committed_ui = ()
+        super(SlotExprSlotContext, self).deactivate()
+
+
+@dataclass(slots=True)
 class PlainCallSlotContext(RerunnableSlotContext):
     function_identity: Any = None
     schema: tuple[int, tuple[str, ...]] = (0, ())
@@ -1109,16 +1254,23 @@ class PlainCallSlotContext(RerunnableSlotContext):
                     runtime_context_factory=lambda: PlainCallRuntimeContext(self),
                 ),
             )
-            result_dirty = self._commit_evaluated_result(next_result)
-            self.function_identity = prepared.raw_func
-            self.schema = prepared.schema
-            self.last_args = prepared.raw_args
-            self.last_kwargs = prepared.kwargs_items
+            commit_result = commit_plain_call_invocation(
+                host=self,
+                prepared=prepared,
+                previous_binding=self.binding,
+                result=next_result,
+            )
+            self.binding = commit_result.binding
+            self.function_identity = commit_result.function_identity
+            self.schema = commit_result.schema
+            self.last_args = commit_result.last_args
+            self.last_kwargs = commit_result.last_kwargs
+            result_dirty = commit_result.result_dirty
         else:
             result_dirty = False
             binding = self.binding
             if binding is not None:
-                refreshed = binding.refresh()
+                refreshed = refresh_plain_call_binding(binding)
                 if refreshed is not None:
                     _, result_dirty = refreshed
 
@@ -1130,22 +1282,11 @@ class PlainCallSlotContext(RerunnableSlotContext):
             value=cast(T, binding.exposed_value()),
         )
 
-    def _commit_evaluated_result(self, next_result: T) -> bool:
-        previous_binding = self.binding
-        previous_value = previous_binding.exposed_value() if previous_binding is not None else object()
-        handler = select_plain_call_handler(next_result)
-        next_binding = handler.bind(self, next_result, previous_binding)
-        next_value = next_binding.exposed_value()
-        result_dirty = previous_binding is None or (next_value != previous_value)
-
-        if previous_binding is not None and next_binding is not previous_binding:
-            previous_binding.deactivate()
-
-        self.binding = next_binding
-        return result_dirty
-
     def queue_plain_call_invalidation(self) -> None:
         self.render_context._queue_invalidation_from(self, include_source=False)
+
+    def mark_plain_call_refresh_only(self) -> None:
+        self.queue_plain_call_invalidation()
 
     def enqueue_plain_call_post_commit(self, callback: Callable[[], None]) -> None:
         self.render_context._enqueue_post_commit(callback)
@@ -2365,15 +2506,25 @@ class RenderContext(ContextBase):
     def _rebuild_mount_advertisement_surface(self) -> None:
         next_entries: dict[SlotId, PyrolyzeMountAdvertisement] = {}
         for slot_id, slot in self._slots_by_id.items():
-            if not isinstance(slot, PlainCallSlotContext):
+            if isinstance(slot, PlainCallSlotContext):
+                binding = slot.binding
+                if not isinstance(binding, PyrolyzeMountAdvertisementBinding):
+                    continue
+                advertisement = binding.retained_advertisement()
+                if advertisement is None:
+                    continue
+                next_entries[slot_id] = advertisement
                 continue
-            binding = slot.binding
-            if not isinstance(binding, PyrolyzeMountAdvertisementBinding):
-                continue
-            advertisement = binding.retained_advertisement()
-            if advertisement is None:
-                continue
-            next_entries[slot_id] = advertisement
+            if isinstance(slot, SlotExprSlotContext):
+                for call_site_context in slot.call_site_context_manager._current.values():
+                    binding = call_site_context.binding
+                    wrapped_binding = getattr(binding, "binding", None) if binding is not None else None
+                    if not isinstance(wrapped_binding, PyrolyzeMountAdvertisementBinding):
+                        continue
+                    advertisement = wrapped_binding.retained_advertisement()
+                    if advertisement is None or advertisement.source_slot_id is None:
+                        continue
+                    next_entries[advertisement.source_slot_id] = advertisement
 
         for surface_owner_id in {
             advertisement.surface_owner_id for advertisement in next_entries.values()
@@ -2394,7 +2545,7 @@ def _context_kind(context: object) -> str:
     if isinstance(context, ContainerSlotContext):
         return "container"
     if isinstance(context, PlainCallSlotContext):
-        return "plain_call"
+        return "slot_call"
     if isinstance(context, ComponentCallSlotContext):
         return "component_call"
     if isinstance(context, KeyedLoopSlotContext):

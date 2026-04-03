@@ -4,6 +4,12 @@ from dataclasses import dataclass
 import inspect
 from typing import Any, Callable, cast
 
+from .plain_call_semantics import (
+    PlainCallBinding,
+    PlainCallBindingHost,
+    select_plain_call_handler,
+)
+
 
 _CALLABLE_CACHE_MISSING = object()
 
@@ -75,6 +81,17 @@ class PlainCallStateSnapshot:
     has_binding: bool
 
 
+@dataclass(frozen=True, slots=True)
+class PlainCallCommitResult:
+    current_value: Any
+    result_dirty: bool
+    binding: PlainCallBinding
+    function_identity: Any
+    schema: tuple[int, tuple[str, ...]]
+    last_args: tuple[Any, ...]
+    last_kwargs: tuple[tuple[str, Any], ...]
+
+
 def prepare_plain_call(
     func: Any,
     args: tuple[Any, ...],
@@ -136,3 +153,34 @@ def call_with_optional_runtime_context(
         if param_name is not None and param_name not in call_kwargs:
             call_kwargs[param_name] = runtime_context_factory()
     return prepared.raw_func(*prepared.raw_args, **call_kwargs)
+
+
+def commit_plain_call_invocation(
+    *,
+    host: PlainCallBindingHost,
+    prepared: PlainCallPreparedInvocation,
+    previous_binding: PlainCallBinding | None,
+    result: Any,
+) -> PlainCallCommitResult:
+    previous_value = previous_binding.exposed_value() if previous_binding is not None else object()
+    handler = select_plain_call_handler(result)
+    next_binding = handler.bind(host, result, previous_binding)
+    next_value = next_binding.exposed_value()
+    result_dirty = previous_binding is None or (next_value != previous_value)
+
+    if previous_binding is not None and next_binding is not previous_binding:
+        previous_binding.deactivate()
+
+    return PlainCallCommitResult(
+        current_value=next_value,
+        result_dirty=result_dirty,
+        binding=next_binding,
+        function_identity=prepared.raw_func,
+        schema=prepared.schema,
+        last_args=prepared.raw_args,
+        last_kwargs=prepared.kwargs_items,
+    )
+
+
+def refresh_plain_call_binding(binding: PlainCallBinding) -> tuple[Any, bool] | None:
+    return binding.refresh()

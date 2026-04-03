@@ -8,11 +8,12 @@ from pyrolyze.runtime import (
     DuplicateMountAdvertisementError,
     MountAdvertisementContextError,
     ModuleRegistry,
-    PlainCallSlotContext,
     PyrolyzeMountAdvertisementBinding,
     RenderContext,
     SlotId,
+    dirtyof,
 )
+from tests.slot_expr_test_utils import eval_single_slot_expr, slot_expr_binding_for
 
 
 module_registry = ModuleRegistry()
@@ -40,12 +41,15 @@ def test_mount_advert_binding_commits_and_deactivates_publication() -> None:
 
     with ctx.pass_scope():
         with ctx.container_call(_CONTAINER_SLOT, _pyr_section, "Wrapper") as section_ctx:
-            _ = section_ctx.call_plain(
+            _ = eval_single_slot_expr(
+                section_ctx,
+                dirtyof(),
                 _ADVERT_SLOT,
                 advertise_mount,
                 "body",
                 target=menu,
                 default=True,
+                result_name="advert",
             )
 
     advertisements = ctx.debug_mount_advertisements()
@@ -70,9 +74,7 @@ def test_mount_advert_binding_commits_and_deactivates_publication() -> None:
         ),
     )
 
-    slot = ctx._slots_by_id[_ADVERT_SLOT]
-    assert isinstance(slot, PlainCallSlotContext)
-    assert isinstance(slot.binding, PyrolyzeMountAdvertisementBinding)
+    assert isinstance(slot_expr_binding_for(ctx, _ADVERT_SLOT), PyrolyzeMountAdvertisementBinding)
 
     with ctx.pass_scope():
         pass
@@ -86,22 +88,28 @@ def test_mount_advert_binding_rollback_discards_staged_publication() -> None:
 
     with ctx.pass_scope():
         with ctx.container_call(_CONTAINER_SLOT, _pyr_section, "Wrapper") as section_ctx:
-            _ = section_ctx.call_plain(
+            _ = eval_single_slot_expr(
+                section_ctx,
+                dirtyof(),
                 _ADVERT_SLOT,
                 advertise_mount,
                 "body",
                 target=menu,
+                result_name="advert",
             )
 
     with pytest.raises(RuntimeError, match="boom"):
         with ctx.pass_scope():
             with ctx.container_call(_CONTAINER_SLOT, _pyr_section, "Wrapper") as section_ctx:
-                _ = section_ctx.call_plain(
+                _ = eval_single_slot_expr(
+                    section_ctx,
+                    dirtyof(),
                     _ADVERT_SLOT,
                     advertise_mount,
                     "next",
                     target=menu,
                     default=True,
+                    result_name="advert",
                 )
                 raise RuntimeError("boom")
 
@@ -117,8 +125,8 @@ def test_duplicate_mount_advertisement_keys_raise_without_committing_partial_sta
     with pytest.raises(DuplicateMountAdvertisementError, match="duplicate mount advertisement key"):
         with ctx.pass_scope():
             with ctx.container_call(_CONTAINER_SLOT, _pyr_section, "Wrapper") as section_ctx:
-                _ = section_ctx.call_plain(_FIRST_DUPLICATE_SLOT, advertise_mount, "body")
-                _ = section_ctx.call_plain(_SECOND_DUPLICATE_SLOT, advertise_mount, "body")
+                _ = eval_single_slot_expr(section_ctx, dirtyof(), _FIRST_DUPLICATE_SLOT, advertise_mount, "body", result_name="advert")
+                _ = eval_single_slot_expr(section_ctx, dirtyof(), _SECOND_DUPLICATE_SLOT, advertise_mount, "body", result_name="advert")
 
     assert ctx.debug_mount_advertisements() == ()
 
@@ -129,17 +137,23 @@ def test_duplicate_mount_advertisement_defaults_raise_without_committing_partial
     with pytest.raises(DuplicateMountAdvertisementError, match="duplicate default mount advertisement"):
         with ctx.pass_scope():
             with ctx.container_call(_CONTAINER_SLOT, _pyr_section, "Wrapper") as section_ctx:
-                _ = section_ctx.call_plain(
+                _ = eval_single_slot_expr(
+                    section_ctx,
+                    dirtyof(),
                     _FIRST_DUPLICATE_SLOT,
                     advertise_mount,
                     "left",
                     default=True,
+                    result_name="advert",
                 )
-                _ = section_ctx.call_plain(
+                _ = eval_single_slot_expr(
+                    section_ctx,
+                    dirtyof(),
                     _SECOND_DUPLICATE_SLOT,
                     advertise_mount,
                     "right",
                     default=True,
+                    result_name="advert",
                 )
 
     assert ctx.debug_mount_advertisements() == ()
@@ -150,7 +164,7 @@ def test_advertise_mount_rejects_root_render_context_owner() -> None:
 
     with pytest.raises(MountAdvertisementContextError, match="native container owner"):
         with ctx.pass_scope():
-            _ = ctx.call_plain(_ADVERT_SLOT, advertise_mount, "body")
+            _ = eval_single_slot_expr(ctx, dirtyof(), _ADVERT_SLOT, advertise_mount, "body", result_name="advert")
 
 
 def test_advertise_mount_rejects_non_native_container_owner() -> None:
@@ -159,7 +173,7 @@ def test_advertise_mount_rejects_non_native_container_owner() -> None:
     with pytest.raises(MountAdvertisementContextError, match="native container node owner"):
         with ctx.pass_scope():
             with ctx.container_call(_PLAIN_CONTAINER_SLOT, len, [1, 2, 3]) as plain_ctx:
-                _ = plain_ctx.call_plain(_ADVERT_SLOT, advertise_mount, "body")
+                _ = eval_single_slot_expr(plain_ctx, dirtyof(), _ADVERT_SLOT, advertise_mount, "body", result_name="advert")
 
 
 def test_advertise_mount_resolves_enclosing_native_container_through_loop_scopes() -> None:
@@ -170,12 +184,15 @@ def test_advertise_mount_resolves_enclosing_native_container_through_loop_scopes
         with ctx.container_call(_CONTAINER_SLOT, _pyr_section, "Wrapper") as section_ctx:
             for item_ctx in section_ctx.keyed_loop(_LOOP_SLOT, ["a"], key_fn=lambda value: value):
                 with item_ctx.pass_scope():
-                    _ = item_ctx.call_plain(
+                    _ = eval_single_slot_expr(
+                        item_ctx,
+                        dirtyof(),
                         _LOOP_ADVERT_SLOT,
                         advertise_mount,
                         "body",
                         target=menu,
                         default=True,
+                        result_name="advert",
                     )
 
     advertisements = ctx.debug_mount_advertisements()

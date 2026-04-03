@@ -5,6 +5,7 @@ from typing import Callable
 import pytest
 
 from pyrolyze.runtime.context import DirtyStateContext, ModuleRegistry, RenderContext, SlotId, UseEffectRequest, dirtyof
+from tests.slot_expr_test_utils import eval_single_slot_expr
 
 
 module_registry = ModuleRegistry()
@@ -37,7 +38,14 @@ def test_effect_runs_after_successful_commit_and_skips_stable_deps() -> None:
 
                 return cleanup
 
-            ctx.call_plain(_EFFECT_SLOT, _register_effect, effect, (label,))
+            eval_single_slot_expr(
+                ctx,
+                dirtyof(),
+                _EFFECT_SLOT,
+                _register_effect,
+                effect,
+                (label,),
+            )
             log.append(("render-end", label))
 
     render("alpha", dirtyof(label=True))
@@ -72,7 +80,14 @@ def test_effect_without_deps_runs_after_every_successful_commit() -> None:
 
                 return cleanup
 
-            ctx.call_plain(_EFFECT_SLOT, _register_effect, effect, None)
+            eval_single_slot_expr(
+                ctx,
+                dirtyof(),
+                _EFFECT_SLOT,
+                _register_effect,
+                effect,
+                None,
+            )
 
     render("alpha", dirtyof(label=True))
     render("beta", dirtyof(label=True))
@@ -100,7 +115,14 @@ def test_effect_cleanup_runs_when_the_effect_slot_is_deactivated() -> None:
 
                     return cleanup
 
-                ctx.call_plain(_EFFECT_SLOT, _register_effect, effect, ())
+                eval_single_slot_expr(
+                    ctx,
+                    dirtyof(),
+                    _EFFECT_SLOT,
+                    _register_effect,
+                    effect,
+                    (),
+                )
 
     render(True, "alpha", dirtyof(show=True, label=True))
     render(False, "alpha", dirtyof(show=True, label=False))
@@ -126,7 +148,14 @@ def test_failed_pass_preserves_previously_committed_effect() -> None:
 
                 return cleanup
 
-            ctx.call_plain(_EFFECT_SLOT, _register_effect, effect, (label,))
+            eval_single_slot_expr(
+                ctx,
+                dirtyof(),
+                _EFFECT_SLOT,
+                _register_effect,
+                effect,
+                (label,),
+            )
 
             if fail:
                 raise RuntimeError("boom")

@@ -11,7 +11,9 @@ from pyrolyze.runtime import (
     RenderContext,
     SlotId,
     UseEffectRequest,
+    dirtyof,
 )
+from tests.slot_expr_test_utils import eval_single_slot_expr
 
 
 module_registry = ModuleRegistry()
@@ -35,11 +37,13 @@ def test_use_state_provides_plain_tuple_and_stable_setter() -> None:
 
     def render() -> Callable[[int], None]:
         with ctx.pass_scope():
-            dirty_state, pair = ctx.call_plain(
+            dirty_state, pair = eval_single_slot_expr(
+                ctx,
+                dirtyof(),
                 _STATE_SLOT,
                 use_state,
                 0,
-                result_shape=("tuple", 2),
+                result_name="pair",
             )
             observed.append((dirty_state, pair))
             return pair[1]
@@ -54,7 +58,7 @@ def test_use_state_provides_plain_tuple_and_stable_setter() -> None:
     assert observed[1][0] == (False, False)
     assert observed[1][1][0] == 0
     assert same_setter is setter
-    assert observed[2][0] == (True, True)
+    assert observed[2][0] == (True, False)
     assert observed[2][1][0] == 7
     assert after_update is setter
 
@@ -65,21 +69,31 @@ def test_use_state_invalidation_reruns_sibling_top_level_slots_in_same_context()
     state_holder = {"count": 0}
     setters: list[Callable[[int], None]] = []
 
-    def derive_label() -> str:
-        return f"value:{state_holder['count']}"
+    def derive_label(count: int) -> str:
+        return f"value:{count}"
 
     def render() -> None:
         with ctx.pass_scope():
-            _, pair = ctx.call_plain(
+            pair_dirty, pair = eval_single_slot_expr(
+                ctx,
+                dirtyof(),
                 _STATE_SLOT,
                 use_state,
                 0,
-                result_shape=("tuple", 2),
+                result_name="pair",
             )
             count, setter = pair
             setters[:] = [setter]
             state_holder["count"] = count
-            label_dirty, label = ctx.call_plain(_DERIVED_SLOT, derive_label)
+            label_dirty, label = eval_single_slot_expr(
+                ctx,
+                dirtyof(),
+                _DERIVED_SLOT,
+                derive_label,
+                count,
+                args_dirty=(pair_dirty[0],),
+                result_name="label",
+            )
             if label_dirty or ctx.visit_slot_and_dirty(_LEAF_SLOT):
                 observed.append(label)
 

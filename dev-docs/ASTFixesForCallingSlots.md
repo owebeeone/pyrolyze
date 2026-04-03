@@ -24,7 +24,7 @@ awkward to lower, because the surrounding expression only expects one value, whi
 
 Phase 1 should:
 
-- replace the old `plain_call` model for slot-bearing expressions
+- replace the old `slot_call` model for slot-bearing expressions
 - introduce a new `slot_expr` model
 - continue to disallow slot-bearing comprehensions
 - continue to require keyed `for` loops for slot-bearing repeated structure
@@ -49,7 +49,7 @@ After the `slot_expr` model exists, decide whether keyed comprehensions are wort
 
 The chosen direction is:
 
-1. the old `plain_call` model is removed for slot-bearing expression lowering
+1. the old `slot_call` model is removed for slot-bearing expression lowering
 2. slot-bearing expressions are lowered into an explicit `slot_expr`
 3. a `slot_expr` contains one or more call sites to slotted functions
 4. the source expression is rewritten into a lambda over per-call evaluators
@@ -190,7 +190,7 @@ Example:
 value = use_grip(STORE)
 ```
 
-This is not a reason to preserve `plain_call`.
+This is not a reason to preserve `slot_call`.
 
 Instead:
 
@@ -337,7 +337,7 @@ The evaluator must be lazy and memoized:
 - later accesses reuse cached results
 - Python control flow such as short-circuiting determines which call sites are actually evaluated
 
-Memoization here should match `plain_call` semantics rather than merely skipping all work:
+Memoization here should match `slot_call` semantics rather than merely skipping all work:
 
 - if function identity, schema, and input values do not require reinvocation, the original function call may be skipped
 - binding-specific refresh behavior must still run when applicable
@@ -1433,9 +1433,9 @@ ab = a or b
 
 Those evaluate both call sites every pass, so both remain live.
 
-## Handler Parity With plain_call
+## Handler Parity With slot_call
 
-`SlotCallEvaluator` needs the full semantic coverage of the current `plain_call` handler family:
+`SlotCallEvaluator` needs the full semantic coverage of the current `slot_call` handler family:
 
 ```python
 _PLAIN_CALL_HANDLERS = (
@@ -1667,7 +1667,7 @@ But that is explicitly not part of this design.
 
 This document defines the Phase 1 direction as:
 
-- remove old `plain_call`-style slot expression lowering
+- remove old `slot_call`-style slot expression lowering
 - introduce `slot_expr`
 - represent each slot-bearing call as a call site evaluator inside the current slot
 - evaluate the source expression through lazy, memoized evaluators

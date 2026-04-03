@@ -6,6 +6,7 @@ import pytest
 
 from pyrolyze.api import CallFromNonPyrolyzeContext, ComponentMetadata, pyrolyze_component_ref
 from pyrolyze.runtime.context import DirtyStateContext, ModuleRegistry, RenderContext, SlotId, dirtyof
+from tests.slot_expr_test_utils import eval_single_slot_expr
 
 
 module_registry = ModuleRegistry()
@@ -43,7 +44,15 @@ def test_call_plain_returns_dirty_and_plain_value_for_plain_inputs() -> None:
 
     def render(name: str, __pyr_dirty_state: DirtyStateContext) -> None:
         with ctx.pass_scope():
-            __pyr_title_dirty, title = ctx.call_plain(_TITLE_SLOT, format_title, name)
+            __pyr_title_dirty, title = eval_single_slot_expr(
+                ctx,
+                __pyr_dirty_state,
+                _TITLE_SLOT,
+                format_title,
+                name,
+                args_dirty=(__pyr_dirty_state.name,),
+                result_name="title",
+            )
             observed.append((title, __pyr_title_dirty))
 
     render("Ada", dirtyof(name=True))
@@ -72,11 +81,14 @@ def test_call_plain_supports_tuple_shaped_dirty_projection() -> None:
 
     def render(label: str, __pyr_dirty_state: DirtyStateContext) -> None:
         with ctx.pass_scope():
-            (__pyr_value_dirty, __pyr_setter_dirty), pair = ctx.call_plain(
+            (__pyr_value_dirty, __pyr_setter_dirty), pair = eval_single_slot_expr(
+                ctx,
+                __pyr_dirty_state,
                 _PAIR_SLOT,
                 make_pair,
                 label,
-                result_shape=("tuple", 2),
+                args_dirty=(__pyr_dirty_state.label,),
+                result_name="pair",
             )
             observed.append(((__pyr_value_dirty, __pyr_setter_dirty), pair))
 
@@ -235,7 +247,13 @@ def test_component_call_passes_dirty_state_and_uses_clean_parent_dirtiness_on_ch
         with child_ctx.pass_scope():
             log.append(("render", name))
             log.append(("name_dirty", __pyr_dirty_state.name))
-            __pyr_store_dirty, value = child_ctx.call_plain(_CHILD_STORE_SLOT, use_store)
+            __pyr_store_dirty, value = eval_single_slot_expr(
+                child_ctx,
+                dirtyof(),
+                _CHILD_STORE_SLOT,
+                use_store,
+                result_name="value",
+            )
             log.append(("store", value))
             log.append(("store_dirty", __pyr_store_dirty))
 

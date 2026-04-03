@@ -183,8 +183,8 @@ def panel(prefix: str, formatter: SlotCallable[[str], str], plain: Callable[[str
         filename="/virtual/example/phase3/slot_callable_param.py",
     )
 
-    assert transformed.count(".slot_expr(") == 2
-    assert "plain_value = plain(selected_value)" in transformed
+    assert transformed.count(".slot_expr(") == 3
+    assert ".evaluate('plain_value')" in transformed or '.evaluate("plain_value")' in transformed
 
     namespace = load_transformed_namespace(
         source,
