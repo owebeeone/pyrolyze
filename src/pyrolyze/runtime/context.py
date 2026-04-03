@@ -28,29 +28,28 @@ from .app_context import (
 )
 from .call_site_context import CallSiteContextManager
 from .drip import Drip
-from .plain_call_semantics import (
+from .slot_call_semantics import (
     ExternalStoreBinding,
     ExternalStoreRef,
-    PlainCallBinding,
-    PlainValueBinding,
+    SlotCallBinding,
+    SlotValueBinding,
     PyrolyzeMountAdvertisementBinding,
     UseEffectAsyncBinding,
     UseEffectAsyncRequest,
     UseEffectBinding,
     UseEffectRequest,
-    select_plain_call_handler,
 )
-from .plain_call_core import (
+from .slot_call_core import (
     _CALLABLE_CACHE_MISSING,
     _read_callable_annotation_cache,
     _write_callable_annotation_cache,
-    PlainCallStateSnapshot,
+    SlotCallStateSnapshot,
     call_with_optional_runtime_context,
-    commit_plain_call_invocation,
-    prepare_plain_call,
-    refresh_plain_call_binding,
+    commit_slot_call_invocation,
+    prepare_slot_call,
+    refresh_slot_call_binding,
     runtime_context_param_name,
-    should_invoke_plain_call,
+    should_invoke_slot_call,
 )
 from .trace import TraceChannel, emit_trace, trace_enabled
 
@@ -81,7 +80,7 @@ def dirtyof(**values: bool) -> DirtyStateContext:
 
 
 @dataclass(frozen=True, slots=True)
-class PlainCallResult(Generic[T]):
+class SlotCallResult(Generic[T]):
     dirty: Any
     value: T
 
@@ -160,18 +159,18 @@ def _dirty_state_truthy(value: Any) -> bool:
     return bool(value)
 
 
-def _unwrap(value: PlainCallResult[Any] | CompValue[Any] | Any) -> tuple[Any, bool]:
+def _unwrap(value: SlotCallResult[Any] | CompValue[Any] | Any) -> tuple[Any, bool]:
     if isinstance(value, CompValue):
         return value.value, value.dirty
-    if isinstance(value, PlainCallResult):
+    if isinstance(value, SlotCallResult):
         return value.value, _dirty_state_truthy(value.dirty)
     return value, False
 
 
-def _wrap_comp_value(value: PlainCallResult[T] | CompValue[T] | T) -> CompValue[T]:
+def _wrap_comp_value(value: SlotCallResult[T] | CompValue[T] | T) -> CompValue[T]:
     if isinstance(value, CompValue):
         return value
-    if isinstance(value, PlainCallResult):
+    if isinstance(value, SlotCallResult):
         return CompValue(value=value.value, dirty=_dirty_state_truthy(value.dirty))
     return CompValue(value=value, dirty=False)
 
@@ -179,7 +178,7 @@ def _wrap_comp_value(value: PlainCallResult[T] | CompValue[T] | T) -> CompValue[
 def _unwrap_native_value(value: Any) -> Any:
     if isinstance(value, CompValue):
         return _unwrap_native_value(value.value)
-    if isinstance(value, PlainCallResult):
+    if isinstance(value, SlotCallResult):
         return _unwrap_native_value(value.value)
     if isinstance(value, dict):
         return {key: _unwrap_native_value(item) for key, item in value.items()}
@@ -216,8 +215,8 @@ def _resolve_mount_advertisement_owner(parent: ContextBase) -> ContainerSlotCont
 
 
 @dataclass(frozen=True, slots=True)
-class PlainCallRuntimeContext:
-    slot: PlainCallSlotContext
+class SlotRuntimeContext:
+    slot: SlotCallSlotContext
 
     def get_or_init_local(self, key: str, factory: Callable[[], T]) -> T:
         locals_map = self.slot._runtime_locals
@@ -283,31 +282,25 @@ class _ContextSlotExprHost:
             render_context=render_context,
         )
 
-    def queue_plain_call_invalidation(self) -> None:
+    def queue_slot_call_invalidation(self) -> None:
         self._proxy.render_context._queue_invalidation_from(self._proxy, include_source=False)
 
-    def mark_plain_call_refresh_only(self) -> None:
-        self.queue_plain_call_invalidation()
+    def mark_slot_call_refresh_only(self) -> None:
+        self.queue_slot_call_invalidation()
 
-    def enqueue_plain_call_post_commit(self, callback: Callable[[], None]) -> None:
+    def enqueue_slot_call_post_commit(self, callback: Callable[[], None]) -> None:
         self._proxy.render_context._enqueue_post_commit(callback)
 
-    def publish_plain_call_mount_advertisement(
+    def publish_slot_call_mount_advertisement(
         self,
         request: PyrolyzeMountAdvertisementRequest,
     ) -> PyrolyzeMountAdvertisement:
         return self._proxy.render_context._publish_mount_advertisement(self._proxy, request)
 
-    def withdraw_plain_call_mount_advertisement(self) -> None:
+    def withdraw_slot_call_mount_advertisement(self) -> None:
         self._proxy.render_context._withdraw_mount_advertisement(self.slot_id)
 
 
-def _plain_call_runtime_context_param_name(func: Callable[..., Any]) -> str | None:
-    return runtime_context_param_name(
-        func,
-        cache_attr_name="_pyrolyze_plain_call_runtime_ctx_param",
-        runtime_context_annotation=PlainCallRuntimeContext,
-    )
 @dataclass(slots=True)
 class _InvalidationScheduler:
     queue: list[RenderContext] = field(default_factory=list)
@@ -524,18 +517,6 @@ class ContextBase:
             key_fn=key_fn,
         )
 
-    def call_plain(
-        self,
-        slot_id: SlotId,
-        func: CompValue[Callable[..., T]] | Callable[..., T],
-        *args: CompValue[Any] | Any,
-        result_shape: object | None = None,
-        **kwargs: CompValue[Any] | Any,
-    ) -> PlainCallResult[T]:
-        self._require_active_scope()
-        slot = self._ensure_slot(slot_id, PlainCallSlotContext)
-        return slot.evaluate(func, args, kwargs, result_shape=result_shape)
-
     def container_call(
         self,
         slot_id: SlotId,
@@ -704,7 +685,7 @@ class ContextBase:
                 child.deactivate()
 
         for child in self._children.values():
-            if isinstance(child, PlainCallSlotContext):
+            if isinstance(child, SlotCallSlotContext):
                 child.commit_binding()
             elif isinstance(child, SlotExprSlotContext):
                 child.commit_binding()
@@ -741,7 +722,7 @@ class ContextBase:
                 child.deactivate()
                 continue
 
-            if isinstance(child, PlainCallSlotContext):
+            if isinstance(child, SlotCallSlotContext):
                 child.rollback_binding()
             elif isinstance(child, SlotExprSlotContext):
                 child.rollback_binding()
@@ -926,7 +907,7 @@ _BOUND_METHOD_SELF_MISSING = object()
 def _native_context_param_name(func: Callable[..., Any]) -> str | None:
     cached = _read_callable_annotation_cache(func, _NATIVE_CONTEXT_PARAM_ATTR)
     if cached is not _CALLABLE_CACHE_MISSING:
-        return cast(str | None, cached)
+        return cast("str | None", cached)
 
     found_name: str | None = None
     try:
@@ -996,7 +977,9 @@ def _resolve_runtime_component_func(runtime_func: object) -> Callable[..., Any] 
     if isinstance(runtime_func, (classmethod, staticmethod)):
         candidate = runtime_func.__func__
         return candidate if callable(candidate) else None
-    return cast(Callable[..., Any] | None, runtime_func if callable(runtime_func) else None)
+    if callable(runtime_func):
+        return cast("Callable[..., Any]", runtime_func)
+    return None
 
 
 def _native_emission_slot_identity(context: ContextBase) -> object | None:
@@ -1215,12 +1198,12 @@ class SlotExprSlotContext(RerunnableSlotContext):
 
 
 @dataclass(slots=True)
-class PlainCallSlotContext(RerunnableSlotContext):
+class SlotCallSlotContext(RerunnableSlotContext):
     function_identity: Any = None
     schema: tuple[int, tuple[str, ...]] = (0, ())
     last_args: tuple[Any, ...] = ()
     last_kwargs: tuple[tuple[str, Any], ...] = ()
-    binding: PlainCallBinding | None = None
+    binding: SlotCallBinding | None = None
     _runtime_locals: dict[str, Any] = field(default_factory=dict)
 
     def evaluate(
@@ -1230,10 +1213,10 @@ class PlainCallSlotContext(RerunnableSlotContext):
         kwargs: dict[str, CompValue[Any] | Any],
         *,
         result_shape: object | None = None,
-    ) -> PlainCallResult[T]:
-        prepared = prepare_plain_call(func, args, kwargs, unwrap=_unwrap)
-        should_invoke = should_invoke_plain_call(
-            PlainCallStateSnapshot(
+    ) -> SlotCallResult[T]:
+        prepared = prepare_slot_call(func, args, kwargs, unwrap=_unwrap)
+        should_invoke = should_invoke_slot_call(
+            SlotCallStateSnapshot(
                 invoke_dirty=self.invoke_dirty,
                 function_identity=self.function_identity,
                 schema=self.schema,
@@ -1249,12 +1232,12 @@ class PlainCallSlotContext(RerunnableSlotContext):
                 T,
                 call_with_optional_runtime_context(
                     prepared,
-                    cache_attr_name="_pyrolyze_plain_call_runtime_ctx_param",
-                    runtime_context_annotation=PlainCallRuntimeContext,
-                    runtime_context_factory=lambda: PlainCallRuntimeContext(self),
+                    cache_attr_name="_pyrolyze_slot_runtime_ctx_param",
+                    runtime_context_annotation=SlotRuntimeContext,
+                    runtime_context_factory=lambda: SlotRuntimeContext(self),
                 ),
             )
-            commit_result = commit_plain_call_invocation(
+            commit_result = commit_slot_call_invocation(
                 host=self,
                 prepared=prepared,
                 previous_binding=self.binding,
@@ -1270,38 +1253,38 @@ class PlainCallSlotContext(RerunnableSlotContext):
             result_dirty = False
             binding = self.binding
             if binding is not None:
-                refreshed = refresh_plain_call_binding(binding)
+                refreshed = refresh_slot_call_binding(binding)
                 if refreshed is not None:
                     _, result_dirty = refreshed
 
         binding = self.binding
         if binding is None:
-            raise RuntimeError("plain-call slot has no binding after evaluation")
-        return PlainCallResult(
+            raise RuntimeError("slot-call slot has no binding after evaluation")
+        return SlotCallResult(
             dirty=_project_dirty_state(result_dirty, result_shape),
             value=cast(T, binding.exposed_value()),
         )
 
-    def queue_plain_call_invalidation(self) -> None:
+    def queue_slot_call_invalidation(self) -> None:
         self.render_context._queue_invalidation_from(self, include_source=False)
 
-    def mark_plain_call_refresh_only(self) -> None:
-        self.queue_plain_call_invalidation()
+    def mark_slot_call_refresh_only(self) -> None:
+        self.queue_slot_call_invalidation()
 
-    def enqueue_plain_call_post_commit(self, callback: Callable[[], None]) -> None:
+    def enqueue_slot_call_post_commit(self, callback: Callable[[], None]) -> None:
         self.render_context._enqueue_post_commit(callback)
 
-    def publish_plain_call_mount_advertisement(
+    def publish_slot_call_mount_advertisement(
         self,
         request: PyrolyzeMountAdvertisementRequest,
     ) -> PyrolyzeMountAdvertisement:
         return self.render_context._publish_mount_advertisement(self, request)
 
-    def withdraw_plain_call_mount_advertisement(self) -> None:
+    def withdraw_slot_call_mount_advertisement(self) -> None:
         self.render_context._withdraw_mount_advertisement(self.slot_id)
 
     def _mark_binding_dirty(self) -> None:
-        self.queue_plain_call_invalidation()
+        self.queue_slot_call_invalidation()
 
     def commit_binding(self) -> None:
         binding = self.binding
@@ -1321,7 +1304,7 @@ class PlainCallSlotContext(RerunnableSlotContext):
         if binding is not None:
             binding.deactivate()
         self._committed_ui = ()
-        super(PlainCallSlotContext, self).deactivate()
+        super(SlotCallSlotContext, self).deactivate()
 
     def _build_committed_ui(self) -> tuple[object, ...]:
         binding = self.binding
@@ -1330,14 +1313,14 @@ class PlainCallSlotContext(RerunnableSlotContext):
             if advertisement is None:
                 return ()
             return (advertisement,)
-        return super(PlainCallSlotContext, self)._build_committed_ui()
+        return super(SlotCallSlotContext, self)._build_committed_ui()
 
     def _sync_binding_committed_ui(self) -> None:
         self._committed_ui = self._build_committed_ui()
 
 
 @dataclass(slots=True)
-class DirectiveSlotContext(PlainCallSlotContext):
+class DirectiveSlotContext(SlotCallSlotContext):
     committed_selectors: tuple[SlotSelector, ...] = ()
     _pass_committed_selectors: tuple[SlotSelector, ...] = ()
 
@@ -1863,9 +1846,9 @@ class LoopItemSlotContext(RerunnableSlotContext):
     current_dirty: Any = True
     current_initialized: bool = False
 
-    def current_value(self) -> PlainCallResult[Any]:
+    def current_value(self) -> SlotCallResult[Any]:
         self._require_active_scope()
-        return PlainCallResult(dirty=self.current_dirty, value=self.current)
+        return SlotCallResult(dirty=self.current_dirty, value=self.current)
 
     def update_current(self, value: Any) -> None:
         self.current_dirty = _structured_dirty_projection(
@@ -2443,7 +2426,7 @@ class RenderContext(ContextBase):
 
     def _publish_mount_advertisement(
         self,
-        slot: PlainCallSlotContext,
+        slot: SlotCallSlotContext,
         request: PyrolyzeMountAdvertisementRequest,
     ) -> PyrolyzeMountAdvertisement:
         parent = _resolve_mount_advertisement_owner(slot.parent)
@@ -2506,7 +2489,7 @@ class RenderContext(ContextBase):
     def _rebuild_mount_advertisement_surface(self) -> None:
         next_entries: dict[SlotId, PyrolyzeMountAdvertisement] = {}
         for slot_id, slot in self._slots_by_id.items():
-            if isinstance(slot, PlainCallSlotContext):
+            if isinstance(slot, SlotCallSlotContext):
                 binding = slot.binding
                 if not isinstance(binding, PyrolyzeMountAdvertisementBinding):
                     continue
@@ -2544,7 +2527,7 @@ def _context_kind(context: object) -> str:
         return "app_context_override"
     if isinstance(context, ContainerSlotContext):
         return "container"
-    if isinstance(context, PlainCallSlotContext):
+    if isinstance(context, SlotCallSlotContext):
         return "slot_call"
     if isinstance(context, ComponentCallSlotContext):
         return "component_call"
@@ -2580,10 +2563,10 @@ __all__ = [
     "ModuleId",
     "ModuleRegistry",
     "MountAdvertisementContextError",
-    "PlainCallResult",
-    "PlainCallRuntimeContext",
-    "PlainCallSlotContext",
-    "PlainValueBinding",
+    "SlotCallResult",
+    "SlotRuntimeContext",
+    "SlotCallSlotContext",
+    "SlotValueBinding",
     "PyrolyzeMountAdvertisementBinding",
     "RenderContext",
     "RerunnableSlotContext",

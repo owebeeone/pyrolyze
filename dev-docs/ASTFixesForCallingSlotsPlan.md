@@ -13,14 +13,16 @@ Completed:
 - Phase AB
 - Phase AC
 - Phase B
+- Phase C
+- Phase D
 
 Active:
 
-- Phase C
+- none
 
 Remaining:
 
-- Phase D
+- none
 
 The goal is to replace the current slot-bearing `slot_call` model with:
 
@@ -748,6 +750,14 @@ Phase D is complete when:
 - `slot_call` no longer exists
 - all intended lowering goes through `SlotExpr`
 - expected goldens and regression tests pass
+
+Status:
+
+- complete
+- live `src/` and `tests/` no longer reference `call_plain(...)` or `PlainCall*`
+- shared slot-call semantics now live under neutral `slot_call_*` modules
+- suite baseline at D completion is `601 passed`, `20 skipped`, `6 failed`
+- the remaining `6` failures belong to component-call and host/runtime follow-on work, not this slots plan
 
 ## Diagnostics
 

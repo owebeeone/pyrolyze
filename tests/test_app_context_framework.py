@@ -14,7 +14,7 @@ from pyrolyze.runtime import (
     DirtyStateContext,
     ExternalStoreRef,
     ModuleRegistry,
-    PlainCallRuntimeContext,
+    SlotRuntimeContext,
     RenderContext,
     SlotId,
     dirtyof,
@@ -146,12 +146,12 @@ def test_app_context_store_caches_none_values_and_closes_once() -> None:
 def test_plain_native_and_child_component_contexts_share_app_context() -> None:
     key = AppContextKey("shared.state", factory=lambda host_app: SharedState(values=[f"host:{host_app}"]))
 
-    def remember(value: str, *, __pyrolyze_ctx: PlainCallRuntimeContext) -> int:
+    def remember(value: str, *, __pyrolyze_ctx: SlotRuntimeContext) -> int:
         shared = __pyrolyze_ctx.get_app_context(key)
         shared.values.append(f"plain:{value}")
         return len(shared.values)
 
-    def snapshot(*, __pyrolyze_ctx: PlainCallRuntimeContext) -> tuple[str, ...]:
+    def snapshot(*, __pyrolyze_ctx: SlotRuntimeContext) -> tuple[str, ...]:
         return tuple(__pyrolyze_ctx.get_app_context(key).values)
 
     def mark_native(ctx: ContextBase, value: str) -> None:

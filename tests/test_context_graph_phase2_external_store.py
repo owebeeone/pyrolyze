@@ -7,8 +7,8 @@ from pyrolyze.runtime.context import (
     ExternalStoreBinding,
     ExternalStoreRef,
     ModuleRegistry,
-    PlainCallRuntimeContext,
-    PlainValueBinding,
+    SlotRuntimeContext,
+    SlotValueBinding,
     RenderContext,
     SlotId,
     dirtyof,
@@ -257,14 +257,14 @@ def test_switching_from_external_helper_to_plain_helper_unsubscribes_old_binding
         ("unsubscribe", "weather"),
     ]
     assert store.active_listener_count == 0
-    assert isinstance(_binding_for(ctx), PlainValueBinding)
+    assert isinstance(_binding_for(ctx), SlotValueBinding)
 
 
 def test_slot_call_runtime_context_injects_slot_local_storage() -> None:
     ctx = RenderContext()
     observed: list[tuple[str, int, bool]] = []
 
-    def helper(label: str, runtime: PlainCallRuntimeContext) -> str:
+    def helper(label: str, runtime: SlotRuntimeContext) -> str:
         sequence = runtime.get_or_init_local("sequence", lambda: 0)
         runtime.set_local("sequence", sequence + 1)
         return f"{label}:{sequence}"
@@ -291,7 +291,7 @@ def test_slot_call_runtime_context_injects_slot_local_storage() -> None:
         ("alpha:0", observed[0][1], False),
         ("beta:1", observed[0][1], True),
     ]
-    assert isinstance(_binding_for(ctx), PlainValueBinding)
+    assert isinstance(_binding_for(ctx), SlotValueBinding)
 
 
 def test_plain_result_uses_plain_value_binding() -> None:
@@ -320,13 +320,13 @@ def test_plain_result_uses_plain_value_binding() -> None:
 
     assert observed == [("plain:weather", True)]
     assert log == [("plain_helper", "weather")]
-    assert isinstance(_binding_for(ctx), PlainValueBinding)
+    assert isinstance(_binding_for(ctx), SlotValueBinding)
 
     pyr_reader("weather", dirtyof(name=False))
 
     assert observed == [("plain:weather", True), ("plain:weather", False)]
     assert log == [("plain_helper", "weather")]
-    assert isinstance(_binding_for(ctx), PlainValueBinding)
+    assert isinstance(_binding_for(ctx), SlotValueBinding)
 
 
 def test_deactivating_an_external_slot_call_unsubscribes_the_store() -> None:

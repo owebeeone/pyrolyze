@@ -115,7 +115,7 @@ def test_phase5_lowers_custom_named_state_helper_with_three_value_destructure() 
 from typing import Any, Callable, cast
 
 from pyrolyze.api import pyrolyze, pyrolyze_slotted, use_state
-from pyrolyze.runtime import PlainCallRuntimeContext
+from pyrolyze.runtime import SlotRuntimeContext
 
 log = []
 setters = []
@@ -129,7 +129,7 @@ def my_us_state(
     left_initial: int,
     right_initial: int,
     *,
-    __pyrolyze_ctx: PlainCallRuntimeContext = cast(Any, None),
+    __pyrolyze_ctx: SlotRuntimeContext = cast(Any, None),
 ) -> tuple[int, int, Callable[[int, int], None]]:
     pair, set_pair = use_state(
         (left_initial, right_initial),

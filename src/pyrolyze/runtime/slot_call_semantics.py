@@ -10,24 +10,24 @@ from pyrolyze.api import PyrolyzeMountAdvertisement, PyrolyzeMountAdvertisementR
 T = TypeVar("T")
 
 
-class PlainCallBindingHost(ABC):
+class SlotCallBindingHost(ABC):
     @abstractmethod
-    def queue_plain_call_invalidation(self) -> None: ...
+    def queue_slot_call_invalidation(self) -> None: ...
 
     @abstractmethod
-    def mark_plain_call_refresh_only(self) -> None: ...
+    def mark_slot_call_refresh_only(self) -> None: ...
 
     @abstractmethod
-    def enqueue_plain_call_post_commit(self, callback: Callable[[], None]) -> None: ...
+    def enqueue_slot_call_post_commit(self, callback: Callable[[], None]) -> None: ...
 
     @abstractmethod
-    def publish_plain_call_mount_advertisement(
+    def publish_slot_call_mount_advertisement(
         self,
         request: PyrolyzeMountAdvertisementRequest,
     ) -> PyrolyzeMountAdvertisement: ...
 
     @abstractmethod
-    def withdraw_plain_call_mount_advertisement(self) -> None: ...
+    def withdraw_slot_call_mount_advertisement(self) -> None: ...
 
 
 class AsyncEffectHandle(ABC):
@@ -56,7 +56,7 @@ class UseEffectAsyncRequest:
     cleanup: Callable[[], None] | None = None
 
 
-class PlainCallBinding:
+class SlotCallBinding:
     def exposed_value(self) -> Any:
         raise NotImplementedError
 
@@ -74,7 +74,7 @@ class PlainCallBinding:
 
 
 @dataclass(slots=True)
-class PlainValueBinding(PlainCallBinding):
+class SlotValueBinding(SlotCallBinding):
     value: Any
 
     def exposed_value(self) -> Any:
@@ -85,8 +85,8 @@ class PlainValueBinding(PlainCallBinding):
 
 
 @dataclass(slots=True)
-class ExternalStoreBinding(PlainCallBinding):
-    host: PlainCallBindingHost
+class ExternalStoreBinding(SlotCallBinding):
+    host: SlotCallBindingHost
     ref: ExternalStoreRef[Any]
     value: Any = None
     initialized: bool = False
@@ -96,7 +96,7 @@ class ExternalStoreBinding(PlainCallBinding):
     @classmethod
     def bind(
         cls,
-        host: PlainCallBindingHost,
+        host: SlotCallBindingHost,
         ref: ExternalStoreRef[Any],
     ) -> ExternalStoreBinding:
         binding = cls(host=host, ref=ref)
@@ -138,7 +138,7 @@ class ExternalStoreBinding(PlainCallBinding):
 
     def _mark_dirty(self) -> None:
         self.dirty = True
-        self.host.mark_plain_call_refresh_only()
+        self.host.mark_slot_call_refresh_only()
 
     def _update_from_get(self) -> bool:
         next_value = self.ref.get()
@@ -152,8 +152,8 @@ _EFFECT_DEPS_UNSET = object()
 
 
 @dataclass(slots=True)
-class UseEffectBinding(PlainCallBinding):
-    host: PlainCallBindingHost
+class UseEffectBinding(SlotCallBinding):
+    host: SlotCallBindingHost
     request: UseEffectRequest | None = None
     cleanup: Callable[[], None] | None = None
     deps: object = _EFFECT_DEPS_UNSET
@@ -162,7 +162,7 @@ class UseEffectBinding(PlainCallBinding):
     @classmethod
     def bind(
         cls,
-        host: PlainCallBindingHost,
+        host: SlotCallBindingHost,
         request: UseEffectRequest,
     ) -> UseEffectBinding:
         binding = cls(host=host)
@@ -185,7 +185,7 @@ class UseEffectBinding(PlainCallBinding):
         self.request = request
         self.deps = request.deps
         if should_run:
-            self.host.enqueue_plain_call_post_commit(self._make_post_commit_callback(request))
+            self.host.enqueue_slot_call_post_commit(self._make_post_commit_callback(request))
 
     def rollback(self) -> None:
         self.staged_request = None
@@ -216,14 +216,14 @@ class UseEffectBinding(PlainCallBinding):
             next_cleanup = request.effect_fn()
             if next_cleanup is not None and not callable(next_cleanup):
                 raise TypeError("effect must return a cleanup callable or None")
-            self.cleanup = cast(Callable[[], None] | None, next_cleanup)
+            self.cleanup = cast("Callable[[], None] | None", next_cleanup)
 
         return run_effect
 
 
 @dataclass(slots=True)
-class UseEffectAsyncBinding(PlainCallBinding):
-    host: PlainCallBindingHost
+class UseEffectAsyncBinding(SlotCallBinding):
+    host: SlotCallBindingHost
     request: UseEffectAsyncRequest | None = None
     deps: object = _EFFECT_DEPS_UNSET
     staged_request: UseEffectAsyncRequest | None = None
@@ -234,7 +234,7 @@ class UseEffectAsyncBinding(PlainCallBinding):
     @classmethod
     def bind(
         cls,
-        host: PlainCallBindingHost,
+        host: SlotCallBindingHost,
         request: UseEffectAsyncRequest,
     ) -> UseEffectAsyncBinding:
         binding = cls(host=host)
@@ -257,7 +257,7 @@ class UseEffectAsyncBinding(PlainCallBinding):
         self.request = request
         self.deps = request.deps
         if should_run:
-            self.host.enqueue_plain_call_post_commit(self._make_post_commit_callback(request))
+            self.host.enqueue_slot_call_post_commit(self._make_post_commit_callback(request))
 
     def rollback(self) -> None:
         self.staged_request = None
@@ -286,7 +286,7 @@ class UseEffectAsyncBinding(PlainCallBinding):
                 if self.active_token is not token:
                     return
                 self.handle = None
-                self.host.queue_plain_call_invalidation()
+                self.host.queue_slot_call_invalidation()
 
             self.handle = request.start(on_complete)
 
@@ -305,8 +305,8 @@ class UseEffectAsyncBinding(PlainCallBinding):
 
 
 @dataclass(slots=True)
-class PyrolyzeMountAdvertisementBinding(PlainCallBinding):
-    host: PlainCallBindingHost
+class PyrolyzeMountAdvertisementBinding(SlotCallBinding):
+    host: SlotCallBindingHost
     request: PyrolyzeMountAdvertisementRequest | None = None
     staged_request: PyrolyzeMountAdvertisementRequest | None = None
     advertisement: PyrolyzeMountAdvertisement | None = None
@@ -314,7 +314,7 @@ class PyrolyzeMountAdvertisementBinding(PlainCallBinding):
     @classmethod
     def bind(
         cls,
-        host: PlainCallBindingHost,
+        host: SlotCallBindingHost,
         request: PyrolyzeMountAdvertisementRequest,
     ) -> PyrolyzeMountAdvertisementBinding:
         binding = cls(host=host)
@@ -333,7 +333,7 @@ class PyrolyzeMountAdvertisementBinding(PlainCallBinding):
         request = self.staged_request
         if request is None:
             return
-        self.advertisement = self.host.publish_plain_call_mount_advertisement(request)
+        self.advertisement = self.host.publish_slot_call_mount_advertisement(request)
         self.request = request
         self.staged_request = None
 
@@ -344,35 +344,35 @@ class PyrolyzeMountAdvertisementBinding(PlainCallBinding):
         self.staged_request = None
         self.request = None
         self.advertisement = None
-        self.host.withdraw_plain_call_mount_advertisement()
+        self.host.withdraw_slot_call_mount_advertisement()
 
     def retained_advertisement(self) -> PyrolyzeMountAdvertisement | None:
         return self.advertisement
 
 
-class PlainCallSemanticsHandler:
+class SlotCallSemanticsHandler:
     def can_handle(self, result: object) -> bool:
         raise NotImplementedError
 
     def bind(
         self,
-        host: PlainCallBindingHost,
+        host: SlotCallBindingHost,
         result: object,
-        previous: PlainCallBinding | None,
-    ) -> PlainCallBinding:
+        previous: SlotCallBinding | None,
+    ) -> SlotCallBinding:
         raise NotImplementedError
 
 
-class ExternalStoreHandler(PlainCallSemanticsHandler):
+class ExternalStoreHandler(SlotCallSemanticsHandler):
     def can_handle(self, result: object) -> bool:
         return isinstance(result, ExternalStoreRef)
 
     def bind(
         self,
-        host: PlainCallBindingHost,
+        host: SlotCallBindingHost,
         result: object,
-        previous: PlainCallBinding | None,
-    ) -> PlainCallBinding:
+        previous: SlotCallBinding | None,
+    ) -> SlotCallBinding:
         ref = cast(ExternalStoreRef[Any], result)
         if isinstance(previous, ExternalStoreBinding):
             previous.rebind(ref)
@@ -380,16 +380,16 @@ class ExternalStoreHandler(PlainCallSemanticsHandler):
         return ExternalStoreBinding.bind(host, ref)
 
 
-class PyrolyzeMountAdvertisementHandler(PlainCallSemanticsHandler):
+class PyrolyzeMountAdvertisementHandler(SlotCallSemanticsHandler):
     def can_handle(self, result: object) -> bool:
         return isinstance(result, PyrolyzeMountAdvertisementRequest)
 
     def bind(
         self,
-        host: PlainCallBindingHost,
+        host: SlotCallBindingHost,
         result: object,
-        previous: PlainCallBinding | None,
-    ) -> PlainCallBinding:
+        previous: SlotCallBinding | None,
+    ) -> SlotCallBinding:
         request = cast(PyrolyzeMountAdvertisementRequest, result)
         if isinstance(previous, PyrolyzeMountAdvertisementBinding):
             previous.stage(request)
@@ -397,7 +397,7 @@ class PyrolyzeMountAdvertisementHandler(PlainCallSemanticsHandler):
         return PyrolyzeMountAdvertisementBinding.bind(host, request)
 
 
-class PlainValueHandler(PlainCallSemanticsHandler):
+class SlotValueHandler(SlotCallSemanticsHandler):
     def can_handle(self, result: object) -> bool:
         return not isinstance(
             result,
@@ -411,26 +411,26 @@ class PlainValueHandler(PlainCallSemanticsHandler):
 
     def bind(
         self,
-        host: PlainCallBindingHost,
+        host: SlotCallBindingHost,
         result: object,
-        previous: PlainCallBinding | None,
-    ) -> PlainCallBinding:
-        if isinstance(previous, PlainValueBinding):
+        previous: SlotCallBinding | None,
+    ) -> SlotCallBinding:
+        if isinstance(previous, SlotValueBinding):
             previous.rebind(result)
             return previous
-        return PlainValueBinding(value=result)
+        return SlotValueBinding(value=result)
 
 
-class UseEffectHandler(PlainCallSemanticsHandler):
+class UseEffectHandler(SlotCallSemanticsHandler):
     def can_handle(self, result: object) -> bool:
         return isinstance(result, UseEffectRequest)
 
     def bind(
         self,
-        host: PlainCallBindingHost,
+        host: SlotCallBindingHost,
         result: object,
-        previous: PlainCallBinding | None,
-    ) -> PlainCallBinding:
+        previous: SlotCallBinding | None,
+    ) -> SlotCallBinding:
         request = cast(UseEffectRequest, result)
         if isinstance(previous, UseEffectBinding):
             previous.stage(request)
@@ -438,16 +438,16 @@ class UseEffectHandler(PlainCallSemanticsHandler):
         return UseEffectBinding.bind(host, request)
 
 
-class UseEffectAsyncHandler(PlainCallSemanticsHandler):
+class UseEffectAsyncHandler(SlotCallSemanticsHandler):
     def can_handle(self, result: object) -> bool:
         return isinstance(result, UseEffectAsyncRequest)
 
     def bind(
         self,
-        host: PlainCallBindingHost,
+        host: SlotCallBindingHost,
         result: object,
-        previous: PlainCallBinding | None,
-    ) -> PlainCallBinding:
+        previous: SlotCallBinding | None,
+    ) -> SlotCallBinding:
         request = cast(UseEffectAsyncRequest, result)
         if isinstance(previous, UseEffectAsyncBinding):
             previous.stage(request)
@@ -455,17 +455,17 @@ class UseEffectAsyncHandler(PlainCallSemanticsHandler):
         return UseEffectAsyncBinding.bind(host, request)
 
 
-PLAIN_CALL_HANDLERS: tuple[PlainCallSemanticsHandler, ...] = (
+SLOT_CALL_HANDLERS: tuple[SlotCallSemanticsHandler, ...] = (
     ExternalStoreHandler(),
     PyrolyzeMountAdvertisementHandler(),
     UseEffectAsyncHandler(),
     UseEffectHandler(),
-    PlainValueHandler(),
+    SlotValueHandler(),
 )
 
 
-def select_plain_call_handler(result: object) -> PlainCallSemanticsHandler:
-    matches = [handler for handler in PLAIN_CALL_HANDLERS if handler.can_handle(result)]
+def select_slot_call_handler(result: object) -> SlotCallSemanticsHandler:
+    matches = [handler for handler in SLOT_CALL_HANDLERS if handler.can_handle(result)]
     if len(matches) != 1:
-        raise TypeError(f"plain-call result matched {len(matches)} handlers instead of exactly one")
+        raise TypeError(f"slot-call result matched {len(matches)} handlers instead of exactly one")
     return matches[0]

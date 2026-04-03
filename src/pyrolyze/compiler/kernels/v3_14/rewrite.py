@@ -2489,10 +2489,10 @@ def _is_slot_backed_imported_helper(
     if signature is not None:
         for parameter in signature.parameters.values():
             annotation = resolved_hints.get(parameter.name, parameter.annotation)
-            if _is_plain_call_runtime_context_annotation(annotation):
+            if _is_slot_runtime_context_annotation(annotation):
                 return True
 
-    return _is_plain_call_carrier_annotation(
+    return _is_slot_call_carrier_annotation(
         resolved_hints.get(
             "return",
             getattr(imported_value, "__annotations__", {}).get("return", inspect.Signature.empty),
@@ -2500,11 +2500,11 @@ def _is_slot_backed_imported_helper(
     )
 
 
-def _is_plain_call_runtime_context_annotation(annotation: Any) -> bool:
-    return _runtime_annotation_matches(annotation, {"PlainCallRuntimeContext"})
+def _is_slot_runtime_context_annotation(annotation: Any) -> bool:
+    return _runtime_annotation_matches(annotation, {"SlotRuntimeContext"})
 
 
-def _is_plain_call_carrier_annotation(annotation: Any) -> bool:
+def _is_slot_call_carrier_annotation(annotation: Any) -> bool:
     return _runtime_annotation_matches(
         annotation,
         {

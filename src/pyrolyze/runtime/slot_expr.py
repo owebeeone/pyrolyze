@@ -14,20 +14,20 @@ from .call_site_context import (
     CallSiteContextManager,
     CallSiteInvokeState,
 )
-from .context import CompValue, PlainCallRuntimeContext
-from .plain_call_core import (
-    PlainCallStateSnapshot,
+from .context import CompValue, SlotRuntimeContext
+from .slot_call_core import (
+    SlotCallStateSnapshot,
     call_with_optional_runtime_context,
-    commit_plain_call_invocation,
-    prepare_plain_call,
-    refresh_plain_call_binding,
-    should_invoke_plain_call,
+    commit_slot_call_invocation,
+    prepare_slot_call,
+    refresh_slot_call_binding,
+    should_invoke_slot_call,
 )
 from .dirt import DM
-from .plain_call_semantics import (
+from .slot_call_semantics import (
     ExternalStoreRef,
-    PlainCallBinding,
-    PlainCallBindingHost,
+    SlotCallBinding,
+    SlotCallBindingHost,
     UseEffectAsyncRequest,
     UseEffectRequest,
 )
@@ -142,33 +142,33 @@ class _SlotExprSlotCallHost:
     slot_id: Any
     evaluator: SlotCallEvaluator
     advertisement: PyrolyzeMountAdvertisement | None = None
-    delegate: PlainCallBindingHost | None = None
+    delegate: SlotCallBindingHost | None = None
 
-    def queue_plain_call_invalidation(self) -> None:
+    def queue_slot_call_invalidation(self) -> None:
         if self.delegate is not None:
-            self.delegate.queue_plain_call_invalidation()
+            self.delegate.queue_slot_call_invalidation()
         return None
 
-    def mark_plain_call_refresh_only(self) -> None:
+    def mark_slot_call_refresh_only(self) -> None:
         self.evaluator.mark_invoke_get()
         if self.delegate is not None:
-            self.delegate.mark_plain_call_refresh_only()
+            self.delegate.mark_slot_call_refresh_only()
 
-    def enqueue_plain_call_post_commit(self, callback: Callable[[], None]) -> None:
+    def enqueue_slot_call_post_commit(self, callback: Callable[[], None]) -> None:
         if self.expr.lifecycle_slot_ctx is not None:
             if self.delegate is None:
                 self.expr.lifecycle_slot_ctx.append_slot_expr_post_commit_callback(callback)
             else:
                 self.expr.lifecycle_slot_ctx.append_slot_expr_post_commit_callback(
-                    lambda: self.delegate.enqueue_plain_call_post_commit(callback)
+                    lambda: self.delegate.enqueue_slot_call_post_commit(callback)
                 )
             return
         if self.delegate is None:
             self.expr._staged_post_commit_callbacks.append(callback)
         else:
-            self.expr._staged_post_commit_callbacks.append(lambda: self.delegate.enqueue_plain_call_post_commit(callback))
+            self.expr._staged_post_commit_callbacks.append(lambda: self.delegate.enqueue_slot_call_post_commit(callback))
 
-    def publish_plain_call_mount_advertisement(
+    def publish_slot_call_mount_advertisement(
         self,
         request: PyrolyzeMountAdvertisementRequest,
     ) -> PyrolyzeMountAdvertisement:
@@ -179,20 +179,20 @@ class _SlotExprSlotCallHost:
                 default=request.default,
             )
         else:
-            self.advertisement = self.delegate.publish_plain_call_mount_advertisement(request)
+            self.advertisement = self.delegate.publish_slot_call_mount_advertisement(request)
         return self.advertisement
 
-    def withdraw_plain_call_mount_advertisement(self) -> None:
+    def withdraw_slot_call_mount_advertisement(self) -> None:
         if self.delegate is not None:
-            self.delegate.withdraw_plain_call_mount_advertisement()
+            self.delegate.withdraw_slot_call_mount_advertisement()
         self.advertisement = None
 
 
 @dataclass(slots=True, eq=False)
 class _SlotExprCallSiteBinding(CallSiteBindingBase):
-    binding: PlainCallBinding
+    binding: SlotCallBinding
 
-    def attach_host(self, host: PlainCallBindingHost) -> None:
+    def attach_host(self, host: SlotCallBindingHost) -> None:
         if hasattr(self.binding, "host"):
             setattr(self.binding, "host", host)
 
@@ -246,7 +246,7 @@ class _SlotExprRuntimeContextSlot:
         self._set_persisted_invoke_dirty(True)
         host_factory = self.evaluator.expr.host_factory
         if host_factory is not None:
-            host_factory(self.slot_id).queue_plain_call_invalidation()
+            host_factory(self.slot_id).queue_slot_call_invalidation()
 
     @property
     def invoke_dirty(self) -> bool:
@@ -299,7 +299,7 @@ class SlotExpr:
     slot_ctx: SlotExprLiteralContext | None = None
     evaluators: dict[str, SlotCallEvaluator] = field(default_factory=dict)
     evaluators_by_slot_id: dict[Any, SlotCallEvaluator] = field(default_factory=dict)
-    host_factory: Callable[[Any], PlainCallBindingHost] | None = None
+    host_factory: Callable[[Any], SlotCallBindingHost] | None = None
     call_site_context_manager: CallSiteContextManager = field(default_factory=CallSiteContextManager)
     runtime_locals_provider: Callable[[Any], dict[str, Any]] | None = None
     committed_ui_sync: Callable[[], None] | None = None
@@ -366,7 +366,7 @@ class SlotExpr:
         self.slot_ctx = slot_ctx
         return self
 
-    def apply_host_factory(self, host_factory: Callable[[Any], PlainCallBindingHost]) -> SlotExpr:
+    def apply_host_factory(self, host_factory: Callable[[Any], SlotCallBindingHost]) -> SlotExpr:
         self.host_factory = host_factory
         for evaluator in self.evaluators_by_slot_id.values():
             evaluator.host.delegate = host_factory(evaluator.slot_id)
@@ -564,7 +564,7 @@ class SlotCallEvaluator:
         if self._pass_invoke_state is CallSiteInvokeState.GET_SET and current_binding is not None:
             self._preserve_dependencies_for_refresh()
             previous_value = current_binding.exposed_value()
-            refreshed = refresh_plain_call_binding(current_binding.binding)
+            refreshed = refresh_slot_call_binding(current_binding.binding)
             if refreshed is None:
                 current_value = current_binding.exposed_value()
                 current_dirty = self.expr.dm.clean_shape_like(current_value) if self.expr.dm is not None else False
@@ -591,7 +591,7 @@ class SlotCallEvaluator:
         last_args = CallSiteArgs.capture(*args_carrier.args, **args_carrier.kwds)
         func = self._func_provider.get_func(self.expr)
         func_dirty = self._is_dirty(self._func_provider.get_dirty(self.expr))
-        prepared = prepare_plain_call(
+        prepared = prepare_slot_call(
             _PreparedDirtyValue(func, dirty=func_dirty),
             tuple(
                 _PreparedDirtyValue(
@@ -608,8 +608,8 @@ class SlotCallEvaluator:
             },
             unwrap=lambda value: (value.value, value.dirty) if isinstance(value, _PreparedDirtyValue) else (value, False),
         )
-        needs_invoke_without_func_dirt = should_invoke_plain_call(
-            PlainCallStateSnapshot(
+        needs_invoke_without_func_dirt = should_invoke_slot_call(
+            SlotCallStateSnapshot(
                 invoke_dirty=self._pass_invoke_state is CallSiteInvokeState.DIRTY_SET,
                 function_identity=self._current_context.function_identity if self._current_context is not None else None,
                 schema=(len(self._current_context.last_args.args), tuple(sorted(key for key, _ in self._current_context.last_args.kwargs))) if self._current_context is not None else (0, ()),
@@ -623,14 +623,14 @@ class SlotCallEvaluator:
         if should_invoke:
             result = call_with_optional_runtime_context(
                 prepared,
-                cache_attr_name="_pyrolyze_plain_call_runtime_ctx_param",
-                runtime_context_annotation=PlainCallRuntimeContext,
+                cache_attr_name="_pyrolyze_slot_runtime_ctx_param",
+                runtime_context_annotation=SlotRuntimeContext,
                 runtime_context_factory=self._runtime_context_factory,
             )
             previous_binding = current_binding.binding if current_binding is not None else None
             previous_value = previous_binding.exposed_value() if previous_binding is not None else None
             initialized = previous_binding is not None
-            commit_result = commit_plain_call_invocation(
+            commit_result = commit_slot_call_invocation(
                 host=self.host,
                 prepared=prepared,
                 previous_binding=previous_binding,
@@ -654,7 +654,7 @@ class SlotCallEvaluator:
         else:
             assert current_binding is not None
             previous_value = current_binding.exposed_value()
-            refreshed = refresh_plain_call_binding(current_binding.binding)
+            refreshed = refresh_slot_call_binding(current_binding.binding)
             if refreshed is None:
                 current_value = current_binding.exposed_value()
                 current_dirty = self.expr.dm.clean_shape_like(current_value) if self.expr.dm is not None else False
@@ -753,7 +753,7 @@ class SlotCallEvaluator:
         )
 
     @property
-    def binding(self) -> PlainCallBinding | None:
+    def binding(self) -> SlotCallBinding | None:
         context = (
             self._staged_context
             if self._staged_context is not None
@@ -764,10 +764,10 @@ class SlotCallEvaluator:
             return None
         return wrapped_binding.binding
 
-    def _runtime_context_factory(self) -> PlainCallRuntimeContext:
+    def _runtime_context_factory(self) -> SlotRuntimeContext:
         if self._runtime_context_slot is None:
             self._runtime_context_slot = _SlotExprRuntimeContextSlot(evaluator=self)
-        return PlainCallRuntimeContext(self._runtime_context_slot)
+        return SlotRuntimeContext(self._runtime_context_slot)
 
     def _binding_from_context(self, context: CallSiteContext | None) -> _SlotExprCallSiteBinding | None:
         if context is None:

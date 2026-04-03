@@ -254,7 +254,7 @@ def advertise_mount(
     name: object | None = None,
     target: SlotSelector | None = None,
     default: bool = False,
-    runtime: "PlainCallRuntimeContext" = None,
+    runtime: "SlotRuntimeContext" = None,
 ) -> PyrolyzeMountAdvertisementRequest:
     """Declare a public mount advert for the current component surface."""
 

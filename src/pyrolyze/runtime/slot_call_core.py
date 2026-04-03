@@ -4,10 +4,10 @@ from dataclasses import dataclass
 import inspect
 from typing import Any, Callable, cast
 
-from .plain_call_semantics import (
-    PlainCallBinding,
-    PlainCallBindingHost,
-    select_plain_call_handler,
+from .slot_call_semantics import (
+    SlotCallBinding,
+    SlotCallBindingHost,
+    select_slot_call_handler,
 )
 
 
@@ -40,7 +40,7 @@ def runtime_context_param_name(
 ) -> str | None:
     cached = _read_callable_annotation_cache(func, cache_attr_name)
     if cached is not _CALLABLE_CACHE_MISSING:
-        return cast(str | None, cached)
+        return cast("str | None", cached)
 
     found_name: str | None = None
     try:
@@ -53,7 +53,7 @@ def runtime_context_param_name(
             annotation_name = getattr(annotation, "__forward_arg__", annotation)
             if annotation is runtime_context_annotation or annotation_name == runtime_context_annotation.__name__:
                 if found_name is not None:
-                    raise TypeError("plain-call runtime context injection supports only one annotated parameter")
+                    raise TypeError("slot-call runtime context injection supports only one annotated parameter")
                 found_name = parameter.name
 
     _write_callable_annotation_cache(func, cache_attr_name, found_name)
@@ -61,7 +61,7 @@ def runtime_context_param_name(
 
 
 @dataclass(frozen=True, slots=True)
-class PlainCallPreparedInvocation:
+class SlotCallPreparedInvocation:
     raw_func: Callable[..., Any]
     raw_args: tuple[Any, ...]
     raw_kwargs: dict[str, Any]
@@ -72,7 +72,7 @@ class PlainCallPreparedInvocation:
 
 
 @dataclass(frozen=True, slots=True)
-class PlainCallStateSnapshot:
+class SlotCallStateSnapshot:
     invoke_dirty: bool
     function_identity: Any
     schema: tuple[int, tuple[str, ...]]
@@ -82,23 +82,23 @@ class PlainCallStateSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
-class PlainCallCommitResult:
+class SlotCallCommitResult:
     current_value: Any
     result_dirty: bool
-    binding: PlainCallBinding
+    binding: SlotCallBinding
     function_identity: Any
     schema: tuple[int, tuple[str, ...]]
     last_args: tuple[Any, ...]
     last_kwargs: tuple[tuple[str, Any], ...]
 
 
-def prepare_plain_call(
+def prepare_slot_call(
     func: Any,
     args: tuple[Any, ...],
     kwargs: dict[str, Any],
     *,
     unwrap: Callable[[Any], tuple[Any, bool]],
-) -> PlainCallPreparedInvocation:
+) -> SlotCallPreparedInvocation:
     raw_func, func_dirty = unwrap(func)
     normalized_args = tuple(unwrap(arg) for arg in args)
     normalized_kwargs = {key: unwrap(value) for key, value in kwargs.items()}
@@ -109,7 +109,7 @@ def prepare_plain_call(
     schema = (len(raw_args), tuple(sorted(raw_kwargs)))
     input_dirty = any(dirty for _, dirty in normalized_args) or any(dirty for _, dirty in normalized_kwargs.values())
 
-    return PlainCallPreparedInvocation(
+    return SlotCallPreparedInvocation(
         raw_func=cast(Callable[..., Any], raw_func),
         raw_args=raw_args,
         raw_kwargs=raw_kwargs,
@@ -120,9 +120,9 @@ def prepare_plain_call(
     )
 
 
-def should_invoke_plain_call(
-    state: PlainCallStateSnapshot,
-    prepared: PlainCallPreparedInvocation,
+def should_invoke_slot_call(
+    state: SlotCallStateSnapshot,
+    prepared: SlotCallPreparedInvocation,
 ) -> bool:
     return (
         state.invoke_dirty
@@ -137,7 +137,7 @@ def should_invoke_plain_call(
 
 
 def call_with_optional_runtime_context(
-    prepared: PlainCallPreparedInvocation,
+    prepared: SlotCallPreparedInvocation,
     *,
     cache_attr_name: str,
     runtime_context_annotation: type[Any],
@@ -155,15 +155,15 @@ def call_with_optional_runtime_context(
     return prepared.raw_func(*prepared.raw_args, **call_kwargs)
 
 
-def commit_plain_call_invocation(
+def commit_slot_call_invocation(
     *,
-    host: PlainCallBindingHost,
-    prepared: PlainCallPreparedInvocation,
-    previous_binding: PlainCallBinding | None,
+    host: SlotCallBindingHost,
+    prepared: SlotCallPreparedInvocation,
+    previous_binding: SlotCallBinding | None,
     result: Any,
-) -> PlainCallCommitResult:
+) -> SlotCallCommitResult:
     previous_value = previous_binding.exposed_value() if previous_binding is not None else object()
-    handler = select_plain_call_handler(result)
+    handler = select_slot_call_handler(result)
     next_binding = handler.bind(host, result, previous_binding)
     next_value = next_binding.exposed_value()
     result_dirty = previous_binding is None or (next_value != previous_value)
@@ -171,7 +171,7 @@ def commit_plain_call_invocation(
     if previous_binding is not None and next_binding is not previous_binding:
         previous_binding.deactivate()
 
-    return PlainCallCommitResult(
+    return SlotCallCommitResult(
         current_value=next_value,
         result_dirty=result_dirty,
         binding=next_binding,
@@ -182,5 +182,5 @@ def commit_plain_call_invocation(
     )
 
 
-def refresh_plain_call_binding(binding: PlainCallBinding) -> tuple[Any, bool] | None:
+def refresh_slot_call_binding(binding: SlotCallBinding) -> tuple[Any, bool] | None:
     return binding.refresh()

@@ -10,13 +10,13 @@ from pyrolyze.runtime.context import (
     CompValue,
     ExternalStoreRef,
     ModuleId,
-    PlainCallRuntimeContext,
+    SlotRuntimeContext,
     SlotId,
     UseEffectAsyncRequest,
     UseEffectRequest,
 )
 from pyrolyze.runtime.dirt import DM
-from pyrolyze.runtime.plain_call_semantics import PlainCallBindingHost
+from pyrolyze.runtime.slot_call_semantics import SlotCallBindingHost
 from pyrolyze.runtime.slot_expr import (
     Args,
     LambdaFunctionProvider,
@@ -39,7 +39,7 @@ class FakeSlotContext:
 
 
 @dataclass
-class SpySlotCallHost(PlainCallBindingHost):
+class SpySlotCallHost(SlotCallBindingHost):
     invalidations: int = 0
     post_commit_callbacks: list[Callable[[], None]] = None
     published_requests: list[PyrolyzeMountAdvertisementRequest] = None
@@ -51,16 +51,16 @@ class SpySlotCallHost(PlainCallBindingHost):
         if self.published_requests is None:
             self.published_requests = []
 
-    def queue_plain_call_invalidation(self) -> None:
+    def queue_slot_call_invalidation(self) -> None:
         self.invalidations += 1
 
-    def mark_plain_call_refresh_only(self) -> None:
+    def mark_slot_call_refresh_only(self) -> None:
         self.invalidations += 1
 
-    def enqueue_plain_call_post_commit(self, callback: Callable[[], None]) -> None:
+    def enqueue_slot_call_post_commit(self, callback: Callable[[], None]) -> None:
         self.post_commit_callbacks.append(callback)
 
-    def publish_plain_call_mount_advertisement(
+    def publish_slot_call_mount_advertisement(
         self,
         request: PyrolyzeMountAdvertisementRequest,
     ) -> PyrolyzeMountAdvertisement:
@@ -71,7 +71,7 @@ class SpySlotCallHost(PlainCallBindingHost):
             default=request.default,
         )
 
-    def withdraw_plain_call_mount_advertisement(self) -> None:
+    def withdraw_slot_call_mount_advertisement(self) -> None:
         self.withdraws += 1
 
 
@@ -406,7 +406,7 @@ def test_slot_expr_runtime_context_injection_supports_locals_and_invalidate() ->
     slot_ctx = FakeSlotContext(initial_render=False)
     calls = {"count": 0}
 
-    def source(*, runtime: PlainCallRuntimeContext) -> int:
+    def source(*, runtime: SlotRuntimeContext) -> int:
         calls["count"] += 1
         seen = runtime.get_or_init_local("count", lambda: 0)
         runtime.set_local("count", seen + 1)
@@ -430,11 +430,11 @@ def test_slot_expr_runtime_context_is_not_double_injected_when_explicitly_suppli
     slot_ctx = FakeSlotContext(initial_render=False)
     seen = {"same": False}
 
-    def source(*, runtime: PlainCallRuntimeContext) -> bool:
-        seen["same"] = isinstance(runtime, PlainCallRuntimeContext)
+    def source(*, runtime: SlotRuntimeContext) -> bool:
+        seen["same"] = isinstance(runtime, SlotRuntimeContext)
         return True
 
-    explicit_runtime = PlainCallRuntimeContext(type("SlotAdapter", (), {"_runtime_locals": {}, "_mark_binding_dirty": lambda self: None, "slot_id": ("explicit",)})())
+    explicit_runtime = SlotRuntimeContext(type("SlotAdapter", (), {"_runtime_locals": {}, "_mark_binding_dirty": lambda self: None, "slot_id": ("explicit",)})())
     expr = SlotExpr.single_call(
         LiteralFunctionProvider(source),
         lambda: slot_params(runtime=explicit_runtime),
@@ -496,7 +496,7 @@ def test_slot_expr_runtime_context_injection_matches_general_slot_call() -> None
     module_id = ModuleId("slot_expr_runtime_ctx")
     slot_id = SlotId(module_id=module_id, slot_index=1)
 
-    def source(*, runtime: PlainCallRuntimeContext) -> tuple[object, tuple[object, str]]:
+    def source(*, runtime: SlotRuntimeContext) -> tuple[object, tuple[object, str]]:
         return runtime.current_slot_id(), runtime.stable_local_id("count")
 
     fast = SlotExpr.single_call(

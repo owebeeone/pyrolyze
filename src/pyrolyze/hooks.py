@@ -9,16 +9,16 @@ T = TypeVar("T")
 
 
 if TYPE_CHECKING:
-    from pyrolyze.runtime import AppContextKey, ExternalStoreRef, PlainCallRuntimeContext, UseEffectRequest
+    from pyrolyze.runtime import AppContextKey, ExternalStoreRef, SlotRuntimeContext, UseEffectRequest
 
 
 def use_state(
     initial: T,
     *,
-    __pyrolyze_ctx: PlainCallRuntimeContext = cast(Any, None),
+    __pyrolyze_ctx: SlotRuntimeContext = cast(Any, None),
 ) -> tuple[T, Callable[[T | Callable[[T], T]], None]]:
     if __pyrolyze_ctx is None:
-        raise RuntimeError("use_state() requires a pyrolyze plain-call runtime context")
+        raise RuntimeError("use_state() requires a pyrolyze slot runtime context")
 
     value_key = "use_state.value"
     setter_key = "use_state.setter"
@@ -46,7 +46,7 @@ def use_effect(
     effect: Callable[[], Callable[[], None] | None],
     *,
     deps: list[Any] | tuple[Any, ...] | None = None,
-    __pyrolyze_ctx: PlainCallRuntimeContext = cast(Any, None),
+    __pyrolyze_ctx: SlotRuntimeContext = cast(Any, None),
 ) -> UseEffectRequest:
     from pyrolyze.runtime import UseEffectRequest
 
@@ -59,7 +59,7 @@ def use_effect(
 def use_mount(
     effect: Callable[[], Callable[[], None] | None] | Callable[[], None],
     *,
-    __pyrolyze_ctx: PlainCallRuntimeContext = cast(Any, None),
+    __pyrolyze_ctx: SlotRuntimeContext = cast(Any, None),
 ) -> UseEffectRequest:
     from pyrolyze.runtime import UseEffectRequest
 
@@ -72,7 +72,7 @@ def use_mount(
 def use_unmount(
     cleanup: Callable[[], None],
     *,
-    __pyrolyze_ctx: PlainCallRuntimeContext = cast(Any, None),
+    __pyrolyze_ctx: SlotRuntimeContext = cast(Any, None),
 ) -> UseEffectRequest:
     from pyrolyze.runtime import UseEffectRequest
 
@@ -100,12 +100,12 @@ def use_grip(source: ExternalStoreRef[T] | object) -> ExternalStoreRef[T]:
 def use_app_context(
     key: AppContextKey[T],
     *,
-    __pyrolyze_ctx: PlainCallRuntimeContext = cast(Any, None),
+    __pyrolyze_ctx: SlotRuntimeContext = cast(Any, None),
 ) -> ExternalStoreRef[T]:
     from pyrolyze.runtime import AppContextKey
 
     if __pyrolyze_ctx is None:
-        raise RuntimeError("use_app_context() requires a pyrolyze plain-call runtime context")
+        raise RuntimeError("use_app_context() requires a pyrolyze slot runtime context")
     if not isinstance(key, AppContextKey):
         raise TypeError("use_app_context() expects an AppContextKey")
     return __pyrolyze_ctx.authored_app_context_ref(key)

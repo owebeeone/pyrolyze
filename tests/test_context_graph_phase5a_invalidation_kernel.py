@@ -557,7 +557,7 @@ def test_compiled_slotted_helper_switches_between_external_store_and_constant_an
         from typing import Any, cast
 
         from pyrolyze.api import pyrolyze, pyrolyze_slotted
-        from pyrolyze.runtime import PlainCallRuntimeContext
+        from pyrolyze.runtime import SlotRuntimeContext
         from tests.external_store_test_utils import StoreProbe
 
         LOG = []
@@ -577,7 +577,7 @@ def test_compiled_slotted_helper_switches_between_external_store_and_constant_an
             return STORE_A.ref()
 
         @pyrolyze_slotted
-        def const_or_value(select: bool, runtime: PlainCallRuntimeContext = cast(Any, None)):
+        def const_or_value(select: bool, runtime: SlotRuntimeContext = cast(Any, None)):
             LOG.append(("const_or_value", select, runtime is not None))
             if select:
                 return use_grip("A")
