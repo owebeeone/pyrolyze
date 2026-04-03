@@ -1,5 +1,25 @@
 # AST Fixes For Component Call
 
+## Status
+
+Sufficiently done for now.
+
+The important architecture fixes described here were completed:
+
+- mount is no longer compiler-name-special-cased
+- mount now works through the ordinary intrinsic/component-like path
+- runtime owns mount/container dispatch through `container_call(...)`
+- `ComponentMetadata.param_names` exists
+- dynamic annotated local `ComponentRef` dirt mapping is resolved at runtime
+
+The remaining items in this document are intentionally deferred:
+
+- eliminating compiler-emitted `component_call(...)`
+- fully removing `CompValue` from remaining runtime internals
+- removing compiler special handling for `app_context_override[...]`
+
+Treat this document as historical design context, not an active implementation queue.
+
 ## Purpose
 
 This document describes the redesign needed to clean up component-call lowering and runtime dispatch.

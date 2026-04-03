@@ -1,5 +1,16 @@
 # AST Fixes For Calling Components And Slots
 
+## Status
+
+Closed.
+
+Both problems described here were addressed:
+
+1. annotated local `ComponentRef` calls from lookups/aliases now lower and run correctly
+2. slot-bearing expressions were replaced by the `slot_expr` runtime/lowering work
+
+The remaining follow-on cleanup items were split into the dedicated component-call docs and are now considered sufficiently done for this round.
+
 ## Problem
 
 Two Phase 5 compiler gaps are now pinned by red tests:

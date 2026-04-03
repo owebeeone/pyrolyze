@@ -1,5 +1,26 @@
 # AST Fixes For Component Call Plan
 
+## Current Status
+
+Sufficiently done for now.
+
+Completed enough to close this plan:
+
+- runtime mount dispatch through `container_call(...)`
+- removal of mount name-based compiler matching
+- `mount` converted to an intrinsic/component-like callable contract
+- `ComponentMetadata.param_names`
+- runtime arg/dirty-state reconstruction for dynamic annotated local `ComponentRef` calls
+- annotated local `ComponentRef` lookup lowering now green
+
+Explicitly deferred:
+
+- removing compiler-emitted `component_call(...)`
+- removing `CompValue` from all remaining runtime internals
+- removing compiler special handling for `app_context_override[...]`
+
+These deferred items are no longer considered active blockers for the AST-fixes cleanup.
+
 ## Purpose
 
 This plan corrects the current component-call and mount-lowering architecture.
