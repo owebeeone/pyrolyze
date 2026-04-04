@@ -4,7 +4,7 @@ from pyrolyze.testing.comprehensive_backend import (
     build_comprehensive_backend,
     write_render_context_graph,
 )
-from pyrolyze.testing.generic_backend import run_pyro
+from pyrolyze.testing.generic_backend import describe_pyro_node_diff, run_pyro
 
 from tests.basic_pyro_shapes import (
     CallShape,
@@ -18,15 +18,7 @@ from tests.basic_pyro_shapes import (
 )
 
 
-def test_basic_shape_module_renders_recursive_shapes_from_external_shape_store() -> None:
-    reset_shape_stores()
-    backend = build_comprehensive_backend(
-        module_name="example.generic_backend.comprehensive_shapes_test"
-    )
-    namespace = load_basic_shapes_namespace(module_name="example.pyro_shapes.basic_test")
-    shape_basic = namespace["shape_basic"]
-    shape_root = namespace["shape_root"]
-
+def _populate_recursive_shape_state(backend, shape_basic, *, nested_label: str = "Nested Child") -> None:
     nested_shape = ShapeBasic(
         top_leaf=CallShape.capture(
             backend.pyro_func("LeafAB00"),
@@ -41,7 +33,7 @@ def test_basic_shape_module_renders_recursive_shapes_from_external_shape_store()
             CallShape.capture(
                 backend.pyro_func("LeafAB01"),
                 name="nested_child_leaf",
-                label="Nested Child",
+                label=nested_label,
             ),
         ),
         bottom_leaf=CallShape.capture(
@@ -87,6 +79,17 @@ def test_basic_shape_module_renders_recursive_shapes_from_external_shape_store()
         child=CallShape.capture(shape_basic, key="BASIC"),
     )
     notify_shape_value("ROOT", root_shape)
+
+
+def test_basic_shape_module_renders_recursive_shapes_from_external_shape_store() -> None:
+    reset_shape_stores()
+    backend = build_comprehensive_backend(
+        module_name="example.generic_backend.comprehensive_shapes_test"
+    )
+    namespace = load_basic_shapes_namespace(module_name="example.pyro_shapes.basic_test")
+    shape_basic = namespace["shape_basic"]
+    shape_root = namespace["shape_root"]
+    _populate_recursive_shape_state(backend, shape_basic)
 
     harness = backend.context(shape_root, "ROOT")
     result = harness.get()
@@ -134,3 +137,62 @@ def test_basic_shape_module_renders_recursive_shapes_from_external_shape_store()
         "nested_container",
         "nested_bottom",
     )
+
+
+def test_basic_shape_module_rerender_matches_fresh_render_after_store_mutation() -> None:
+    reset_shape_stores()
+    backend = build_comprehensive_backend(
+        module_name="example.generic_backend.comprehensive_shapes_rerender_test"
+    )
+    namespace = load_basic_shapes_namespace(module_name="example.pyro_shapes.basic_rerender_test")
+    shape_basic = namespace["shape_basic"]
+    shape_root = namespace["shape_root"]
+    _populate_recursive_shape_state(backend, shape_basic, nested_label="Nested Child")
+
+    live_harness = backend.context(shape_root, "ROOT")
+    initial_result = live_harness.get()
+    initial_graph = run_pyro(initial_result)
+
+    notify_shape_value(
+        "B",
+        ShapeBasic(
+            top_leaf=CallShape.capture(
+                backend.pyro_func("LeafAB00"),
+                name="nested_top",
+                label="Nested Top",
+            ),
+            container=CallShape.capture(
+                backend.pyro_func("BinAB00"),
+                name="nested_container",
+            ),
+            children=(
+                CallShape.capture(
+                    backend.pyro_func("LeafAB01"),
+                    name="nested_child_leaf",
+                    label="Nested Child Updated",
+                ),
+            ),
+            bottom_leaf=CallShape.capture(
+                backend.pyro_func("LeafAA00"),
+                name="nested_bottom",
+                label="Nested Bottom",
+            ),
+        ),
+    )
+    rerender_result = live_harness.flush_invalidations().get()
+    rerender_graph = run_pyro(rerender_result)
+
+    fresh_harness = backend.context(shape_root, "ROOT")
+    fresh_result = fresh_harness.get()
+    fresh_graph = run_pyro(fresh_result)
+
+    output_dir = scratch_test_output_stem("test_basic_shape_module_rerender_matches_fresh_render0").parent
+    write_snapshot_graph(initial_graph, output_dir / "initial_snapshot")
+    write_snapshot_graph(rerender_graph, output_dir / "rerender_snapshot")
+    write_snapshot_graph(fresh_graph, output_dir / "fresh_snapshot")
+    write_render_context_graph(live_harness, output_dir / "rerender_context_overlay")
+    write_render_context_graph(fresh_harness, output_dir / "fresh_context_overlay")
+
+    diff = describe_pyro_node_diff(rerender_graph, fresh_graph)
+    assert diff is None, diff
+    assert rerender_graph != initial_graph

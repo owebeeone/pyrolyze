@@ -1,6 +1,7 @@
 """Generic generated backend support for PyRolyze tests."""
 
 from .api import BuildPyroNodeBackend
+from .diff import describe_pyro_node_diff
 from .engine import PyroNodeEngine
 from .fuzz import (
     FuzzReplayRecord,
@@ -40,6 +41,7 @@ from .specs import (
 
 __all__ = [
     "BuildPyroNodeBackend",
+    "describe_pyro_node_diff",
     "FuzzReplayRecord",
     "FuzzReplayStep",
     "HostSurfaceReplayState",

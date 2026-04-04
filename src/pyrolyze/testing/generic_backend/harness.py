@@ -67,6 +67,15 @@ class PyroRenderHarness:
         self._render_once(dirty_state)
         return self
 
+    def flush_invalidations(self, *, generation: int | None = None) -> PyroRenderHarness:
+        if generation is None:
+            self._generation += 1
+        else:
+            self._generation = generation
+        self._render_context.run_pending_invalidations()
+        self._refresh_result_from_committed_ui()
+        return self
+
     def ui(self) -> object:
         from .snapshots import run_pyro_ui
 
@@ -86,6 +95,9 @@ class PyroRenderHarness:
         )
         self._render_context.mount(callback)
         self._mounted = True
+        self._refresh_result_from_committed_ui()
+
+    def _refresh_result_from_committed_ui(self) -> None:
         committed = self._render_context.committed_ui()
         ui_roots = tuple(node for node in committed if isinstance(node, UIElement))
         self._mounted_roots = _reconcile_mounted_roots(
