@@ -12,6 +12,9 @@ Start here:
 - [Backend_Generation_And_Learnings.md](Backend_Generation_And_Learnings.md)
 - [Generic_Backend_Testing.md](Generic_Backend_Testing.md) (minimal generated
   UI libraries for mount and mount-advert tests)
+- [Comprehensive_Backend_And_Shape_Visualization.md](Comprehensive_Backend_And_Shape_Visualization.md)
+  (generated comprehensive backend, recursive shape helpers, and slot/render
+  DOT visualizers)
 
 These docs are intentionally operational. They are meant to help with active
 maintenance, not just explain the architecture.
