@@ -18,6 +18,9 @@ Start here:
 - [Comprehensive_Backend_And_Shape_Visualization.md](Comprehensive_Backend_And_Shape_Visualization.md)
   (generated comprehensive backend, recursive shape helpers, and slot/render
   DOT visualizers)
+- [Runtime_Call_Resolution_And_Site_Metadata.md](Runtime_Call_Resolution_And_Site_Metadata.md)
+  (runtime indirection helpers, intrinsic cast resolution, wraps, and captured
+  site metadata)
 
 These docs are intentionally operational. They are meant to help with active
 maintenance, not just explain the architecture.

@@ -171,6 +171,98 @@ Meaning:
 Keyed loops are a first-class structural context in the runtime. They are not
 just syntax sugar over Python loops.
 
+## Explicit call-intent hints
+
+Most authored code does not need explicit call-intent hints. If the compiler
+can see that a callee is already a Pyrolyze component ref or a slotted helper,
+ordinary source syntax is enough.
+
+The explicit hint forms exist for the cases where authored code introduces an
+extra layer of indirection and the compiler would otherwise have to guess.
+
+### `component(...)`
+
+Source form:
+
+```python
+component(Child, title)
+
+with component(Row, label):
+    ...
+```
+
+Meaning:
+
+- this is an intrinsic cast/helper, not an ordinary helper call
+- the first positional argument is the callable to use
+- the remaining arguments become the real call arguments
+- bare-call form still lowers through the direct component-call path
+- `with` form still lowers through the container-call path
+
+Important rule:
+
+- `component(...)` does not decide whether the call is a direct call or a
+  container call
+- source syntax still decides that
+- `component(...)` only makes the target callable explicit
+
+So:
+
+- `component(Child, title)` means “direct component-style call to `Child`”
+- `with component(Row, label): ...` means “container-style call to `Row`”
+
+### `slotted(...)`
+
+Source form:
+
+```python
+value = slotted(format_title, name)
+```
+
+Meaning:
+
+- this is an intrinsic cast/helper for slot-call lowering
+- the first positional argument is the slotted callable to use
+- the remaining arguments become the real slot-call arguments
+
+Like `component(...)`, this is not meant to run as an ordinary helper body in
+transformed execution. It exists so the call-resolution machinery can peel the
+first positional callable out and continue through the normal slot-call path.
+
+### Missing target behavior
+
+If `component(...)` or `slotted(...)` has no first positional callable target,
+runtime resolution treats the target as absent:
+
+- component/container paths resolve to `None`
+- slot-call resolution resolves to no callable target and is invalid unless the
+  specific runtime path handles that absence
+
+For container lowering this composes with the current “with?” runtime shape:
+
+```python
+if handle := ctx.container_call(...):
+    with handle:
+        ...
+```
+
+So an absent container target simply means that no handle is opened for that
+pass.
+
+### Why these exist
+
+These intrinsic hint forms are there to avoid provenance guessing.
+
+They let authored code make intent explicit without requiring the compiler to
+infer call kind from:
+
+- local variable history
+- wrapper provenance
+- annotation accidents
+
+They are source-level hints. The actual dispatch still happens in the runtime
+call-resolution layer.
+
 ## Mount and advert are structural, not cosmetic
 
 Mounts and advertisements are part of structural resolution. They decide where
