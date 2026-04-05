@@ -7,7 +7,6 @@ import weakref
 
 from pyrolyze.api import PyrolyzeMountAdvertisement, PyrolyzeMountAdvertisementRequest
 from pyrolyze.runtime.context import (
-    CompValue,
     ExternalStoreRef,
     ModuleId,
     SlotRuntimeContext,
@@ -22,17 +21,18 @@ from pyrolyze.runtime.slot_expr import (
     LambdaFunctionProvider,
     LiteralFunctionProvider,
     SlotExpr,
+    SlotExprLiteralContext,
     slot_params,
     slot_params_dirt,
 )
 
 
 @dataclass
-class FakeSlotContext:
+class FakeSlotContext(SlotExprLiteralContext):
     initial_render: bool = True
 
-    def literal(self, value):
-        return CompValue(value=value, dirty=self.initial_render)
+    def lit_dirty(self, value):
+        return self.initial_render
 
     def current_slot_id(self):
         return ("fake-slot",)
@@ -89,7 +89,7 @@ def test_slot_expr_single_call_binds_scalar_result_and_dirt() -> None:
     expr = SlotExpr.single_call(
         LiteralFunctionProvider(lambda value: value),
         lambda: slot_params("clock"),
-        lambda: slot_params_dirt(slot_ctx.literal("clock").dirty),
+        lambda: slot_params_dirt(slot_ctx.lit_dirty("clock")),
     ).apply_slot_context(slot_ctx).apply_dirt_sink(dm)
 
     value = expr.evaluate("value")
@@ -104,7 +104,7 @@ def test_slot_expr_single_call_fast_path_matches_general_path() -> None:
     fast = SlotExpr.single_call(
         LiteralFunctionProvider(lambda value: value),
         lambda: slot_params("clock"),
-        lambda: slot_params_dirt(slot_ctx_fast.literal("clock").dirty),
+        lambda: slot_params_dirt(slot_ctx_fast.lit_dirty("clock")),
     ).apply_slot_context(slot_ctx_fast).apply_dirt_sink(dm_fast)
 
     dm_general = DM()
@@ -118,7 +118,7 @@ def test_slot_expr_single_call_fast_path_matches_general_path() -> None:
             "v1",
             LiteralFunctionProvider(lambda value: value),
             lambda: slot_params("clock"),
-            lambda: slot_params_dirt(slot_ctx_general.literal("clock").dirty),
+            lambda: slot_params_dirt(slot_ctx_general.lit_dirty("clock")),
         )
         .apply_slot_context(slot_ctx_general)
         .apply_dirt_sink(dm_general)
@@ -224,7 +224,7 @@ def test_slot_expr_multi_result_unpacks_value_and_dirt() -> None:
     expr = SlotExpr.single_call(
         LiteralFunctionProvider(lambda initial: (initial, lambda next_value: next_value)),
         lambda: slot_params(3),
-        lambda: slot_params_dirt(slot_ctx.literal(3).dirty),
+        lambda: slot_params_dirt(slot_ctx.lit_dirty(3)),
     ).apply_slot_context(slot_ctx).apply_dirt_sink(dm)
 
     val, func = expr.evaluate("val", "func")
@@ -241,7 +241,7 @@ def test_slot_expr_multi_result_keeps_tuple_dirty_under_one_name() -> None:
     expr = SlotExpr.single_call(
         LiteralFunctionProvider(lambda initial: (initial, lambda next_value: next_value)),
         lambda: slot_params(3),
-        lambda: slot_params_dirt(slot_ctx.literal(3).dirty),
+        lambda: slot_params_dirt(slot_ctx.lit_dirty(3)),
     ).apply_slot_context(slot_ctx).apply_dirt_sink(dm)
 
     result = expr.evaluate("result")
@@ -257,7 +257,7 @@ def test_slot_expr_evaluate_raises_on_value_shape_mismatch() -> None:
     expr = SlotExpr.single_call(
         LiteralFunctionProvider(lambda value: value),
         lambda: slot_params(3),
-        lambda: slot_params_dirt(slot_ctx.literal(3).dirty),
+        lambda: slot_params_dirt(slot_ctx.lit_dirty(3)),
     ).apply_slot_context(slot_ctx).apply_dirt_sink(dm)
 
     try:
@@ -280,7 +280,7 @@ def test_slot_expr_nested_args_can_depend_on_prior_evaluator() -> None:
             "v1",
             LiteralFunctionProvider(lambda value: value),
             lambda: slot_params("clock"),
-            lambda: slot_params_dirt(slot_ctx.literal("clock").dirty),
+            lambda: slot_params_dirt(slot_ctx.lit_dirty("clock")),
         )
         .slot_call(
             "v2",
@@ -305,7 +305,7 @@ def test_slot_expr_rerender_clean_shape_for_tuple_result() -> None:
     expr = SlotExpr.single_call(
         LiteralFunctionProvider(lambda initial: (initial, setter)),
         lambda: slot_params(3),
-        lambda: slot_params_dirt(initial_slot_ctx.literal(3).dirty),
+        lambda: slot_params_dirt(initial_slot_ctx.lit_dirty(3)),
     ).apply_slot_context(initial_slot_ctx).apply_dirt_sink(dm)
 
     _ = expr.evaluate("result")
@@ -1073,7 +1073,7 @@ def test_slot_expr_effect_like_results_expose_none_and_track_dirty() -> None:
     expr = SlotExpr.single_call(
         LiteralFunctionProvider(lambda: UseEffectRequest(effect_fn=lambda: None, deps=("a",))),
         lambda: slot_params(),
-        lambda: slot_params_dirt(slot_ctx.literal(None).dirty),
+        lambda: slot_params_dirt(slot_ctx.lit_dirty(None)),
     ).apply_slot_context(slot_ctx).apply_dirt_sink(dm)
 
     assert expr.evaluate("effect_result") is None

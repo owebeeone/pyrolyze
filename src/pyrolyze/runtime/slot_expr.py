@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 import inspect
-from typing import Any, Callable, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Generic, TypeVar
 
 from pyrolyze.api import PyrolyzeMountAdvertisement, PyrolyzeMountAdvertisementRequest
 
@@ -14,7 +14,6 @@ from .call_site_context import (
     CallSiteContextManager,
     CallSiteInvokeState,
 )
-from .context import CompValue, SlotRuntimeContext
 from .slot_call_core import (
     SlotCallStateSnapshot,
     call_with_optional_runtime_context,
@@ -31,6 +30,9 @@ from .slot_call_semantics import (
     UseEffectAsyncRequest,
     UseEffectRequest,
 )
+
+if TYPE_CHECKING:
+    from .context import SlotRuntimeContext
 
 
 T = TypeVar("T")
@@ -59,7 +61,7 @@ def slot_params_dirt(*args: Any, **kwds: Any) -> Args[Any]:
 
 class SlotExprLiteralContext(ABC):
     @abstractmethod
-    def literal(self, value: T) -> CompValue[T]: ...
+    def lit_dirty(self, value: T) -> bool: ...
 
 
 class SlotCallFunctionProvider(ABC):
@@ -80,7 +82,7 @@ class LiteralFunctionProvider(SlotCallFunctionProvider):
     def get_dirty(self, expr: SlotExpr) -> Any:
         if expr.slot_ctx is None:
             raise RuntimeError("slot_expr requires apply_slot_context() before evaluate()")
-        return expr.slot_ctx.literal(self.func).dirty
+        return expr.slot_ctx.lit_dirty(self.func)
 
 
 @dataclass(frozen=True, slots=True)
@@ -624,7 +626,10 @@ class SlotCallEvaluator:
             result = call_with_optional_runtime_context(
                 prepared,
                 cache_attr_name="_pyrolyze_slot_runtime_ctx_param",
-                runtime_context_annotation=SlotRuntimeContext,
+                # Import locally so context depends on slot_expr, not the reverse.
+                runtime_context_annotation=__import__(
+                    "pyrolyze.runtime.context", fromlist=["SlotRuntimeContext"]
+                ).SlotRuntimeContext,
                 runtime_context_factory=self._runtime_context_factory,
             )
             previous_binding = current_binding.binding if current_binding is not None else None
@@ -765,6 +770,8 @@ class SlotCallEvaluator:
         return wrapped_binding.binding
 
     def _runtime_context_factory(self) -> SlotRuntimeContext:
+        from .context import SlotRuntimeContext
+
         if self._runtime_context_slot is None:
             self._runtime_context_slot = _SlotExprRuntimeContextSlot(evaluator=self)
         return SlotRuntimeContext(self._runtime_context_slot)

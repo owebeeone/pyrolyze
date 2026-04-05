@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Callable, Generic, Protocol, TypeVar, cast
+from typing import Any, Callable, Generic, TypeVar, cast
 
 from .drip import Drip
 
@@ -12,11 +13,14 @@ T = TypeVar("T")
 _APP_CONTEXT_MISSING = object()
 
 
-class AppContextLookup(Protocol):
+class AppContextLookup(ABC):
+    @abstractmethod
     def get(self, key: AppContextKey[T]) -> T: ...
 
+    @abstractmethod
     def has(self, key: AppContextKey[Any]) -> bool: ...
 
+    @abstractmethod
     def resolve_drip(self, key: AppContextKey[Any]) -> Drip[object] | None: ...
 
 
@@ -60,7 +64,7 @@ class AppContextStore:
 
 
 @dataclass(frozen=True, slots=True)
-class EmptyAppContextLookup:
+class EmptyAppContextLookup(AppContextLookup):
     def get(self, key: AppContextKey[T]) -> T:
         raise LookupError(f"no authored app context for key {key.debug_name!r}")
 
@@ -73,7 +77,7 @@ class EmptyAppContextLookup:
 
 
 @dataclass(frozen=True, slots=True)
-class OverlayAppContextLookup:
+class OverlayAppContextLookup(AppContextLookup):
     parent: AppContextLookup
     drips: dict[AppContextKey[Any], Drip[object]]
 

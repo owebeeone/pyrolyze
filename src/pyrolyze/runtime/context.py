@@ -7,7 +7,7 @@ import logging
 import os
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
-from typing import Any, Callable, Generic, Iterator, Protocol, TypeVar, cast
+from typing import Any, Callable, Generic, Iterator, TypeVar, cast, override
 
 from pyrolyze.api import (
     MountDirective,
@@ -16,6 +16,7 @@ from pyrolyze.api import (
     SlotSelector,
     UIElement,
 )
+from pyrolyze.runtime.slot_expr import SlotExprLiteralContext
 
 from .app_context import (
     APP_CONTEXT_MISSING,
@@ -60,23 +61,6 @@ S = TypeVar("S", bound="SlotContext")
 
 
 @dataclass(frozen=True, slots=True)
-class CompValue(Generic[T]):
-    """Deprecated legacy value+dirty carrier.
-
-    Do not use this for new runtime or compiler work.
-
-    New code should prefer:
-    - raw values
-    - `DirtyStateContext`
-    - `DM`/slot_expr dirt plumbing
-    - explicit arg/dirty carriers
-    """
-
-    value: T
-    dirty: bool = False
-
-
-@dataclass(frozen=True, slots=True)
 class DirtyStateContext:
     values: dict[str, bool]
 
@@ -96,7 +80,7 @@ def dirtyof_values(values: dict[str, Any]) -> DirtyStateContext:
 
 
 @dataclass(frozen=True, slots=True)
-class SlotCallResult(Generic[T]):
+class _SlotCallResult(Generic[T]):
     dirty: Any
     value: T
 
@@ -175,26 +159,14 @@ def _dirty_state_truthy(value: Any) -> bool:
     return bool(value)
 
 
-def _unwrap(value: SlotCallResult[Any] | CompValue[Any] | Any) -> tuple[Any, bool]:
-    if isinstance(value, CompValue):
-        return value.value, value.dirty
-    if isinstance(value, SlotCallResult):
+def _unwrap(value: _SlotCallResult[Any] | Any) -> tuple[Any, bool]:
+    if isinstance(value, _SlotCallResult):
         return value.value, _dirty_state_truthy(value.dirty)
     return value, False
 
 
-def _wrap_comp_value(value: SlotCallResult[T] | CompValue[T] | T) -> CompValue[T]:
-    if isinstance(value, CompValue):
-        return value
-    if isinstance(value, SlotCallResult):
-        return CompValue(value=value.value, dirty=_dirty_state_truthy(value.dirty))
-    return CompValue(value=value, dirty=False)
-
-
 def _unwrap_native_value(value: Any) -> Any:
-    if isinstance(value, CompValue):
-        return _unwrap_native_value(value.value)
-    if isinstance(value, SlotCallResult):
+    if isinstance(value, _SlotCallResult):
         return _unwrap_native_value(value.value)
     if isinstance(value, dict):
         return {key: _unwrap_native_value(item) for key, item in value.items()}
@@ -395,7 +367,7 @@ class _InvalidationScheduler:
         targets.append(boundary)
 
 
-class ContextBase:
+class ContextBase(SlotExprLiteralContext):
     def __init__(self, render_context: RenderContext) -> None:
         self._render_context = render_context
         self._children: dict[SlotId, SlotContext] = {}
@@ -490,7 +462,8 @@ class ContextBase:
     def rollback_pass(self) -> None:
         self._rollback_scope_pass()
 
-    def literal(self, value: T) -> CompValue[T]:
+    @override
+    def lit_dirty(self, value: Any) -> bool:
         self._require_active_scope()
 
         literal_index = self._literal_index
@@ -498,9 +471,9 @@ class ContextBase:
 
         if literal_index == len(self._literal_initialized):
             self._literal_initialized.append(True)
-            return CompValue(value=value, dirty=True)
+            return True
 
-        return CompValue(value=value, dirty=False)
+        return False
 
     def slot_expr(
         self,
@@ -535,7 +508,7 @@ class ContextBase:
     def keyed_loop(
         self,
         slot_id: SlotId,
-        values: CompValue[list[T]] | list[T],
+        values: list[T],
         *,
         key_fn: Callable[[T], Any],
     ) -> _KeyedLoopIterable[T]:
@@ -551,13 +524,13 @@ class ContextBase:
     def container_call(
         self,
         slot_id: SlotId,
-        container_fn: CompValue[Callable[..., Any]] | Callable[..., Any],
-        *args: CompValue[Any] | Any,
+        container_fn: Callable[..., Any],
+        *args: Any,
         dirty_state: DirtyStateContext | None = None,
         _pyr_param_names: tuple[str, ...] | None = None,
         _pyr_args_dirty: tuple[Any, ...] | None = None,
         _pyr_kwargs_dirty: dict[str, Any] | None = None,
-        **kwargs: CompValue[Any] | Any,
+        **kwargs: Any,
     ) -> _ContainerCallHandle:
         self._require_active_scope()
         raw_container_fn, _ = _unwrap(container_fn)
@@ -617,9 +590,9 @@ class ContextBase:
     def open_directive(
         self,
         slot_id: SlotId,
-        directive_fn: CompValue[Callable[..., Any]] | Callable[..., Any],
-        *args: CompValue[Any] | Any,
-        **kwargs: CompValue[Any] | Any,
+        directive_fn: Callable[..., Any],
+        *args: Any,
+        **kwargs: Any,
     ) -> _DirectiveCallHandle:
         self._require_active_scope()
         slot = self._ensure_slot(slot_id, DirectiveSlotContext)
@@ -647,13 +620,13 @@ class ContextBase:
     def component_call(
         self,
         slot_id: SlotId,
-        component: CompValue[Callable[..., Any]] | Callable[..., Any],
-        *args: CompValue[Any] | Any,
+        component: Callable[..., Any],
+        *args: Any,
         dirty_state: DirtyStateContext | None = None,
         _pyr_param_names: tuple[str, ...] | None = None,
         _pyr_args_dirty: tuple[Any, ...] | None = None,
         _pyr_kwargs_dirty: dict[str, Any] | None = None,
-        **kwargs: CompValue[Any] | Any,
+        **kwargs: Any,
     ) -> None:
         self._require_active_scope()
         slot = self._ensure_slot(slot_id, ComponentCallSlotContext)
@@ -1045,15 +1018,6 @@ def _bind_pending_event_plain_value(owner: ContextBase, value: Any) -> Any:
     return value
 
 
-def _bind_pending_event_comp_value(owner: ContextBase, value: CompValue[Any]) -> CompValue[Any]:
-    if isinstance(value.value, PendingEventHandlerBinding):
-        return CompValue(
-            value=owner._materialize_pending_event_handler(value.value),
-            dirty=value.dirty,
-        )
-    return value
-
-
 @dataclass(slots=True)
 class SlotContext:
     render_context: RenderContext
@@ -1239,12 +1203,12 @@ class SlotCallSlotContext(RerunnableSlotContext):
 
     def evaluate(
         self,
-        func: CompValue[Callable[..., T]] | Callable[..., T],
-        args: tuple[CompValue[Any] | Any, ...],
-        kwargs: dict[str, CompValue[Any] | Any],
+        func: Callable[..., T],
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
         *,
         result_shape: object | None = None,
-    ) -> SlotCallResult[T]:
+    ) -> _SlotCallResult[T]:
         prepared = prepare_slot_call(func, args, kwargs, unwrap=_unwrap)
         should_invoke = should_invoke_slot_call(
             SlotCallStateSnapshot(
@@ -1291,7 +1255,7 @@ class SlotCallSlotContext(RerunnableSlotContext):
         binding = self.binding
         if binding is None:
             raise RuntimeError("slot-call slot has no binding after evaluation")
-        return SlotCallResult(
+        return _SlotCallResult(
             dirty=_project_dirty_state(result_dirty, result_shape),
             value=cast(T, binding.exposed_value()),
         )
@@ -1357,9 +1321,9 @@ class DirectiveSlotContext(SlotCallSlotContext):
 
     def evaluate_directive(
         self,
-        directive_fn: CompValue[Callable[..., Any]] | Callable[..., Any],
-        args: tuple[CompValue[Any] | Any, ...],
-        kwargs: dict[str, CompValue[Any] | Any],
+        directive_fn: Callable[..., Any],
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
     ) -> tuple[SlotSelector, ...]:
         result = self.evaluate(directive_fn, args, kwargs)
         selectors = tuple(result.value)
@@ -1426,7 +1390,7 @@ def _authored_app_context_drip() -> Drip[object]:
 
 
 @dataclass(slots=True)
-class _ParentAuthoredAppContextLookup:
+class _ParentAuthoredAppContextLookup(AppContextLookup):
     parent_context: ContextBase
 
     def get(self, key: AppContextKey[T]) -> T:
@@ -1615,8 +1579,8 @@ class ComponentCallSlotContext(RerunnableSlotContext):
     child_context: RenderContext | None = None
     last_runtime_func: Callable[..., Any] | None = None
     last_bound_receiver: object = _BOUND_METHOD_SELF_MISSING
-    last_args: tuple[CompValue[Any], ...] = ()
-    last_kwargs: dict[str, CompValue[Any]] = field(default_factory=dict)
+    last_args: tuple[Any, ...] = ()
+    last_kwargs: dict[str, Any] = field(default_factory=dict)
     last_plain_args: tuple[Any, ...] = ()
     last_plain_kwargs: dict[str, Any] = field(default_factory=dict)
     last_dirty_state: DirtyStateContext | None = None
@@ -1629,9 +1593,9 @@ class ComponentCallSlotContext(RerunnableSlotContext):
 
     def invoke(
         self,
-        component: CompValue[Callable[..., Any]] | Callable[..., Any],
-        args: tuple[CompValue[Any] | Any, ...],
-        kwargs: dict[str, CompValue[Any] | Any],
+        component: Callable[..., Any],
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
         *,
         dirty_state: DirtyStateContext | None = None,
         _pyr_param_names: tuple[str, ...] | None = None,
@@ -1685,11 +1649,11 @@ class ComponentCallSlotContext(RerunnableSlotContext):
                 )
             if dirty_state is None:
                 normalized_args = tuple(
-                    _bind_pending_event_comp_value(self, _wrap_comp_value(arg))
+                    _bind_pending_event_plain_value(self, _unwrap(arg)[0])
                     for arg in args
                 )
                 normalized_kwargs = {
-                    key: _bind_pending_event_comp_value(self, _wrap_comp_value(value))
+                    key: _bind_pending_event_plain_value(self, _unwrap(value)[0])
                     for key, value in kwargs.items()
                 }
                 self.last_args = normalized_args
@@ -1891,9 +1855,9 @@ class LoopItemSlotContext(RerunnableSlotContext):
     current_dirty: Any = True
     current_initialized: bool = False
 
-    def current_value(self) -> SlotCallResult[Any]:
+    def current_value(self) -> _SlotCallResult[Any]:
         self._require_active_scope()
-        return SlotCallResult(dirty=self.current_dirty, value=self.current)
+        return _SlotCallResult(dirty=self.current_dirty, value=self.current)
 
     def update_current(self, value: Any) -> None:
         self.current_dirty = _structured_dirty_projection(
@@ -1974,9 +1938,9 @@ class _ContainerCallHandle(AbstractContextManager[ContainerSlotContext]):
 @dataclass(slots=True)
 class _DirectiveCallHandle(AbstractContextManager[DirectiveSlotContext]):
     slot: DirectiveSlotContext
-    directive_fn: CompValue[Callable[..., Any]] | Callable[..., Any]
-    args: tuple[CompValue[Any] | Any, ...]
-    kwargs: dict[str, CompValue[Any] | Any]
+    directive_fn: Callable[..., Any]
+    args: tuple[Any, ...]
+    kwargs: dict[str, Any]
 
     def __enter__(self) -> DirectiveSlotContext:
         self.slot._begin_scope_pass()
@@ -2639,7 +2603,6 @@ def _context_kind(context: object) -> str:
 __all__ = [
     "AppContextOverrideSlotContext",
     "AppContextOverrideStructureError",
-    "CompValue",
     "ComponentCallSlotContext",
     "ContextBase",
     "ContainerSlotContext",
@@ -2655,7 +2618,6 @@ __all__ = [
     "ModuleId",
     "ModuleRegistry",
     "MountAdvertisementContextError",
-    "SlotCallResult",
     "SlotRuntimeContext",
     "SlotCallSlotContext",
     "SlotValueBinding",

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Callable, Literal, Mapping, Protocol, Sequence
+from typing import Any, Callable, Literal, Mapping, Sequence
 
 from pyrolyze.api import UIElement
 from pyrolyze.runtime.context import SlotId
@@ -58,7 +59,8 @@ class UiNodeSpec:
     children: tuple["UiNodeSpec", ...] = ()
 
 
-class UiNodeBinding(Protocol):
+class UiNodeBinding(ABC):
+    @abstractmethod
     def update_props(
         self,
         next_spec: UiNodeSpec,
@@ -67,22 +69,29 @@ class UiNodeBinding(Protocol):
         changed_events: Mapping[str, Callable[..., None] | None],
     ) -> None: ...
 
+    @abstractmethod
     def place_child(self, child: "UiNode", index: int) -> None: ...
+    @abstractmethod
     def detach_child(self, child: "UiNode") -> None: ...
+    @abstractmethod
     def dispose(self) -> None: ...
 
 
-class UiBackendAdapter(Protocol):
+class UiBackendAdapter(ABC):
     backend_id: str
 
+    @abstractmethod
     def create_binding(
         self,
         spec: UiNodeSpec,
         *,
         parent_binding: UiNodeBinding | None,
     ) -> UiNodeBinding: ...
+    @abstractmethod
     def can_reuse(self, current: "UiNode", next_spec: UiNodeSpec) -> bool: ...
+    @abstractmethod
     def assert_ui_thread(self) -> None: ...
+    @abstractmethod
     def post_to_ui(self, callback: Callable[[], None]) -> None: ...
 
 
