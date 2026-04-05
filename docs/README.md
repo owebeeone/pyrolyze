@@ -14,6 +14,9 @@ It is organized by reader and task:
 - [design/Architecture.md](design/Architecture.md)
   - implementation-facing architecture
   - compiler, runtime, backends, tests
+- [design/Pyrolyze_Transform_And_Structural_Model.md](design/Pyrolyze_Transform_And_Structural_Model.md)
+  - detailed structural meaning of authored `@pyrolyze` code
+  - compiler/runtime forms, mount, advert, and app-context override
 - [design/UI_Interface_Schema.md](design/UI_Interface_Schema.md)
   - `UiInterface` and `UiInterfaceEntry`
   - common, PySide6, tkinter, DearPyGui, and Hydo interface families
@@ -32,8 +35,9 @@ Recommended reading order:
 2. [overview/System_Map.md](overview/System_Map.md)
 3. [user/Authoring_Overview.md](user/Authoring_Overview.md) for source authors
 4. [user/Mount_And_Mount_Points.md](user/Mount_And_Mount_Points.md) for explicit backend attachment
-5. [design/Architecture.md](design/Architecture.md) for maintainers
-6. [contributor/Versioned_Test_Runs.md](contributor/Versioned_Test_Runs.md) for AST and version work
+5. [design/Pyrolyze_Transform_And_Structural_Model.md](design/Pyrolyze_Transform_And_Structural_Model.md)
+6. [design/Architecture.md](design/Architecture.md) for maintainers
+7. [contributor/Versioned_Test_Runs.md](contributor/Versioned_Test_Runs.md) for AST and version work
 
 For a short note on how this tree is maintained, see
 [DocumentationPlan.md](DocumentationPlan.md).

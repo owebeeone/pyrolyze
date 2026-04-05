@@ -108,6 +108,62 @@ This setup is useful because it exercises:
 
 without generating arbitrary Python source for each fuzz case.
 
+## Mount resolution rules used by these shape tests
+
+The recursive shape tests rely on the current phase-1 `mount(...)` semantics.
+The short version is:
+
+- `mount(...)` is now a normal intrinsic `ComponentRef`
+- it creates a retained selector scope (`MountDirective`)
+- parent-side flattening later resolves emitted children against that scope
+
+The actual resolution rules are:
+
+1. selector scopes resolve relative to the nearest containing structural
+   container surface
+
+   - advertised public mounts are also resolved on that same surface
+   - `advertise_mount(...)` is tied to the nearest valid native container owner,
+     not to an arbitrary ancestor
+
+2. explicit selectors are tried left-to-right
+
+   - the first viable selector wins
+   - later selectors are not considered after a match
+   - this applies both to ordinary named/default selectors and to advertised
+     mount-key selectors
+
+3. no explicit selector means: use the parent's default attach list
+
+   - this is not a single implicit mount point
+   - the parent may expose several `default_attach_mount_point_names`
+   - runtime tries them in order and picks the first compatible mount point
+
+4. emitting into an incompatible parent is an error
+
+   - with explicit selectors: error if no selector resolves to a compatible
+     mount point
+   - without explicit selectors: error if no compatible default attach mount
+     point exists
+   - if the child would be legal only through an explicit mount, runtime raises
+     and reports that explicit mount is required
+
+5. advertised defaults are just another first-match source
+
+   - `default` first checks for a default advertised provider on the current
+     container surface
+   - if none is present, it falls back to the native/default mount resolution
+     path
+
+These are the rules the comprehensive backend and shape tests are validating.
+If a rerender-vs-fresh mismatch appears in a mount-heavy shape, first confirm
+whether the mismatch is:
+
+- selector routing / advert routing
+- default attach selection
+- compatibility filtering
+- host-surface placement after a correct mount decision
+
 ## Visualizer
 
 `src/pyrolyze/testing/comprehensive_backend/visualize.py` writes a DOT graph and

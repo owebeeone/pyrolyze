@@ -23,12 +23,14 @@ def __pyr_pair_panel(__pyr_ctx, __pyr_dirty_state, v1: str, v2: str):
     with __pyr_ctx.pass_scope():
         __pyr_dm = globals()['__pyr_dm_from_dirty_state'](__pyr_dirty_state)
         if (__pyr_dm.bind.v1 or __pyr_dm.bind.v2) or __pyr_ctx.visit_slot_and_dirty(__pyr_slot_1):
-            with __pyr_ctx.container_call(__pyr_slot_1, row, 'outer', dirty_state=__pyr_dirtyof(name=False)) as __pyr_ctx_slot_1:
-                label('row-start')
-                if (__pyr_dm.bind.v1 or __pyr_dm.bind.v2) or __pyr_ctx_slot_1.visit_slot_and_dirty(__pyr_slot_2):
-                    with __pyr_ctx_slot_1.container_call(__pyr_slot_2, row, 'inner', dirty_state=__pyr_dirtyof(name=False)) as __pyr_ctx_slot_2:
-                        label(v1)
-                        label(v2)
+            if (__pyr_ctx_slot_1_h := __pyr_ctx.container_call(__pyr_slot_1, row, 'outer', dirty_state=__pyr_dirtyof(name=False))):
+                with __pyr_ctx_slot_1_h as __pyr_ctx_slot_1:
+                    label('row-start')
+                    if (__pyr_dm.bind.v1 or __pyr_dm.bind.v2) or __pyr_ctx_slot_1.visit_slot_and_dirty(__pyr_slot_2):
+                        if (__pyr_ctx_slot_2_h := __pyr_ctx_slot_1.container_call(__pyr_slot_2, row, 'inner', dirty_state=__pyr_dirtyof(name=False))):
+                            with __pyr_ctx_slot_2_h as __pyr_ctx_slot_2:
+                                label(v1)
+                                label(v2)
 
 @__pyr_component_ref(__pyr_ComponentMetadata('pair_panel', __pyr_pair_panel))
 def pair_panel(v1: str, v2: str) -> None:

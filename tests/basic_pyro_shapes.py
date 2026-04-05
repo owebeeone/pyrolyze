@@ -1,3 +1,6 @@
+#@pyrolyze
+# DO NOT REMOVE THE LINE ABOVE. IT IS REQUIRED FOR THE PYROLYZE COMPILER.
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,10 +13,11 @@ from pyrolyze.api import (
     CallFromNonPyrolyzeContext,
     ComponentMetadata,
     ComponentRef,
+    keyed,
+    pyrolyze,
     pyrolyze_component_ref,
     pyrolyze_slotted,
 )
-from pyrolyze.compiler import load_transformed_namespace
 
 from tests.external_store_test_utils import StoreProbe
 
@@ -116,9 +120,27 @@ class ShapeRoot:
     child: CallShape
 
 
-_PYRO_SHAPES_SOURCE = """
-from pyrolyze.api import ComponentRef, keyed, pyrolyze
-from tests.basic_pyro_shapes import CallShape, ShapeBasic, ShapeRoot, use_stored
+@dataclass(frozen=True, slots=True)
+class ShapeBranch:
+    node: CallShape
+    is_container: bool
+    children: tuple[CallShape, ...] = ()
+    before: tuple[CallShape, ...] = ()
+    after: tuple[CallShape, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ShapeToggleStack:
+    outer: CallShape
+    outer_on: bool
+    middle: CallShape
+    middle_on: bool
+    inner: CallShape
+    inner_on: bool
+    lead: tuple[CallShape, ...] = ()
+    tail: tuple[CallShape, ...] = ()
+    inner_children: tuple[CallShape, ...] = ()
+
 
 @pyrolyze
 def shape_basic(key: str) -> None:
@@ -150,15 +172,113 @@ def shape_root(key: str) -> None:
             if sd.child:
                 child_call: ComponentRef[[]] = sd.child.call
                 child_call()
-"""
+
+@pyrolyze
+def shape_branch(key: str) -> None:
+    sd: ShapeBranch = use_stored(key)
+
+    for _index, sibling in keyed(enumerate(sd.before), key=lambda item: item[0]):
+        if sibling:
+            sibling_call: ComponentRef[[]] = sibling.call
+            sibling_call()
+
+    if sd.node:
+        node_call: ComponentRef[[]] = sd.node.call
+        if sd.is_container:
+            with node_call():
+                for _index, child in keyed(enumerate(sd.children), key=lambda item: item[0]):
+                    if child:
+                        child_call: ComponentRef[[]] = child.call
+                        child_call()
+        else:
+            node_call()
+
+    for _index, sibling in keyed(enumerate(sd.after), key=lambda item: item[0]):
+        if sibling:
+            sibling_call: ComponentRef[[]] = sibling.call
+            sibling_call()
+
+@pyrolyze
+def shape_toggle_stack(key: str) -> None:
+    sd: ShapeToggleStack = use_stored(key)
+
+    for _index, sibling in keyed(enumerate(sd.lead), key=lambda item: item[0]):
+        if sibling:
+            sibling_call: ComponentRef[[]] = sibling.call
+            sibling_call()
+
+    if sd.outer and sd.outer_on:
+        outer_call: ComponentRef[[]] = sd.outer.call
+        with outer_call():
+            if sd.middle and sd.middle_on:
+                middle_call: ComponentRef[[]] = sd.middle.call
+                with middle_call():
+                    if sd.inner and sd.inner_on:
+                        inner_call: ComponentRef[[]] = sd.inner.call
+                        with inner_call():
+                            for _index, child in keyed(enumerate(sd.inner_children), key=lambda item: item[0]):
+                                if child:
+                                    child_call: ComponentRef[[]] = child.call
+                                    child_call()
+                    else:
+                        for _index, child in keyed(enumerate(sd.inner_children), key=lambda item: item[0]):
+                            if child:
+                                child_call: ComponentRef[[]] = child.call
+                                child_call()
+            elif sd.inner and sd.inner_on:
+                inner_call: ComponentRef[[]] = sd.inner.call
+                with inner_call():
+                    for _index, child in keyed(enumerate(sd.inner_children), key=lambda item: item[0]):
+                        if child:
+                            child_call: ComponentRef[[]] = child.call
+                            child_call()
+            else:
+                for _index, child in keyed(enumerate(sd.inner_children), key=lambda item: item[0]):
+                    if child:
+                        child_call: ComponentRef[[]] = child.call
+                        child_call()
+    elif sd.middle and sd.middle_on:
+        middle_call: ComponentRef[[]] = sd.middle.call
+        with middle_call():
+            if sd.inner and sd.inner_on:
+                inner_call: ComponentRef[[]] = sd.inner.call
+                with inner_call():
+                    for _index, child in keyed(enumerate(sd.inner_children), key=lambda item: item[0]):
+                        if child:
+                            child_call: ComponentRef[[]] = child.call
+                            child_call()
+            else:
+                for _index, child in keyed(enumerate(sd.inner_children), key=lambda item: item[0]):
+                    if child:
+                        child_call: ComponentRef[[]] = child.call
+                        child_call()
+    elif sd.inner and sd.inner_on:
+        inner_call: ComponentRef[[]] = sd.inner.call
+        with inner_call():
+            for _index, child in keyed(enumerate(sd.inner_children), key=lambda item: item[0]):
+                if child:
+                    child_call: ComponentRef[[]] = child.call
+                    child_call()
+    else:
+        for _index, child in keyed(enumerate(sd.inner_children), key=lambda item: item[0]):
+            if child:
+                child_call: ComponentRef[[]] = child.call
+                child_call()
+
+    for _index, sibling in keyed(enumerate(sd.tail), key=lambda item: item[0]):
+        if sibling:
+            sibling_call: ComponentRef[[]] = sibling.call
+            sibling_call()
 
 
 def load_basic_shapes_namespace(*, module_name: str = "example.pyro_shapes.basic") -> dict[str, object]:
-    return load_transformed_namespace(
-        _PYRO_SHAPES_SOURCE,
-        module_name=module_name,
-        filename=f"/virtual/{module_name.replace('.', '/')}.py",
-    )
+    del module_name
+    return {
+        "shape_basic": shape_basic,
+        "shape_root": shape_root,
+        "shape_branch": shape_branch,
+        "shape_toggle_stack": shape_toggle_stack,
+    }
 
 
 def _snapshot_roots(snapshot: object) -> tuple[object, ...]:

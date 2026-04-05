@@ -32,14 +32,15 @@ class Panels:
         with __pyr_ctx.pass_scope():
             __pyr_dm = globals()['__pyr_dm_from_dirty_state'](__pyr_dirty_state)
             if (__pyr_dm.bind.items or __pyr_dm.bind.prefix) or __pyr_ctx.visit_slot_and_dirty(globals()['__pyr_slot_1']):
-                with __pyr_ctx.container_call(globals()['__pyr_slot_1'], group, 'instance', dirty_state=globals()['__pyr_dirtyof'](name=False)) as __pyr_ctx_slot_1:
-                    if __pyr_dm.bind.items or __pyr_dm.bind.prefix or __pyr_ctx_slot_1.visit_slot_and_dirty(globals()['__pyr_slot_2']):
-                        for __pyr_ctx_slot_2_k in __pyr_ctx_slot_1.keyed_loop(globals()['__pyr_slot_2'], items, key_fn=lambda x: x):
-                            with __pyr_ctx_slot_2_k.pass_scope():
-                                __pyr_item_dirty, item = __pyr_ctx_slot_2_k.current_value()
-                                if not (__pyr_dm.bind.items or (__pyr_dm.bind.prefix or __pyr_item_dirty) or __pyr_ctx_slot_2_k.visit_self_and_dirty()):
-                                    continue
-                                text(prefix + item)
+                if (__pyr_ctx_slot_1_h := __pyr_ctx.container_call(globals()['__pyr_slot_1'], group, 'instance', dirty_state=globals()['__pyr_dirtyof'](name=False))):
+                    with __pyr_ctx_slot_1_h as __pyr_ctx_slot_1:
+                        if __pyr_dm.bind.items or __pyr_dm.bind.prefix or __pyr_ctx_slot_1.visit_slot_and_dirty(globals()['__pyr_slot_2']):
+                            for __pyr_ctx_slot_2_k in __pyr_ctx_slot_1.keyed_loop(globals()['__pyr_slot_2'], items, key_fn=lambda x: x):
+                                with __pyr_ctx_slot_2_k.pass_scope():
+                                    __pyr_item_dirty, item = __pyr_ctx_slot_2_k.current_value()
+                                    if not (__pyr_dm.bind.items or (__pyr_dm.bind.prefix or __pyr_item_dirty) or __pyr_ctx_slot_2_k.visit_self_and_dirty()):
+                                        continue
+                                    text(prefix + item)
 
     @globals()['__pyr_component_ref'](globals()['__pyr_ComponentMetadata']('Panels.instance', __pyr_Panels__instance))
     def instance(self, prefix: str, items: list[str]) -> None:
@@ -49,14 +50,15 @@ class Panels:
         with __pyr_ctx.pass_scope():
             __pyr_dm = globals()['__pyr_dm_from_dirty_state'](__pyr_dirty_state)
             if (__pyr_dm.bind.items or __pyr_dm.bind.prefix) or __pyr_ctx.visit_slot_and_dirty(globals()['__pyr_slot_3']):
-                with __pyr_ctx.container_call(globals()['__pyr_slot_3'], group, 'class', dirty_state=globals()['__pyr_dirtyof'](name=False)) as __pyr_ctx_slot_3:
-                    if __pyr_dm.bind.items or __pyr_dm.bind.prefix or __pyr_ctx_slot_3.visit_slot_and_dirty(globals()['__pyr_slot_4']):
-                        for __pyr_ctx_slot_4_k in __pyr_ctx_slot_3.keyed_loop(globals()['__pyr_slot_4'], items, key_fn=lambda x: x):
-                            with __pyr_ctx_slot_4_k.pass_scope():
-                                __pyr_item_dirty, item = __pyr_ctx_slot_4_k.current_value()
-                                if not (__pyr_dm.bind.items or (__pyr_dm.bind.prefix or __pyr_item_dirty) or __pyr_ctx_slot_4_k.visit_self_and_dirty()):
-                                    continue
-                                label(prefix + item)
+                if (__pyr_ctx_slot_3_h := __pyr_ctx.container_call(globals()['__pyr_slot_3'], group, 'class', dirty_state=globals()['__pyr_dirtyof'](name=False))):
+                    with __pyr_ctx_slot_3_h as __pyr_ctx_slot_3:
+                        if __pyr_dm.bind.items or __pyr_dm.bind.prefix or __pyr_ctx_slot_3.visit_slot_and_dirty(globals()['__pyr_slot_4']):
+                            for __pyr_ctx_slot_4_k in __pyr_ctx_slot_3.keyed_loop(globals()['__pyr_slot_4'], items, key_fn=lambda x: x):
+                                with __pyr_ctx_slot_4_k.pass_scope():
+                                    __pyr_item_dirty, item = __pyr_ctx_slot_4_k.current_value()
+                                    if not (__pyr_dm.bind.items or (__pyr_dm.bind.prefix or __pyr_item_dirty) or __pyr_ctx_slot_4_k.visit_self_and_dirty()):
+                                        continue
+                                    label(prefix + item)
 
     @classmethod
     @globals()['__pyr_component_ref'](globals()['__pyr_ComponentMetadata']('Panels.build', __pyr_Panels__build))
@@ -67,14 +69,15 @@ class Panels:
         with __pyr_ctx.pass_scope():
             __pyr_dm = globals()['__pyr_dm_from_dirty_state'](__pyr_dirty_state)
             if (__pyr_dm.bind.items or __pyr_dm.bind.prefix) or __pyr_ctx.visit_slot_and_dirty(globals()['__pyr_slot_5']):
-                with __pyr_ctx.container_call(globals()['__pyr_slot_5'], group, 'static', dirty_state=globals()['__pyr_dirtyof'](name=False)) as __pyr_ctx_slot_5:
-                    if __pyr_dm.bind.items or __pyr_dm.bind.prefix or __pyr_ctx_slot_5.visit_slot_and_dirty(globals()['__pyr_slot_6']):
-                        for __pyr_ctx_slot_6_k in __pyr_ctx_slot_5.keyed_loop(globals()['__pyr_slot_6'], items, key_fn=lambda x: x):
-                            with __pyr_ctx_slot_6_k.pass_scope():
-                                __pyr_item_dirty, item = __pyr_ctx_slot_6_k.current_value()
-                                if not (__pyr_dm.bind.items or (__pyr_dm.bind.prefix or __pyr_item_dirty) or __pyr_ctx_slot_6_k.visit_self_and_dirty()):
-                                    continue
-                                text(prefix + item)
+                if (__pyr_ctx_slot_5_h := __pyr_ctx.container_call(globals()['__pyr_slot_5'], group, 'static', dirty_state=globals()['__pyr_dirtyof'](name=False))):
+                    with __pyr_ctx_slot_5_h as __pyr_ctx_slot_5:
+                        if __pyr_dm.bind.items or __pyr_dm.bind.prefix or __pyr_ctx_slot_5.visit_slot_and_dirty(globals()['__pyr_slot_6']):
+                            for __pyr_ctx_slot_6_k in __pyr_ctx_slot_5.keyed_loop(globals()['__pyr_slot_6'], items, key_fn=lambda x: x):
+                                with __pyr_ctx_slot_6_k.pass_scope():
+                                    __pyr_item_dirty, item = __pyr_ctx_slot_6_k.current_value()
+                                    if not (__pyr_dm.bind.items or (__pyr_dm.bind.prefix or __pyr_item_dirty) or __pyr_ctx_slot_6_k.visit_self_and_dirty()):
+                                        continue
+                                    text(prefix + item)
 
     @staticmethod
     @globals()['__pyr_component_ref'](globals()['__pyr_ComponentMetadata']('Panels.static', __pyr_Panels__static))

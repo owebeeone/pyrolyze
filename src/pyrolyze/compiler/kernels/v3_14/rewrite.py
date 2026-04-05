@@ -718,8 +718,9 @@ def _lower_container_with(statement: ast.With, *, state: _LoweringState) -> list
             message="'with expr:' without 'as' is reserved for PyRolyze container syntax",
             module_name=state.module_name,
             suggested_fix="use_plain_context_manager_with_as",
-        )
+    )
     container_ctx_name = _context_name_for_slot(slot_index)
+    container_handle_name = f"{container_ctx_name}_h"
     child_state = state.child(context_name=container_ctx_name)
     lowered_body = _lower_block(statement.body, state=child_state)
     call_name = _call_name(context_expr)
@@ -775,33 +776,34 @@ def _lower_container_with(statement: ast.With, *, state: _LoweringState) -> list
         state=state,
         reason=statement,
     )
+    container_call_expr = ast.Call(
+        func=ast.Attribute(
+            value=state.context_ref(),
+            attr="container_call",
+            ctx=ast.Load(),
+        ),
+        args=[
+            slot_name,
+            copy.deepcopy(context_expr.func),
+            *lowered_args,
+        ],
+        keywords=[
+            *lowered_keywords,
+            ast.keyword(
+                arg="dirty_state",
+                value=ast.Call(
+                    func=_support_reference("__pyr_dirtyof", in_class_scope=state.in_class_scope),
+                    args=[],
+                    keywords=dirty_keywords,
+                ),
+            ),
+            *extra_dirty_keywords,
+        ],
+    )
     container_with = ast.With(
         items=[
             ast.withitem(
-                context_expr=ast.Call(
-                    func=ast.Attribute(
-                        value=state.context_ref(),
-                        attr="container_call",
-                        ctx=ast.Load(),
-                    ),
-                    args=[
-                        slot_name,
-                        copy.deepcopy(context_expr.func),
-                        *lowered_args,
-                    ],
-                    keywords=[
-                        *lowered_keywords,
-                        ast.keyword(
-                            arg="dirty_state",
-                            value=ast.Call(
-                                func=_support_reference("__pyr_dirtyof", in_class_scope=state.in_class_scope),
-                                args=[],
-                                keywords=dirty_keywords,
-                            ),
-                        ),
-                        *extra_dirty_keywords,
-                    ],
-                ),
+                context_expr=ast.Name(id=container_handle_name, ctx=ast.Load()),
                 optional_vars=ast.Name(id=container_ctx_name, ctx=ast.Store()),
             )
         ],
@@ -822,7 +824,20 @@ def _lower_container_with(statement: ast.With, *, state: _LoweringState) -> list
             ),
         ]
     )
-    lowered = ast.If(test=guard, body=[container_with], orelse=[])
+    lowered = ast.If(
+        test=guard,
+        body=[
+            ast.If(
+                test=ast.NamedExpr(
+                    target=ast.Name(id=container_handle_name, ctx=ast.Store()),
+                    value=container_call_expr,
+                ),
+                body=[container_with],
+                orelse=[],
+            )
+        ],
+        orelse=[],
+    )
     return [*slot_setup, *event_slot_setup, copy_reason_location(lowered, statement)]
 
 

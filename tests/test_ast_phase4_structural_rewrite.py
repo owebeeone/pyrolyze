@@ -41,7 +41,8 @@ def stats_panel(show_extra, count):
     )
 
     assert "__pyr_slot_1 = __pyr_SlotId(__pyr_module_id, 1, line_no=16, is_top_level=True)" in transformed
-    assert "with __pyr_ctx.container_call(" in transformed
+    assert "if (__pyr_ctx_slot_1_h := __pyr_ctx.container_call(" in transformed
+    assert "with __pyr_ctx_slot_1_h as __pyr_ctx_slot_1:" in transformed
     assert "dirty_state=__pyr_dirtyof(title=False, accent=False)" in transformed
     assert "if show_extra:" in transformed
     assert "badge(f'Count: {count}', tone='info')" in transformed
@@ -176,11 +177,13 @@ def grid_panel(labels, values):
     assert "for __pyr_ctx_slot_1_k in __pyr_ctx.keyed_loop(__pyr_slot_1, labels, key_fn=lambda x: x):" in transformed
     assert "with __pyr_ctx_slot_1_k.pass_scope():" in transformed
     assert "__pyr_label_dirty, label = __pyr_ctx_slot_1_k.current_value()" in transformed
-    assert "with __pyr_ctx_slot_1_k.container_call(__pyr_slot_2, row, label, dirty_state=__pyr_dirtyof(title=__pyr_label_dirty)) as __pyr_ctx_slot_2:" in transformed
+    assert "if (__pyr_ctx_slot_2_h := __pyr_ctx_slot_1_k.container_call(__pyr_slot_2, row, label, dirty_state=__pyr_dirtyof(title=__pyr_label_dirty))):" in transformed
+    assert "with __pyr_ctx_slot_2_h as __pyr_ctx_slot_2:" in transformed
     assert "for __pyr_ctx_slot_3_k in __pyr_ctx_slot_2.keyed_loop(__pyr_slot_3, values, key_fn=lambda x: x):" in transformed
     assert "with __pyr_ctx_slot_3_k.pass_scope():" in transformed
     assert "__pyr_value_dirty, value = __pyr_ctx_slot_3_k.current_value()" in transformed
-    assert "with __pyr_ctx_slot_3_k.container_call(__pyr_slot_4, row, f'{label}:{value}', dirty_state=__pyr_dirtyof(title=__pyr_label_dirty or __pyr_value_dirty)) as __pyr_ctx_slot_4:" in transformed
+    assert "if (__pyr_ctx_slot_4_h := __pyr_ctx_slot_3_k.container_call(__pyr_slot_4, row, f'{label}:{value}', dirty_state=__pyr_dirtyof(title=__pyr_label_dirty or __pyr_value_dirty))):" in transformed
+    assert "with __pyr_ctx_slot_4_h as __pyr_ctx_slot_4:" in transformed
     assert "_item" not in transformed
     assert "button(f'{label}:{value}', value=value)" in transformed
 

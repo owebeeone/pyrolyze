@@ -22,12 +22,13 @@ def __pyr_stats_panel(__pyr_ctx, __pyr_dirty_state, show_extra: bool, count: int
     with __pyr_ctx.pass_scope():
         __pyr_dm = globals()['__pyr_dm_from_dirty_state'](__pyr_dirty_state)
         if (__pyr_dm.bind.count or __pyr_dm.bind.show_extra) or __pyr_ctx.visit_slot_and_dirty(__pyr_slot_1):
-            with __pyr_ctx.container_call(__pyr_slot_1, section, 'Stats', accent='green', dirty_state=__pyr_dirtyof(title=False, accent=False)) as __pyr_ctx_slot_1:
-                badge(f'Count: {count}', tone='info')
-                if show_extra:
-                    badge('Visible', tone='success')
-                else:
-                    badge('Hidden', tone='muted')
+            if (__pyr_ctx_slot_1_h := __pyr_ctx.container_call(__pyr_slot_1, section, 'Stats', accent='green', dirty_state=__pyr_dirtyof(title=False, accent=False))):
+                with __pyr_ctx_slot_1_h as __pyr_ctx_slot_1:
+                    badge(f'Count: {count}', tone='info')
+                    if show_extra:
+                        badge('Visible', tone='success')
+                    else:
+                        badge('Hidden', tone='muted')
 
 @__pyr_component_ref(__pyr_ComponentMetadata('stats_panel', __pyr_stats_panel))
 def stats_panel(show_extra: bool, count: int) -> None:
