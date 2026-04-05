@@ -6,7 +6,15 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from pyrolyze.api import UIElement
-from pyrolyze.runtime.context import ComponentCallSlotContext, ContainerSlotContext, ContextBase, RenderContext, SlotContext, SlotId
+from pyrolyze.runtime.context import (
+    ComponentCallSlotContext,
+    ContainerSlotContext,
+    ContextBase,
+    RenderContext,
+    SlotContext,
+    SlotId,
+    SlotIdPath,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,20 +65,20 @@ class CapturedContextGraph:
 
 @dataclass(frozen=True, slots=True)
 class ContextChange:
-    path: tuple[SlotId, ...]
+    path: SlotIdPath
     before: CapturedContext
     after: CapturedContext
 
 
 @dataclass(frozen=True, slots=True)
 class CapturedContextAtPath:
-    path: tuple[SlotId, ...]
+    path: SlotIdPath
     context: CapturedContext
 
 
 @dataclass(frozen=True, slots=True)
 class CapturedUiElementAtPath:
-    context_path: tuple[SlotId, ...]
+    context_path: SlotIdPath
     index: int
     ui: CapturedUiElement
 
@@ -309,36 +317,30 @@ def _own_ui_records(context: ContextBase) -> tuple[CapturedUiElement, ...]:
     )
 
 
-def _flatten_contexts(root: CapturedContext) -> dict[tuple[SlotId, ...], CapturedContext]:
-    flattened: dict[tuple[SlotId, ...], CapturedContext] = {}
+def _flatten_contexts(root: CapturedContext) -> dict[SlotIdPath, CapturedContext]:
+    flattened: dict[SlotIdPath, CapturedContext] = {}
 
-    def walk(node: CapturedContext, path: tuple[SlotId, ...]) -> None:
+    def walk(node: CapturedContext, path: SlotIdPath) -> None:
         flattened[path] = node
         for child in node.children:
-            if child.slot_id is None:
-                child_path = path
-            else:
-                child_path = path + (child.slot_id,)
+            child_path = path.child(child.slot_id)
             walk(child, child_path)
 
-    walk(root, ())
+    walk(root, SlotIdPath.empty())
     return flattened
 
 
-def _flatten_ui(root: CapturedContext) -> dict[tuple[tuple[SlotId, ...], int], CapturedUiElement]:
-    flattened: dict[tuple[tuple[SlotId, ...], int], CapturedUiElement] = {}
+def _flatten_ui(root: CapturedContext) -> dict[tuple[SlotIdPath, int], CapturedUiElement]:
+    flattened: dict[tuple[SlotIdPath, int], CapturedUiElement] = {}
 
-    def walk(node: CapturedContext, path: tuple[SlotId, ...]) -> None:
+    def walk(node: CapturedContext, path: SlotIdPath) -> None:
         for index, ui in enumerate(node.ui):
             flattened[(path, index)] = ui
         for child in node.children:
-            if child.slot_id is None:
-                child_path = path
-            else:
-                child_path = path + (child.slot_id,)
+            child_path = path.child(child.slot_id)
             walk(child, child_path)
 
-    walk(root, ())
+    walk(root, SlotIdPath.empty())
     return flattened
 
 

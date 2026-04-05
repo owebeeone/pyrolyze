@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pyrolyze.api import UIElement
 from pyrolyze.compiler import emit_transformed_source, load_transformed_namespace
-from pyrolyze.runtime import RenderContext, SlotId, dirtyof
+from pyrolyze.runtime import RenderContext, SlotId, SlotIdPath, dirtyof
 
 
 def test_phase7_lowers_call_native_factory_calls() -> None:
@@ -91,7 +91,7 @@ class PySide6UiLibrary:
     assert ctx.debug_ui()[0].kind == "QPushButton"
     assert ctx.debug_ui()[0].props == {"text": "Save", "enabled": True}
     assert ctx.debug_ui()[0].call_site_id == 1
-    assert ctx.debug_ui()[0].slot_id == (SlotId(901, 1, line_no=1),)
+    assert ctx.debug_ui()[0].slot_id == SlotIdPath((SlotId(901, 1, line_no=1),))
 
 
 def test_phase7_packed_native_wrapper_only_emits_explicit_call_arguments() -> None:

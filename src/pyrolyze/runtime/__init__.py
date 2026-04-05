@@ -45,6 +45,7 @@ from .context import (
     RerunnableSlotContext,
     SlotContext,
     SlotId,
+    SlotIdPath,
     SlotOwnershipError,
     UseEffectBinding,
     UseEffectAsyncBinding,
@@ -55,6 +56,13 @@ from .context import (
 )
 from .dirt import DM, dm_from_dirty_state
 from .drip import Drip
+from .pyro_call import (
+    PyrolyzeWrap,
+    PyrolyzeComponentWrap,
+    PyrolyzeSlottedWrap,
+    ResolvedPyrolyzeCall,
+    RuntimeSiteMetadata,
+)
 from .slot_expr import (
     Args,
     LambdaFunctionProvider,
@@ -143,14 +151,20 @@ __all__ = [
     "MountAdvertisementContextError",
     "ModuleId",
     "ModuleRegistry",
+    "PyrolyzeWrap",
+    "PyrolyzeComponentWrap",
+    "PyrolyzeSlottedWrap",
     "SlotRuntimeContext",
     "SlotCallSlotContext",
     "SlotValueBinding",
     "PyrolyzeMountAdvertisementBinding",
     "RenderContext",
+    "ResolvedPyrolyzeCall",
     "RerunnableSlotContext",
+    "RuntimeSiteMetadata",
     "SlotContext",
     "SlotId",
+    "SlotIdPath",
     "SlotExpr",
     "SlotOwnershipError",
     "TraceChannel",

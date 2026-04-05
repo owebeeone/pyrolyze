@@ -131,6 +131,23 @@ class SlotId:
     is_top_level: bool = field(default=False, compare=False, hash=False)
 
 
+@dataclass(frozen=True, slots=True)
+class SlotIdPath:
+    items: tuple[SlotId, ...] = ()
+
+    @classmethod
+    def empty(cls) -> "SlotIdPath":
+        return cls(())
+
+    def child(self, slot_id: SlotId | None) -> "SlotIdPath":
+        if slot_id is None:
+            return self
+        return SlotIdPath((*self.items, slot_id))
+
+    def as_key(self) -> tuple[SlotId, ...]:
+        return self.items
+
+
 class SlotOwnershipError(RuntimeError):
     """Raised when a slot is visited through a context that does not own it."""
 
@@ -986,7 +1003,7 @@ def _resolve_runtime_component_func(runtime_func: object) -> Callable[..., Any] 
     return None
 
 
-def _native_emission_slot_identity(context: ContextBase) -> object | None:
+def _native_emission_slot_identity(context: ContextBase) -> SlotIdPath | None:
     current_slot_id = context.current_slot_id()
     # Emissions from nested component boundaries can share the same local slot
     # identity (for example repeated helper trees), so include owner boundaries.
@@ -1006,9 +1023,9 @@ def _native_emission_slot_identity(context: ContextBase) -> object | None:
         owner_slot_path.reverse()
         if isinstance(current_slot_id, SlotId):
             owner_slot_path.append(current_slot_id)
-        return tuple(owner_slot_path)
+        return SlotIdPath(tuple(owner_slot_path))
     if isinstance(current_slot_id, SlotId):
-        return current_slot_id
+        return SlotIdPath((current_slot_id,))
     return None
 
 

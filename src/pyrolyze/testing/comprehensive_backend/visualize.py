@@ -5,10 +5,10 @@ from html import escape as html_escape
 from pathlib import Path
 import shutil
 import subprocess
-from typing import Any, Iterable
+from typing import Iterable
 
 from pyrolyze.backends.mountable_engine import MountedMountableNode
-from pyrolyze.runtime import RenderContext, SlotId
+from pyrolyze.runtime import RenderContext, SlotId, SlotIdPath
 from pyrolyze.testing.generic_backend.harness import PyroRenderHarness, PyroRenderResult
 from pyrolyze.visitor import CapturedContext, capture_context_graph
 
@@ -23,8 +23,9 @@ _RENDER_EDGE = "#1d4ed8"
 class _SlotCluster:
     cluster_id: str
     node_id: str
-    path: tuple[Any | None, ...]
-    slot_id: Any | None
+    cluster_key: tuple[object, ...]
+    slot_path: SlotIdPath
+    slot_id: SlotId | None
     label: str
     active: bool
 
@@ -33,7 +34,7 @@ def render_context_to_dot(
     value: RenderContext | PyroRenderHarness,
     *,
     mounted: PyroRenderResult | tuple[MountedMountableNode, ...] | list[MountedMountableNode] | None = None,
-    inactive_slot_ids: Iterable[Any] = (),
+    inactive_slot_ids: Iterable[SlotId] = (),
 ) -> str:
     context = _render_context_from(value)
     mounted_roots = _mounted_roots_from(value, mounted=mounted)
@@ -46,8 +47,8 @@ def render_context_to_dot(
         '  edge [penwidth=1.4];',
     ]
 
-    clusters: dict[tuple[Any | None, ...], _SlotCluster] = {}
-    clusters_by_slot_id: dict[Any | None, list[_SlotCluster]] = {}
+    clusters: dict[tuple[object, ...], _SlotCluster] = {}
+    clusters_by_slot_id: dict[SlotId | None, list[_SlotCluster]] = {}
     cluster_contents: dict[str, list[str]] = {}
     render_nodes_by_cluster: dict[str, int] = {}
     next_slot_id = 0
@@ -61,20 +62,28 @@ def render_context_to_dot(
         next_slot_id += 1
         return cluster_id, node_id
 
-    def ensure_cluster(path: tuple[Any | None, ...], slot_id: Any | None, *, label: str, active: bool) -> _SlotCluster:
-        existing = clusters.get(path)
+    def ensure_cluster(
+        cluster_key: tuple[object, ...],
+        slot_path: SlotIdPath,
+        slot_id: SlotId | None,
+        *,
+        label: str,
+        active: bool,
+    ) -> _SlotCluster:
+        existing = clusters.get(cluster_key)
         if existing is not None:
             return existing
         cluster_id, node_id = fresh_slot_ids()
         info = _SlotCluster(
             cluster_id=cluster_id,
             node_id=node_id,
-            path=path,
+            cluster_key=cluster_key,
+            slot_path=slot_path,
             slot_id=slot_id,
             label=label,
             active=active,
         )
-        clusters[path] = info
+        clusters[cluster_key] = info
         clusters_by_slot_id.setdefault(slot_id, []).append(info)
         cluster_contents[cluster_id] = []
         fill = _ACTIVE_FILL if active else _INACTIVE_FILL
@@ -85,20 +94,23 @@ def render_context_to_dot(
 
     def add_context(
         context_node: CapturedContext,
-        parent_path: tuple[Any | None, ...] = (),
+        parent_cluster_key: tuple[object, ...] = (),
+        parent_slot_path: SlotIdPath = SlotIdPath.empty(),
     ) -> None:
-        path = parent_path + (context_node.slot_id,)
+        slot_path = parent_slot_path.child(context_node.slot_id)
+        cluster_key = parent_cluster_key + ((context_node.kind, context_node.slot_id),)
         cluster = ensure_cluster(
-            path,
+            cluster_key,
+            slot_path,
             context_node.slot_id,
             label=_slot_label(context_node.kind, context_node.slot_id, module_aliases),
             active=True,
         )
-        if parent_path:
-            parent = clusters[parent_path]
+        if parent_cluster_key:
+            parent = clusters[parent_cluster_key]
             lines.append(f'  {parent.node_id} -> {cluster.node_id} [color="black"];')
         for child in context_node.children:
-            add_context(child, path)
+            add_context(child, cluster_key, slot_path)
 
     add_context(capture.root)
 
@@ -108,10 +120,13 @@ def render_context_to_dot(
             continue
         parent_slot_id = _slot_parent_id(inactive_slot_id)
         parent_cluster = _best_owner_cluster(parent_slot_id, clusters_by_slot_id) if parent_slot_id is not None else None
-        base_path = parent_cluster.path if parent_cluster is not None else ()
-        path = base_path + (inactive_slot_id,)
+        base_slot_path = parent_cluster.slot_path if parent_cluster is not None else SlotIdPath.empty()
+        cluster_key_base = parent_cluster.cluster_key if parent_cluster is not None else ()
+        slot_path = base_slot_path.child(inactive_slot_id)
+        cluster_key = cluster_key_base + (("inactive", inactive_slot_id),)
         cluster = ensure_cluster(
-            path,
+            cluster_key,
+            slot_path,
             inactive_slot_id,
             label=_slot_label("inactive", inactive_slot_id, module_aliases),
             active=False,
@@ -120,7 +135,7 @@ def render_context_to_dot(
             lines.append(f'  {parent_cluster.node_id} -> {cluster.node_id} [color="black", style="dashed"];')
 
     def owner_cluster_for_in_scope(
-        slot_id: Any | None,
+        slot_id: SlotIdPath | SlotId | None,
         parent_owner_cluster: _SlotCluster | None,
     ) -> _SlotCluster:
         target_slot_id = _last_render_slot_id(slot_id)
@@ -129,7 +144,8 @@ def render_context_to_dot(
             scoped = [
                 cluster
                 for cluster in candidates
-                if cluster.path[: len(parent_owner_cluster.path)] == parent_owner_cluster.path
+                if cluster.slot_path.items[: len(parent_owner_cluster.slot_path.items)]
+                == parent_owner_cluster.slot_path.items
             ]
             if scoped:
                 candidates = scoped
@@ -178,8 +194,9 @@ def render_context_to_dot(
 
     if module_aliases:
         legend_lines = [f"{alias} = {canonical}" for canonical, alias in module_aliases.items()]
+        legend_label = _html_multiline_label("Modules\n" + "\n".join(legend_lines))
         lines.append(
-            f'  module_legend [shape=note, style="filled", fillcolor="#fff7cc", label=<{_html_multiline_label("Modules\n" + "\n".join(legend_lines))}>];'
+            f'  module_legend [shape=note, style="filled", fillcolor="#fff7cc", label=<{legend_label}>];'
         )
 
     lines.append("}")
@@ -187,8 +204,8 @@ def render_context_to_dot(
 
 
 def _best_owner_cluster(
-    slot_id: Any | None,
-    clusters_by_slot_id: dict[Any | None, list[_SlotCluster]],
+    slot_id: SlotId | None,
+    clusters_by_slot_id: dict[SlotId | None, list[_SlotCluster]],
 ) -> _SlotCluster | None:
     candidates = clusters_by_slot_id.get(slot_id, ())
     return candidates[0] if candidates else None
@@ -199,7 +216,7 @@ def write_render_context_graph(
     output_stem: Path,
     *,
     mounted: PyroRenderResult | tuple[MountedMountableNode, ...] | list[MountedMountableNode] | None = None,
-    inactive_slot_ids: Iterable[Any] = (),
+    inactive_slot_ids: Iterable[SlotId] = (),
 ) -> tuple[Path, Path | None]:
     dot_path = output_stem.with_suffix(".dot")
     svg_path = output_stem.with_suffix(".svg")
@@ -237,25 +254,21 @@ def _mounted_roots_from(
     return tuple(mounted)
 
 
-def _slot_label(kind: str, slot_id: Any | None, module_aliases: dict[str, str]) -> str:
+def _slot_label(kind: str, slot_id: SlotId | None, module_aliases: dict[str, str]) -> str:
     if slot_id is None:
         return kind
-    if isinstance(slot_id, SlotId):
-        alias = _module_alias(slot_id.module_id.canonical_name, module_aliases)
-        return (
-            f"{kind}\n"
-            f"Slot({alias}, {slot_id.slot_index}, {slot_id.line_no}, {slot_id.key_path!r})"
-        )
-    return f"{kind}\n{slot_id!r}"
+    alias = _module_alias(slot_id.module_id.canonical_name, module_aliases)
+    return (
+        f"{kind}\n"
+        f"Slot({alias}, {slot_id.slot_index}, {slot_id.line_no}, {slot_id.key_path!r})"
+    )
 
 
-def _last_render_slot_id(slot_id: Any | None) -> Any | None:
+def _last_render_slot_id(slot_id: SlotIdPath | SlotId | None) -> SlotId | None:
+    if isinstance(slot_id, SlotIdPath):
+        return slot_id.items[-1] if slot_id.items else None
     if isinstance(slot_id, SlotId) or slot_id is None:
         return slot_id
-    if isinstance(slot_id, tuple):
-        for item in reversed(slot_id):
-            if isinstance(item, SlotId):
-                return item
     return None
 
 
@@ -268,22 +281,9 @@ def _module_alias(canonical_name: str, module_aliases: dict[str, str]) -> str:
     return alias
 
 
-def _render_slot_owner_id(slot_id: Any | None) -> Any | None:
-    if isinstance(slot_id, SlotId) or slot_id is None:
-        return slot_id
-    if isinstance(slot_id, tuple):
-        for item in reversed(slot_id):
-            if isinstance(item, SlotId):
-                return item
-    return None
-
-
-def _slot_parent_id(slot_id: Any | None) -> Any | None:
+def _slot_parent_id(slot_id: SlotId | None) -> SlotId | None:
     if slot_id is None:
         return None
-    if isinstance(slot_id, tuple) and slot_id:
-        parent = slot_id[:-1]
-        return parent if parent else None
     return None
 
 

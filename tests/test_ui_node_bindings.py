@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from pyrolyze.api import UIElement
-from pyrolyze.runtime.context import ModuleRegistry, SlotId
+from pyrolyze.runtime.context import ModuleRegistry, SlotId, SlotIdPath
 from pyrolyze.runtime.ui_nodes import UiNodeId, normalize_ui_elements
 
 
@@ -166,13 +166,13 @@ def test_normalize_ui_elements_distinguishes_duplicate_call_sites_by_slot_path()
                 kind="badge",
                 props={"text": "A", "visible": True},
                 call_site_id=3,
-                slot_id=(boundary_slot_a, local_emit_slot),
+                slot_id=SlotIdPath((boundary_slot_a, local_emit_slot)),
             ),
             UIElement(
                 kind="badge",
                 props={"text": "B", "visible": True},
                 call_site_id=3,
-                slot_id=(boundary_slot_b, local_emit_slot),
+                slot_id=SlotIdPath((boundary_slot_b, local_emit_slot)),
             ),
         ),
     )

@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Literal, Mapping, Sequence
 
 from pyrolyze.api import UIElement
-from pyrolyze.runtime.context import SlotId
+from pyrolyze.runtime.context import SlotId, SlotIdPath
 from pyrolyze.runtime.trace import TraceChannel, emit_trace, trace_enabled
 
 
@@ -391,6 +391,18 @@ def _slot_identity_key_parts(slot_identity: object) -> tuple[Any, ...]:
             slot_identity.module_id.canonical_name,
             slot_identity.slot_index,
             slot_identity.key_path,
+        )
+    if isinstance(slot_identity, SlotIdPath):
+        return (
+            "slot_path",
+            tuple(
+                (
+                    item.module_id.canonical_name,
+                    item.slot_index,
+                    item.key_path,
+                )
+                for item in slot_identity.items
+            ),
         )
     if isinstance(slot_identity, tuple):
         normalized_path: list[Any] = []

@@ -2,42 +2,40 @@
 
 ## Purpose
 
-This document describes the runtime-driven analysis model for mount fuzzing.
+This document describes the runtime-driven analysis model for mount fuzzing and
+related graph-inspection tooling.
 
 The key realization is:
 
 - we already have the dependency graph
 - it is the runtime slot/context graph
 
-So the problem is not “invent a second graph”.
+So the problem is not to invent a second graph.
 
 The problem is:
 
-- instrument the existing slot graph so emitted nodes, selected mounts, adverts,
-  and `use_stored(KEY)` inputs can be mapped back onto concrete runtime graph
-  nodes
+- expose explicit intrinsic call intent to the compiler/runtime
+- attach application-specific runtime metadata to active sites
+- map active sites back to the stored-shape inputs that drove them
 
-The goal is to make the existing active graph answer questions like:
+This is enough to support:
 
-- if mount choice at `X` changes, which active sites `Y` and `Z` are affected?
-- which current emitted objects become incompatible?
-- do we need to:
-  - change downstream emitted node types,
-  - choose a different mount,
-  - or replace/prune a subtree?
-
-This is the information needed to drive realistic mount fuzzing.
+- mount / advert fuzzing
+- graph visitors that need app-specific annotations
+- stable explanation of “if X changes, Y and Z are now invalid”
 
 ## Why runtime analysis is the right level
 
-The static-analysis attempt was too hard for the value:
+The earlier static-analysis direction was too expensive for the value.
 
-- keyed-loop expansion creates many runtime instances from one authored site
+The hard cases are all runtime-shaped:
+
+- keyed loops expand one authored site into many runtime instances
 - `use_stored(...)` decides concrete structure at runtime
 - branch-selected mount / advert activation depends on values
 - the mount environment we care about is the active one, not every possible one
 
-For fuzzing, the source of truth should therefore be:
+For fuzzing and graph inspection, the source of truth should therefore be:
 
 - the active realized graph for one concrete state
 
@@ -45,332 +43,362 @@ not a full static approximation of every possible graph.
 
 ## Requirements
 
-### 1. Use the existing slot/context graph as the dependency graph
+### 1. Explicit intrinsic helper wrapping
 
-We do not need a second abstract dependency graph.
+We need explicit wrappers so the compiler does not need to infer call intent
+from provenance annotations, local-variable annotations, or import provenance.
 
-The runtime already has:
+The authored forms are:
 
-- structural ownership
-- parent/child slot relationships
-- keyed-loop expansion
-- retained boundary identity
+```python
+component(component_func, *args, **kwargs)
+slotted(slotted_func, *args, **kwargs)
+```
 
-That graph is already the dependency graph we care about.
+These are not choosing `component_call(...)` vs `container_call(...)`.
 
-So the analysis system should build on:
+That choice is still determined by authored call shape:
 
-- the existing slot/context graph
-- plus added attribution metadata
+- bare call form lowers as a direct component/slotted call
+- `with ...:` form lowers as a container call
 
-not on a separate reconstructed graph model.
+The wrapper only tells the compiler/runtime:
 
-### 2. Explain compatibility, not just structure
+- “this callable is intentionally a PyRolyze intrinsic call target”
 
-The analysis must be able to say:
+### 2. Wrapped call targets may provide dynamic resolution
 
-- site `Y` currently emits type `LeafAB00`
-- site `Y` is attached through mount `M`
-- if upstream mount selection changes from `M` to `N`,
-  `LeafAB00` is no longer compatible
+If `component_func` or `slotted_func` is an instance of `PyrolyzeWrap`, the
+runtime should resolve it before invocation.
 
-So the analysis must connect:
+The resolved call may provide:
 
-- site identity
-- selected mount
-- current emitted type
-- compatibility reason
+1. `RuntimeSiteMetadata`
+2. merged args / kwargs
+3. `None` for the actual callable, meaning “do not make the call this pass”
 
-### 3. Work over the actual realized graph
+This gives one mechanism for:
 
-The graph must be built from the actual runtime execution of a concrete shape
-state.
+- app-specific runtime annotations
+- helper-provided default args
+- helper-provided arg rewriting
+- nullified/inactive call sites
 
-That means it must incorporate:
+without requiring a special compiler path for each helper.
 
-- actual keyed-loop keys
-- actual executed branches
-- actual active advertisements
-- actual selected mounts
-- actual emitted node/container types
+### 3. Metadata must be generic and visitor-visible
 
-### 4. Map `use_stored(KEY)` to concrete runtime instances
+The metadata system is not only for mount fuzzing.
 
-One `KEY` is not enough by itself.
+It should be a generic way to attach application-specific annotations to:
 
-The same external store key may be realized under multiple parent contexts.
+- slot sites
+- slot-call bindings
+- component/container/directive sites
 
-So the analysis must track something like:
+The runtime graph visitor should be able to see:
 
-- store key
-- plus full runtime slot-id path
+- the active runtime site
+- the full slot-id path
+- the attached metadata entries
 
-This is the crucial identity for shape-driven fuzzing.
+So the metadata model should stay generic:
 
-It lets us say:
+```python
+@dataclass(frozen=True, slots=True)
+class RuntimeSiteMetadata(Generic[T]):
+    key: Hashable
+    value: T
+```
 
-- `use_stored("B")` contributed to this concrete realized subtree
-- and that subtree existed under this exact runtime structural path
+This is intentionally not mount-specific.
 
-So the analysis must be able to record:
+### 4. We need a standard slot-id path type
 
-- `StoreKey`
-- `SlotIdPath`
+One `SlotId` is not enough.
 
-together.
+We need the full active runtime path, because:
 
-### 5. Support inactive but authored sites where useful
+- the same logical site can appear under different parents
+- keyed loops already distinguish instances through path-like identity
+- the same stored-shape key may be used in multiple places
 
-We still want stable site identity and explainable gaps, so analysis-oriented
-helpers should let us identify authored sites that are currently inactive.
+So we need a standard runtime path structure:
 
-But the primary graph is the active graph.
+```python
+@dataclass(frozen=True, slots=True)
+class SlotIdPath:
+    items: tuple[SlotId, ...]
+```
 
-The important thing is:
+This should become the standard path object used by:
 
-- if a site is inactive, we may want to know it exists
-- if a site is active, we must know exactly what it depends on
+- runtime visitors
+- mount / advert analysis
+- stored-shape attribution
+- any helper that wants to attach metadata to active graph sites
 
-### 6. Stay close to real runtime behavior
+### 5. We need stored-shape attribution
 
-The analysis path should be as close as possible to the real runtime path.
+For shape-driven fuzzing, we need to know which external shape input drove which
+active runtime subtree.
 
-The fuzz harness should not rely on a radically separate execution mode that
-would hide real mount behavior.
+So the system must be able to record:
+
+- `use_stored(KEY)`
+- plus `SlotIdPath`
+
+That identity is the practical runtime identity for fuzzing:
+
+- `KEY` tells us which external state object mattered
+- `SlotIdPath` tells us which concrete realized runtime site it fed
+
+### 6. Call-site nullification must be supported
+
+If a `PyrolyzeWrap` resolves to:
+
+- `func=None`
+
+then the call is not made for that pass.
+
+This applies equally to:
+
+- component/direct call
+- slotted call
+- container call
+
+The important rule is:
+
+- the site is still evaluated when dirty
+- the resolved callable may be `None`
+- in that case the actual call is skipped
+
+This lets helpers control active/inactive sites while still participating in
+the normal runtime dirt path.
+
+### 7. Stay close to the real runtime path
+
+The analysis path should stay as close as possible to real execution.
 
 Compiler/lowering changes are acceptable when they improve:
 
+- explicit intent
 - site identity
 - observability
-- controllable inactive-site behavior
 
-But the mount decisions should still come from the real runtime path.
+But mount selection, advert publication, and active-site shape should still
+come from the real runtime path.
 
-## Explicit site-tagging intrinsics
+## Core API model
 
-We still want explicit site tagging for analysis-oriented shape functions.
-
-The purpose of these helpers is:
-
-- stable site naming
-- explicit site kind
-- clear lowering hooks
-- clear runtime analysis hooks
-
-Examples:
-
-```python
-component_call(sd.top_leaf_call)
-
-with mount_call(sd.body_mount, selector):
-    ...
-
-advert_call(sd.body_advert)
-```
-
-If site disambiguation is needed:
-
-```python
-with mount_call(sd.body_mount, selector, site="other_body_mount"):
-    ...
-```
-
-The exact names are open. The important requirement is:
-
-- the runtime can say which active graph nodes came from which authored sites
-
-## Site identity
-
-Keyed loops still require two identity levels:
-
-- static site identity
-- runtime site-instance identity
-
-So the analysis model should use something like:
+### Runtime metadata
 
 ```python
 @dataclass(frozen=True, slots=True)
-class RuntimeSiteId:
-    static_site_id: str
-    key_path: tuple[object, ...]
+class RuntimeSiteMetadata(Generic[T]):
+    key: Hashable
+    value: T
 ```
 
-That lets one authored site expand into many active runtime sites.
+This is the generic annotation payload attached to an active runtime site.
 
-### Slot-id path matters, not just one slot id
-
-For this design, one `SlotId` is not enough.
-
-We need the full runtime path of slot ids leading to the active site, because:
-
-- repeated logical sites may appear under different parents
-- the same store key may be used in multiple places
-- keyed loops already distinguish instances through path-like identity
-
-So the practical runtime identity is closer to:
+### Standard slot path
 
 ```python
 @dataclass(frozen=True, slots=True)
-class RuntimeSitePath:
-    slot_id_path: tuple[SlotId, ...]
+class SlotIdPath:
+    items: tuple[SlotId, ...]
 ```
 
-and for stored-shape attribution:
+This is the standard identity path for:
+
+- active runtime sites
+- stored-shape attribution
+- visitor-visible graph annotations
+
+### Resolved wrapped call
+
+```python
+@dataclass(frozen=True, slots=True)
+class ResolvedPyrolyzeCall:
+    func: Callable[..., Any] | None
+    args: tuple[Any, ...]
+    kwargs: dict[str, Any]
+    metadata: tuple[RuntimeSiteMetadata[Any], ...] = ()
+```
+
+This is the runtime-normalized call target.
+
+If `func is None`, the call is not made for that pass.
+
+### Wrapped callable contract
+
+```python
+class PyrolyzeWrap(ABC):
+    @abstractmethod
+    def resolve(
+        self,
+        *,
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+        slot_id_path: SlotIdPath,
+    ) -> ResolvedPyrolyzeCall: ...
+```
+
+This is the generic wrapper contract used by:
+
+- `component(...)`
+- `slotted(...)`
+- future helper wrappers such as mount/advert fuzz helpers
+
+The wrapper owns:
+
+- arg / kwarg merging
+- metadata emission
+- nullification
+
+### Authored helper markers
+
+The authored helper markers are:
+
+```python
+component(component_func, *args, **kwargs)
+slotted(slotted_func, *args, **kwargs)
+```
+
+If the first argument is a plain callable:
+
+- the helper is only providing explicit intrinsic intent
+
+If the first argument is a `PyrolyzeWrap`:
+
+- the runtime resolves it first
+
+## Compiler and lowering behavior
+
+The compiler should treat `component(...)` and `slotted(...)` as explicit
+intrinsic markers.
+
+What they do **not** do:
+
+- they do not decide between `component_call(...)` and `container_call(...)`
+
+That still comes from authored syntax shape:
+
+- bare call form:
+  - lower through direct call machinery
+- `with ...:` form:
+  - lower through `container_call(...)`
+
+So the rule is:
+
+- helper marker supplies intent
+- authored call shape supplies structural lowering form
+
+This is important because it keeps the wrapper generic and avoids forcing a
+container/component distinction into the wrapper name itself.
+
+## Runtime analysis model
+
+The existing slot/context graph remains the dependency graph.
+
+The analysis system should enrich it with:
+
+- `SlotIdPath`
+- stored-shape usages
+- selected mount
+- active advertisements
+- emitted object/type identity
+- helper-provided `RuntimeSiteMetadata`
+
+This is enough to answer:
+
+- which active sites came from which stored-shape nodes?
+- which helper-wrapped sites published analysis metadata?
+- which downstream active sites depend on an upstream mount/advert choice?
+
+## Stored-shape attribution
+
+The central instrumentation target is:
+
+- mapping `use_stored(KEY)` to `SlotIdPath`
+
+Once we have that, the slot graph plus helper/site metadata becomes much more
+useful:
+
+- changing a store entry tells us which active runtime subtrees are driven by it
+- changing a wrapped mount/helper site tells us which downstream sites are at
+  risk
+- rerender-vs-fresh mismatches can be explained in terms of actual active
+  dependencies
+
+The natural runtime shape is:
 
 ```python
 @dataclass(frozen=True, slots=True)
 class StoreUsageInstance:
     key: object
-    slot_id_path: tuple[SlotId, ...]
+    slot_id_path: SlotIdPath
 ```
 
-This is the level at which we can say that a particular `use_stored(KEY)` call
-fed a particular active subtree.
+## Relationship to mount / advert fuzzing
 
-## Related runtime issue: container-call nullification
+This design is sufficient for mount / advert fuzz tooling.
 
-One related but separate issue is how container-form helpers can suppress entry
-into a structural `with` site.
+Mount/advert fuzzing does not need a mount-specific metadata system.
 
-That topic has been split out into:
+It needs:
 
-- `dev-docs/ContainerCallNullifierDesign.md`
+- explicit intrinsic call helpers
+- call wrappers that can annotate and nullify
+- active runtime site metadata
+- stored-shape attribution
+- backend compatibility metadata
 
-It is related because inactive container sites affect the active graph, but it
-is not itself the mount-dependency graph problem.
+Then a fuzz harness can:
 
-## Proposed attribution model
-
-The analysis should enrich the existing slot/context graph with attribution
-records rather than constructing an entirely separate graph.
-
-The first useful additions are:
-
-```python
-@dataclass(frozen=True, slots=True)
-class ActiveMountEnv:
-    available_native_mounts: tuple[object, ...]
-    advertised_mounts: tuple[object, ...]
-    default_advertised_mount: object | None
-
-
-@dataclass(frozen=True, slots=True)
-class ActiveSiteAttribution:
-    runtime_site_id: RuntimeSiteId
-    slot_id_path: tuple[SlotId, ...]
-    store_usages: tuple[StoreUsageInstance, ...]
-    selected_mount: object | None
-    active_advertisements: tuple[object, ...]
-    emitted_type: str | None
-    emitted_object_identity: object | None
-
-
-@dataclass(frozen=True, slots=True)
-class MountDependencyEdge:
-    source_site_id: RuntimeSiteId
-    affected_site_id: RuntimeSiteId
-    reason: str
-```
-
-This is only a sketch, but it captures the actual requirement:
-
-- what slot/context node this is
-- which stored-shape inputs fed it
-- which mount/advert choices were active there
-- what it emitted
-- what downstream active sites depend on it
-
-### Important consequence
-
-The central instrumentation target is:
-
-- mapping `use_stored(KEY)` to `slot_id_path`
-
-Once we have that, the slot graph plus emitted/mount attribution becomes much
-more useful:
-
-- changing a store entry tells us which realized subtrees are driven by it
-- changing a mount on one attributed site tells us which downstream sites are at
-  risk
-- rerender-vs-fresh mismatches can be explained in terms of actual active
-  dependencies, not only visual tree diffs
+1. build one concrete external shape state
+2. run the authored shape
+3. capture:
+   - slot/context graph
+   - `SlotIdPath`
+   - store-key attribution
+   - helper metadata
+   - selected mount / active advertisements / emitted type
+4. mutate one mount/helper/store choice
+5. rerender incrementally
+6. render fresh
+7. compare results
 
 ## What the graph must answer
 
 Given a change at an active site `X`, the graph should make it possible to ask:
 
-1. Which downstream active sites depend on `X`'s selected mount or advert state?
+1. Which downstream active sites depend on `X`?
 2. Which of those sites have current emitted objects that are no longer valid?
 3. Is the incompatibility due to:
    - mount-name mismatch
    - selector/value mismatch
    - accepted-child-type mismatch
    - advert/default routing change
+   - helper-provided nullification / arg rewrite
 4. What repair choices exist?
    - keep the child and choose a different mount
    - keep the mount and change the child type
    - drop or replace a subtree
 
-That is the core value of the dynamic analysis.
-
-## Relationship to backend metadata
-
-Runtime analysis does not replace backend compatibility metadata.
-
-The split should be:
-
-- runtime analysis tells us:
-  - which active sites exist
-  - which mount was selected
-  - which emitted type is currently present
-  - which sites depend on which upstream choices
-
-- backend metadata tells us:
-  - which emitted types are compatible with which mount points
-
-So compatibility is determined by combining:
-
-- the active graph
-- backend compatibility rules
-
-## Relationship to fuzzing
-
-This is enough to drive the fuzz system.
-
-The fuzz harness can:
-
-1. build one concrete external state
-2. run the authored shape
-3. capture:
-   - slot/context graph
-   - store-key-to-slot-path attribution
-   - emitted-node / selected-mount / advert attribution
-4. mutate one mount/advert or one structural choice
-5. use the attributed slot graph to understand which active sites are affected
-6. rerender incrementally
-7. render fresh
-8. compare results
-
-The active graph is then used for:
-
-- legality checks
-- choosing meaningful mutations
-- explaining failures
-- reducing “why did this subtree move?” debugging time
-
 ## First implementation slice
 
 The smallest useful first step is:
 
-1. instrument `use_stored(KEY)` so runtime analysis records:
+1. add `component(...)` and `slotted(...)` intrinsic markers
+2. add `PyrolyzeWrap` + `ResolvedPyrolyzeCall`
+3. add `RuntimeSiteMetadata`
+4. add standard `SlotIdPath`
+5. instrument `use_stored(KEY)` so runtime records:
    - `KEY`
-   - current `slot_id_path`
-2. record, for active runtime sites:
-   - selected mount
-   - active advertisements
-   - emitted object/type identity
-3. tie those records back onto the existing slot/context graph
-4. use the attributed slot graph in one first mount-aware fuzz harness
+   - `SlotIdPath`
+6. expose attached metadata and `SlotIdPath` through the visitor graph
 
 That is enough to prove the direction before designing richer dependency-edge
-types.
+types or specialized fuzz wrappers.
