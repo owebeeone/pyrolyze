@@ -4,6 +4,8 @@ from dataclasses import dataclass
 import inspect
 from typing import Any, Callable, cast
 
+from pyrolyze.api import resolve_intrinsic_slotted_cast_call
+
 from .slot_call_semantics import (
     SlotCallBinding,
     SlotCallBindingHost,
@@ -112,6 +114,7 @@ def prepare_slot_call(
 
     raw_args = tuple(value for value, _ in normalized_args)
     raw_kwargs = {key: value for key, (value, _) in normalized_kwargs.items()}
+    raw_func, raw_args, raw_kwargs = resolve_intrinsic_slotted_cast_call(raw_func, raw_args, raw_kwargs)
     kwargs_items = tuple(sorted(raw_kwargs.items()))
     schema = (len(raw_args), tuple(sorted(raw_kwargs)))
     input_dirty = any(dirty for _, dirty in normalized_args) or any(dirty for _, dirty in normalized_kwargs.values())

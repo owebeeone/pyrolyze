@@ -12,6 +12,7 @@ from .backends.model import UiInterface
 
 T = TypeVar("T")
 P = ParamSpec("P")
+R = TypeVar("R")
 
 # This module is the author-facing source contract that examples and transformed
 # source import from; it is intentionally separate from runtime implementation.
@@ -68,6 +69,9 @@ class ComponentRef(Protocol[P]):
     _pyrolyze_meta: ComponentMetadata[P]
 
     def __call__(self, *args: P.args, **kwargs: P.kwargs) -> None: ...
+
+
+_PYROLYZE_INTRINSIC_CAST = "_pyrolyze_intrinsic_cast"
 
 
 @dataclass(frozen=True, slots=True)
@@ -183,6 +187,49 @@ def pyrolyze_intrinsic_ref(fn: Callable[P, None]) -> ComponentRef[P]:
     return cast(ComponentRef[P], fn)
 
 
+def pyrolyze_intrinsic_component_cast(fn: Callable[..., T]) -> Callable[..., T]:
+    setattr(fn, _PYROLYZE_INTRINSIC_CAST, True)
+    return pyrolyze_intrinsic_ref(fn)
+
+
+def pyrolyze_intrinsic_slotted_cast(fn: Callable[..., T]) -> Callable[..., T]:
+    setattr(fn, _PYROLYZE_INTRINSIC_CAST, True)
+    setattr(fn, "_pyrolyze_slotted", True)
+    return fn
+
+
+def _resolve_intrinsic_cast_call(
+    func: Any,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> tuple[Any | None, tuple[Any, ...], dict[str, Any]]:
+    current_func = func
+    current_args = args
+    current_kwargs = dict(kwargs)
+    while getattr(current_func, _PYROLYZE_INTRINSIC_CAST, False):
+        if not current_args:
+            return None, (), current_kwargs
+        current_func = current_args[0]
+        current_args = tuple(current_args[1:])
+    return current_func, current_args, current_kwargs
+
+
+def resolve_intrinsic_component_cast_call(
+    func: Any,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> tuple[Any | None, tuple[Any, ...], dict[str, Any]]:
+    return _resolve_intrinsic_cast_call(func, args, kwargs)
+
+
+def resolve_intrinsic_slotted_cast_call(
+    func: Any,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> tuple[Any | None, tuple[Any, ...], dict[str, Any]]:
+    return _resolve_intrinsic_cast_call(func, args, kwargs)
+
+
 @pyrolyze_intrinsic_ref
 def mount(
     *selectors: SlotSelector,
@@ -194,6 +241,22 @@ def mount(
             "mount() may only be used inside a transformed @pyrolyze function"
         )
     return runtime.open_directive(*selectors)
+
+
+@pyrolyze_intrinsic_component_cast
+def component(func: Callable[P, R] | None, *args: P.args, **kwargs: P.kwargs) -> R:
+    _ = (func, args, kwargs)
+    raise CallFromNonPyrolyzeContext(
+        "component() may only be used inside a transformed @pyrolyze function"
+    )
+
+
+@pyrolyze_intrinsic_slotted_cast
+def slotted(func: Callable[P, R] | None, *args: P.args, **kwargs: P.kwargs) -> R:
+    _ = (func, args, kwargs)
+    raise CallFromNonPyrolyzeContext(
+        "slotted() may only be used inside a transformed @pyrolyze function"
+    )
 
 
 class _AppContextOverrideSpecialForm:
@@ -331,6 +394,7 @@ __all__ = [
     "advertise_mount",
     "app_context_override",
     "call_native",
+    "component",
     "ComponentMetadata",
     "ComponentRef",
     "KeyedIterable",
@@ -355,8 +419,13 @@ __all__ = [
     "no_emit",
     "pyrolyze",
     "pyrolyze_component_ref",
+    "pyrolyze_intrinsic_component_cast",
+    "pyrolyze_intrinsic_slotted_cast",
     "pyrolyze_slotted",
     "reactive_component",
+    "resolve_intrinsic_component_cast_call",
+    "resolve_intrinsic_slotted_cast_call",
+    "slotted",
     "ui_interface",
     "use_app_context",
     "use_effect",

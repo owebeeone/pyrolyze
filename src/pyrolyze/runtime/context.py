@@ -53,7 +53,9 @@ from .slot_call_core import (
     runtime_context_param_name,
     should_invoke_slot_call,
 )
+from .pyro_call import RuntimeSiteMetadata, resolve_runtime_pyro_call
 from .trace import TraceChannel, emit_trace, trace_enabled
+from .slot_identity import ModuleId, ModuleRegistry, SlotId, SlotIdPath, module_registry
 
 
 T = TypeVar("T")
@@ -101,53 +103,6 @@ class _CommittedUiEntry:
     generation_id: int
     element: UIElement | MountDirective
 
-
-@dataclass(frozen=True, slots=True)
-class ModuleId:
-    canonical_name: str
-
-
-@dataclass(slots=True)
-class ModuleRegistry:
-    _modules: dict[str, ModuleId] = field(default_factory=dict)
-
-    def module_id(self, canonical_name: str) -> ModuleId:
-        module_id = self._modules.get(canonical_name)
-        if module_id is None:
-            module_id = ModuleId(canonical_name=canonical_name)
-            self._modules[canonical_name] = module_id
-        return module_id
-
-
-module_registry = ModuleRegistry()
-
-
-@dataclass(frozen=True, slots=True)
-class SlotId:
-    module_id: ModuleId
-    slot_index: int
-    key_path: tuple[Any, ...] = ()
-    line_no: int | None = field(default=None, compare=False, hash=False)
-    is_top_level: bool = field(default=False, compare=False, hash=False)
-
-
-@dataclass(frozen=True, slots=True)
-class SlotIdPath:
-    items: tuple[SlotId, ...] = ()
-
-    @classmethod
-    def empty(cls) -> "SlotIdPath":
-        return cls(())
-
-    def child(self, slot_id: SlotId | None) -> "SlotIdPath":
-        if slot_id is None:
-            return self
-        return SlotIdPath((*self.items, slot_id))
-
-    def as_key(self) -> tuple[SlotId, ...]:
-        return self.items
-
-
 class SlotOwnershipError(RuntimeError):
     """Raised when a slot is visited through a context that does not own it."""
 
@@ -180,6 +135,36 @@ def _unwrap(value: _SlotCallResult[Any] | Any) -> tuple[Any, bool]:
     if isinstance(value, _SlotCallResult):
         return value.value, _dirty_state_truthy(value.dirty)
     return value, False
+
+
+def _slot_site_path(node: object) -> SlotIdPath:
+    slot_id = getattr(node, "slot_id", None)
+    if not isinstance(slot_id, SlotId):
+        return SlotIdPath.empty()
+    parent = getattr(node, "parent", None)
+    if isinstance(parent, ContextBase):
+        parent_path = _native_emission_slot_identity(parent)
+        if parent_path is not None:
+            return parent_path.child(slot_id)
+    return SlotIdPath((slot_id,))
+
+
+def _resolve_runtime_site_call(
+    node: object,
+    func: Any,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> tuple[Any | None, tuple[Any, ...], dict[str, Any], tuple[RuntimeSiteMetadata[Any], ...]]:
+    raw_func, _ = _unwrap(func)
+    raw_args = tuple(_unwrap(arg)[0] for arg in args)
+    raw_kwargs = {key: _unwrap(value)[0] for key, value in kwargs.items()}
+    resolved = resolve_runtime_pyro_call(
+        raw_func,
+        raw_args,
+        raw_kwargs,
+        slot_path=_slot_site_path(node),
+    )
+    return resolved.func, tuple(resolved.args), dict(resolved.kwargs), tuple(resolved.metadata)
 
 
 def _unwrap_native_value(value: Any) -> Any:
@@ -548,28 +533,32 @@ class ContextBase(SlotExprLiteralContext):
         _pyr_args_dirty: tuple[Any, ...] | None = None,
         _pyr_kwargs_dirty: dict[str, Any] | None = None,
         **kwargs: Any,
-    ) -> _ContainerCallHandle:
+    ) -> _ContainerCallHandle | None:
         self._require_active_scope()
-        raw_container_fn, _ = _unwrap(container_fn)
+        slot = self._ensure_slot(slot_id, ContainerSlotContext)
+        raw_container_fn, raw_args, raw_kwargs, site_metadata = _resolve_runtime_site_call(
+            slot,
+            container_fn,
+            args,
+            kwargs,
+        )
+        slot.site_metadata = site_metadata
+        if raw_container_fn is None:
+            return None
         mount_context_param = _container_runtime_context_param_name(cast(Callable[..., Any], raw_container_fn))
         if mount_context_param is not None:
-            raw_args = tuple(_unwrap(arg)[0] for arg in args)
-            raw_kwargs = {key: _unwrap(value)[0] for key, value in kwargs.items()}
-            slot = self._ensure_slot(slot_id, DirectiveSlotContext)
+            directive_slot = self._ensure_slot(slot_id, DirectiveSlotContext)
             return _MountContainerCallHandle(
-                slot=slot,
+                slot=directive_slot,
                 container_fn=cast(Callable[..., Any], raw_container_fn),
                 args=raw_args,
                 kwargs=raw_kwargs,
                 context_param=mount_context_param,
             )
 
-        slot = self._ensure_slot(slot_id, ContainerSlotContext)
         metadata, bound_receiver = _component_call_key(raw_container_fn)
         runtime_func = _resolve_runtime_component_func(getattr(metadata, "_func", None))
         if metadata is not None and runtime_func is not None:
-            raw_args = tuple(_unwrap(arg)[0] for arg in args)
-            raw_kwargs = {key: _unwrap(value)[0] for key, value in kwargs.items()}
             return _PyrolyzeContainerCallHandle(
                 slot=slot,
                 runtime_func=runtime_func,
@@ -586,8 +575,6 @@ class ContextBase(SlotExprLiteralContext):
             )
         native_context_param = _native_context_param_name(cast(Callable[..., Any], raw_container_fn))
         if native_context_param is not None:
-            raw_args = tuple(_unwrap(arg)[0] for arg in args)
-            raw_kwargs = {key: _unwrap(value)[0] for key, value in kwargs.items()}
             return _NativeContainerCallHandle(
                 slot=slot,
                 container_fn=cast(Callable[..., Any], raw_container_fn),
@@ -595,8 +582,6 @@ class ContextBase(SlotExprLiteralContext):
                 kwargs=raw_kwargs,
                 context_param=native_context_param,
             )
-        raw_args = tuple(_unwrap(arg)[0] for arg in args)
-        raw_kwargs = {key: _unwrap(value)[0] for key, value in kwargs.items()}
         return _ContainerCallHandle(
             slot=slot,
             container_fn=cast(Callable[..., Any], raw_container_fn),
@@ -647,10 +632,19 @@ class ContextBase(SlotExprLiteralContext):
     ) -> None:
         self._require_active_scope()
         slot = self._ensure_slot(slot_id, ComponentCallSlotContext)
-        slot.invoke(
+        raw_component, raw_args, raw_kwargs, site_metadata = _resolve_runtime_site_call(
+            slot,
             component,
             args,
             kwargs,
+        )
+        slot.site_metadata = site_metadata
+        if raw_component is None:
+            return
+        slot.invoke(
+            raw_component,
+            raw_args,
+            raw_kwargs,
             dirty_state=dirty_state,
             _pyr_param_names=_pyr_param_names,
             _pyr_args_dirty=_pyr_args_dirty,
@@ -1216,6 +1210,7 @@ class SlotCallSlotContext(RerunnableSlotContext):
     last_args: tuple[Any, ...] = ()
     last_kwargs: tuple[tuple[str, Any], ...] = ()
     binding: SlotCallBinding | None = None
+    site_metadata: tuple[RuntimeSiteMetadata[Any], ...] = ()
     _runtime_locals: dict[str, Any] = field(default_factory=dict)
 
     def evaluate(
@@ -1226,7 +1221,16 @@ class SlotCallSlotContext(RerunnableSlotContext):
         *,
         result_shape: object | None = None,
     ) -> _SlotCallResult[T]:
-        prepared = prepare_slot_call(func, args, kwargs, unwrap=_unwrap)
+        resolved_func, resolved_args, resolved_kwargs, site_metadata = _resolve_runtime_site_call(
+            self,
+            func,
+            args,
+            kwargs,
+        )
+        self.site_metadata = site_metadata
+        if resolved_func is None:
+            raise RuntimeError("slot-call resolved to no callable target")
+        prepared = prepare_slot_call(resolved_func, resolved_args, resolved_kwargs, unwrap=_unwrap)
         should_invoke = should_invoke_slot_call(
             SlotCallStateSnapshot(
                 invoke_dirty=self.invoke_dirty,
@@ -1587,6 +1591,7 @@ class ContainerSlotContext(RerunnableSlotContext):
     expects_native_root: bool = False
     committed_native_root: bool = False
     _pass_committed_native_root: bool = False
+    site_metadata: tuple[RuntimeSiteMetadata[Any], ...] = ()
 
 
 @dataclass(slots=True)
@@ -1606,6 +1611,7 @@ class ComponentCallSlotContext(RerunnableSlotContext):
     packed_kwargs: bool = False
     packed_kwarg_param_names: tuple[str, ...] = ()
     param_names: tuple[str, ...] = ()
+    site_metadata: tuple[RuntimeSiteMetadata[Any], ...] = ()
     _pass_owned_event_handler_order: tuple[SlotId, ...] = ()
 
     def invoke(

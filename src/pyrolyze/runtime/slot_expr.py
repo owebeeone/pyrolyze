@@ -30,6 +30,8 @@ from .slot_call_semantics import (
     UseEffectAsyncRequest,
     UseEffectRequest,
 )
+from .pyro_call import RuntimeSiteMetadata, resolve_runtime_pyro_call
+from .slot_identity import SlotIdPath
 
 if TYPE_CHECKING:
     from .context import SlotRuntimeContext
@@ -590,11 +592,19 @@ class SlotCallEvaluator:
 
         args_carrier = self._invoke_builder(self.args_lambda)
         dirt_carrier = self._invoke_builder(self.dirt_args_lambda)
-        last_args = CallSiteArgs.capture(*args_carrier.args, **args_carrier.kwds)
         func = self._func_provider.get_func(self.expr)
         func_dirty = self._is_dirty(self._func_provider.get_dirty(self.expr))
+        resolved_call = resolve_runtime_pyro_call(
+            func,
+            args_carrier.args,
+            args_carrier.kwds,
+            slot_path=SlotIdPath((self.slot_id,)),
+        )
+        if resolved_call.func is None:
+            raise RuntimeError("slot_expr call resolved to no callable target")
+        last_args = CallSiteArgs.capture(*resolved_call.args, **dict(resolved_call.kwargs))
         prepared = prepare_slot_call(
-            _PreparedDirtyValue(func, dirty=func_dirty),
+            _PreparedDirtyValue(resolved_call.func, dirty=func_dirty),
             tuple(
                 _PreparedDirtyValue(
                     value,
@@ -602,11 +612,11 @@ class SlotCallEvaluator:
                         dirt_carrier.args[index] if index < len(dirt_carrier.args) else False
                     ),
                 )
-                for index, value in enumerate(args_carrier.args)
+                for index, value in enumerate(resolved_call.args)
             ),
             {
                 key: _PreparedDirtyValue(raw_value, dirty=self._is_dirty(dirt_carrier.kwds.get(key, False)))
-                for key, raw_value in args_carrier.kwds.items()
+                for key, raw_value in resolved_call.kwargs.items()
             },
             unwrap=lambda value: (value.value, value.dirty) if isinstance(value, _PreparedDirtyValue) else (value, False),
         )
@@ -654,6 +664,7 @@ class SlotCallEvaluator:
                 binding=next_binding,
                 function_identity=commit_result.function_identity,
                 last_args=last_args,
+                site_metadata=resolved_call.metadata,
                 invoke_state=self._next_invoke_state,
             )
         else:
@@ -792,6 +803,7 @@ class SlotCallEvaluator:
         binding: _SlotExprCallSiteBinding | None,
         function_identity: Any,
         last_args: CallSiteArgs,
+        site_metadata: tuple[RuntimeSiteMetadata[Any], ...] = (),
         invoke_state: CallSiteInvokeState,
     ) -> CallSiteContext:
         if self._current_context is None:
@@ -799,24 +811,28 @@ class SlotCallEvaluator:
                 binding=binding,
                 function_identity=function_identity,
                 last_args=last_args,
+                site_metadata=site_metadata,
                 invoke_state_value=invoke_state,
             )
         if (
             self._current_context.binding is binding
             and self._current_context.function_identity is function_identity
             and self._current_context.last_args == last_args
+            and self._current_context.site_metadata == site_metadata
         ):
             next_context = self._current_context
         elif self._current_context.binding is binding:
             next_context = self._current_context.replace(
                 function_identity=function_identity,
                 last_args=last_args,
+                site_metadata=site_metadata,
             )
         else:
             next_context = self._current_context.replace(
                 binding=binding,
                 function_identity=function_identity,
                 last_args=last_args,
+                site_metadata=site_metadata,
             )
         next_context.invoke_state.value = invoke_state
         return next_context

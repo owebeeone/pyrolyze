@@ -5,6 +5,8 @@ from dataclasses import InitVar, dataclass, field, replace
 from enum import IntEnum
 from typing import Any, Generic, Hashable, Iterable, Mapping, Self, TypeVar
 
+from .pyro_call import RuntimeSiteMetadata
+
 
 class _UNSET_TYPE:
     pass
@@ -87,6 +89,7 @@ class CallSiteContext(ABC):
     binding: CallSiteBindingBase | None
     function_identity: Any
     last_args: CallSiteArgs
+    site_metadata: tuple[RuntimeSiteMetadata[Any], ...] = ()
     invoke_state_value: InitVar[CallSiteInvokeState] = CallSiteInvokeState.NOT_SET
     invoke_state: _MutableState[CallSiteInvokeState] = field(
         default_factory=lambda: _MutableState(CallSiteInvokeState.NOT_SET),

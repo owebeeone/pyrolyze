@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Any, Protocol
 
 from pyrolyze.api import UIElement
+from pyrolyze.runtime.pyro_call import RuntimeSiteMetadata
 from pyrolyze.runtime.context import (
     ComponentCallSlotContext,
     ContainerSlotContext,
@@ -22,6 +23,7 @@ class ContextVisitRecord:
     kind: str
     slot_id: SlotId | None
     generation_id: int
+    site_metadata: tuple["CapturedSiteMetadata", ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,10 +51,17 @@ class CapturedUiElement:
 
 
 @dataclass(frozen=True, slots=True)
+class CapturedSiteMetadata:
+    slot_id: SlotId
+    metadata: tuple[RuntimeSiteMetadata[Any], ...]
+
+
+@dataclass(frozen=True, slots=True)
 class CapturedContext:
     kind: str
     slot_id: SlotId | None
     generation_id: int
+    site_metadata: tuple[CapturedSiteMetadata, ...]
     children: tuple["CapturedContext", ...]
     ui: tuple[CapturedUiElement, ...]
 
@@ -117,6 +126,7 @@ class ContextGraphCaptureListener:
             kind=context.kind,
             slot_id=context.slot_id,
             generation_id=context.generation_id,
+            site_metadata=context.site_metadata,
             children=tuple(current.children),
             ui=tuple(current.ui),
         )
@@ -153,11 +163,12 @@ def capture_context_graph(context: RenderContext) -> CapturedContextGraph:
 def walk_context_graph(context: RenderContext, listener: ContextGraphListener) -> None:
     _walk_context_node(
         _LogicalContext(
-            kind=context.context_kind(),
-            slot_id=context.current_slot_id(),
-            generation_id=context.current_generation_id(),
-            own_ui=_own_ui_records(context),
-            children=tuple(_logical_children(context)),
+        kind=context.context_kind(),
+        slot_id=context.current_slot_id(),
+        generation_id=context.current_generation_id(),
+        site_metadata=_context_site_metadata_records(context),
+        own_ui=_own_ui_records(context),
+        children=tuple(_logical_children(context)),
         ),
         listener,
         render_owner_slot_id=None,
@@ -221,6 +232,7 @@ class _LogicalContext:
     kind: str
     slot_id: SlotId | None
     generation_id: int
+    site_metadata: tuple[CapturedSiteMetadata, ...]
     own_ui: tuple[CapturedUiElement, ...]
     children: tuple["_LogicalContext", ...]
 
@@ -235,6 +247,7 @@ def _walk_context_node(
         kind=context.kind,
         slot_id=context.slot_id,
         generation_id=context.generation_id,
+        site_metadata=context.site_metadata,
     )
     listener.open_context(record)
     for element in context.own_ui:
@@ -265,6 +278,7 @@ def _logical_children(context: ContextBase) -> list[_LogicalContext]:
                     kind=child.context_kind(),
                     slot_id=child.current_slot_id(),
                     generation_id=child.current_generation_id(),
+                    site_metadata=_context_site_metadata_records(child),
                     own_ui=_own_ui_records(child.child_context),
                     children=tuple(_logical_children(child.child_context)),
                 )
@@ -276,6 +290,7 @@ def _logical_children(context: ContextBase) -> list[_LogicalContext]:
                     kind=child.context_kind(),
                     slot_id=child.current_slot_id(),
                     generation_id=child.current_generation_id(),
+                    site_metadata=_context_site_metadata_records(child),
                     own_ui=_own_ui_records(child),
                     children=tuple(_logical_children(child)),
                 )
@@ -287,6 +302,7 @@ def _logical_children(context: ContextBase) -> list[_LogicalContext]:
                     kind=child.context_kind(),
                     slot_id=child.current_slot_id(),
                     generation_id=child.current_generation_id(),
+                    site_metadata=_context_site_metadata_records(child),
                     own_ui=(),
                     children=(),
                 )
@@ -345,13 +361,32 @@ def _flatten_ui(root: CapturedContext) -> dict[tuple[SlotIdPath, int], CapturedU
 
 
 def _context_identity(context: CapturedContext) -> tuple[str, SlotId | None, int]:
-    return (context.kind, context.slot_id, context.generation_id)
+    return (context.kind, context.slot_id, context.generation_id, context.site_metadata)
+
+
+def _context_site_metadata_records(context: ContextBase | SlotContext) -> tuple[CapturedSiteMetadata, ...]:
+    captured: list[CapturedSiteMetadata] = []
+    slot_id = getattr(context, "slot_id", None)
+    site_metadata = getattr(context, "site_metadata", ())
+    if isinstance(slot_id, SlotId) and site_metadata:
+        captured.append(CapturedSiteMetadata(slot_id=slot_id, metadata=tuple(site_metadata)))
+
+    call_site_context_manager = getattr(context, "call_site_context_manager", None)
+    if call_site_context_manager is not None:
+        for site_slot_id, call_site_context in call_site_context_manager._current.items():
+            if not isinstance(site_slot_id, SlotId):
+                continue
+            metadata = getattr(call_site_context, "site_metadata", ())
+            if metadata:
+                captured.append(CapturedSiteMetadata(slot_id=site_slot_id, metadata=tuple(metadata)))
+    return tuple(captured)
 
 
 __all__ = [
     "CapturedContext",
     "CapturedContextAtPath",
     "CapturedContextGraph",
+    "CapturedSiteMetadata",
     "CapturedUiElement",
     "CapturedUiElementAtPath",
     "ContextChange",
