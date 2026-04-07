@@ -1,5 +1,34 @@
 from __future__ import annotations
 
+"""Paired mutable/frozen dataclass helpers.
+
+This module supports two symmetric pairing styles:
+
+- `freezable_dataclass` + `frozen_dataclass`
+  Use when the mutable class is the canonical authored definition and the
+  frozen peer should be generated from it. Instances convert with
+  `to_frozen()` and `to_mutable()`.
+
+- `thawable_dataclass` + `thawed_dataclass`
+  Use when the frozen class is the canonical authored definition and the
+  mutable peer should be generated from it. Instances convert with
+  `to_thawed()` and `to_frozen()`.
+
+In both directions, the generated peer is a distinct dataclass type rather
+than a subclass of the source type. That keeps mutability explicit in the type
+system and allows the frozen peer to use real `dataclass(frozen=True)`
+semantics.
+
+Optional deep conversion can also:
+
+- convert nested paired objects by calling their conversion methods
+- normalize `list[...] <-> tuple[...]` across mutable/frozen boundaries
+
+Annotation-driven deep conversion depends on how postponed annotations are
+resolved. See `HintResolutionMode` for the tradeoffs between lexical accuracy
+and portability.
+"""
+
 import sys
 import types
 import typing
@@ -151,10 +180,11 @@ def _transform_value(
         return target_collection(items)
 
     if freeze_params:
-        method_name = "to_frozen" if to_frozen else "to_mutable"
-        method = getattr(value, method_name, None)
-        if callable(method):
-            return method()
+        method_names = ("to_frozen",) if to_frozen else ("to_mutable", "to_thawed")
+        for method_name in method_names:
+            method = getattr(value, method_name, None)
+            if callable(method):
+                return method()
 
     return value
 
@@ -344,8 +374,151 @@ def frozen_dataclass(
     return decorate
 
 
+def thawable_dataclass(
+    *,
+    thawed_type: str | type[Any],
+    slots: bool = True,
+    freeze_params: bool = True,
+    list_params: bool = True,
+    # Default to STRICT_FRAME because lexical-scope resolution is the least
+    # surprising behavior for local classes and postponed annotations. More
+    # portable modes are opt-in because they may silently change semantics.
+    hint_resolution: HintResolutionMode = HintResolutionMode.STRICT_FRAME,
+    **dataclass_kwargs: Any,
+) -> Callable[[type[Any]], type[Any]]:
+    def decorate(cls: type[Any]) -> type[Any]:
+        wrapped = dataclass(slots=slots, frozen=True, **dataclass_kwargs)(cls)
+        setattr(wrapped, "_paired_type", thawed_type)
+        setattr(wrapped, "_freeze_params", freeze_params)
+        setattr(wrapped, "_list_params", list_params)
+        setattr(wrapped, "_hint_resolution", hint_resolution)
+        globalns, localns = _hint_namespaces(wrapped, mode=hint_resolution)
+        _cache_resolved_hints(
+            wrapped,
+            globalns=globalns,
+            localns=localns,
+        )
+
+        def to_thawed(self):
+            thawed_cls = _resolve_paired_type(type(self))
+            _ensure_cached_hints(type(self))
+            resolved_hints = _get_resolved_hints(type(self))
+            values: dict[str, Any] = {}
+            for item in fields(self):
+                if not item.init:
+                    continue
+                value = getattr(self, item.name)
+                if freeze_params or list_params:
+                    value = _transform_value(
+                        value,
+                        resolved_hints.get(item.name, item.type),
+                        to_frozen=False,
+                        list_params=list_params,
+                        freeze_params=freeze_params,
+                    )
+                values[item.name] = value
+            return thawed_cls(**values)
+
+        setattr(wrapped, "to_thawed", to_thawed)
+        return wrapped
+
+    return decorate
+
+
+def thawed_dataclass(
+    *,
+    frozen_type: type[Any],
+    slots: bool = True,
+    # Match the frozen-side default: fail explicitly rather than silently
+    # degrading local annotation resolution on runtimes without frame support.
+    hint_resolution: HintResolutionMode = HintResolutionMode.STRICT_FRAME,
+    **dataclass_kwargs: Any,
+) -> Callable[[type[Any]], type[Any]]:
+    def decorate(cls: type[Any]) -> type[Any]:
+        if not hasattr(frozen_type, "__dataclass_fields__"):
+            raise TypeError(f"frozen_type {frozen_type.__name__} must be a dataclass")
+
+        frozen_bases = _direct_dataclass_bases(frozen_type)
+        thawed_bases = tuple(_resolve_paired_type(base) for base in frozen_bases)
+        inherited_field_names = {
+            item.name
+            for base in frozen_bases
+            for item in fields(base)
+        }
+        thawed_fields = tuple(
+            _dataclass_field_spec(item)
+            for item in fields(frozen_type)
+            if item.name not in inherited_field_names
+        )
+        namespace = {
+            key: value
+            for key, value in cls.__dict__.items()
+            if key not in {
+                "__dict__",
+                "__weakref__",
+                "__doc__",
+                "__annotations__",
+                "__dataclass_fields__",
+                "__dataclass_params__",
+                "__match_args__",
+                "__slots__",
+            }
+        }
+
+        wrapped = make_dataclass(
+            cls.__name__,
+            thawed_fields,
+            bases=thawed_bases,
+            namespace=namespace,
+            frozen=False,
+            slots=slots,
+            **dataclass_kwargs,
+        )
+
+        freeze_params = getattr(frozen_type, "_freeze_params", False)
+        list_params = getattr(frozen_type, "_list_params", False)
+        setattr(wrapped, "_hint_resolution", hint_resolution)
+        globalns, localns = _hint_namespaces(wrapped, mode=hint_resolution)
+
+        def to_frozen(self):
+            _ensure_cached_hints(frozen_type)
+            resolved_hints = _get_resolved_hints(frozen_type)
+            values: dict[str, Any] = {}
+            for item in fields(self):
+                if not item.init:
+                    continue
+                value = getattr(self, item.name)
+                if freeze_params or list_params:
+                    value = _transform_value(
+                        value,
+                        resolved_hints.get(item.name, item.type),
+                        to_frozen=True,
+                        list_params=list_params,
+                        freeze_params=freeze_params,
+                    )
+                values[item.name] = value
+            return frozen_type(**values)
+
+        setattr(wrapped, "to_frozen", to_frozen)
+        setattr(wrapped, "_paired_type", frozen_type)
+        setattr(frozen_type, "_paired_type", wrapped)
+        wrapped.__module__ = cls.__module__
+        wrapped.__qualname__ = cls.__qualname__
+        wrapped.__doc__ = cls.__doc__
+        _cache_resolved_hints(
+            wrapped,
+            globalns=globalns,
+            localns=localns,
+        )
+        return wrapped
+
+    return decorate
+
+
 __all__ = [
     "HintResolutionMode",
     "freezable_dataclass",
     "frozen_dataclass",
+    "thawable_dataclass",
+    "thawed_dataclass",
 ]

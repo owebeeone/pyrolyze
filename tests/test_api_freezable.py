@@ -3,7 +3,13 @@ from __future__ import annotations
 from dataclasses import FrozenInstanceError
 import pytest
 
-from pyrolyze.freezable import HintResolutionMode, freezable_dataclass, frozen_dataclass
+from pyrolyze.freezable import (
+    HintResolutionMode,
+    freezable_dataclass,
+    frozen_dataclass,
+    thawable_dataclass,
+    thawed_dataclass,
+)
 
 
 def test_freezable_and_frozen_dataclass_round_trip_with_frozen_post_init() -> None:
@@ -246,3 +252,39 @@ def test_hint_resolution_mode_frame_with_fallback_resolves_local_forward_refs() 
     frozen = Bag(items=[Item(1)]).to_frozen()
     assert isinstance(frozen.items, tuple)
     assert isinstance(frozen.items[0], FrozenItem)
+
+
+def test_thawable_and_thawed_dataclass_round_trip_symmetrically() -> None:
+    @thawable_dataclass(thawed_type="ThawedItem")
+    class FrozenItem:
+        value: int
+
+    @thawed_dataclass(frozen_type=FrozenItem)
+    class ThawedItem:
+        pass
+
+    @thawable_dataclass(thawed_type="ThawedBag")
+    class FrozenBag:
+        items: tuple[FrozenItem, ...]
+        labels: tuple[str, ...]
+
+    @thawed_dataclass(frozen_type=FrozenBag)
+    class ThawedBag:
+        pass
+
+    thawed = FrozenBag(items=(FrozenItem(1), FrozenItem(2)), labels=("a", "b")).to_thawed()
+
+    assert isinstance(thawed, ThawedBag)
+    assert isinstance(thawed.items, list)
+    assert isinstance(thawed.labels, list)
+    assert all(isinstance(item, ThawedItem) for item in thawed.items)
+    assert [item.value for item in thawed.items] == [1, 2]
+    assert thawed.labels == ["a", "b"]
+
+    frozen = thawed.to_frozen()
+    assert isinstance(frozen, FrozenBag)
+    assert isinstance(frozen.items, tuple)
+    assert isinstance(frozen.labels, tuple)
+    assert all(isinstance(item, FrozenItem) for item in frozen.items)
+    assert tuple(item.value for item in frozen.items) == (1, 2)
+    assert frozen.labels == ("a", "b")
