@@ -31,7 +31,7 @@ context class via overrides such as `before_commit(...)`.
 import sys
 import types
 from collections.abc import Iterator, Mapping, MutableMapping
-from dataclasses import MISSING, field
+from dataclasses import MISSING, dataclass, field
 from typing import Any, Callable, Protocol, get_origin, get_type_hints
 
 from .freezable import (
@@ -48,6 +48,59 @@ class LifecycleBinding(Protocol):
     def accepted(self) -> None: ...
 
     def close(self, *, was_committed: bool) -> None: ...
+
+
+@dataclass(slots=True)
+class LifecycleTransaction:
+    tx_id: int
+    dirty_contexts: dict[int, LifecycleContext] = field(default_factory=dict)
+
+
+class TransactionManager:
+    def __init__(self) -> None:
+        self._next_tx_id = 1
+        self.active_transaction: LifecycleTransaction | None = None
+
+    def begin(self) -> LifecycleTransaction:
+        if self.active_transaction is not None:
+            raise RuntimeError("nested lifecycle transactions are not supported")
+        transaction = LifecycleTransaction(tx_id=self._next_tx_id)
+        self._next_tx_id += 1
+        self.active_transaction = transaction
+        return transaction
+
+    def commit(self) -> int | None:
+        transaction = self.active_transaction
+        if transaction is None:
+            return None
+        for context in list(transaction.dirty_contexts.values()):
+            context._commit_transaction(transaction.tx_id)
+        self.active_transaction = None
+        return transaction.tx_id
+
+    def rollback(self) -> int | None:
+        transaction = self.active_transaction
+        if transaction is None:
+            return None
+        for context in list(transaction.dirty_contexts.values()):
+            context._rollback_transaction(transaction.tx_id)
+        self.active_transaction = None
+        return transaction.tx_id
+
+    def enlist(self, context: LifecycleContext) -> int:
+        transaction = self.active_transaction
+        if transaction is None:
+            raise RuntimeError("no active lifecycle transaction")
+        transaction.dirty_contexts[id(context)] = context
+        return transaction.tx_id
+
+    def drop(self, context: LifecycleContext, tx_id: int | None = None) -> None:
+        transaction = self.active_transaction
+        if transaction is None:
+            return
+        if tx_id is not None and transaction.tx_id != tx_id:
+            return
+        transaction.dirty_contexts.pop(id(context), None)
 
 
 class _ManagedField:
@@ -175,8 +228,10 @@ class LifecycleContext:
         state_type = getattr(type(self), "__state_type__", None)
         if state_type is None:
             raise TypeError("LifecycleContext subclasses must be decorated with @managed_context")
+        self.transaction_manager = values.pop("transaction_manager", None)
         self._current = state_type(**self._normalize_initial_values(values))
         self._working: Any | None = None
+        self._working_tx_id: int | None = None
         self._active = False
         self._closed = False
 
@@ -216,30 +271,22 @@ class LifecycleContext:
             self._active = False
             return self._current
 
-        current = self._current
-        working = self._working
-        self.before_commit(current, working)
-        next_current = working.to_frozen()
-
-        if self._states_equivalent(current, next_current):
-            self._working = None
-            self._active = False
-            return current
-
-        self._accept_commit_bindings(current, next_current)
-        self._current = next_current
-        self._working = None
-        self._active = False
-        self.after_commit(current, next_current)
-        return next_current
+        transaction_manager = self.transaction_manager
+        if transaction_manager is not None and self._working_tx_id is not None:
+            transaction_manager.drop(self, self._working_tx_id)
+        return self._commit_working()
 
     def rollback(self) -> Any:
         if self._closed:
             return self._current
+        transaction_manager = self.transaction_manager
+        if transaction_manager is not None and self._working_tx_id is not None:
+            transaction_manager.drop(self, self._working_tx_id)
         if self._working is not None:
             self._rollback_new_bindings(self._current, self._working)
             self.after_rollback(self._current)
         self._working = None
+        self._working_tx_id = None
         self._active = False
         return self._current
 
@@ -248,8 +295,12 @@ class LifecycleContext:
         if self._closed:
             return
         if self._working is not None:
+            transaction_manager = self.transaction_manager
+            if transaction_manager is not None and self._working_tx_id is not None:
+                transaction_manager.drop(self, self._working_tx_id)
             self._rollback_new_bindings(self._current, self._working)
             self._working = None
+            self._working_tx_id = None
         self.before_close(self._current)
         self._close_state_bindings(self._current, was_committed=True)
         self._active = False
@@ -279,8 +330,45 @@ class LifecycleContext:
         self._require_not_closed()
         if self._working is None:
             self._working = self._current.to_thawed()
+            transaction_manager = self.transaction_manager
+            if transaction_manager is not None and transaction_manager.active_transaction is not None:
+                self._working_tx_id = transaction_manager.enlist(self)
             self._active = True
         return self._working
+
+    def _commit_working(self) -> Any:
+        current = self._current
+        working = self._working
+        if working is None:
+            self._active = False
+            return current
+
+        self.before_commit(current, working)
+        next_current = working.to_frozen()
+
+        if self._states_equivalent(current, next_current):
+            self._working = None
+            self._working_tx_id = None
+            self._active = False
+            return current
+
+        self._accept_commit_bindings(current, next_current)
+        self._current = next_current
+        self._working = None
+        self._working_tx_id = None
+        self._active = False
+        self.after_commit(current, next_current)
+        return next_current
+
+    def _commit_transaction(self, tx_id: int) -> Any:
+        if self._working_tx_id != tx_id:
+            return self._current
+        return self._commit_working()
+
+    def _rollback_transaction(self, tx_id: int) -> Any:
+        if self._working_tx_id != tx_id:
+            return self._current
+        return self.rollback()
 
     def _get_field_value(self, field_name: str) -> Any:
         return getattr(self.view_state, field_name)
@@ -535,7 +623,9 @@ def _build_state_pair(
 
 __all__ = [
     "LifecycleBinding",
+    "LifecycleTransaction",
     "LifecycleContext",
+    "TransactionManager",
     "managed",
     "managed_binding",
     "managed_context",

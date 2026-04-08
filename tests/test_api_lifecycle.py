@@ -4,7 +4,13 @@ from dataclasses import dataclass
 
 import pytest
 
-from pyrolyze.lifecycle import LifecycleContext, managed, managed_binding, managed_context
+from pyrolyze.lifecycle import (
+    LifecycleContext,
+    TransactionManager,
+    managed,
+    managed_binding,
+    managed_context,
+)
 
 
 @dataclass(eq=False, slots=True)
@@ -71,6 +77,17 @@ class ManagedOverrideContext(ManagedRerunnableSlotContext):
             raise ValueError("override key/value arity must match")
         if current.declared_keys and working.declared_keys != current.declared_keys:
             raise ValueError("override keys are fixed after first commit")
+
+
+@managed_context
+class ManagedTrackedContext(LifecycleContext):
+    value: int = managed(default=0)
+
+    def after_commit(self, previous_state: object, current_state: object) -> None:
+        self.events.append(("commit", previous_state.value, current_state.value))
+
+    def after_rollback(self, current_state: object) -> None:
+        self.events.append(("rollback", current_state.value))
 
 
 def test_slot_call_context_binding_and_binding_map_use_commit_and_rollback_lifecycle() -> None:
@@ -207,3 +224,51 @@ def test_override_context_uses_custom_commit_validation_for_fixed_structure() ->
     context.rollback()
     assert context.current_state.declared_keys == ("theme", "locale")
     assert context.current_state.values == ("light", "fr")
+
+
+def test_transaction_manager_commits_only_dirty_contexts() -> None:
+    manager = TransactionManager()
+    left = ManagedTrackedContext(transaction_manager=manager)
+    right = ManagedTrackedContext(transaction_manager=manager)
+    left.events = []
+    right.events = []
+
+    manager.begin()
+    left.value = 10
+    manager.commit()
+
+    assert left.current_state.value == 10
+    assert right.current_state.value == 0
+    assert left.events == [("commit", 0, 10)]
+    assert right.events == []
+    assert manager.active_transaction is None
+
+
+def test_transaction_manager_rolls_back_only_dirty_contexts() -> None:
+    manager = TransactionManager()
+    left = ManagedTrackedContext(transaction_manager=manager)
+    right = ManagedTrackedContext(transaction_manager=manager)
+    left.events = []
+    right.events = []
+
+    manager.begin()
+    left.value = 20
+    manager.rollback()
+
+    assert left.current_state.value == 0
+    assert right.current_state.value == 0
+    assert left.events == [("rollback", 0)]
+    assert right.events == []
+    assert manager.active_transaction is None
+
+
+def test_transaction_manager_rejects_nested_transactions() -> None:
+    manager = TransactionManager()
+
+    transaction = manager.begin()
+    assert transaction.tx_id == 1
+
+    with pytest.raises(RuntimeError, match="nested"):
+        manager.begin()
+
+    manager.rollback()
