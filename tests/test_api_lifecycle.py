@@ -8,6 +8,7 @@ from pyrolyze.lifecycle import (
     binding,
     const,
     lifecycle_field,
+    local_store,
     managed,
     managed_context,
     owned,
@@ -95,6 +96,11 @@ class OwnedContext:
 @managed_context
 class TransientContext:
     seen_in_pass: bool = transient(default=False)
+
+
+@managed_context
+class LocalStoreContext:
+    cache: dict[str, int] = local_store(default_factory=dict)
 
 
 @managed_context
@@ -403,6 +409,38 @@ def test_transient_field_is_cleared_on_rollback() -> None:
 
     assert context.seen_in_pass is False
     assert context.current.seen_in_pass is False
+
+
+def test_local_store_survives_commit_and_is_shared_across_views() -> None:
+    manager = TransactionManager()
+    context = LocalStoreContext(transaction_manager=manager)
+
+    context.cache["count"] = 1
+    assert context.current.cache is context.cache
+    assert context.working.cache is context.cache
+
+    manager.begin()
+    manager.commit()
+
+    assert context.cache == {"count": 1}
+    assert context.current.cache == {"count": 1}
+    assert context.working.cache == {"count": 1}
+
+
+def test_local_store_survives_rollback_and_resets_on_close() -> None:
+    manager = TransactionManager()
+    context = LocalStoreContext(transaction_manager=manager)
+
+    context.cache = {"count": 2}
+
+    manager.begin()
+    manager.rollback()
+
+    assert context.cache == {"count": 2}
+
+    context.close()
+
+    assert context.cache == {}
 
 def test_managed_context_inheritance_merges_fields_and_view_methods() -> None:
     manager = TransactionManager()
