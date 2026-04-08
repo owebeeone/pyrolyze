@@ -4,6 +4,7 @@ import pytest
 
 from pyrolyze.lifecycle import (
     BindingBase,
+    LifecycleTransaction,
     TransactionManager,
     binding,
     const,
@@ -541,6 +542,30 @@ def test_managed_freeze_and_thaw_support_mutable_working_value() -> None:
     manager.rollback()
 
     assert context.items == (1, 2)
+
+
+def test_stale_working_record_without_active_transaction_is_rejected() -> None:
+    manager = TransactionManager()
+    context = ValueControlContext(transaction_manager=manager)
+
+    manager.begin()
+    context.value = 1
+    manager.active_transaction = None
+
+    with pytest.raises(RuntimeError, match="stale lifecycle working record"):
+        context.value = 2
+
+
+def test_cross_transaction_mutation_is_rejected() -> None:
+    manager = TransactionManager()
+    context = ValueControlContext(transaction_manager=manager)
+
+    manager.begin()
+    context.value = 1
+    manager.active_transaction = LifecycleTransaction(tx_id=999)
+
+    with pytest.raises(RuntimeError, match="different lifecycle transaction"):
+        context.value = 2
 
 def test_managed_context_inheritance_merges_fields_and_view_methods() -> None:
     manager = TransactionManager()

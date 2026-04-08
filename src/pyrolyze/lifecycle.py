@@ -813,6 +813,7 @@ class LifecycleContextState:
     def ensure_working_record(self) -> Record:
         working = self.working_record
         if working is not None:
+            self.require_active_transaction()
             return working
 
         self.require_active_transaction()
@@ -825,7 +826,11 @@ class LifecycleContextState:
     def require_active_transaction(self) -> None:
         transaction = self.transaction_manager.active_transaction if self.transaction_manager is not None else None
         if transaction is None:
+            if self.working_record is not None:
+                raise RuntimeError("stale lifecycle working record without an active transaction")
             raise RuntimeError("writes require an active lifecycle transaction")
+        if self.working_record is not None and self.working_tx_id != transaction.tx_id:
+            raise RuntimeError("working record belongs to a different lifecycle transaction")
 
     def snapshot_current(self) -> _RecordSnapshot:
         return _RecordSnapshot(self.current_record.values)
