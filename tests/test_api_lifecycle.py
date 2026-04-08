@@ -7,6 +7,7 @@ import pytest
 from pyrolyze.lifecycle import (
     LifecycleContext,
     TransactionManager,
+    const,
     managed,
     managed_binding,
     managed_context,
@@ -88,6 +89,18 @@ class ManagedTrackedContext(LifecycleContext):
 
     def after_rollback(self, current_state: object) -> None:
         self.events.append(("rollback", current_state.value))
+
+
+@managed_context
+class ManagedConstBase(LifecycleContext):
+    slot_id: str = const()
+    label: str = managed(default="base")
+
+
+@managed_context
+class ManagedConstChild(ManagedConstBase):
+    module_id: str = const(default="default-module")
+    count: int = managed(default=0)
 
 
 def test_slot_call_context_binding_and_binding_map_use_commit_and_rollback_lifecycle() -> None:
@@ -272,3 +285,31 @@ def test_transaction_manager_rejects_nested_transactions() -> None:
         manager.begin()
 
     manager.rollback()
+
+
+def test_const_fields_are_set_at_construction_and_not_part_of_managed_state() -> None:
+    context = ManagedConstChild(slot_id="slot-a", count=3)
+
+    assert context.slot_id == "slot-a"
+    assert context.module_id == "default-module"
+    assert context.current_state.count == 3
+    assert not hasattr(context.current_state, "slot_id")
+    assert not hasattr(context.current_state, "module_id")
+
+
+def test_const_fields_cannot_be_mutated_after_construction() -> None:
+    context = ManagedConstChild(slot_id="slot-a")
+
+    with pytest.raises(AttributeError, match="slot_id is const"):
+        context.slot_id = "slot-b"
+
+    with pytest.raises(AttributeError, match="module_id is const"):
+        context.module_id = "other-module"
+
+
+def test_const_fields_are_inherited() -> None:
+    context = ManagedConstChild(slot_id="slot-a", module_id="module-a", count=5)
+
+    assert context.slot_id == "slot-a"
+    assert context.module_id == "module-a"
+    assert context.current_state.count == 5

@@ -103,6 +103,61 @@ class TransactionManager:
         transaction.dirty_contexts.pop(id(context), None)
 
 
+class _ConstField:
+    __slots__ = ("default", "default_factory", "name", "annotation", "storage_name")
+
+    def __init__(
+        self,
+        *,
+        default: Any = MISSING,
+        default_factory: Callable[[], Any] | object = MISSING,
+    ) -> None:
+        if default is not MISSING and default_factory is not MISSING:
+            raise TypeError("const fields cannot define both default and default_factory")
+        self.default = default
+        self.default_factory = default_factory
+        self.name: str | None = None
+        self.annotation: Any = Any
+        self.storage_name: str | None = None
+
+    def __set_name__(self, owner: type[LifecycleContext], name: str) -> None:
+        self.name = name
+        self.storage_name = f"__lifecycle_const_{name}"
+
+    def __get__(
+        self,
+        instance: LifecycleContext | None,
+        owner: type[LifecycleContext],
+    ) -> Any:
+        if instance is None:
+            return self
+        return getattr(instance, self.storage_name_or_error())
+
+    def __set__(self, instance: LifecycleContext, value: Any) -> None:
+        del instance, value
+        raise AttributeError(f"{self.name_or_error()} is const")
+
+    def name_or_error(self) -> str:
+        if self.name is None:
+            raise RuntimeError("const field name was not initialized")
+        return self.name
+
+    def storage_name_or_error(self) -> str:
+        if self.storage_name is None:
+            raise RuntimeError("const field storage name was not initialized")
+        return self.storage_name
+
+    def value_for_init(self, values: dict[str, Any]) -> Any:
+        name = self.name_or_error()
+        if name in values:
+            return values.pop(name)
+        if self.default is not MISSING:
+            return self.default
+        if self.default_factory is not MISSING:
+            return self.default_factory()
+        raise TypeError(f"missing required const field {name!r}")
+
+
 class _ManagedField:
     __slots__ = ("binding", "default", "default_factory", "name", "annotation", "mapping")
 
@@ -156,6 +211,17 @@ def managed(
 ) -> Any:
     return _ManagedField(
         binding=False,
+        default=default,
+        default_factory=default_factory,
+    )
+
+
+def const(
+    *,
+    default: Any = MISSING,
+    default_factory: Callable[[], Any] | object = MISSING,
+) -> Any:
+    return _ConstField(
         default=default,
         default_factory=default_factory,
     )
@@ -221,6 +287,7 @@ class LifecycleContext:
     """
 
     __managed_fields__: dict[str, _ManagedField]
+    __const_fields__: dict[str, _ConstField]
     __state_type__: type[Any]
     __thawed_state_type__: type[Any]
 
@@ -228,12 +295,21 @@ class LifecycleContext:
         state_type = getattr(type(self), "__state_type__", None)
         if state_type is None:
             raise TypeError("LifecycleContext subclasses must be decorated with @managed_context")
+        self._initialize_const_fields(values)
         self.transaction_manager = values.pop("transaction_manager", None)
         self._current = state_type(**self._normalize_initial_values(values))
         self._working: Any | None = None
         self._working_tx_id: int | None = None
         self._active = False
         self._closed = False
+
+    def _initialize_const_fields(self, values: dict[str, Any]) -> None:
+        for const_field in type(self).__const_fields__.values():
+            object.__setattr__(
+                self,
+                const_field.storage_name_or_error(),
+                const_field.value_for_init(values),
+            )
 
     def accepted(self) -> None:
         """Allow nested lifecycle contexts to participate as bindings."""
@@ -496,6 +572,7 @@ def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
         raise TypeError("@managed_context classes must not define __init__")
 
     base_fields: dict[str, _ManagedField] = {}
+    base_const_fields: dict[str, _ConstField] = {}
     direct_managed_bases = [
         base
         for base in cls.__bases__
@@ -503,12 +580,20 @@ def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
     ]
     for base in direct_managed_bases:
         base_fields.update(base.__managed_fields__)
+        base_const_fields.update(base.__const_fields__)
 
     annotations = dict(getattr(cls, "__annotations__", {}))
     resolved_hints = _resolve_hints(cls)
     own_fields: dict[str, _ManagedField] = {}
+    own_const_fields: dict[str, _ConstField] = {}
     for name, annotation in annotations.items():
         candidate = cls.__dict__.get(name, _SENTINEL)
+        if isinstance(candidate, _ConstField):
+            if name in base_const_fields:
+                raise TypeError(f"const field {name!r} cannot override a base const field")
+            candidate.annotation = resolved_hints.get(name, annotation)
+            own_const_fields[name] = candidate
+            continue
         if isinstance(candidate, _ManagedField):
             if name in base_fields:
                 raise TypeError(f"managed field {name!r} cannot override a base managed field")
@@ -528,6 +613,7 @@ def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
         fields=own_fields,
     )
 
+    cls.__const_fields__ = {**base_const_fields, **own_const_fields}
     cls.__managed_fields__ = {**base_fields, **own_fields}
     cls.__state_type__ = state_type
     cls.__thawed_state_type__ = thawed_state_type
@@ -626,6 +712,7 @@ __all__ = [
     "LifecycleTransaction",
     "LifecycleContext",
     "TransactionManager",
+    "const",
     "managed",
     "managed_binding",
     "managed_context",
