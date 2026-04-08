@@ -58,6 +58,7 @@ def test_manager_returns_none_before_stage_and_current_after_commit() -> None:
     manager.commit_pass()
 
     assert manager.get_current(_SLOT_1) is context
+    assert context.is_accepted is True
     assert binding.ref_count == 1
     assert binding.cleanup_count == 0
 
@@ -152,6 +153,32 @@ def test_close_all_closes_current_and_staged_contexts() -> None:
     assert binding_current.cleanup_count == 1
     assert binding_staged.ref_count == 0
     assert binding_staged.cleanup_count == 1
+
+
+def test_close_all_leaves_manager_reusable() -> None:
+    manager = CallSiteContextManager()
+    first_binding = _FakeBinding()
+    second_binding = _FakeBinding()
+
+    manager.begin_pass()
+    manager.mark_visited(_SLOT_1)
+    manager.stage(
+        _SLOT_1,
+        CallSiteContext(binding=first_binding, function_identity="first", last_args=CallSiteArgs.capture()),
+    )
+    manager.commit_pass()
+
+    manager.close_all()
+
+    manager.begin_pass()
+    manager.mark_visited(_SLOT_2)
+    second = CallSiteContext(binding=second_binding, function_identity="second", last_args=CallSiteArgs.capture())
+    manager.stage(_SLOT_2, second)
+    manager.commit_pass()
+
+    assert manager.get_current(_SLOT_1) is None
+    assert manager.get_current(_SLOT_2) is second
+    assert second.is_accepted is True
 
 
 def test_context_close_is_idempotent() -> None:
@@ -276,7 +303,10 @@ def test_replace_creates_fresh_close_state() -> None:
     current = CallSiteContext(binding=binding, function_identity="fn", last_args=CallSiteArgs.capture(1))
     replacement = current.replace(last_args=CallSiteArgs.capture(2))
 
-    assert current._close_state is not replacement._close_state
+    current.close()
+
+    assert current.is_closed is True
+    assert replacement.is_closed is False
     assert current.invoke_state is not replacement.invoke_state
 
 

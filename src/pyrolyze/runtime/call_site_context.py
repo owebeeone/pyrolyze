@@ -5,7 +5,7 @@ from dataclasses import InitVar, dataclass, field, replace
 from enum import IntEnum
 from typing import Any, Generic, Hashable, Iterable, Mapping, Self, TypeVar
 
-from pyrolyze.lifecycle import BindingBase
+from pyrolyze.lifecycle import BindingBase, TransactionManager, managed_context, owned, transient
 
 from .pyro_call import RuntimeSiteMetadata
 
@@ -67,8 +67,8 @@ class _MutableState(Generic[T]):
     value: T
 
 
-@dataclass(frozen=True, slots=True)
-class CallSiteContext(ABC):
+@dataclass(slots=True, eq=False)
+class CallSiteContext(BindingBase, ABC):
     binding: CallSiteBindingBase | None
     function_identity: Any
     last_args: CallSiteArgs
@@ -81,21 +81,15 @@ class CallSiteContext(ABC):
         hash=False,
         repr=False,
     )
-    _close_state: _MutableState[bool] = field(
-        default_factory=lambda: _MutableState(False),
-        init=False,
-        compare=False,
-        hash=False,
-        repr=False,
-    )
-
     def __post_init__(self, invoke_state_value: CallSiteInvokeState) -> None:
         self.invoke_state.value = CallSiteInvokeState(invoke_state_value)
 
     def close(self) -> None:
-        if self._close_state.value:
+        if self.is_closed:
             return
-        self._close_state.value = True
+        self.dec_ref()
+
+    def _close(self) -> None:
         if self.binding is not None:
             self.binding.dec_ref()
 
@@ -149,66 +143,67 @@ class CallSiteContext(ABC):
             raise
 
 
-@dataclass(slots=True)
+@managed_context
+class _CallSitePassContext:
+    contexts: dict[Hashable, CallSiteContext] = owned(default_factory=dict)
+    visited: set[Hashable] = transient(default_factory=set)
+
+
 class CallSiteContextManager:
-    _current: dict[Hashable, CallSiteContext] = field(default_factory=dict)
-    _staged: dict[Hashable, CallSiteContext] = field(default_factory=dict)
-    _visited: set[Hashable] = field(default_factory=set)
+    __slots__ = ("_transaction_manager", "_pass_context")
+
+    def __init__(self) -> None:
+        self._transaction_manager = TransactionManager()
+        self._pass_context = _CallSitePassContext(transaction_manager=self._transaction_manager)
 
     def get_current(self, slot_id: Hashable) -> CallSiteContext | None:
-        return self._current.get(slot_id)
+        return self._pass_context.current.contexts.get(slot_id)
 
     def stage(self, slot_id: Hashable, context: CallSiteContext) -> None:
-        previous_staged = self._staged.get(slot_id)
-        if previous_staged is not None and previous_staged is not context:
-            previous_staged.close()
-        self._staged[slot_id] = context
+        next_contexts = dict(self._pass_context.contexts)
+        next_contexts[slot_id] = context
+        self._pass_context.contexts = next_contexts
 
     def replace_current(self, slot_id: Hashable, context: CallSiteContext) -> None:
-        previous_current = self._current.get(slot_id)
+        current_contexts = self._pass_context.state.current_record.values["contexts"]
+        previous_current = current_contexts.get(slot_id)
         if previous_current is context:
             return
-        self._current[slot_id] = context
+        next_contexts = dict(current_contexts)
+        next_contexts[slot_id] = context
+        context.accepted()
+        self._pass_context.state.current_record.values["contexts"] = next_contexts
         if previous_current is not None:
             previous_current.close()
 
     def mark_visited(self, slot_id: Hashable) -> None:
-        self._visited.add(slot_id)
+        next_visited = set(self._pass_context.visited)
+        next_visited.add(slot_id)
+        self._pass_context.visited = next_visited
 
     def begin_pass(self) -> None:
-        if self._staged:
+        if self._transaction_manager.active_transaction is not None:
             self.rollback_pass()
-        self._visited.clear()
+        self._transaction_manager.begin()
 
     def commit_pass(self) -> None:
-        for slot_id, staged in list(self._staged.items()):
-            current = self._current.get(slot_id)
-            if current is not None and current is not staged:
-                current.close()
-            self._current[slot_id] = staged
-
-        unseen_slot_ids = [slot_id for slot_id in self._current if slot_id not in self._visited and slot_id not in self._staged]
-        for slot_id in unseen_slot_ids:
-            current = self._current.pop(slot_id, None)
-            if current is not None:
-                current.close()
-
-        self._staged.clear()
-        self._visited.clear()
+        if self._transaction_manager.active_transaction is None:
+            return
+        next_contexts = {
+            slot_id: context
+            for slot_id, context in self._pass_context.contexts.items()
+            if slot_id in self._pass_context.visited
+        }
+        self._pass_context.contexts = next_contexts
+        self._transaction_manager.commit()
 
     def rollback_pass(self) -> None:
-        for slot_id, staged in list(self._staged.items()):
-            current = self._current.get(slot_id)
-            if current is not staged:
-                staged.close()
-        self._staged.clear()
-        self._visited.clear()
+        if self._transaction_manager.active_transaction is None:
+            return
+        self._transaction_manager.rollback()
 
     def close_all(self) -> None:
-        for context in list(self._staged.values()):
-            context.close()
-        for context in list(self._current.values()):
-            context.close()
-        self._staged.clear()
-        self._current.clear()
-        self._visited.clear()
+        if self._transaction_manager.active_transaction is not None:
+            self._transaction_manager.rollback()
+        self._pass_context.close()
+        self._pass_context = _CallSitePassContext(transaction_manager=self._transaction_manager)
