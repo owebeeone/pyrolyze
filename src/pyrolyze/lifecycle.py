@@ -180,6 +180,9 @@ class FieldSpec:
     compare: str
     default: Any = MISSING
     default_factory: Callable[[], Any] | object = MISSING
+    initial_working: Any = MISSING
+    freeze: Callable[[Any], Any] | None = None
+    thaw: Callable[[Any], Any] | None = None
     state_factory: FieldStateFactory | None = None
     state_copy: StateCopyHelper | None = None
 
@@ -195,7 +198,18 @@ class FieldSpec:
 
 
 class LifecycleField:
-    __slots__ = ("compare", "default", "default_factory", "kind", "name", "state_copy", "state_factory")
+    __slots__ = (
+        "compare",
+        "default",
+        "default_factory",
+        "freeze",
+        "initial_working",
+        "kind",
+        "name",
+        "state_copy",
+        "state_factory",
+        "thaw",
+    )
 
     def __init__(
         self,
@@ -204,6 +218,9 @@ class LifecycleField:
         compare: str = "value",
         default: Any = MISSING,
         default_factory: Callable[[], Any] | object = MISSING,
+        initial_working: Any = MISSING,
+        freeze: Callable[[Any], Any] | None = None,
+        thaw: Callable[[Any], Any] | None = None,
         state_factory: Callable[[], Any] | None = None,
         state_copy: StateCopyHelper | None = None,
     ) -> None:
@@ -218,9 +235,12 @@ class LifecycleField:
         self.compare = compare
         self.default = default
         self.default_factory = default_factory
+        self.initial_working = initial_working
+        self.freeze = freeze
         self.kind = kind
         self.state_factory = state_factory
         self.state_copy = state_copy or copy.copy
+        self.thaw = thaw
         self.name: str | None = None
 
     def __set_name__(self, owner: type[LifecycleContext], name: str) -> None:
@@ -242,6 +262,9 @@ class LifecycleField:
             compare=self.compare,
             default=self.default,
             default_factory=self.default_factory,
+            initial_working=self.initial_working,
+            freeze=self.freeze,
+            thaw=self.thaw,
             state_factory=self.state_factory,
             state_copy=self.state_copy,
         )
@@ -258,6 +281,9 @@ def lifecycle_field(
     compare: str = "value",
     default: Any = MISSING,
     default_factory: Callable[[], Any] | object = MISSING,
+    initial_working: Any = MISSING,
+    freeze: Callable[[Any], Any] | None = None,
+    thaw: Callable[[Any], Any] | None = None,
     state_factory: Callable[[], Any] | None = None,
     state_copy: StateCopyHelper | None = None,
 ) -> Any:
@@ -266,8 +292,11 @@ def lifecycle_field(
         compare=compare,
         default=default,
         default_factory=default_factory,
+        initial_working=initial_working,
+        freeze=freeze,
         state_factory=state_factory,
         state_copy=state_copy,
+        thaw=thaw,
     )
 
 
@@ -288,6 +317,9 @@ def managed(
     compare: str = "value",
     default: Any = MISSING,
     default_factory: Callable[[], Any] | object = MISSING,
+    initial_working: Any = MISSING,
+    freeze: Callable[[Any], Any] | None = None,
+    thaw: Callable[[Any], Any] | None = None,
     state_factory: Callable[[], Any] | None = None,
     state_copy: StateCopyHelper | None = None,
 ) -> Any:
@@ -296,8 +328,11 @@ def managed(
         compare=compare,
         default=default,
         default_factory=default_factory,
+        initial_working=initial_working,
+        freeze=freeze,
         state_factory=state_factory,
         state_copy=state_copy,
+        thaw=thaw,
     )
 
 
@@ -394,6 +429,31 @@ def _get_working_overlay_field(state: LifecycleContextState, name: str) -> Any:
     if working is not None and name in working.values:
         return working.values[name]
     return state.current_record.values[name]
+
+
+def _get_managed_initial_working_field(state: LifecycleContextState, name: str) -> Any:
+    working = state.working_record
+    if working is not None and name in working.values:
+        return working.values[name]
+    transaction = state.transaction_manager.active_transaction if state.transaction_manager is not None else None
+    spec = type(state).__field_specs__[name]
+    if transaction is not None and not state.ever_committed and spec.initial_working is not MISSING:
+        return spec.initial_working
+    return state.current_record.values[name]
+
+
+def _get_managed_thawed_field(state: LifecycleContextState, name: str) -> Any:
+    working = state.working_record
+    if working is not None and name in working.values:
+        return working.values[name]
+    transaction = state.transaction_manager.active_transaction if state.transaction_manager is not None else None
+    spec = type(state).__field_specs__[name]
+    if transaction is None or spec.thaw is None:
+        return state.current_record.values[name]
+    working = state.ensure_working_record()
+    if name not in working.values:
+        working.values[name] = spec.thaw(state.current_record.values[name])
+    return working.values[name]
 
 
 def _get_static_field(state: LifecycleContextState, name: str) -> Any:
@@ -563,7 +623,11 @@ def _commit_overlay_field(state: LifecycleContextState, name: str) -> None:
     if working is None:
         return
     if name in working.values:
-        state.current_record.values[name] = working.values[name]
+        spec = type(state).__field_specs__[name]
+        next_value = working.values[name]
+        if spec.freeze is not None:
+            next_value = spec.freeze(next_value)
+        state.current_record.values[name] = next_value
     if name in working.field_state:
         state.current_record.field_state[name] = working.field_state[name]
 
@@ -655,6 +719,7 @@ class LifecycleContextState:
         "current_record",
         "working_record",
         "working_tx_id",
+        "ever_committed",
         "local_store_values",
         "derived_values",
         "unmanaged_store",
@@ -675,6 +740,7 @@ class LifecycleContextState:
         self.current_record = Record()
         self.working_record: Record | None = None
         self.working_tx_id: int | None = None
+        self.ever_committed = False
         self.local_store_values: dict[str, Any] = {}
         self.derived_values: dict[str, Any] = {}
         self.unmanaged_store: dict[str, Any] = {}
@@ -777,6 +843,7 @@ class LifecycleContextState:
             type(self).__class_ftable_commit_field__[name](self, name)
         self.working_record = None
         self.working_tx_id = None
+        self.ever_committed = True
         self.owner.after_commit(previous, self.snapshot_current())
         return self.owner.current
 
@@ -977,9 +1044,18 @@ def _build_class_tables(
 
     for name, spec in specs.items():
         if spec.kind == "managed":
-            get_default[name] = _get_default_overlay_field
-            get_current[name] = _get_current_field
-            get_working[name] = _get_working_overlay_field
+            if spec.thaw is not None:
+                get_default[name] = _get_managed_thawed_field
+                get_current[name] = _get_current_field
+                get_working[name] = _get_managed_thawed_field
+            elif spec.initial_working is not MISSING:
+                get_default[name] = _get_managed_initial_working_field
+                get_current[name] = _get_current_field
+                get_working[name] = _get_managed_initial_working_field
+            else:
+                get_default[name] = _get_default_overlay_field
+                get_current[name] = _get_current_field
+                get_working[name] = _get_working_overlay_field
             if spec.compare == "identity":
                 set_default[name] = _set_default_identity_field
                 set_working[name] = _set_working_identity_field
@@ -1109,6 +1185,12 @@ def _merge_field_specs(base: FieldSpec, derived: FieldSpec) -> FieldSpec:
         raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
     if base.compare != derived.compare:
         raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
+    if base.initial_working != derived.initial_working and derived.initial_working is not MISSING:
+        raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
+    if base.freeze != derived.freeze and derived.freeze is not None:
+        raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
+    if base.thaw != derived.thaw and derived.thaw is not None:
+        raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
     if base.state_factory != derived.state_factory and derived.state_factory is not None:
         raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
     if base.state_copy != derived.state_copy and derived.state_copy != copy.copy:
@@ -1127,6 +1209,11 @@ def _merge_field_specs(base: FieldSpec, derived: FieldSpec) -> FieldSpec:
         default_factory = base.default_factory
     state_factory = derived.state_factory if derived.state_factory is not None else base.state_factory
     state_copy = derived.state_copy if derived.state_copy != copy.copy else base.state_copy
+    initial_working = (
+        derived.initial_working if derived.initial_working is not MISSING else base.initial_working
+    )
+    freeze = derived.freeze if derived.freeze is not None else base.freeze
+    thaw = derived.thaw if derived.thaw is not None else base.thaw
 
     return FieldSpec(
         name=base.name,
@@ -1135,6 +1222,9 @@ def _merge_field_specs(base: FieldSpec, derived: FieldSpec) -> FieldSpec:
         compare=base.compare,
         default=default,
         default_factory=default_factory,
+        initial_working=initial_working,
+        freeze=freeze,
+        thaw=thaw,
         state_factory=state_factory,
         state_copy=state_copy,
     )

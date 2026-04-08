@@ -114,6 +114,13 @@ class DerivedCacheContext:
 
 
 @managed_context
+class ValueControlContext:
+    value: int = managed(default=0)
+    first_pass: bool = managed(default=False, initial_working=True)
+    items: tuple[int, ...] = managed(default_factory=tuple, freeze=tuple, thaw=list)
+
+
+@managed_context
 class TrackedContext:
     value: int = lifecycle_field(default=0, compare="value")
 
@@ -491,6 +498,49 @@ def test_derived_cache_is_invalidated_on_rollback_and_close() -> None:
     context.close()
 
     assert context.cache == {}
+
+
+def test_managed_initial_working_applies_before_first_successful_commit() -> None:
+    manager = TransactionManager()
+    context = ValueControlContext(transaction_manager=manager)
+
+    manager.begin()
+    assert context.first_pass is True
+    assert context.current.first_pass is False
+    manager.rollback()
+
+    manager.begin()
+    assert context.first_pass is True
+    context.value = 1
+    manager.commit()
+
+    manager.begin()
+    assert context.first_pass is False
+    manager.rollback()
+
+
+def test_managed_freeze_and_thaw_support_mutable_working_value() -> None:
+    manager = TransactionManager()
+    context = ValueControlContext(transaction_manager=manager)
+
+    manager.begin()
+    assert context.items == []
+    context.items.append(1)
+    context.items.append(2)
+    assert context.items == [1, 2]
+    assert context.current.items == ()
+
+    manager.commit()
+
+    assert context.items == (1, 2)
+    assert context.current.items == (1, 2)
+
+    manager.begin()
+    assert context.items == [1, 2]
+    context.items.append(3)
+    manager.rollback()
+
+    assert context.items == (1, 2)
 
 def test_managed_context_inheritance_merges_fields_and_view_methods() -> None:
     manager = TransactionManager()
