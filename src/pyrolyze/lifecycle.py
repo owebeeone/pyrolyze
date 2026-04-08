@@ -27,6 +27,8 @@ Only the restarted Phase 1.1/1.5 surface is implemented here:
 """
 
 import copy
+from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from collections.abc import Callable
 from dataclasses import MISSING, dataclass, field
 import inspect
@@ -116,6 +118,48 @@ class TransactionManager:
         transaction.dirty_contexts.pop(id(context), None)
 
 
+@dataclass(eq=False, slots=True)
+class BindingBase(ABC):
+    _ref_count: int = field(default=1, init=False, repr=False)
+    _accepted: bool = field(default=False, init=False, repr=False)
+    _closed: bool = field(default=False, init=False, repr=False)
+
+    @property
+    def ref_count(self) -> int:
+        return self._ref_count
+
+    @property
+    def is_accepted(self) -> bool:
+        return self._accepted
+
+    @property
+    def is_closed(self) -> bool:
+        return self._closed
+
+    def inc_ref(self) -> None:
+        if self._closed or self._ref_count <= 0:
+            raise RuntimeError("cannot retain a closed binding")
+        self._ref_count += 1
+
+    def accepted(self) -> None:
+        if self._closed:
+            raise RuntimeError("cannot accept a closed binding")
+        self._accepted = True
+
+    def dec_ref(self) -> None:
+        if self._ref_count <= 0:
+            raise AssertionError("dec_ref called without a matching inc_ref")
+        self._ref_count -= 1
+        if self._ref_count == 0:
+            if self._closed:
+                raise AssertionError("binding closed more than once")
+            self._closed = True
+            self._close()
+
+    @abstractmethod
+    def _close(self) -> None: ...
+
+
 FieldStateFactory = Callable[[], Any]
 StateCopyHelper = Callable[[Any], Any]
 FieldGetter = Callable[["LifecycleContextState", str], Any]
@@ -158,13 +202,13 @@ class LifecycleField:
         state_factory: Callable[[], Any] | None = None,
         state_copy: StateCopyHelper | None = None,
     ) -> None:
-        if kind not in {"managed", "const", "static"}:
+        if kind not in {"managed", "const", "static", "binding"}:
             raise TypeError(f"unsupported lifecycle field kind {kind!r}")
         if compare not in {"value", "identity"}:
             raise TypeError(f"unsupported compare mode {compare!r}")
         if default is not MISSING and default_factory is not MISSING:
             raise TypeError("lifecycle fields cannot define both default and default_factory")
-        if kind in {"const", "static"} and state_factory is not None:
+        if kind in {"const", "static", "binding"} and state_factory is not None:
             raise TypeError(f"{kind} fields cannot define state_factory")
         self.compare = compare
         self.default = default
@@ -264,6 +308,19 @@ def static(
     )
 
 
+def binding(
+    *,
+    default: Any = MISSING,
+    default_factory: Callable[[], Any] | object = MISSING,
+) -> Any:
+    return lifecycle_field(
+        kind="binding",
+        compare="identity",
+        default=default,
+        default_factory=default_factory,
+    )
+
+
 def _get_default_overlay_field(state: LifecycleContextState, name: str) -> Any:
     working = state.working_record
     if working is not None and name in working.values:
@@ -287,6 +344,49 @@ def _get_static_field(state: LifecycleContextState, name: str) -> Any:
     if value is _SENTINEL:
         raise AttributeError(f"static field {name!r} is not initialized")
     return value
+
+
+def _is_binding_map_value(value: Any) -> bool:
+    return isinstance(value, Mapping)
+
+
+def _normalize_binding_map_value(name: str, value: Any) -> dict[Any, BindingBase]:
+    if not isinstance(value, Mapping):
+        raise TypeError(f"binding field {name!r} expects a mapping value")
+    normalized = dict(value)
+    for binding_value in normalized.values():
+        if not isinstance(binding_value, BindingBase):
+            raise TypeError(f"binding field {name!r} expects BindingBase values")
+    return normalized
+
+
+def _binding_occurrences(bindings: Mapping[Any, BindingBase]) -> dict[int, tuple[BindingBase, int]]:
+    counts: dict[int, tuple[BindingBase, int]] = {}
+    for binding_value in bindings.values():
+        binding_id = id(binding_value)
+        if binding_id in counts:
+            existing, count = counts[binding_id]
+            counts[binding_id] = (existing, count + 1)
+        else:
+            counts[binding_id] = (binding_value, 1)
+    return counts
+
+
+def _same_binding_map(left: Mapping[Any, BindingBase], right: Mapping[Any, BindingBase]) -> bool:
+    if left.keys() != right.keys():
+        return False
+    return all(left[key] is right[key] for key in left)
+
+
+def _release_binding_map(bindings: Mapping[Any, BindingBase]) -> None:
+    for binding_value, count in _binding_occurrences(bindings).values():
+        for _ in range(count):
+            binding_value.dec_ref()
+
+
+def _accept_binding_map(bindings: Mapping[Any, BindingBase]) -> None:
+    for binding_value, _ in _binding_occurrences(bindings).values():
+        binding_value.accepted()
 
 
 def _set_default_value_field(state: LifecycleContextState, name: str, value: Any) -> None:
@@ -332,6 +432,59 @@ def _set_static_field(state: LifecycleContextState, name: str, value: Any) -> No
     raise AttributeError(f"static field {name!r} is already initialized")
 
 
+def _set_default_binding_field(state: LifecycleContextState, name: str, value: Any) -> None:
+    state.require_active_transaction()
+    current = type(state).__class_ftable_get_default__[name](state, name)
+    if current is value:
+        return
+    state.ensure_working_record().values[name] = value
+
+
+def _set_working_binding_field(state: LifecycleContextState, name: str, value: Any) -> None:
+    state.require_active_transaction()
+    current = type(state).__class_ftable_get_working__[name](state, name)
+    if current is value:
+        return
+    working = state.ensure_working_record()
+    working.values[name] = value
+
+
+def _set_default_binding_map_field(state: LifecycleContextState, name: str, value: Any) -> None:
+    state.require_active_transaction()
+    new_map = _normalize_binding_map_value(name, value)
+    working = state.ensure_working_record()
+    current_map = state.current_record.values[name]
+    old_working_map = working.values.get(name)
+    visible_map = old_working_map if old_working_map is not None else current_map
+    if _same_binding_map(visible_map, new_map):
+        return
+
+    current_counts = _binding_occurrences(current_map)
+    previous_counts = _binding_occurrences(old_working_map or {})
+    new_counts = _binding_occurrences(new_map)
+
+    for binding_id, (binding_value, new_count) in new_counts.items():
+        previous_count = previous_counts.get(binding_id, (binding_value, 0))[1]
+        additional = new_count - previous_count
+        if additional <= 0:
+            continue
+        current_count = current_counts.get(binding_id, (binding_value, 0))[1]
+        for _ in range(min(additional, current_count)):
+            binding_value.inc_ref()
+
+    for binding_id, (binding_value, previous_count) in previous_counts.items():
+        next_count = new_counts.get(binding_id, (binding_value, 0))[1]
+        removed = previous_count - next_count
+        for _ in range(max(0, removed)):
+            binding_value.dec_ref()
+
+    working.values[name] = new_map
+
+
+def _set_working_binding_map_field(state: LifecycleContextState, name: str, value: Any) -> None:
+    _set_default_binding_map_field(state, name, value)
+
+
 def _commit_overlay_field(state: LifecycleContextState, name: str) -> None:
     working = state.working_record
     if working is None:
@@ -340,6 +493,57 @@ def _commit_overlay_field(state: LifecycleContextState, name: str) -> None:
         state.current_record.values[name] = working.values[name]
     if name in working.field_state:
         state.current_record.field_state[name] = working.field_state[name]
+
+
+def _commit_binding_field(state: LifecycleContextState, name: str) -> None:
+    working = state.working_record
+    if working is None or name not in working.values:
+        return
+    current = state.current_record.values[name]
+    next_value = working.values[name]
+    if next_value is not None and next_value is not current:
+        next_value.accepted()
+    if current is not None and current is not next_value:
+        current.dec_ref()
+    state.current_record.values[name] = next_value
+
+
+def _rollback_binding_field(state: LifecycleContextState, name: str) -> None:
+    working = state.working_record
+    if working is None or name not in working.values:
+        return
+    staged = working.values[name]
+    current = state.current_record.values[name]
+    if staged is not None and staged is not current:
+        staged.dec_ref()
+
+
+def _close_binding_field(state: LifecycleContextState, name: str) -> None:
+    current = state.current_record.values[name]
+    if current is not None:
+        current.dec_ref()
+
+
+def _commit_binding_map_field(state: LifecycleContextState, name: str) -> None:
+    working = state.working_record
+    if working is None or name not in working.values:
+        return
+    current_map = state.current_record.values[name]
+    next_map = working.values[name]
+    _accept_binding_map(next_map)
+    _release_binding_map(current_map)
+    state.current_record.values[name] = next_map
+
+
+def _rollback_binding_map_field(state: LifecycleContextState, name: str) -> None:
+    working = state.working_record
+    if working is None or name not in working.values:
+        return
+    _release_binding_map(working.values[name])
+
+
+def _close_binding_map_field(state: LifecycleContextState, name: str) -> None:
+    _release_binding_map(state.current_record.values[name])
 
 
 def _rollback_overlay_field(state: LifecycleContextState, name: str) -> None:
@@ -699,16 +903,6 @@ def _build_class_tables(
             rollback_field[name] = _close_noop
             state_factory[name] = None
             state_copy[name] = None
-        elif spec.kind == "const":
-            get_default[name] = _get_current_field
-            get_current[name] = _get_current_field
-            get_working[name] = _get_current_field
-            set_default[name] = _set_const_field
-            set_working[name] = _set_const_field
-            commit_field[name] = _close_noop
-            rollback_field[name] = _close_noop
-            state_factory[name] = None
-            state_copy[name] = None
         elif spec.kind == "static":
             get_default[name] = _get_static_field
             get_current[name] = _get_static_field
@@ -719,9 +913,29 @@ def _build_class_tables(
             rollback_field[name] = _close_noop
             state_factory[name] = None
             state_copy[name] = None
+        elif spec.kind == "binding":
+            get_default[name] = _get_default_overlay_field
+            get_current[name] = _get_current_field
+            get_working[name] = _get_working_overlay_field
+            if typing.get_origin(spec.annotation) in {dict, typing.Dict}:
+                set_default[name] = _set_default_binding_map_field
+                set_working[name] = _set_working_binding_map_field
+                commit_field[name] = _commit_binding_map_field
+                rollback_field[name] = _rollback_binding_map_field
+                close_field[name] = _close_binding_map_field
+            else:
+                set_default[name] = _set_default_binding_field
+                set_working[name] = _set_working_binding_field
+                commit_field[name] = _commit_binding_field
+                rollback_field[name] = _rollback_binding_field
+                close_field[name] = _close_binding_field
+            state_factory[name] = None
+            state_copy[name] = None
         else:
             raise TypeError(f"unsupported lifecycle field kind {spec.kind!r}")
-        close_field[name] = _close_noop
+            close_field[name] = _close_noop
+        if name not in close_field:
+            close_field[name] = _close_noop
 
     return {
         "__class_ftable_get_default__": get_default,
@@ -890,10 +1104,12 @@ def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
 
 __all__ = [
     "FieldSpec",
+    "BindingBase",
     "LifecycleContext",
     "LifecycleTransaction",
     "Record",
     "TransactionManager",
+    "binding",
     "const",
     "lifecycle_field",
     "managed",

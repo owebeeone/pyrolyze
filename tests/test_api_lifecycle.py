@@ -3,7 +3,9 @@ from __future__ import annotations
 import pytest
 
 from pyrolyze.lifecycle import (
+    BindingBase,
     TransactionManager,
+    binding,
     const,
     lifecycle_field,
     managed,
@@ -27,6 +29,16 @@ class GeoPoint:
 
 class Point(GeoPoint):
     pass
+
+
+class SpyBinding(BindingBase):
+    def __init__(self, label: str) -> None:
+        super().__init__()
+        self.label = label
+        self.closed_states: list[bool] = []
+
+    def _close(self) -> None:
+        self.closed_states.append(self.is_accepted)
 
 
 @managed_context
@@ -64,6 +76,12 @@ class StaticContext:
 @managed_context
 class ManagedAliasContext:
     value: int = managed(default=1)
+
+
+@managed_context
+class BindingContext:
+    handle: SpyBinding | None = binding(default=None)
+    handles: dict[str, SpyBinding] = binding(default_factory=dict)
 
 
 @managed_context
@@ -212,6 +230,102 @@ def test_managed_alias_behaves_like_managed_field() -> None:
     context.value = 4
     assert context.value == 4
     assert context.current.value == 1
+
+
+def test_binding_base_closes_once_and_uses_accepted_state() -> None:
+    provisional = SpyBinding("provisional")
+
+    assert provisional.ref_count == 1
+    assert provisional.is_accepted is False
+    assert provisional.is_closed is False
+
+    provisional.dec_ref()
+
+    assert provisional.is_closed is True
+    assert provisional.closed_states == [False]
+
+    committed = SpyBinding("committed")
+    committed.inc_ref()
+    committed.accepted()
+    committed.dec_ref()
+
+    assert committed.is_closed is False
+    assert committed.ref_count == 1
+
+    committed.dec_ref()
+
+    assert committed.is_closed is True
+    assert committed.closed_states == [True]
+
+
+def test_binding_field_rolls_back_provisional_binding() -> None:
+    manager = TransactionManager()
+    context = BindingContext(transaction_manager=manager)
+    binding_value = SpyBinding("new")
+
+    manager.begin()
+    context.handle = binding_value
+    manager.rollback()
+
+    assert context.current.handle is None
+    assert binding_value.closed_states == [False]
+
+
+def test_binding_field_commits_new_binding_and_releases_replaced_binding() -> None:
+    manager = TransactionManager()
+    context = BindingContext(transaction_manager=manager)
+    first = SpyBinding("first")
+    second = SpyBinding("second")
+
+    manager.begin()
+    context.handle = first
+    manager.commit()
+
+    assert context.current.handle is first
+    assert first.is_accepted is True
+    assert first.closed_states == []
+
+    manager.begin()
+    context.handle = second
+    manager.commit()
+
+    assert context.current.handle is second
+    assert first.closed_states == [True]
+    assert second.is_accepted is True
+
+
+def test_binding_map_reuses_current_bindings_without_premature_close() -> None:
+    manager = TransactionManager()
+    context = BindingContext(transaction_manager=manager)
+    shared = SpyBinding("shared")
+    staged = SpyBinding("staged")
+    added = SpyBinding("added")
+
+    manager.begin()
+    context.handles = {"shared": shared}
+    manager.commit()
+
+    assert shared.ref_count == 1
+    assert shared.is_accepted is True
+
+    manager.begin()
+    context.handles = {"shared": shared, "staged": staged}
+    assert shared.ref_count == 2
+    assert staged.ref_count == 1
+
+    context.handles = {"shared": shared, "staged": staged, "added": added}
+
+    assert shared.closed_states == []
+    assert staged.closed_states == []
+    assert added.closed_states == []
+
+    manager.rollback()
+
+    assert context.current.handles == {"shared": shared}
+    assert shared.ref_count == 1
+    assert shared.closed_states == []
+    assert staged.closed_states == [False]
+    assert added.closed_states == [False]
 
 def test_managed_context_inheritance_merges_fields_and_view_methods() -> None:
     manager = TransactionManager()
