@@ -15,12 +15,14 @@ The core ideas are:
   overlay
 - transaction managers enlist only contexts that actually promote to working
 
-Only the restarted Phase 1.1/1.5 surface is implemented here:
+Only the restarted Phase 1.1/1.7 surface is implemented here:
 
 - ``lifecycle_field``
 - ``const``
 - ``static``
 - ``managed``
+- ``binding``
+- ``owned``
 - ``managed_context``
 - ``LifecycleContext``
 - ``TransactionManager``
@@ -202,13 +204,13 @@ class LifecycleField:
         state_factory: Callable[[], Any] | None = None,
         state_copy: StateCopyHelper | None = None,
     ) -> None:
-        if kind not in {"managed", "const", "static", "binding"}:
+        if kind not in {"managed", "const", "static", "binding", "owned"}:
             raise TypeError(f"unsupported lifecycle field kind {kind!r}")
         if compare not in {"value", "identity"}:
             raise TypeError(f"unsupported compare mode {compare!r}")
         if default is not MISSING and default_factory is not MISSING:
             raise TypeError("lifecycle fields cannot define both default and default_factory")
-        if kind in {"const", "static", "binding"} and state_factory is not None:
+        if kind in {"const", "static", "binding", "owned"} and state_factory is not None:
             raise TypeError(f"{kind} fields cannot define state_factory")
         self.compare = compare
         self.default = default
@@ -315,6 +317,19 @@ def binding(
 ) -> Any:
     return lifecycle_field(
         kind="binding",
+        compare="identity",
+        default=default,
+        default_factory=default_factory,
+    )
+
+
+def owned(
+    *,
+    default: Any = MISSING,
+    default_factory: Callable[[], Any] | object = MISSING,
+) -> Any:
+    return lifecycle_field(
+        kind="owned",
         compare="identity",
         default=default,
         default_factory=default_factory,
@@ -913,7 +928,7 @@ def _build_class_tables(
             rollback_field[name] = _close_noop
             state_factory[name] = None
             state_copy[name] = None
-        elif spec.kind == "binding":
+        elif spec.kind in {"binding", "owned"}:
             get_default[name] = _get_default_overlay_field
             get_current[name] = _get_current_field
             get_working[name] = _get_working_overlay_field
@@ -1114,5 +1129,6 @@ __all__ = [
     "lifecycle_field",
     "managed",
     "managed_context",
+    "owned",
     "static",
 ]

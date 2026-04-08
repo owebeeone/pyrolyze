@@ -10,6 +10,7 @@ from pyrolyze.lifecycle import (
     lifecycle_field,
     managed,
     managed_context,
+    owned,
     static,
 )
 
@@ -82,6 +83,12 @@ class ManagedAliasContext:
 class BindingContext:
     handle: SpyBinding | None = binding(default=None)
     handles: dict[str, SpyBinding] = binding(default_factory=dict)
+
+
+@managed_context
+class OwnedContext:
+    child: SpyBinding | None = owned(default=None)
+    children: dict[str, SpyBinding] = owned(default_factory=dict)
 
 
 @managed_context
@@ -326,6 +333,37 @@ def test_binding_map_reuses_current_bindings_without_premature_close() -> None:
     assert shared.closed_states == []
     assert staged.closed_states == [False]
     assert added.closed_states == [False]
+
+
+def test_owned_field_closes_committed_child_on_owner_close() -> None:
+    manager = TransactionManager()
+    context = OwnedContext(transaction_manager=manager)
+    child = SpyBinding("child")
+
+    manager.begin()
+    context.child = child
+    manager.commit()
+
+    assert child.is_accepted is True
+    context.close()
+
+    assert child.closed_states == [True]
+
+
+def test_owned_map_closes_all_committed_children_on_owner_close() -> None:
+    manager = TransactionManager()
+    context = OwnedContext(transaction_manager=manager)
+    left = SpyBinding("left")
+    right = SpyBinding("right")
+
+    manager.begin()
+    context.children = {"left": left, "right": right}
+    manager.commit()
+
+    context.close()
+
+    assert left.closed_states == [True]
+    assert right.closed_states == [True]
 
 def test_managed_context_inheritance_merges_fields_and_view_methods() -> None:
     manager = TransactionManager()
