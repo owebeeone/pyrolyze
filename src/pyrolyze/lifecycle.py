@@ -15,7 +15,7 @@ The core ideas are:
   overlay
 - transaction managers enlist only contexts that actually promote to working
 
-Only the restarted Phase 1.1/1.9 surface is implemented here:
+Only the restarted Phase 1.1/1.10 surface is implemented here:
 
 - ``lifecycle_field``
 - ``const``
@@ -25,6 +25,7 @@ Only the restarted Phase 1.1/1.9 surface is implemented here:
 - ``owned``
 - ``transient``
 - ``local_store``
+- ``derived``
 - ``managed_context``
 - ``LifecycleContext``
 - ``TransactionManager``
@@ -206,13 +207,13 @@ class LifecycleField:
         state_factory: Callable[[], Any] | None = None,
         state_copy: StateCopyHelper | None = None,
     ) -> None:
-        if kind not in {"managed", "const", "static", "binding", "owned", "transient", "local_store"}:
+        if kind not in {"managed", "const", "static", "binding", "owned", "transient", "local_store", "derived"}:
             raise TypeError(f"unsupported lifecycle field kind {kind!r}")
         if compare not in {"value", "identity"}:
             raise TypeError(f"unsupported compare mode {compare!r}")
         if default is not MISSING and default_factory is not MISSING:
             raise TypeError("lifecycle fields cannot define both default and default_factory")
-        if kind in {"const", "static", "binding", "owned", "transient", "local_store"} and state_factory is not None:
+        if kind in {"const", "static", "binding", "owned", "transient", "local_store", "derived"} and state_factory is not None:
             raise TypeError(f"{kind} fields cannot define state_factory")
         self.compare = compare
         self.default = default
@@ -364,6 +365,19 @@ def local_store(
     )
 
 
+def derived(
+    *,
+    default: Any = MISSING,
+    default_factory: Callable[[], Any] | object = MISSING,
+) -> Any:
+    return lifecycle_field(
+        kind="derived",
+        compare="value",
+        default=default,
+        default_factory=default_factory,
+    )
+
+
 def _get_default_overlay_field(state: LifecycleContextState, name: str) -> Any:
     working = state.working_record
     if working is not None and name in working.values:
@@ -391,6 +405,10 @@ def _get_static_field(state: LifecycleContextState, name: str) -> Any:
 
 def _get_local_store_field(state: LifecycleContextState, name: str) -> Any:
     return state.local_store_values[name]
+
+
+def _get_derived_field(state: LifecycleContextState, name: str) -> Any:
+    return state.derived_values[name]
 
 
 def _is_binding_map_value(value: Any) -> bool:
@@ -481,6 +499,10 @@ def _set_static_field(state: LifecycleContextState, name: str, value: Any) -> No
 
 def _set_local_store_field(state: LifecycleContextState, name: str, value: Any) -> None:
     state.local_store_values[name] = value
+
+
+def _set_derived_field(state: LifecycleContextState, name: str, value: Any) -> None:
+    state.derived_values[name] = value
 
 
 def _set_default_binding_field(state: LifecycleContextState, name: str, value: Any) -> None:
@@ -609,6 +631,10 @@ def _close_local_store_field(state: LifecycleContextState, name: str) -> None:
     state.local_store_values[name] = type(state).__field_specs__[name].default_value()
 
 
+def _reset_derived_field(state: LifecycleContextState, name: str) -> None:
+    state.derived_values[name] = type(state).__field_specs__[name].default_value()
+
+
 class LifecycleContextState:
     __field_specs__: dict[str, FieldSpec] = {}
     __field_names__: tuple[str, ...] = ()
@@ -630,6 +656,7 @@ class LifecycleContextState:
         "working_record",
         "working_tx_id",
         "local_store_values",
+        "derived_values",
         "unmanaged_store",
         "closed",
         "current_view",
@@ -649,6 +676,7 @@ class LifecycleContextState:
         self.working_record: Record | None = None
         self.working_tx_id: int | None = None
         self.local_store_values: dict[str, Any] = {}
+        self.derived_values: dict[str, Any] = {}
         self.unmanaged_store: dict[str, Any] = {}
         self.closed = False
         self.current_view = type(owner).__current_view_cls__(_state=self, _owner=owner)
@@ -660,6 +688,12 @@ class LifecycleContextState:
                     self.local_store_values[name] = values.pop(name)
                 else:
                     self.local_store_values[name] = spec.default_value()
+                continue
+            if spec.kind == "derived":
+                if name in values:
+                    self.derived_values[name] = values.pop(name)
+                else:
+                    self.derived_values[name] = spec.default_value()
                 continue
             if name in values:
                 self.current_record.values[name] = values.pop(name)
@@ -1015,6 +1049,17 @@ def _build_class_tables(
             close_field[name] = _close_local_store_field
             state_factory[name] = None
             state_copy[name] = None
+        elif spec.kind == "derived":
+            get_default[name] = _get_derived_field
+            get_current[name] = _get_derived_field
+            get_working[name] = _get_derived_field
+            set_default[name] = _set_derived_field
+            set_working[name] = _set_derived_field
+            commit_field[name] = _reset_derived_field
+            rollback_field[name] = _reset_derived_field
+            close_field[name] = _reset_derived_field
+            state_factory[name] = None
+            state_copy[name] = None
         else:
             raise TypeError(f"unsupported lifecycle field kind {spec.kind!r}")
             close_field[name] = _close_noop
@@ -1195,6 +1240,7 @@ __all__ = [
     "TransactionManager",
     "binding",
     "const",
+    "derived",
     "lifecycle_field",
     "local_store",
     "managed",

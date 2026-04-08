@@ -7,6 +7,7 @@ from pyrolyze.lifecycle import (
     TransactionManager,
     binding,
     const,
+    derived,
     lifecycle_field,
     local_store,
     managed,
@@ -101,6 +102,15 @@ class TransientContext:
 @managed_context
 class LocalStoreContext:
     cache: dict[str, int] = local_store(default_factory=dict)
+
+
+@managed_context
+class DerivedCacheContext:
+    value: int = managed(default=1)
+    cache: dict[str, int] = derived(default_factory=dict)
+
+    def refresh_cache(self) -> None:
+        self.cache = {"value": self.value}
 
 
 @managed_context
@@ -437,6 +447,46 @@ def test_local_store_survives_rollback_and_resets_on_close() -> None:
     manager.rollback()
 
     assert context.cache == {"count": 2}
+
+    context.close()
+
+    assert context.cache == {}
+
+
+def test_derived_cache_is_shared_and_invalidated_on_commit() -> None:
+    manager = TransactionManager()
+    context = DerivedCacheContext(transaction_manager=manager)
+
+    context.refresh_cache()
+    assert context.cache == {"value": 1}
+    assert context.current.cache == {"value": 1}
+    assert context.working.cache == {"value": 1}
+
+    manager.begin()
+    context.value = 3
+    context.refresh_cache()
+    assert context.cache == {"value": 3}
+
+    manager.commit()
+
+    assert context.cache == {}
+    assert context.current.cache == {}
+
+
+def test_derived_cache_is_invalidated_on_rollback_and_close() -> None:
+    manager = TransactionManager()
+    context = DerivedCacheContext(transaction_manager=manager)
+
+    context.refresh_cache()
+    manager.begin()
+    context.value = 4
+    context.refresh_cache()
+    manager.rollback()
+
+    assert context.cache == {}
+
+    context.refresh_cache()
+    assert context.cache == {"value": 1}
 
     context.close()
 
