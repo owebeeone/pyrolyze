@@ -232,6 +232,60 @@ Examples:
 - future site metadata maps
 - retained effect/subscription handles
 
+#### Universal binding base
+
+Lifecycle-managed bindings should converge on one universal runtime base.
+
+Best-guess v1 shape:
+
+- `BindingBase`
+- intrusive refcounting
+- `inc_ref()`
+- `dec_ref()`
+- `accepted()`
+- protected `_close()` hook
+
+Semantics:
+
+- a binding starts with `ref_count == 1`
+- `inc_ref()` records an additional retained owner
+- `dec_ref()` drops one retained owner
+- when `ref_count` reaches zero, the base invokes `_close()` exactly once
+- `accepted()` marks that the binding has survived commit at least once
+- bindings do not need an external `was_committed` parameter
+- teardown behavior derives from the binding's own accepted bit
+
+That means:
+
+- final release before `accepted()` implies rollback/uncommitted teardown
+- final release after `accepted()` implies committed/live teardown
+
+Recommended base properties:
+
+- `ref_count`
+- `is_accepted`
+- `is_closed`
+
+Recommended invariants:
+
+- `inc_ref()` after close is an error
+- `accepted()` after close is an error
+- `dec_ref()` below zero is an error
+- `_close()` runs exactly once and is not called directly by lifecycle code
+
+Scope:
+
+- use this base for retained runtime identity objects
+- do not use this base for plain value data such as `UIElement`
+- `UIElement`, `MountDirective`, and similar authored value objects remain
+  plain data and do not gain lifecycle ownership semantics
+
+Current runtime precedent:
+
+- `CallSiteBindingBase` already carries the closest version of this model
+- Phase `1.6 binding` should generalize that concept rather than invent a
+  second competing lifecycle base
+
 ### `owned()`
 
 Lifecycle-managed subordinate object with ownership/cascade intent.
@@ -240,6 +294,15 @@ Examples:
 
 - `ComponentCallSlotContext.child_context`
 - future owned retained subordinate contexts or handles
+
+Best-guess relationship to the universal binding base:
+
+- if an owned runtime object can be retained by multiple holders, it should
+  likely subclass the same universal `BindingBase`
+- if an owned runtime object is strictly single-owner and never shared, it may
+  remain simpler than a refcounted binding
+- the lifecycle system should prefer one retained-object model where practical,
+  but it should not force refcounting onto plain structurally-owned values
 
 ### `transient()`
 
@@ -314,8 +377,9 @@ Examples:
 These need:
 
 - `accepted()` when newly committed
-- `close(was_committed=False)` on rollback of provisional values
-- `close(was_committed=True)` on committed removal or replacement
+- `dec_ref()` on rollback of provisional values
+- `dec_ref()` on committed removal or replacement
+- teardown behavior determined by the binding's own accepted bit
 
 ### 3. Keyed binding maps
 
@@ -340,8 +404,8 @@ Examples:
 These behave like owned subordinate lifecycle objects:
 
 - new child accepted on commit
-- provisional child closed on rollback
-- old committed child closed on replacement
+- provisional child released on rollback
+- old committed child released on replacement
 
 ### 5. Fixed-structure validation
 
@@ -437,6 +501,40 @@ The library is responsible for:
 - commit/rollback/close flow
 - binding/resource lifecycle
 - policy-specific proxies or helper objects where needed
+
+## `context_lcm.py` binding guidance
+
+`context_lcm.py` should use the universal binding base instead of defining new
+bespoke retained-object protocols where possible.
+
+Implementation hints:
+
+- plain value nodes such as `UIElement` stay plain authored data
+- retained runtime identity objects should move toward `BindingBase`
+- `binding(...)` fields in lifecycle-managed contexts should hold:
+  - a `BindingBase`
+  - `None`
+  - or a keyed container of `BindingBase`
+- commit of a newly retained binding should call `accepted()`
+- replacing or dropping a retained binding should call `dec_ref()`
+- copying an existing retained binding into another holder should call
+  `inc_ref()`
+- rollback of an uncommitted replacement should call `dec_ref()`
+
+Expected migration targets:
+
+- `CallSiteBindingBase` should eventually collapse into, or subclass, the new
+  universal base
+- slot-call bindings should be adapted toward the same base over time
+- backend node bindings should use the same retained-object model if they have
+  persistent runtime identity and teardown requirements
+
+Important constraint:
+
+- `context_lcm.py` should not encode binding semantics itself beyond
+  application-specific hooks
+- the generic `inc_ref` / `dec_ref` / `accepted` behavior belongs in the
+  shared lifecycle binding base
 
 ## Best-guess concrete API
 

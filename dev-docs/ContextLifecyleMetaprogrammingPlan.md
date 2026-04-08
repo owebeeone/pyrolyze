@@ -418,20 +418,27 @@ has already happened.
 
 #### Scope
 
+- universal `BindingBase`
+- intrusive refcounting via `inc_ref()` / `dec_ref()`
+- `accepted()` lifecycle
+- protected `_close()` hook
 - scalar retained binding fields
 - keyed binding maps
-- accept/close lifecycle
+- integration of `binding()` fields with the universal binding base
 
 #### Test requirements
 
+- universal binding-base tests
 - provisional commit tests
-- rollback close tests
+- rollback release tests
 - committed replacement tests
 - keyed binding-map diff tests
 
 #### Exit criteria
 
-- `binding()` is implemented and independently tested
+- `BindingBase` is implemented and independently tested
+- `binding()` is implemented on top of the universal binding base and
+  independently tested
 
 ### Phase 1.7: `owned`
 
