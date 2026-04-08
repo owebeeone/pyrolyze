@@ -15,15 +15,15 @@ The core ideas are:
   overlay
 - transaction managers enlist only contexts that actually promote to working
 
-Only the restarted Phase 1.1/1.2 surface is implemented here:
+Only the restarted Phase 1.1/1.5 surface is implemented here:
 
 - ``lifecycle_field``
+- ``const``
+- ``static``
+- ``managed``
 - ``managed_context``
 - ``LifecycleContext``
 - ``TransactionManager``
-
-Later phases should layer ``const()``, ``static()``, ``managed()``,
-``binding()``, and the other higher-level field kinds on top of this engine.
 """
 
 import copy
@@ -126,6 +126,7 @@ FieldHook = Callable[["LifecycleContextState", str], None]
 @dataclass(slots=True)
 class FieldSpec:
     name: str
+    kind: str
     annotation: Any
     compare: str
     default: Any = MISSING
@@ -134,6 +135,9 @@ class FieldSpec:
     state_copy: StateCopyHelper | None = None
 
     def default_value(self) -> Any:
+        if self.kind == "static":
+            if self.default is MISSING and self.default_factory is MISSING:
+                return _SENTINEL
         if self.default is not MISSING:
             return self.default
         if self.default_factory is not MISSING:
@@ -142,24 +146,30 @@ class FieldSpec:
 
 
 class LifecycleField:
-    __slots__ = ("compare", "default", "default_factory", "name", "state_copy", "state_factory")
+    __slots__ = ("compare", "default", "default_factory", "kind", "name", "state_copy", "state_factory")
 
     def __init__(
         self,
         *,
+        kind: str = "managed",
         compare: str = "value",
         default: Any = MISSING,
         default_factory: Callable[[], Any] | object = MISSING,
         state_factory: Callable[[], Any] | None = None,
         state_copy: StateCopyHelper | None = None,
     ) -> None:
+        if kind not in {"managed", "const", "static"}:
+            raise TypeError(f"unsupported lifecycle field kind {kind!r}")
         if compare not in {"value", "identity"}:
             raise TypeError(f"unsupported compare mode {compare!r}")
         if default is not MISSING and default_factory is not MISSING:
             raise TypeError("lifecycle fields cannot define both default and default_factory")
+        if kind in {"const", "static"} and state_factory is not None:
+            raise TypeError(f"{kind} fields cannot define state_factory")
         self.compare = compare
         self.default = default
         self.default_factory = default_factory
+        self.kind = kind
         self.state_factory = state_factory
         self.state_copy = state_copy or copy.copy
         self.name: str | None = None
@@ -178,6 +188,7 @@ class LifecycleField:
     def build_spec(self, annotation: Any) -> FieldSpec:
         return FieldSpec(
             name=self.name_or_error(),
+            kind=self.kind,
             annotation=annotation,
             compare=self.compare,
             default=self.default,
@@ -194,6 +205,7 @@ class LifecycleField:
 
 def lifecycle_field(
     *,
+    kind: str = "managed",
     compare: str = "value",
     default: Any = MISSING,
     default_factory: Callable[[], Any] | object = MISSING,
@@ -201,11 +213,54 @@ def lifecycle_field(
     state_copy: StateCopyHelper | None = None,
 ) -> Any:
     return LifecycleField(
+        kind=kind,
         compare=compare,
         default=default,
         default_factory=default_factory,
         state_factory=state_factory,
         state_copy=state_copy,
+    )
+
+
+def const(
+    *,
+    default: Any = MISSING,
+    default_factory: Callable[[], Any] | object = MISSING,
+) -> Any:
+    return lifecycle_field(
+        kind="const",
+        default=default,
+        default_factory=default_factory,
+    )
+
+
+def managed(
+    *,
+    compare: str = "value",
+    default: Any = MISSING,
+    default_factory: Callable[[], Any] | object = MISSING,
+    state_factory: Callable[[], Any] | None = None,
+    state_copy: StateCopyHelper | None = None,
+) -> Any:
+    return lifecycle_field(
+        kind="managed",
+        compare=compare,
+        default=default,
+        default_factory=default_factory,
+        state_factory=state_factory,
+        state_copy=state_copy,
+    )
+
+
+def static(
+    *,
+    default: Any = MISSING,
+    default_factory: Callable[[], Any] | object = MISSING,
+) -> Any:
+    return lifecycle_field(
+        kind="static",
+        default=default,
+        default_factory=default_factory,
     )
 
 
@@ -227,19 +282,29 @@ def _get_working_overlay_field(state: LifecycleContextState, name: str) -> Any:
     return state.current_record.values[name]
 
 
+def _get_static_field(state: LifecycleContextState, name: str) -> Any:
+    value = state.current_record.values[name]
+    if value is _SENTINEL:
+        raise AttributeError(f"static field {name!r} is not initialized")
+    return value
+
+
 def _set_default_value_field(state: LifecycleContextState, name: str, value: Any) -> None:
+    state.require_active_transaction()
     if type(state).__class_ftable_get_default__[name](state, name) == value:
         return
     state.ensure_working_record().values[name] = value
 
 
 def _set_default_identity_field(state: LifecycleContextState, name: str, value: Any) -> None:
+    state.require_active_transaction()
     if type(state).__class_ftable_get_default__[name](state, name) is value:
         return
     state.ensure_working_record().values[name] = value
 
 
 def _set_working_value_field(state: LifecycleContextState, name: str, value: Any) -> None:
+    state.require_active_transaction()
     if type(state).__class_ftable_get_working__[name](state, name) == value:
         return
     working = state.ensure_working_record()
@@ -247,10 +312,24 @@ def _set_working_value_field(state: LifecycleContextState, name: str, value: Any
 
 
 def _set_working_identity_field(state: LifecycleContextState, name: str, value: Any) -> None:
+    state.require_active_transaction()
     if type(state).__class_ftable_get_working__[name](state, name) is value:
         return
     working = state.ensure_working_record()
     working.values[name] = value
+
+
+def _set_const_field(state: LifecycleContextState, name: str, value: Any) -> None:
+    del state, value
+    raise AttributeError(f"const field {name!r} is read-only")
+
+
+def _set_static_field(state: LifecycleContextState, name: str, value: Any) -> None:
+    current = state.current_record.values[name]
+    if current is _SENTINEL:
+        state.current_record.values[name] = value
+        return
+    raise AttributeError(f"static field {name!r} is already initialized")
 
 
 def _commit_overlay_field(state: LifecycleContextState, name: str) -> None:
@@ -328,7 +407,6 @@ class LifecycleContextState:
         return type(self).__class_ftable_get_default__[name](self, name)
 
     def set_field(self, name: str, value: Any) -> None:
-        self.require_active_transaction()
         type(self).__class_ftable_set_default__[name](self, name, value)
 
     def get_current_field(self, name: str) -> Any:
@@ -338,7 +416,6 @@ class LifecycleContextState:
         return type(self).__class_ftable_get_working__[name](self, name)
 
     def set_working_field(self, name: str, value: Any) -> None:
-        self.require_active_transaction()
         type(self).__class_ftable_set_working__[name](self, name, value)
 
     def get_field_state(self, name: str) -> Any:
@@ -454,6 +531,8 @@ class _ManagedContextBase:
     def __getattr__(self, name: str) -> Any:
         if name.startswith("_"):
             raise AttributeError(name)
+        if name in type(self).__state_cls__.__field_specs__:
+            return self.__get_field__(name)
         store = self._state.unmanaged_store
         try:
             return store[name]
@@ -596,20 +675,53 @@ def _build_class_tables(
     state_copy: dict[str, StateCopyHelper | None] = {}
 
     for name, spec in specs.items():
-        get_default[name] = _get_default_overlay_field
-        get_current[name] = _get_current_field
-        get_working[name] = _get_working_overlay_field
-        if spec.compare == "identity":
-            set_default[name] = _set_default_identity_field
-            set_working[name] = _set_working_identity_field
+        if spec.kind == "managed":
+            get_default[name] = _get_default_overlay_field
+            get_current[name] = _get_current_field
+            get_working[name] = _get_working_overlay_field
+            if spec.compare == "identity":
+                set_default[name] = _set_default_identity_field
+                set_working[name] = _set_working_identity_field
+            else:
+                set_default[name] = _set_default_value_field
+                set_working[name] = _set_working_value_field
+            commit_field[name] = _commit_overlay_field
+            rollback_field[name] = _rollback_overlay_field
+            state_factory[name] = spec.state_factory
+            state_copy[name] = spec.state_copy
+        elif spec.kind == "const":
+            get_default[name] = _get_current_field
+            get_current[name] = _get_current_field
+            get_working[name] = _get_current_field
+            set_default[name] = _set_const_field
+            set_working[name] = _set_const_field
+            commit_field[name] = _close_noop
+            rollback_field[name] = _close_noop
+            state_factory[name] = None
+            state_copy[name] = None
+        elif spec.kind == "const":
+            get_default[name] = _get_current_field
+            get_current[name] = _get_current_field
+            get_working[name] = _get_current_field
+            set_default[name] = _set_const_field
+            set_working[name] = _set_const_field
+            commit_field[name] = _close_noop
+            rollback_field[name] = _close_noop
+            state_factory[name] = None
+            state_copy[name] = None
+        elif spec.kind == "static":
+            get_default[name] = _get_static_field
+            get_current[name] = _get_static_field
+            get_working[name] = _get_static_field
+            set_default[name] = _set_static_field
+            set_working[name] = _set_static_field
+            commit_field[name] = _close_noop
+            rollback_field[name] = _close_noop
+            state_factory[name] = None
+            state_copy[name] = None
         else:
-            set_default[name] = _set_default_value_field
-            set_working[name] = _set_working_value_field
-        commit_field[name] = _commit_overlay_field
-        rollback_field[name] = _rollback_overlay_field
+            raise TypeError(f"unsupported lifecycle field kind {spec.kind!r}")
         close_field[name] = _close_noop
-        state_factory[name] = spec.state_factory
-        state_copy[name] = spec.state_copy
 
     return {
         "__class_ftable_get_default__": get_default,
@@ -650,6 +762,8 @@ def _collect_own_field_specs(cls: type[Any]) -> dict[str, FieldSpec]:
 
 
 def _merge_field_specs(base: FieldSpec, derived: FieldSpec) -> FieldSpec:
+    if base.kind != derived.kind:
+        raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
     if base.compare != derived.compare:
         raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
     if base.state_factory != derived.state_factory and derived.state_factory is not None:
@@ -673,6 +787,7 @@ def _merge_field_specs(base: FieldSpec, derived: FieldSpec) -> FieldSpec:
 
     return FieldSpec(
         name=base.name,
+        kind=base.kind,
         annotation=derived.annotation,
         compare=base.compare,
         default=default,
@@ -779,6 +894,9 @@ __all__ = [
     "LifecycleTransaction",
     "Record",
     "TransactionManager",
+    "const",
     "lifecycle_field",
+    "managed",
     "managed_context",
+    "static",
 ]

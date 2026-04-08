@@ -4,8 +4,11 @@ import pytest
 
 from pyrolyze.lifecycle import (
     TransactionManager,
+    const,
     lifecycle_field,
+    managed,
     managed_context,
+    static,
 )
 
 
@@ -46,6 +49,21 @@ class MatrixContext:
     @classmethod
     def class_name(cls) -> str:
         return cls.__name__
+
+
+@managed_context
+class ConstContext:
+    slot_id: int = const(default=7)
+
+
+@managed_context
+class StaticContext:
+    declared: tuple[str, ...] = static()
+
+
+@managed_context
+class ManagedAliasContext:
+    value: int = managed(default=1)
 
 
 @managed_context
@@ -149,6 +167,51 @@ def test_managed_context_wraps_plain_class_onto_internal_base() -> None:
     assert hasattr(context, "state")
     assert context.value == 0
 
+
+def test_const_fields_are_constructor_only_and_read_only_everywhere() -> None:
+    context = ConstContext()
+
+    assert context.slot_id == 7
+    assert context.current.slot_id == 7
+    assert context.working.slot_id == 7
+
+    with pytest.raises(AttributeError, match="const"):
+        context.slot_id = 8
+
+    with pytest.raises(AttributeError, match="const"):
+        context.working.slot_id = 8
+
+
+def test_static_fields_allow_one_assignment_and_ignore_commit_rollback() -> None:
+    manager = TransactionManager()
+    context = StaticContext(transaction_manager=manager)
+
+    with pytest.raises(AttributeError, match="initialized"):
+        _ = context.declared
+
+    context.declared = ("a", "b")
+    assert context.declared == ("a", "b")
+    assert context.current.declared == ("a", "b")
+    assert context.working.declared == ("a", "b")
+
+    manager.begin()
+    manager.rollback()
+
+    assert context.declared == ("a", "b")
+
+    with pytest.raises(AttributeError, match="already initialized"):
+        context.declared = ("x",)
+
+
+def test_managed_alias_behaves_like_managed_field() -> None:
+    manager = TransactionManager()
+    context = ManagedAliasContext(transaction_manager=manager)
+
+    assert context.value == 1
+    manager.begin()
+    context.value = 4
+    assert context.value == 4
+    assert context.current.value == 1
 
 def test_managed_context_inheritance_merges_fields_and_view_methods() -> None:
     manager = TransactionManager()
