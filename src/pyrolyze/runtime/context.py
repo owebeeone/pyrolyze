@@ -7,7 +7,9 @@ import os
 
 
 def _use_lcm_context() -> bool:
-    raw = os.environ.get("PYROLYZE_USE_CONTEXT_LCM", "")
+    raw = os.environ.get("PYROLYZE_USE_CONTEXT_LCM")
+    if raw is None:
+        return True
     return raw.strip().lower() not in {"", "0", "false", "no", "off"}
 
 

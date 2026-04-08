@@ -9,19 +9,19 @@ def _reload_runtime_context():
     return importlib.import_module("pyrolyze.runtime.context")
 
 
-def test_runtime_context_defaults_to_original(monkeypatch) -> None:
+def test_runtime_context_defaults_to_lcm(monkeypatch) -> None:
     monkeypatch.delenv("PYROLYZE_USE_CONTEXT_LCM", raising=False)
 
     module = _reload_runtime_context()
 
-    assert module.__PYROLYZE_CONTEXT_IMPLEMENTATION__ == "original"
+    assert module.__PYROLYZE_CONTEXT_IMPLEMENTATION__ == "lcm"
     assert hasattr(module, "RenderContext")
 
 
-def test_runtime_context_can_switch_to_lcm(monkeypatch) -> None:
-    monkeypatch.setenv("PYROLYZE_USE_CONTEXT_LCM", "1")
+def test_runtime_context_can_switch_back_to_original(monkeypatch) -> None:
+    monkeypatch.setenv("PYROLYZE_USE_CONTEXT_LCM", "0")
 
     module = _reload_runtime_context()
 
-    assert module.__PYROLYZE_CONTEXT_IMPLEMENTATION__ == "lcm"
+    assert module.__PYROLYZE_CONTEXT_IMPLEMENTATION__ == "original"
     assert hasattr(module, "RenderContext")
