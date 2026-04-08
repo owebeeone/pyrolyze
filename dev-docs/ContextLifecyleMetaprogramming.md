@@ -60,10 +60,10 @@ This design is not free.
 Compared to the current hand-written lifecycle code, a declarative system adds:
 
 - descriptor/property indirection
-- copy-on-write state allocation
+- copy-on-write state allocation or working-state promotion
 - transaction bookkeeping
 - generic diffing of binding maps
-- metaprogramming and generated state classes
+- metaprogramming and generated field-policy machinery
 
 So the first implementation will likely be slower in the small than a tightly
 hand-written fast path.
@@ -99,15 +99,52 @@ The lifecycle system should:
 7. Support inherited context shapes like the current slot-context hierarchy.
 8. Make field-level lifecycle policy declarative rather than ad hoc.
 
+## Architectural direction
+
+`freezable` was the beginning of lifecycle normalization, but it is no longer
+the right center of the design.
+
+The real problem is not “mutable peer vs frozen peer”. The real problem is:
+
+- transaction-scoped mutation
+- current vs working state
+- `const` and `static` writes
+- `binding` and `owned` lifecycle
+- transient and retained local state
+- commit/rollback/close ordering
+
+Those concerns are broader than paired dataclass conversion.
+
+### New architectural decision
+
+`pyrolyze.lifecycle` should own lifecycle semantics directly.
+
+That means:
+
+- `pyrolyze.lifecycle` should not depend on `pyrolyze.freezable` for its core
+  operation
+- `pyrolyze.lifecycle` should not depend on dataclasses as the fundamental
+  state model
+- the primary mechanism should be declarative field policies compiled into
+  descriptors and field-specific helpers
+- `freezable` may remain as an optional utility for leaf values where
+  freezing/thawing is convenient, but it is not part of the core lifecycle
+  contract
+
+In short:
+
+- lifecycle is primary
+- frozenness is an implementation detail
+
 ## Current experimental API
 
 The current prototype lives in `pyrolyze.lifecycle`.
 
-It exposes:
+The next revision should converge on a declarative surface like:
 
 ```python
 @managed_context
-class Example(LifecycleContext):
+class Example:
     transaction_manager: TransactionManager = inherited_const()
     slot_id: SlotId = const()
     declared_keys: tuple[str, ...] = static(default_factory=tuple)
@@ -121,12 +158,16 @@ class Example(LifecycleContext):
 
 and the decorated class gets:
 
-- generated frozen current state
-- generated thawed working state
-- property-driven copy-on-write writes
+- an internal managed-context base injected by the decorator
+- a generated `Example_State` subclass carrying field tables and lifecycle state
+- generated `Example_CurrentView` / `Example_WorkingView` subclasses that
+  inherit the application class
+- field descriptors with centralized getter/setter dispatch
+- property-driven copy-on-write writes into a working record overlay
 - commit/rollback/close lifecycle
 - accepted/close lifecycle on binding fields
-- copy-on-write mapping access for binding maps
+- normal Python method/descriptor resolution on `current` / `working`
+- whole-value replacement for map-like fields in the first implementation
 
 The prototype proves that the shape is viable, but it is still intentionally
 small. It does not yet encode all the lifecycle semantics needed by the real
@@ -362,7 +403,7 @@ The target model is:
 
 ```python
 @managed_context
-class ManagedSlotCallContext(LifecycleContext):
+class ManagedSlotCallContext:
     slot_id: SlotId = const()
     invoke_dirty: bool = managed(initial_working=True, freeze=bool)
     function_identity: object | None = managed(default=None)
@@ -390,12 +431,12 @@ The application class is the source of truth for:
 
 The library is responsible for:
 
-- generated state classes
+- field policy descriptors
 - current/working handling
 - transaction enlistment
 - commit/rollback/close flow
 - binding/resource lifecycle
-- property descriptors
+- policy-specific proxies or helper objects where needed
 
 ## Best-guess concrete API
 
@@ -404,7 +445,7 @@ forces a correction.
 
 ```python
 @managed_context
-class ExampleContext(LifecycleContext):
+class ExampleContext:
     transaction_manager: TransactionManager = inherited_const()
     slot_id: SlotId = const()
     declared_keys: tuple[str, ...] = static(default_factory=tuple)
@@ -437,6 +478,10 @@ class ExampleContext(LifecycleContext):
 - `derived()` means cached derived value maintained by class hooks.
 - `transaction_manager` is a generic shared runtime service, not an
   application-specific lifecycle field.
+- field write semantics belong to lifecycle field policies, not to
+  dataclass-generated setters
+- `freezable` may be used only for leaf-value normalization where convenient,
+  for example freezing committed `kwargs`-like values after commit
 
 ## Transaction model
 
@@ -497,7 +542,7 @@ The best-guess structural model is:
 On first write in a transaction:
 
 1. ensure there is an active transaction
-2. if the context does not yet have a working copy for this transaction:
+2. if the context does not yet have a working record for this transaction:
    - create one
    - assign its transaction id
    - register the context in the transaction dirty set
@@ -505,9 +550,9 @@ On first write in a transaction:
 
 If the same context is written again in the same transaction:
 
-- keep mutating the same working object
+- keep mutating the same working record
 
-If a write occurs under a different active transaction while a working copy is
+If a write occurs under a different active transaction while a working record is
 still associated with another transaction:
 
 - raise
@@ -516,6 +561,199 @@ This keeps the current implementation simple:
 
 - no nested transactions
 - no hidden cross-transaction working-state reuse
+
+### Record model
+
+The lifecycle engine should use records rather than whole cloned working
+objects.
+
+Conceptually:
+
+```python
+class LifecycleContext:
+    current: Record
+    working: Record | None
+    _default_record: Record
+```
+
+With the following rules:
+
+- `current` is the committed record
+- `working` is a sparse overlay record for the active transaction
+- `_default_record` is:
+  - `working` if a working record exists
+  - otherwise `current`
+- ordinary field access goes through `_default_record`
+- explicit committed reads use `self.current`
+- explicit staged writes may use `self.working`, which lazily promotes the
+  record if needed
+
+This gives:
+
+- no whole-object thaw/copy step
+- only changed fields allocate working entries
+- commit promotes only changed values and field state
+- rollback discards only changed values and field state
+
+### Field-policy access control
+
+The lifecycle base should maintain a field-policy registry keyed by field name.
+
+Conceptually:
+
+```python
+class LifecycleContext:
+    __field_specs__: dict[str, FieldSpec]
+    current: Record
+    working: Record | None
+    _default_record: Record
+```
+
+Each field spec defines behavior for:
+
+- initialization
+- read access
+- write access
+- commit
+- rollback
+- close
+
+Handler selection should happen at class-decoration time, not dynamically in
+the hot path.
+
+That means:
+
+- field parameters determine which getter/setter/commit/rollback helpers are
+  bound into the field spec
+- ordinary descriptor bodies should contain minimal logic
+- the common path should be:
+  - look up field spec by name
+  - call the preselected helper for that field
+
+The field spec may therefore contain handler references such as:
+
+- `get_default`
+- `get_current`
+- `set_default`
+- `commit_field`
+- `rollback_field`
+- `close_field`
+
+If a field kind needs distinct current-vs-working behavior, it is acceptable to
+have separate current and working helper variants. Those should still be chosen
+when the class is decorated, not re-decided on every access.
+
+The base class then exposes central dispatch points such as:
+
+- `__get_field__(name)`
+- `__set_field__(name, value)`
+- `__get_current_field__(name)`
+- `__get_field_state__(name)`
+- `__get_current_field_state__(name)`
+
+which select the concrete behavior for the field name.
+
+The concrete helper functions should be introduced incrementally as the
+primitive phases are implemented. The important point is that dispatch is
+centralized while behavior remains field-specific.
+
+These helpers should only be added when a new semantic behavior actually
+requires them.
+
+Do not create new helpers with identical semantics just to mirror field names
+or phases. If `commit`, `rollback`, `copy`, or getter/setter behavior is the
+same for multiple field configurations, those configurations should share the
+same helper function.
+
+The base class will then grow helpers such as:
+
+- `_const_setter`
+- `_static_setter`
+- `_managed_value_setter`
+- `_managed_identity_setter`
+- `_managed_initial_setter`
+- `_binding_scalar_setter`
+- `_binding_map_setter`
+- `_owned_scalar_setter`
+- `_owned_map_setter`
+- `_transient_setter`
+- `_local_store_setter`
+- `_derived_getter`
+
+and matching getter helpers where field semantics require them.
+
+For the first implementation, getters should stay simple.
+
+That means:
+
+- no rich getter-controller objects yet
+- getters return plain field values
+- getter specialization is only for access semantics such as:
+  - current-vs-working visibility
+  - unset-static handling
+  - transient access rules
+  - derived cache validation
+
+If future map/controller behavior proves necessary, it can be added later
+without changing the declarative field surface.
+
+This is preferred to a single global `__setattr__` solution because:
+
+- container/resource fields may eventually need specialized handling
+- initialization rules differ by field kind
+- some lifecycle fields require map-style mutation rather than scalar
+  assignment
+
+### Record and field runtime state
+
+Some fields need per-instance runtime state beyond the stored value.
+
+Examples:
+
+- whether a `static` field has been initialized
+- transient per-transaction visibility
+- derived cache validity
+- future field-local dirty bits or normalization state
+
+The lifecycle base should therefore support sparse per-field runtime state.
+
+Best-guess structure:
+
+- `__field_specs__`
+  immutable class-level metadata
+- `current.values`
+  committed field values
+- `current.field_state`
+  committed per-field runtime state
+- `working.values`
+  sparse working overrides for changed fields
+- `working.field_state`
+  sparse working runtime-state overrides for changed fields
+
+Only fields that actually need extra state should allocate entries.
+
+### Rollback model for field state
+
+Rollback must restore both:
+
+- working field values
+- working field runtime state
+
+So the design should treat field runtime state the same way it treats working
+values, but within the record overlay model:
+
+1. committed values and field state live in `current`
+2. first mutation of field-local runtime state lazily clones the relevant entry
+   into `working.field_state`
+3. first mutation of a field value lazily stores an override in
+   `working.values`
+4. commit promotes `working.values` and `working.field_state` into `current`
+5. rollback discards `working`
+
+Fields without runtime state simply have no entry.
+
+This keeps rollback generic and avoids ad hoc side bookkeeping in application
+classes.
 
 ### Commit and rollback cost
 
@@ -538,14 +776,22 @@ Best-guess write control rules:
   transaction:
   - raise
 - first write in the active transaction:
-  - copy on write
+  - create or reuse the working record overlay
   - register in dirty context set
 - later write in the same transaction:
   - continue mutating working state
-- write under a different transaction while a working copy is still open:
+- write under a different transaction while a working record is still open:
   - raise
 
 The transaction manager is the source of truth for these checks.
+
+For now, map-like lifecycle fields should also follow whole-value replacement.
+
+That means:
+
+- no getter-returned mutation controllers in the first implementation
+- map updates happen by assigning a new mapping value
+- commit/rollback still diff old vs new values for `binding` and `owned` maps
 
 ## Value control
 
@@ -697,67 +943,76 @@ state can become declarative.
 
 ## Do we need true frozen classes?
 
-This is an open design question.
+No, not as a core requirement.
 
-### Option A: keep true frozen classes
+True frozen classes were useful while the problem was framed as
+“mutable/thawed peer vs frozen/current peer”. Once the design shifts to a
+field-policy lifecycle engine, that framing becomes secondary.
 
-Pros:
+What we actually need is:
 
-- hard write protection for committed state
-- clearer debugging of illegal mutation
-- simpler mental model for current vs working
-- aligns naturally with `freezable` / `thawable`
+- a stable current/working model
+- transaction-scoped mutation control
+- centralized field semantics
+- a way to prevent or reject illegal writes
 
-Cons:
+That can be achieved with:
 
-- more generated types
-- more conversion machinery
-- object churn at freeze boundaries
-- some logic may become conversion-aware unnecessarily
-
-### Option B: use mutable dataclasses with write control
-
-Pros:
-
-- simpler generated types
-- no need for true frozen peers
-- committed vs working can be enforced by descriptor and transaction rules
-- field-level write control may already provide enough protection
-
-Cons:
-
-- write protection becomes policy, not type-level guarantee
-- accidental mutation bugs may be harder to catch
-- debugging current-vs-working mistakes becomes less obvious
+- mutable record objects
+- descriptor-driven write control
+- transaction manager enforcement
+- field-specific proxies for container/resource fields
 
 ### Best-guess conclusion
 
-The transaction model is the primary requirement. True frozen classes are a
-secondary implementation choice.
+The lifecycle system should not depend on:
 
-If transaction-scoped write control is strong enough, mutable dataclasses may
-be sufficient:
+- true frozen classes
+- paired dataclasses
+- `freezable` as a foundation
 
-- current state may be mutable by type
-- but writes can only occur through managed descriptors under an active
-  transaction
-- direct writes outside the transaction protocol should raise
+Instead:
 
-That means the design should not depend on true frozen classes.
+- `lifecycle` should own the setter/write-control story directly
+- current and working state may both be mutable implementation objects
+- legality of writes is enforced by lifecycle policy, not by dataclass
+  frozenness
+- `freezable` remains available only as an optional helper for leaf values that
+  benefit from freezing
 
-The lifecycle library should be able to support both implementations:
+Examples where `freezable` may still be useful:
 
-- true frozen current state plus thawed working state
-- mutable current/working dataclasses with transaction-controlled writes
+- committed `args` tuples
+- committed `kwargs` mappings
+- future leaf container values that benefit from structural freezing
 
-The rest of the declarative API should stay the same.
+But those are field-level optimizations, not lifecycle architecture.
 
-The current best guess is:
+## Prototype salvage
 
-- start with true frozen current state if that simplifies implementation
-- do not make the API depend on true frozen classes
-- keep the option to move to mutable backing state with strict write control if
-  profiling shows that to be a better runtime trade
+The current `pyrolyze.lifecycle` module is now best treated as a prototype, not
+as an implementation to extend mechanically.
+
+The parts that are still worth salvaging are:
+
+- the transaction-manager concept
+- the field taxonomy direction
+- the independent lifecycle tests as semantic references
+- binding lifecycle helper semantics such as `accepted()` and
+  `close(was_committed=...)`
+
+The parts that are likely not worth preserving are:
+
+- the dependency on `pyrolyze.freezable`
+- generated frozen/thawed state classes
+- whole-object `_current` / `_working` cloning
+- dataclass-centric state generation
+
+So the implementation plan should assume:
+
+- restart the core lifecycle implementation around records and field policies
+- salvage semantics and tests where useful
+- do not force source compatibility with the current prototype internals
 
 ## Proposed direction
 
@@ -768,6 +1023,222 @@ The current best guess is:
 5. Keep class hooks for fixed-structure semantics.
 6. Do not commit the design to true frozen classes yet.
    The API should remain compatible with either frozen or mutable backing state.
+
+## Open issues
+
+The design is now coherent enough to keep building, but a few issues should be
+resolved deliberately before later phases rely on them too heavily.
+
+### 1. Shared non-managed instance storage across stable views
+
+The method-execution question is now resolved: current and working views should
+be real generated subclasses of the application class so method lookup uses
+normal Python resolution.
+
+The remaining question is where non-managed instance attributes should live when
+there are multiple real runtime objects sharing one lifecycle state:
+
+- not in the managed current/working value dicts
+- not copied through commit/rollback
+- instead in a separate shared unmanaged store attached to the lifecycle state
+
+Current best guess:
+
+- managed storage is only for lifecycle-managed fields
+- unmanaged storage is a separate shared store for ordinary instance
+  attributes/caches
+- `context`, `context.current`, and `context.working` all see the same
+  unmanaged store
+- unmanaged storage does not participate in commit/rollback
+
+`static` fields are not part of unmanaged storage. They remain lifecycle field
+concepts with one-time initialization semantics.
+
+### 2. Name-resolution precedence
+
+Adopted best guess:
+
+- managed field names win over method names
+- this includes `const`, `static`, and later lifecycle field kinds
+- otherwise normal class resolution applies
+- private/internal-name policy can remain conservative for now and be tightened
+  later if needed
+
+### 3. Non-function descriptors on application classes
+
+The current direction is to rely on normal Python class behavior for:
+
+- `@property`
+- `classmethod`
+- `staticmethod`
+- ABC methods
+
+The remaining question is whether any custom descriptors need special handling
+beyond normal Python resolution, or whether they should simply be treated as an
+unsupported edge case until a concrete need appears.
+
+If a descriptor pattern is not explicitly described in this design, it should be
+checked when encountered and resolved from the concrete use case rather than
+abstractly anticipated.
+
+### 4. Managed inheritance semantics
+
+The current direction is:
+
+- same-name field reappearance means **merge**, not blind replacement
+- field kind must remain compatible according to narrowing rules
+- annotation may narrow compatibly in a derived class
+- `default` / `default_factory` may be replaced by the derived class
+- other flag differences raise unless explicitly listed as overridable
+- methods should continue to follow expected Python inheritance behavior
+
+Best-guess v1 merge policy:
+
+- exact same field kind is allowed subject to compatibility checks
+- derived annotations may narrow the base annotation
+- incompatible widening or unrelated type changes raise
+- if there is doubt about a flag override, raise rather than guess
+
+The standalone narrowing checks should live in:
+
+- `pyrolyze.type_annotations`
+
+Validation against real slot-context-style hierarchies is deferred until those
+concrete cases appear during `context_lcm.py` migration.
+
+### 5. Public vs internal wrapped-class identity
+
+`@managed_context` now wraps plain application classes onto an internal base and
+generates a separate state subclass. The remaining questions are:
+
+- whether the wrapped class identity is acceptable for debugging and reprs
+- whether any `super()` edge cases need to be handled explicitly
+- whether pickle/serialization expectations matter for this layer
+
+For now, this is a watchpoint rather than a blocker. It should be checked
+against real `context_lcm.py` implementation experience and only escalated if
+it causes practical issues.
+
+### 6. `transaction_manager` representation
+
+For now, keep this simple.
+
+Current best guess:
+
+- the manager holds the active transaction id
+- lifecycle state tracks whether its staged values belong to that transaction
+- a special constructor argument is acceptable in v1
+- it may later become a real inherited `const()` field once the field taxonomy
+  is implemented
+
+## Stable-view state model
+
+The current best guess is that a managed context should own a stable family of
+runtime objects for its full lifetime:
+
+- `context`
+  the default/application-facing view
+- `context.current`
+  the committed read-only view
+- `context.working`
+  the staged working view
+- `context.state`
+  the shared lifecycle state object
+
+The important part is that `current` and `working` are stable objects. They are
+not created and destroyed per transaction. Only the underlying state changes.
+
+### Shared storage
+
+The shared state object should hold:
+
+- `current_values`
+  committed field values
+- `working_values`
+  sparse staged overrides
+- `current_field_state`
+  committed field runtime state
+- `working_field_state`
+  sparse staged runtime-state overrides
+- transaction bookkeeping
+
+### Read behavior
+
+Best-guess semantics:
+
+- `context.field`
+  reads the default/working surface
+- `context.current.field`
+  always reads current value
+- `context.working.field`
+  reads the same logical working/default surface as `context.field`
+
+This means:
+
+- unqualified access is always the staged/default view
+- the committed surface is only available explicitly via `.current`
+
+The staged/default surface may still read through to committed values for fields
+that do not yet have staged overrides, but it should not change conceptual mode
+based on whether a staged override currently exists.
+
+### Write behavior
+
+Best-guess semantics:
+
+- `context.field = value`
+  writes through the default lifecycle rules
+- `context.current.field = value`
+  always fails
+- `context.working.field = value`
+  always stages into the working layer
+
+## Adopted v1 transaction policy
+
+The adopted v1 policy is:
+
+1. transactions are explicit
+   - `transaction_manager.begin()`
+   - `transaction_manager.commit()`
+   - `transaction_manager.rollback()`
+2. writes to lifecycle-managed fields outside an active transaction raise
+3. the first write to a managed field under an active transaction:
+   - enlists the owning context in that transaction
+   - materializes staged mutable state for that field from the committed value
+     if the field policy requires it
+4. subsequent writes in the same transaction reuse that staged value/state
+5. commit merges staged state into committed state and clears staged state
+6. rollback discards staged state and leaves committed state unchanged
+
+This v1 policy intentionally does **not** auto-begin transactions on write.
+The explicit transaction boundary is easier to reason about, easier to test, and
+closer to the existing runtime transaction model.
+
+### Commit behavior
+
+Commit should:
+
+1. merge `current_values` with `working_values`
+2. apply per-field commit transforms or lifecycle hooks
+3. replace `current_values` with the merged result
+4. clear `working_values`
+5. do the same for field runtime state
+
+This keeps the commit boundary explicit while avoiding whole-object cloning.
+
+### Rollback behavior
+
+Rollback should:
+
+- discard staged `working_values`
+- discard staged `working_field_state`
+- leave `current_values` and committed runtime state unchanged
+
+### Allocation policy
+
+The first implementation may simply allocate fresh merged dicts on commit.
+Later optimization can keep the working dicts allocated and reuse them by
+clearing them after commit or rollback.
 
 ## Why this is worth doing
 

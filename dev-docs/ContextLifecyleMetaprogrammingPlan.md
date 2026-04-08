@@ -69,6 +69,7 @@ That means implementation decisions should favor:
 - declarative field definitions
 - declarative field policy
 - declarative class hooks
+- compile-time selection of field handlers from field parameters
 
 and should avoid sliding back into large amounts of imperative lifecycle code in
 `context_lcm.py`.
@@ -103,6 +104,35 @@ That means:
 If `context_lcm.py` needs a capability, it should be added to
 `pyrolyze.lifecycle` in generic lifecycle terms.
 
+### 5. `pyrolyze.lifecycle` owns lifecycle semantics directly
+
+The lifecycle library should not be architected as a thin wrapper around
+`pyrolyze.freezable`.
+
+That means:
+
+- field semantics should live in lifecycle field policies/descriptors
+- write control should be owned by lifecycle, not by dataclass frozenness
+- the core implementation should not depend on generated frozen/thawed
+  dataclass peers
+
+`pyrolyze.freezable` may still be used as an optional utility for leaf-value
+freezing, but it is not part of the core lifecycle contract.
+
+### 6. Getter/setter handlers must stay minimal
+
+Getter/setter logic should be selected when the class is decorated, not
+rediscovered on every access.
+
+That means:
+
+- field specs should bind the concrete helpers to use for that field
+- descriptor bodies should do as little work as possible
+- new helper functions should be added only when a new semantic behavior
+  actually appears
+- helpers with identical behavior should be shared rather than duplicated for
+  naming symmetry
+
 ## Strategy
 
 The migration should proceed in parallel rather than as an in-place rewrite.
@@ -118,6 +148,23 @@ That means:
 At every phase, `context_lcm.py` should solve lifecycle problems by extending
 `pyrolyze.lifecycle`, not by bypassing it.
 
+The existing `pyrolyze.lifecycle` module should be treated as a prototype.
+
+The implementation should salvage semantics selectively, but it should not feel
+obliged to preserve the current dataclass/freezable-centered internals.
+
+The current best guess is that the lifecycle core should be restarted around:
+
+- record overlays
+- central field-policy dispatch
+- mutable committed/working records
+
+while preserving useful pieces such as:
+
+- `TransactionManager`
+- field-taxonomy semantics
+- focused lifecycle tests where they still describe the right behavior
+
 ## Deliverables
 
 ### Runtime deliverables
@@ -129,8 +176,9 @@ At every phase, `context_lcm.py` should solve lifecycle problems by extending
 ### Library deliverables
 
 - expanded `pyrolyze.lifecycle`
-- any needed additions to `pyrolyze.freezable`
+- optional leaf-level `pyrolyze.freezable` usage only where justified
 - focused lifecycle-library tests
+- record-based lifecycle storage instead of whole-object current/working clones
 
 ### Test deliverables
 
@@ -192,6 +240,40 @@ The key requirement is that:
 - original runtime works unchanged under the switcher
 - the rest of the codebase still imports `runtime.context`
 
+## Phase 0.5: Restart the lifecycle prototype
+
+The current `pyrolyze.lifecycle` implementation should not remain the active
+architectural base for Phase 1.
+
+This phase exists to make the restart explicit.
+
+### Tasks
+
+1. Treat the current `pyrolyze.lifecycle` implementation as a prototype.
+2. Preserve only semantics worth keeping:
+   - transaction-manager behavior
+   - field-taxonomy direction
+   - binding lifecycle semantics
+   - focused lifecycle tests that still describe the right behavior
+3. Remove or replace prototype internals that are no longer architectural
+   matches:
+   - `freezable` dependency
+   - generated frozen/thawed state classes
+   - whole-object current/working cloning
+   - dataclass-centered core state generation
+4. Re-center the module on:
+   - `Record`
+   - stable `context` / `context.current` / `context.working` views
+   - central field-policy dispatch
+   - separate managed and unmanaged shared storage
+
+### Exit criteria
+
+- `pyrolyze.lifecycle` is explicitly being rebuilt around records
+- no future phase assumes the old dataclass/freezable-centered internals
+- the remaining lifecycle tests are understood as semantic tests, not prototype
+  implementation tests
+
 ## Phase 1: Build lifecycle primitives one at a time
 
 Phase 1 should be split into narrow, test-first primitive phases.
@@ -205,7 +287,59 @@ Phase 1 should be split into narrow, test-first primitive phases.
 This avoids one broad “build the whole lifecycle system” phase and makes it
 clear which runtime migration slices are blocked by which missing primitives.
 
-### Phase 1.1: `TransactionManager`
+This phase sequence assumes that the lifecycle prototype restart in Phase 0.5
+has already happened.
+
+### Phase 1.1: field-policy engine and descriptors
+
+#### Scope
+
+- central field-policy registry
+- descriptor installation and `__set_name__`
+- decorator wrapping of plain classes onto an internal managed-context base
+- generation of per-context `*_State` subclasses
+- generation of per-context current/working view subclasses that inherit the
+  application class
+- generic per-field getter/setter dispatch
+- compile-time binding of getter/setter/commit/rollback helpers into field specs
+- policy hooks for init/read/write/commit/rollback/close
+- `Record` abstraction for committed values and sparse working overlays
+- `context`, `context.current`, and `context.working` stable-view semantics
+- sparse per-record field-state for fields that need runtime state
+- separate unmanaged shared storage for non-lifecycle instance attributes
+- no getter-controller objects in the first implementation
+
+#### Test requirements
+
+- descriptor read/write tests
+- field-policy dispatch tests
+- inheritance tests for field policies
+- plain-class `@managed_context` tests
+- managed-context hierarchy merge tests using compatibility-merge semantics
+- current/working view subclass tests
+- normal Python method/property/classmethod/staticmethod resolution tests on
+  current/working views
+- unmanaged shared-store tests across stable views
+- policy-specific helper invocation tests
+- helper sharing tests where multiple field configs intentionally use the same
+  behavior
+- unqualified-access-is-default-working-surface tests
+- explicit `current` read tests
+- working-record copy-on-write tests
+- rollback discard of working record and working field-state tests
+
+#### Exit criteria
+
+- `pyrolyze.lifecycle` has a generic field-policy engine
+- later primitives build on records and field policies rather than on
+  dataclass-specific mechanisms
+- user classes do not need to inherit from a public lifecycle base
+- method/property/classmethod/staticmethod behavior uses normal Python
+  resolution through generated view subclasses
+- handler selection occurs at decoration time rather than inside hot-path
+  descriptor logic
+
+### Phase 1.2: `TransactionManager`
 
 #### Scope
 
@@ -226,7 +360,7 @@ clear which runtime migration slices are blocked by which missing primitives.
 - `pyrolyze.lifecycle` has a generic transaction manager
 - lifecycle tests prove transaction behavior without runtime dependencies
 
-### Phase 1.2: `const`
+### Phase 1.3: `const`
 
 #### Scope
 
@@ -244,7 +378,7 @@ clear which runtime migration slices are blocked by which missing primitives.
 
 - `const()` is implemented and independently tested
 
-### Phase 1.3: `static`
+### Phase 1.4: `static`
 
 #### Scope
 
@@ -262,7 +396,7 @@ clear which runtime migration slices are blocked by which missing primitives.
 
 - `static()` is implemented and independently tested
 
-### Phase 1.4: `managed`
+### Phase 1.5: `managed`
 
 #### Scope
 
@@ -280,7 +414,7 @@ clear which runtime migration slices are blocked by which missing primitives.
 
 - `managed()` is implemented and independently tested
 
-### Phase 1.5: `binding`
+### Phase 1.6: `binding`
 
 #### Scope
 
@@ -299,7 +433,7 @@ clear which runtime migration slices are blocked by which missing primitives.
 
 - `binding()` is implemented and independently tested
 
-### Phase 1.6: `owned`
+### Phase 1.7: `owned`
 
 #### Scope
 
@@ -317,7 +451,7 @@ clear which runtime migration slices are blocked by which missing primitives.
 
 - `owned()` is implemented and independently tested
 
-### Phase 1.7: `transient`
+### Phase 1.8: `transient`
 
 #### Scope
 
@@ -335,7 +469,7 @@ clear which runtime migration slices are blocked by which missing primitives.
 
 - `transient()` is implemented and independently tested
 
-### Phase 1.8: `local_store`
+### Phase 1.9: `local_store`
 
 #### Scope
 
@@ -353,7 +487,7 @@ clear which runtime migration slices are blocked by which missing primitives.
 
 - `local_store()` is implemented and independently tested
 
-### Phase 1.9: `derived`
+### Phase 1.10: `derived`
 
 #### Scope
 
@@ -370,7 +504,7 @@ clear which runtime migration slices are blocked by which missing primitives.
 
 - `derived()` is implemented and independently tested
 
-### Phase 1.10: value control on `managed`
+### Phase 1.11: value control on `managed`
 
 #### Scope
 
@@ -389,7 +523,7 @@ clear which runtime migration slices are blocked by which missing primitives.
 
 - managed-field value control is implemented and independently tested
 
-### Phase 1.11: write-control enforcement
+### Phase 1.12: write-control enforcement
 
 #### Scope
 
@@ -416,6 +550,7 @@ clear which runtime migration slices are blocked by which missing primitives.
   runtime-specific imperative fallback code
 - transaction mechanics are represented generically rather than through
   `context.py`-specific terms
+- the implementation is record-based rather than whole-object clone based
 
 ## Phase 2: Migrate `CallSiteContext` if needed first
 
@@ -621,7 +756,34 @@ and not force:
 
 into the declarative library.
 
-### 3. Domain leakage into the lifecycle library
+### 3. Freezable-centered backsliding
+
+The migration fails architecturally if lifecycle semantics drift back into a
+paired-dataclass or frozen/thawed-centric design.
+
+The core engine must remain:
+
+- field-policy-driven
+- transaction-driven
+- descriptor/proxy-based where needed
+
+`freezable` should remain optional leaf support only.
+
+### 4. Incremental extension of the wrong prototype
+
+The migration also fails architecturally if the existing prototype is extended
+piecemeal in ways that preserve its wrong center.
+
+The core should be restarted when needed around:
+
+- record overlays
+- direct field-policy dispatch
+- mutable current/working record storage
+
+instead of preserving whole-object thaw/freeze machinery just because it
+already exists.
+
+### 5. Domain leakage into the lifecycle library
 
 The migration fails architecturally if `pyrolyze.lifecycle` starts encoding
 runtime-specific `context.py` details.
@@ -629,7 +791,7 @@ runtime-specific `context.py` details.
 The library must remain usable for any complex lifecycle-managed system, not
 just the Pyrolyze slot runtime.
 
-### 4. Hidden semantic gaps
+### 6. Hidden semantic gaps
 
 `context.py` has a lot of small behaviors that are easy to miss.
 

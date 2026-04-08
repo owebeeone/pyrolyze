@@ -1,53 +1,66 @@
 from __future__ import annotations
 
-"""Declarative current/working lifecycle helpers.
+"""Record-based declarative lifecycle primitives.
 
-This module builds on :mod:`pyrolyze.freezable` to provide a higher-level,
-declarative lifecycle model for stateful runtime objects.
+This module is the restarted lifecycle core. It does not depend on
+``pyrolyze.freezable`` and it does not use whole-object frozen/thawed state
+clones as its primary representation.
 
-The public surface is intentionally small:
+The core ideas are:
 
-- `@managed_context`
-- `managed(...)`
-- `managed_binding(...)`
-- `LifecycleContext`
+- field specs are compiled at class-decoration time
+- field access goes through minimal descriptors
+- contexts hold a committed ``current`` record plus a sparse ``working`` record
+- ordinary reads see ``current`` until a working overlay exists, then see the
+  overlay
+- transaction managers enlist only contexts that actually promote to working
 
-`managed(...)` defines ordinary value fields.
+Only the restarted Phase 1.1/1.2 surface is implemented here:
 
-`managed_binding(...)` defines lifecycle-managed resource fields. For scalar
-annotations this behaves as a single retained binding. For mapping
-annotations, reads return a copy-on-write mapping proxy and commit/rollback
-diffs drive `accepted()` / `close(was_committed=...)` on the resource values.
+- ``lifecycle_field``
+- ``managed_context``
+- ``LifecycleContext``
+- ``TransactionManager``
 
-`managed(...)` does not attempt to track in-place mutation of nested mutable
-values. If a field needs incremental dict-like lifecycle management, model it
-as a binding map instead of a plain value field.
-
-The generated current/working state classes are shallow and deliberately
-lifecycle-agnostic. Application-specific semantics belong on the decorated
-context class via overrides such as `before_commit(...)`.
+Later phases should layer ``const()``, ``static()``, ``managed()``,
+``binding()``, and the other higher-level field kinds on top of this engine.
 """
 
-import sys
-import types
-from collections.abc import Iterator, Mapping, MutableMapping
+import copy
+from collections.abc import Callable
 from dataclasses import MISSING, dataclass, field
-from typing import Any, Callable, Protocol, get_origin, get_type_hints
+import inspect
+import types
+import typing
+from typing import Any
 
-from .freezable import (
-    HintResolutionMode,
-    thawable_dataclass,
-    thawed_dataclass,
-)
+from pyrolyze.type_annotations import is_annotation_narrower_or_equal
 
 _SENTINEL = object()
-_MAPPING_ORIGINS = (dict, Mapping, MutableMapping)
 
 
-class LifecycleBinding(Protocol):
-    def accepted(self) -> None: ...
+@dataclass(slots=True)
+class Record:
+    values: dict[str, Any] = field(default_factory=dict)
+    field_state: dict[str, Any] = field(default_factory=dict)
 
-    def close(self, *, was_committed: bool) -> None: ...
+
+class _RecordSnapshot:
+    __slots__ = ("_values",)
+
+    def __init__(self, values: dict[str, Any]) -> None:
+        self._values = dict(values)
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return self._values[name]
+        except KeyError as exc:
+            raise AttributeError(name) from exc
+
+
+def _view_init(self, *, _state: LifecycleContextState, _owner: _ManagedContextBase) -> None:
+    object.__setattr__(self, "_state", _state)
+    object.__setattr__(self, "_owner", _owner)
 
 
 @dataclass(slots=True)
@@ -103,617 +116,669 @@ class TransactionManager:
         transaction.dirty_contexts.pop(id(context), None)
 
 
-class _ConstField:
-    __slots__ = ("default", "default_factory", "name", "annotation", "storage_name")
+FieldStateFactory = Callable[[], Any]
+StateCopyHelper = Callable[[Any], Any]
+FieldGetter = Callable[["LifecycleContextState", str], Any]
+FieldSetter = Callable[["LifecycleContextState", str, Any], None]
+FieldHook = Callable[["LifecycleContextState", str], None]
 
-    def __init__(
-        self,
-        *,
-        default: Any = MISSING,
-        default_factory: Callable[[], Any] | object = MISSING,
-    ) -> None:
-        if default is not MISSING and default_factory is not MISSING:
-            raise TypeError("const fields cannot define both default and default_factory")
-        self.default = default
-        self.default_factory = default_factory
-        self.name: str | None = None
-        self.annotation: Any = Any
-        self.storage_name: str | None = None
 
-    def __set_name__(self, owner: type[LifecycleContext], name: str) -> None:
-        self.name = name
-        self.storage_name = f"__lifecycle_const_{name}"
+@dataclass(slots=True)
+class FieldSpec:
+    name: str
+    annotation: Any
+    compare: str
+    default: Any = MISSING
+    default_factory: Callable[[], Any] | object = MISSING
+    state_factory: FieldStateFactory | None = None
+    state_copy: StateCopyHelper | None = None
 
-    def __get__(
-        self,
-        instance: LifecycleContext | None,
-        owner: type[LifecycleContext],
-    ) -> Any:
-        if instance is None:
-            return self
-        return getattr(instance, self.storage_name_or_error())
-
-    def __set__(self, instance: LifecycleContext, value: Any) -> None:
-        del instance, value
-        raise AttributeError(f"{self.name_or_error()} is const")
-
-    def name_or_error(self) -> str:
-        if self.name is None:
-            raise RuntimeError("const field name was not initialized")
-        return self.name
-
-    def storage_name_or_error(self) -> str:
-        if self.storage_name is None:
-            raise RuntimeError("const field storage name was not initialized")
-        return self.storage_name
-
-    def value_for_init(self, values: dict[str, Any]) -> Any:
-        name = self.name_or_error()
-        if name in values:
-            return values.pop(name)
+    def default_value(self) -> Any:
         if self.default is not MISSING:
             return self.default
         if self.default_factory is not MISSING:
             return self.default_factory()
-        raise TypeError(f"missing required const field {name!r}")
+        raise TypeError(f"missing required lifecycle field {self.name!r}")
 
 
-class _ManagedField:
-    __slots__ = ("binding", "default", "default_factory", "name", "annotation", "mapping")
+class LifecycleField:
+    __slots__ = ("compare", "default", "default_factory", "name", "state_copy", "state_factory")
 
     def __init__(
         self,
         *,
-        binding: bool,
+        compare: str = "value",
         default: Any = MISSING,
         default_factory: Callable[[], Any] | object = MISSING,
+        state_factory: Callable[[], Any] | None = None,
+        state_copy: StateCopyHelper | None = None,
     ) -> None:
+        if compare not in {"value", "identity"}:
+            raise TypeError(f"unsupported compare mode {compare!r}")
         if default is not MISSING and default_factory is not MISSING:
-            raise TypeError("managed fields cannot define both default and default_factory")
-        self.binding = binding
+            raise TypeError("lifecycle fields cannot define both default and default_factory")
+        self.compare = compare
         self.default = default
         self.default_factory = default_factory
+        self.state_factory = state_factory
+        self.state_copy = state_copy or copy.copy
         self.name: str | None = None
-        self.annotation: Any = Any
-        self.mapping = False
 
     def __set_name__(self, owner: type[LifecycleContext], name: str) -> None:
         self.name = name
 
-    def __get__(
-        self,
-        instance: LifecycleContext | None,
-        owner: type[LifecycleContext],
-    ) -> Any:
+    def __get__(self, instance: LifecycleContext | None, owner: type[LifecycleContext]) -> Any:
         if instance is None:
             return self
-        if self.binding and self.mapping:
-            return _BindingMapProxy(instance, self.name_or_error())
-        return instance._get_field_value(self.name_or_error())
+        return instance.__get_field__(self.name_or_error())
 
     def __set__(self, instance: LifecycleContext, value: Any) -> None:
-        name = self.name_or_error()
-        if self.binding and self.mapping:
-            instance._set_binding_map(name, value)
-            return
-        instance._set_field_value(name, value, binding=self.binding)
+        instance.__set_field__(self.name_or_error(), value)
+
+    def build_spec(self, annotation: Any) -> FieldSpec:
+        return FieldSpec(
+            name=self.name_or_error(),
+            annotation=annotation,
+            compare=self.compare,
+            default=self.default,
+            default_factory=self.default_factory,
+            state_factory=self.state_factory,
+            state_copy=self.state_copy,
+        )
 
     def name_or_error(self) -> str:
         if self.name is None:
-            raise RuntimeError("managed field name was not initialized")
+            raise RuntimeError("lifecycle field name was not initialized")
         return self.name
 
 
-def managed(
+def lifecycle_field(
     *,
+    compare: str = "value",
     default: Any = MISSING,
     default_factory: Callable[[], Any] | object = MISSING,
+    state_factory: Callable[[], Any] | None = None,
+    state_copy: StateCopyHelper | None = None,
 ) -> Any:
-    return _ManagedField(
-        binding=False,
+    return LifecycleField(
+        compare=compare,
         default=default,
         default_factory=default_factory,
+        state_factory=state_factory,
+        state_copy=state_copy,
     )
 
 
-def const(
-    *,
-    default: Any = MISSING,
-    default_factory: Callable[[], Any] | object = MISSING,
-) -> Any:
-    return _ConstField(
-        default=default,
-        default_factory=default_factory,
+def _get_default_overlay_field(state: LifecycleContextState, name: str) -> Any:
+    working = state.working_record
+    if working is not None and name in working.values:
+        return working.values[name]
+    return state.current_record.values[name]
+
+
+def _get_current_field(state: LifecycleContextState, name: str) -> Any:
+    return state.current_record.values[name]
+
+
+def _get_working_overlay_field(state: LifecycleContextState, name: str) -> Any:
+    working = state.working_record
+    if working is not None and name in working.values:
+        return working.values[name]
+    return state.current_record.values[name]
+
+
+def _set_default_value_field(state: LifecycleContextState, name: str, value: Any) -> None:
+    if type(state).__class_ftable_get_default__[name](state, name) == value:
+        return
+    state.ensure_working_record().values[name] = value
+
+
+def _set_default_identity_field(state: LifecycleContextState, name: str, value: Any) -> None:
+    if type(state).__class_ftable_get_default__[name](state, name) is value:
+        return
+    state.ensure_working_record().values[name] = value
+
+
+def _set_working_value_field(state: LifecycleContextState, name: str, value: Any) -> None:
+    if type(state).__class_ftable_get_working__[name](state, name) == value:
+        return
+    working = state.ensure_working_record()
+    working.values[name] = value
+
+
+def _set_working_identity_field(state: LifecycleContextState, name: str, value: Any) -> None:
+    if type(state).__class_ftable_get_working__[name](state, name) is value:
+        return
+    working = state.ensure_working_record()
+    working.values[name] = value
+
+
+def _commit_overlay_field(state: LifecycleContextState, name: str) -> None:
+    working = state.working_record
+    if working is None:
+        return
+    if name in working.values:
+        state.current_record.values[name] = working.values[name]
+    if name in working.field_state:
+        state.current_record.field_state[name] = working.field_state[name]
+
+
+def _rollback_overlay_field(state: LifecycleContextState, name: str) -> None:
+    del state, name
+
+
+def _close_noop(state: LifecycleContextState, name: str) -> None:
+    del state, name
+
+
+class LifecycleContextState:
+    __field_specs__: dict[str, FieldSpec] = {}
+    __field_names__: tuple[str, ...] = ()
+    __class_ftable_get_default__: dict[str, FieldGetter] = {}
+    __class_ftable_get_current__: dict[str, FieldGetter] = {}
+    __class_ftable_get_working__: dict[str, FieldGetter] = {}
+    __class_ftable_set_default__: dict[str, FieldSetter] = {}
+    __class_ftable_set_working__: dict[str, FieldSetter] = {}
+    __class_ftable_commit_field__: dict[str, FieldHook] = {}
+    __class_ftable_rollback_field__: dict[str, FieldHook] = {}
+    __class_ftable_close_field__: dict[str, FieldHook] = {}
+    __class_ftable_state_factory__: dict[str, FieldStateFactory | None] = {}
+    __class_ftable_state_copy__: dict[str, StateCopyHelper | None] = {}
+
+    __slots__ = (
+        "owner",
+        "transaction_manager",
+        "current_record",
+        "working_record",
+        "working_tx_id",
+        "unmanaged_store",
+        "closed",
+        "current_view",
+        "working_view",
     )
 
+    def __init__(
+        self,
+        owner: LifecycleContext,
+        *,
+        transaction_manager: TransactionManager | None,
+        values: dict[str, Any],
+    ) -> None:
+        self.owner = owner
+        self.transaction_manager = transaction_manager
+        self.current_record = Record()
+        self.working_record: Record | None = None
+        self.working_tx_id: int | None = None
+        self.unmanaged_store: dict[str, Any] = {}
+        self.closed = False
+        self.current_view = type(owner).__current_view_cls__(_state=self, _owner=owner)
+        self.working_view = type(owner).__working_view_cls__(_state=self, _owner=owner)
 
-def managed_binding(
-    *,
-    default: Any = MISSING,
-    default_factory: Callable[[], Any] | object = MISSING,
-) -> Any:
-    return _ManagedField(
-        binding=True,
-        default=default,
-        default_factory=default_factory,
-    )
+        for name, spec in type(self).__field_specs__.items():
+            if name in values:
+                self.current_record.values[name] = values.pop(name)
+            else:
+                self.current_record.values[name] = spec.default_value()
 
+        if values:
+            unexpected = ", ".join(sorted(values))
+            raise TypeError(f"unexpected lifecycle constructor fields: {unexpected}")
 
-class _BindingMapProxy(MutableMapping[Any, Any]):
-    __slots__ = ("_owner", "_field_name")
+    def get_field(self, name: str) -> Any:
+        return type(self).__class_ftable_get_default__[name](self, name)
 
-    def __init__(self, owner: LifecycleContext, field_name: str) -> None:
-        self._owner = owner
-        self._field_name = field_name
+    def set_field(self, name: str, value: Any) -> None:
+        self.require_active_transaction()
+        type(self).__class_ftable_set_default__[name](self, name, value)
 
-    def __getitem__(self, key: Any) -> Any:
-        return self._mapping()[key]
+    def get_current_field(self, name: str) -> Any:
+        return type(self).__class_ftable_get_current__[name](self, name)
 
-    def __setitem__(self, key: Any, value: Any) -> None:
-        existing = self._mapping()
-        if key in existing and existing[key] is value:
-            return
-        working = self._owner._ensure_working()
-        next_mapping = dict(getattr(working, self._field_name))
-        next_mapping[key] = value
-        setattr(working, self._field_name, next_mapping)
+    def get_working_field(self, name: str) -> Any:
+        return type(self).__class_ftable_get_working__[name](self, name)
 
-    def __delitem__(self, key: Any) -> None:
-        existing = self._mapping()
-        if key not in existing:
-            raise KeyError(key)
-        working = self._owner._ensure_working()
-        next_mapping = dict(getattr(working, self._field_name))
-        del next_mapping[key]
-        setattr(working, self._field_name, next_mapping)
+    def set_working_field(self, name: str, value: Any) -> None:
+        self.require_active_transaction()
+        type(self).__class_ftable_set_working__[name](self, name, value)
 
-    def __iter__(self) -> Iterator[Any]:
-        return iter(self._mapping())
+    def get_field_state(self, name: str) -> Any:
+        working = self.working_record
+        if working is not None and name in working.field_state:
+            return working.field_state[name]
+        return self.get_current_field_state(name)
 
-    def __len__(self) -> int:
-        return len(self._mapping())
+    def get_current_field_state(self, name: str) -> Any:
+        state_factory = type(self).__class_ftable_state_factory__[name]
+        if state_factory is None:
+            raise RuntimeError(f"field {name!r} does not define runtime state")
+        if name not in self.current_record.field_state:
+            self.current_record.field_state[name] = state_factory()
+        return self.current_record.field_state[name]
 
-    def _mapping(self) -> Mapping[Any, Any]:
-        return getattr(self._owner.view_state, self._field_name)
+    def ensure_working_field_state(self, name: str) -> Any:
+        state_factory = type(self).__class_ftable_state_factory__[name]
+        if state_factory is None:
+            raise RuntimeError(f"field {name!r} does not define runtime state")
+        working = self.ensure_working_record()
+        if name not in working.field_state:
+            current_state = self.get_current_field_state(name)
+            state_copy = type(self).__class_ftable_state_copy__[name] or copy.copy
+            working.field_state[name] = state_copy(current_state)
+        return working.field_state[name]
 
+    def ensure_working_record(self) -> Record:
+        working = self.working_record
+        if working is not None:
+            return working
 
-class LifecycleContext:
-    """Base class for declarative lifecycle-managed contexts.
+        self.require_active_transaction()
 
-    Decorated subclasses act as their own lifecycle manager. Property writes
-    lazily create a thawed working snapshot. `commit()` freezes the working
-    state and accepts newly added bindings; `rollback()` discards the working
-    state and closes newly introduced bindings as uncommitted.
-    """
+        working = Record()
+        self.working_record = working
+        self.working_tx_id = self.transaction_manager.enlist(self.owner)
+        return working
 
-    __managed_fields__: dict[str, _ManagedField]
-    __const_fields__: dict[str, _ConstField]
-    __state_type__: type[Any]
-    __thawed_state_type__: type[Any]
+    def require_active_transaction(self) -> None:
+        transaction = self.transaction_manager.active_transaction if self.transaction_manager is not None else None
+        if transaction is None:
+            raise RuntimeError("writes require an active lifecycle transaction")
 
-    def __init__(self, **values: Any) -> None:
-        state_type = getattr(type(self), "__state_type__", None)
-        if state_type is None:
-            raise TypeError("LifecycleContext subclasses must be decorated with @managed_context")
-        self._initialize_const_fields(values)
-        self.transaction_manager = values.pop("transaction_manager", None)
-        self._current = state_type(**self._normalize_initial_values(values))
-        self._working: Any | None = None
-        self._working_tx_id: int | None = None
-        self._active = False
-        self._closed = False
+    def snapshot_current(self) -> _RecordSnapshot:
+        return _RecordSnapshot(self.current_record.values)
 
-    def _initialize_const_fields(self, values: dict[str, Any]) -> None:
-        for const_field in type(self).__const_fields__.values():
-            object.__setattr__(
-                self,
-                const_field.storage_name_or_error(),
-                const_field.value_for_init(values),
-            )
+    def commit(self) -> _ManagedContextBase:
+        if self.working_record is None:
+            return self.owner.current
 
-    def accepted(self) -> None:
-        """Allow nested lifecycle contexts to participate as bindings."""
+        if self.transaction_manager is not None and self.working_tx_id is not None:
+            self.transaction_manager.drop(self.owner, self.working_tx_id)
 
-    @property
-    def current_state(self) -> Any:
-        return self._current
+        previous = self.snapshot_current()
+        self.owner.before_commit(self.current_view, self.working_view)
+        for name in type(self).__field_names__:
+            type(self).__class_ftable_commit_field__[name](self, name)
+        self.working_record = None
+        self.working_tx_id = None
+        self.owner.after_commit(previous, self.snapshot_current())
+        return self.owner.current
 
-    @property
-    def working_state(self) -> Any | None:
-        return self._working
+    def rollback(self) -> _ManagedContextBase:
+        if self.working_record is None:
+            return self.owner.current
 
-    @property
-    def view_state(self) -> Any:
-        return self._working if self._working is not None else self._current
+        if self.transaction_manager is not None and self.working_tx_id is not None:
+            self.transaction_manager.drop(self.owner, self.working_tx_id)
 
-    @property
-    def is_active(self) -> bool:
-        return self._active or self._working is not None
+        for name in type(self).__field_names__:
+            type(self).__class_ftable_rollback_field__[name](self, name)
+        self.working_record = None
+        self.working_tx_id = None
+        self.owner.after_rollback(self.snapshot_current())
+        return self.owner.current
 
-    @property
-    def is_closed(self) -> bool:
-        return self._closed
+    def commit_transaction(self, tx_id: int) -> _ManagedContextBase:
+        if self.working_tx_id != tx_id:
+            return self.owner.current
+        return self.commit()
 
-    def begin(self) -> LifecycleContext:
-        self._require_not_closed()
-        self._active = True
-        return self
-
-    open = begin
-
-    def commit(self) -> Any:
-        self._require_not_closed()
-        if self._working is None:
-            self._active = False
-            return self._current
-
-        transaction_manager = self.transaction_manager
-        if transaction_manager is not None and self._working_tx_id is not None:
-            transaction_manager.drop(self, self._working_tx_id)
-        return self._commit_working()
-
-    def rollback(self) -> Any:
-        if self._closed:
-            return self._current
-        transaction_manager = self.transaction_manager
-        if transaction_manager is not None and self._working_tx_id is not None:
-            transaction_manager.drop(self, self._working_tx_id)
-        if self._working is not None:
-            self._rollback_new_bindings(self._current, self._working)
-            self.after_rollback(self._current)
-        self._working = None
-        self._working_tx_id = None
-        self._active = False
-        return self._current
+    def rollback_transaction(self, tx_id: int) -> _ManagedContextBase:
+        if self.working_tx_id != tx_id:
+            return self.owner.current
+        return self.rollback()
 
     def close(self, *, was_committed: bool = True) -> None:
         del was_committed
-        if self._closed:
+        if self.closed:
             return
-        if self._working is not None:
-            transaction_manager = self.transaction_manager
-            if transaction_manager is not None and self._working_tx_id is not None:
-                transaction_manager.drop(self, self._working_tx_id)
-            self._rollback_new_bindings(self._current, self._working)
-            self._working = None
-            self._working_tx_id = None
-        self.before_close(self._current)
-        self._close_state_bindings(self._current, was_committed=True)
-        self._active = False
-        self._closed = True
-        self.after_close()
+        if self.working_record is not None:
+            self.rollback()
+        for name in type(self).__field_names__:
+            type(self).__class_ftable_close_field__[name](self, name)
+        self.closed = True
 
-    def before_commit(self, current_state: Any, working_state: Any) -> None:
-        del current_state, working_state
 
-    def after_commit(self, previous_state: Any, current_state: Any) -> None:
-        del previous_state, current_state
+class _ManagedContextBase:
+    __state_cls__: type[LifecycleContextState] = LifecycleContextState
+    __current_view_cls__: type[_ManagedContextBase]
+    __working_view_cls__: type[_ManagedContextBase]
+    __view_mode__ = "default"
 
-    def after_rollback(self, current_state: Any) -> None:
-        del current_state
+    def __init__(self, **values: Any) -> None:
+        transaction_manager = values.pop("transaction_manager", None)
+        object.__setattr__(
+            self,
+            "_state",
+            type(self).__state_cls__(self, transaction_manager=transaction_manager, values=values),
+        )
 
-    def before_close(self, current_state: Any) -> None:
-        del current_state
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("_"):
+            raise AttributeError(name)
+        store = self._state.unmanaged_store
+        try:
+            return store[name]
+        except KeyError as exc:
+            raise AttributeError(name) from exc
 
-    def after_close(self) -> None:
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name.startswith("_"):
+            object.__setattr__(self, name, value)
+            return
+        if name in type(self).__state_cls__.__field_specs__:
+            self.__set_field__(name, value)
+            return
+        descriptor = inspect.getattr_static(type(self), name, _SENTINEL)
+        if descriptor is not _SENTINEL and hasattr(descriptor, "__set__"):
+            object.__setattr__(self, name, value)
+            return
+        self._state.unmanaged_store[name] = value
+
+    @property
+    def state(self) -> LifecycleContextState:
+        return self._state
+
+    @property
+    def _transaction_manager(self) -> TransactionManager | None:
+        return self._state.transaction_manager
+
+    @property
+    def _current_record(self) -> Record:
+        return self._state.current_record
+
+    @property
+    def _working_record(self) -> Record | None:
+        return self._state.working_record
+
+    @property
+    def _working_tx_id(self) -> int | None:
+        return self._state.working_tx_id
+
+    @property
+    def _closed(self) -> bool:
+        return self._state.closed
+
+    @property
+    def current(self) -> _ManagedContextBase:
+        return self._state.current_view
+
+    @property
+    def working(self) -> _ManagedContextBase:
+        return self._state.working_view
+
+    @property
+    def _default_record(self) -> _ManagedContextBase:
+        return self
+
+    def accepted(self) -> None:
         return None
 
-    def _require_not_closed(self) -> None:
-        if self._closed:
-            raise RuntimeError(f"{type(self).__name__} is closed")
+    def close(self, *, was_committed: bool = True) -> None:
+        self._state.close(was_committed=was_committed)
 
-    def _ensure_working(self) -> Any:
-        self._require_not_closed()
-        if self._working is None:
-            self._working = self._current.to_thawed()
-            transaction_manager = self.transaction_manager
-            if transaction_manager is not None and transaction_manager.active_transaction is not None:
-                self._working_tx_id = transaction_manager.enlist(self)
-            self._active = True
-        return self._working
+    def before_commit(self, current: object, working: object) -> None:
+        del current, working
 
-    def _commit_working(self) -> Any:
-        current = self._current
-        working = self._working
-        if working is None:
-            self._active = False
-            return current
+    def after_commit(self, previous: object, current: object) -> None:
+        del previous, current
 
-        self.before_commit(current, working)
-        next_current = working.to_frozen()
+    def after_rollback(self, current: object) -> None:
+        del current
 
-        if self._states_equivalent(current, next_current):
-            self._working = None
-            self._working_tx_id = None
-            self._active = False
-            return current
+    def __get_field__(self, name: str) -> Any:
+        mode = type(self).__view_mode__
+        if mode == "current":
+            return self._state.get_current_field(name)
+        if mode == "working":
+            return self._state.get_working_field(name)
+        return self._state.get_field(name)
 
-        self._accept_commit_bindings(current, next_current)
-        self._current = next_current
-        self._working = None
-        self._working_tx_id = None
-        self._active = False
-        self.after_commit(current, next_current)
-        return next_current
-
-    def _commit_transaction(self, tx_id: int) -> Any:
-        if self._working_tx_id != tx_id:
-            return self._current
-        return self._commit_working()
-
-    def _rollback_transaction(self, tx_id: int) -> Any:
-        if self._working_tx_id != tx_id:
-            return self._current
-        return self.rollback()
-
-    def _get_field_value(self, field_name: str) -> Any:
-        return getattr(self.view_state, field_name)
-
-    def _set_field_value(self, field_name: str, value: Any, *, binding: bool) -> None:
-        current = getattr(self.view_state, field_name)
-        if binding:
-            if current is value:
-                return
-        elif current == value:
+    def __set_field__(self, name: str, value: Any) -> None:
+        mode = type(self).__view_mode__
+        if mode == "current":
+            raise AttributeError("current record is read-only")
+        if mode == "working":
+            self._state.set_working_field(name, value)
             return
-        working = self._ensure_working()
-        setattr(working, field_name, value)
+        self._state.set_field(name, value)
 
-    def _set_binding_map(self, field_name: str, value: Mapping[Any, Any]) -> None:
-        next_mapping = dict(value)
-        current = getattr(self.view_state, field_name)
-        if _binding_maps_equivalent(current, next_mapping):
-            return
-        working = self._ensure_working()
-        setattr(working, field_name, next_mapping)
+    def __get_current_field__(self, name: str) -> Any:
+        return self._state.get_current_field(name)
 
-    def _normalize_initial_values(self, values: dict[str, Any]) -> dict[str, Any]:
-        normalized = dict(values)
-        for name, managed_field in type(self).__managed_fields__.items():
-            if not (managed_field.binding and managed_field.mapping):
-                continue
-            if name in normalized:
-                normalized[name] = dict(normalized[name])
-        return normalized
+    def __get_working_field__(self, name: str) -> Any:
+        return self._state.get_working_field(name)
 
-    def _states_equivalent(self, left: Any, right: Any) -> bool:
-        for name, managed_field in type(self).__managed_fields__.items():
-            left_value = getattr(left, name)
-            right_value = getattr(right, name)
-            if managed_field.binding and managed_field.mapping:
-                if not _binding_maps_equivalent(left_value, right_value):
-                    return False
-                continue
-            if managed_field.binding:
-                if left_value is not right_value:
-                    return False
-                continue
-            if left_value != right_value:
-                return False
-        return True
+    def __set_working_field__(self, name: str, value: Any) -> None:
+        self._state.set_working_field(name, value)
 
-    def _accept_commit_bindings(self, previous: Any, current: Any) -> None:
-        for name, managed_field in type(self).__managed_fields__.items():
-            if not managed_field.binding:
-                continue
-            previous_value = getattr(previous, name)
-            current_value = getattr(current, name)
-            if managed_field.mapping:
-                self._accept_commit_binding_map(previous_value, current_value)
-                continue
-            if previous_value is current_value:
-                continue
-            if current_value is not None:
-                _binding_accept(current_value)
-            if previous_value is not None:
-                _binding_close(previous_value, was_committed=True)
+    def __get_field_state__(self, name: str) -> Any:
+        return self._state.get_field_state(name)
 
-    def _rollback_new_bindings(self, current: Any, working: Any) -> None:
-        for name, managed_field in type(self).__managed_fields__.items():
-            if not managed_field.binding:
-                continue
-            current_value = getattr(current, name)
-            working_value = getattr(working, name)
-            if managed_field.mapping:
-                self._rollback_binding_map(current_value, working_value)
-                continue
-            if current_value is working_value or working_value is None:
-                continue
-            _binding_close(working_value, was_committed=False)
+    def __get_current_field_state__(self, name: str) -> Any:
+        return self._state.get_current_field_state(name)
 
-    def _close_state_bindings(self, state: Any, *, was_committed: bool) -> None:
-        for name, managed_field in type(self).__managed_fields__.items():
-            if not managed_field.binding:
-                continue
-            value = getattr(state, name)
-            if managed_field.mapping:
-                for binding in value.values():
-                    if binding is not None:
-                        _binding_close(binding, was_committed=was_committed)
-                continue
-            if value is not None:
-                _binding_close(value, was_committed=was_committed)
+    def __ensure_working_field_state__(self, name: str) -> Any:
+        return self._state.ensure_working_field_state(name)
 
-    def _accept_commit_binding_map(
-        self,
-        previous: Mapping[Any, Any],
-        current: Mapping[Any, Any],
-    ) -> None:
-        all_keys = set(previous) | set(current)
-        for key in all_keys:
-            previous_value = previous.get(key, _SENTINEL)
-            current_value = current.get(key, _SENTINEL)
-            if previous_value is current_value:
-                continue
-            if current_value is not _SENTINEL and current_value is not None:
-                _binding_accept(current_value)
-            if previous_value is not _SENTINEL and previous_value is not None:
-                _binding_close(previous_value, was_committed=True)
+    def __ensure_working_record__(self) -> Record:
+        return self._state.ensure_working_record()
 
-    def _rollback_binding_map(
-        self,
-        current: Mapping[Any, Any],
-        working: Mapping[Any, Any],
-    ) -> None:
-        all_keys = set(current) | set(working)
-        for key in all_keys:
-            current_value = current.get(key, _SENTINEL)
-            working_value = working.get(key, _SENTINEL)
-            if current_value is working_value:
-                continue
-            if working_value is not _SENTINEL and working_value is not None:
-                _binding_close(working_value, was_committed=False)
+    def _snapshot_current(self) -> _RecordSnapshot:
+        return self._state.snapshot_current()
+
+    def commit(self) -> _ManagedContextBase:
+        return self._state.commit()
+
+    def rollback(self) -> _ManagedContextBase:
+        return self._state.rollback()
+
+    def _commit_transaction(self, tx_id: int) -> _ManagedContextBase:
+        return self._state.commit_transaction(tx_id)
+
+    def _rollback_transaction(self, tx_id: int) -> _ManagedContextBase:
+        return self._state.rollback_transaction(tx_id)
 
 
-def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
-    if not issubclass(cls, LifecycleContext):
-        raise TypeError("@managed_context requires a LifecycleContext subclass")
-    if "__init__" in cls.__dict__:
-        raise TypeError("@managed_context classes must not define __init__")
+LifecycleContext = _ManagedContextBase
 
-    base_fields: dict[str, _ManagedField] = {}
-    base_const_fields: dict[str, _ConstField] = {}
-    direct_managed_bases = [
-        base
-        for base in cls.__bases__
-        if issubclass(base, LifecycleContext) and hasattr(base, "__managed_fields__")
-    ]
-    for base in direct_managed_bases:
-        base_fields.update(base.__managed_fields__)
-        base_const_fields.update(base.__const_fields__)
 
-    annotations = dict(getattr(cls, "__annotations__", {}))
-    resolved_hints = _resolve_hints(cls)
-    own_fields: dict[str, _ManagedField] = {}
-    own_const_fields: dict[str, _ConstField] = {}
+def _build_class_tables(
+    specs: dict[str, FieldSpec],
+) -> dict[str, dict[str, Callable[..., Any]]]:
+    get_default: dict[str, FieldGetter] = {}
+    get_current: dict[str, FieldGetter] = {}
+    get_working: dict[str, FieldGetter] = {}
+    set_default: dict[str, FieldSetter] = {}
+    set_working: dict[str, FieldSetter] = {}
+    commit_field: dict[str, FieldHook] = {}
+    rollback_field: dict[str, FieldHook] = {}
+    close_field: dict[str, FieldHook] = {}
+    state_factory: dict[str, FieldStateFactory | None] = {}
+    state_copy: dict[str, StateCopyHelper | None] = {}
+
+    for name, spec in specs.items():
+        get_default[name] = _get_default_overlay_field
+        get_current[name] = _get_current_field
+        get_working[name] = _get_working_overlay_field
+        if spec.compare == "identity":
+            set_default[name] = _set_default_identity_field
+            set_working[name] = _set_working_identity_field
+        else:
+            set_default[name] = _set_default_value_field
+            set_working[name] = _set_working_value_field
+        commit_field[name] = _commit_overlay_field
+        rollback_field[name] = _rollback_overlay_field
+        close_field[name] = _close_noop
+        state_factory[name] = spec.state_factory
+        state_copy[name] = spec.state_copy
+
+    return {
+        "__class_ftable_get_default__": get_default,
+        "__class_ftable_get_current__": get_current,
+        "__class_ftable_get_working__": get_working,
+        "__class_ftable_set_default__": set_default,
+        "__class_ftable_set_working__": set_working,
+        "__class_ftable_commit_field__": commit_field,
+        "__class_ftable_rollback_field__": rollback_field,
+        "__class_ftable_close_field__": close_field,
+        "__class_ftable_state_factory__": state_factory,
+        "__class_ftable_state_copy__": state_copy,
+    }
+
+
+def _collect_own_field_specs(cls: type[Any]) -> dict[str, FieldSpec]:
+    own_annotation_names = dict(getattr(cls, "__annotations__", {}))
+    try:
+        resolved_annotations = typing.get_type_hints(cls, include_extras=True)
+    except (AttributeError, NameError, TypeError):
+        resolved_annotations = own_annotation_names
+    annotations = {
+        name: resolved_annotations.get(name, annotation)
+        for name, annotation in own_annotation_names.items()
+    }
+    own_specs: dict[str, FieldSpec] = {}
     for name, annotation in annotations.items():
         candidate = cls.__dict__.get(name, _SENTINEL)
-        if isinstance(candidate, _ConstField):
-            if name in base_const_fields:
-                raise TypeError(f"const field {name!r} cannot override a base const field")
-            candidate.annotation = resolved_hints.get(name, annotation)
-            own_const_fields[name] = candidate
-            continue
-        if isinstance(candidate, _ManagedField):
-            if name in base_fields:
-                raise TypeError(f"managed field {name!r} cannot override a base managed field")
-            candidate.annotation = resolved_hints.get(name, annotation)
-            candidate.mapping = candidate.binding and _annotation_is_mapping(candidate.annotation)
-            own_fields[name] = candidate
+        if isinstance(candidate, LifecycleField):
+            own_specs[name] = candidate.build_spec(annotation)
             continue
         if name.startswith("_"):
             continue
         raise TypeError(
-            f"annotated lifecycle field {name!r} must use managed(...) or managed_binding(...)"
+            f"annotated lifecycle field {name!r} must use lifecycle_field(...)"
         )
+    return own_specs
 
-    state_type, thawed_state_type = _build_state_pair(
-        owner=cls,
-        managed_bases=direct_managed_bases,
-        fields=own_fields,
+
+def _merge_field_specs(base: FieldSpec, derived: FieldSpec) -> FieldSpec:
+    if base.compare != derived.compare:
+        raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
+    if base.state_factory != derived.state_factory and derived.state_factory is not None:
+        raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
+    if base.state_copy != derived.state_copy and derived.state_copy != copy.copy:
+        raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
+    if not is_annotation_narrower_or_equal(derived.annotation, base.annotation):
+        raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
+
+    if derived.default is not MISSING:
+        default = derived.default
+        default_factory = MISSING
+    elif derived.default_factory is not MISSING:
+        default = MISSING
+        default_factory = derived.default_factory
+    else:
+        default = base.default
+        default_factory = base.default_factory
+    state_factory = derived.state_factory if derived.state_factory is not None else base.state_factory
+    state_copy = derived.state_copy if derived.state_copy != copy.copy else base.state_copy
+
+    return FieldSpec(
+        name=base.name,
+        annotation=derived.annotation,
+        compare=base.compare,
+        default=default,
+        default_factory=default_factory,
+        state_factory=state_factory,
+        state_copy=state_copy,
     )
 
-    cls.__const_fields__ = {**base_const_fields, **own_const_fields}
-    cls.__managed_fields__ = {**base_fields, **own_fields}
-    cls.__state_type__ = state_type
-    cls.__thawed_state_type__ = thawed_state_type
-    cls.State = state_type
-    cls.ThawedState = thawed_state_type
-    return cls
 
-
-def _resolve_hints(cls: type[Any]) -> dict[str, Any]:
-    try:
-        return get_type_hints(cls, include_extras=True)
-    except (AttributeError, NameError, TypeError):
-        return dict(getattr(cls, "__annotations__", {}))
-
-
-def _annotation_is_mapping(annotation: Any) -> bool:
-    origin = get_origin(annotation)
-    if origin is None:
-        return annotation in _MAPPING_ORIGINS
-    return origin in _MAPPING_ORIGINS
-
-
-def _binding_maps_equivalent(left: Mapping[Any, Any], right: Mapping[Any, Any]) -> bool:
-    if set(left) != set(right):
-        return False
-    return all(left[key] is right[key] for key in left)
-
-
-def _binding_accept(binding: Any) -> None:
-    accepted = getattr(binding, "accepted", None)
-    if not callable(accepted):
-        raise TypeError(f"{type(binding).__name__} does not provide accepted()")
-    accepted()
-
-
-def _binding_close(binding: Any, *, was_committed: bool) -> None:
-    close = getattr(binding, "close", None)
-    if not callable(close):
-        raise TypeError(
-            f"{type(binding).__name__} does not provide close(was_committed=...)"
-        )
-    close(was_committed=was_committed)
-
-
-def _build_state_pair(
+def _merge_field_specs_from_mro(
+    cls: type[Any],
     *,
-    owner: type[LifecycleContext],
-    managed_bases: list[type[LifecycleContext]],
-    fields: dict[str, _ManagedField],
-) -> tuple[type[Any], type[Any]]:
-    module = sys.modules[owner.__module__]
-    state_name = f"_{owner.__name__}State"
-    thawed_name = f"_{owner.__name__}ThawedState"
-    state_bases = tuple(base.__state_type__ for base in managed_bases)
+    attr_name: str,
+    own_items: dict[str, FieldSpec],
+) -> dict[str, FieldSpec]:
+    merged: dict[str, FieldSpec] = {}
+    for mro_cls in reversed(cls.__mro__):
+        if mro_cls in {object, _ManagedContextBase}:
+            continue
+        source = own_items if mro_cls is cls else getattr(mro_cls, attr_name, None)
+        if not source:
+            continue
+        for name, value in source.items():
+            if name in merged:
+                merged[name] = _merge_field_specs(merged[name], value)
+            else:
+                merged[name] = value
+    return merged
 
-    state_namespace: dict[str, Any] = {
-        "__module__": owner.__module__,
-        "__annotations__": {},
+
+def _build_view_class(
+    name: str,
+    base_cls: type[_ManagedContextBase],
+    *,
+    mode: str,
+) -> type[_ManagedContextBase]:
+    def exec_body(namespace: dict[str, Any]) -> None:
+        namespace["__module__"] = base_cls.__module__
+        namespace["__view_mode__"] = mode
+        namespace["__init__"] = _view_init
+
+    view_cls = types.new_class(name, (base_cls,), exec_body=exec_body)
+    view_cls.__qualname__ = f"{base_cls.__qualname__}.{name}"
+    return view_cls
+
+
+def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
+    wrapped: type[LifecycleContext]
+    if issubclass(cls, _ManagedContextBase):
+        wrapped = cls
+    else:
+        def exec_body(namespace: dict[str, Any]) -> None:
+            namespace["__module__"] = cls.__module__
+            namespace["__doc__"] = cls.__doc__
+
+        wrapped = types.new_class(
+            cls.__name__,
+            (cls, _ManagedContextBase),
+            exec_body=exec_body,
+        )
+        wrapped.__qualname__ = cls.__qualname__
+
+    own_specs = _collect_own_field_specs(cls)
+    wrapped.__managed_own_field_specs__ = own_specs
+
+    base_state_cls = LifecycleContextState
+    for base in wrapped.__mro__[1:]:
+        if hasattr(base, "__state_cls__"):
+            base_state_cls = base.__state_cls__
+            break
+
+    merged_specs = _merge_field_specs_from_mro(
+        wrapped,
+        attr_name="__managed_own_field_specs__",
+        own_items=own_specs,
+    )
+
+    state_name = f"{wrapped.__name__}_State"
+    state_namespace = {
+        "__module__": wrapped.__module__,
+        "__field_specs__": merged_specs,
     }
-    for name, managed_field in fields.items():
-        state_namespace["__annotations__"][name] = managed_field.annotation
-        if managed_field.default is not MISSING:
-            state_namespace[name] = managed_field.default
-        elif managed_field.default_factory is not MISSING:
-            state_namespace[name] = field(default_factory=managed_field.default_factory)
-
-    raw_state = types.new_class(
-        state_name,
-        state_bases or (),
-        exec_body=lambda ns: ns.update(state_namespace),
+    state_cls = type(state_name, (base_state_cls,), state_namespace)
+    state_cls.__field_names__ = tuple(state_cls.__field_specs__)
+    for table_name, table in _build_class_tables(state_cls.__field_specs__).items():
+        setattr(state_cls, table_name, table)
+    wrapped.__state_cls__ = state_cls
+    wrapped.__current_view_cls__ = _build_view_class(
+        f"{wrapped.__name__}_CurrentView",
+        wrapped,
+        mode="current",
     )
-    state_type = thawable_dataclass(
-        thawed_type=thawed_name,
-        freeze_params=False,
-        list_params=False,
-        hint_resolution=HintResolutionMode.STRICT_MODULE,
-    )(raw_state)
-    setattr(module, state_name, state_type)
-
-    raw_thawed = types.new_class(
-        thawed_name,
-        (),
-        exec_body=lambda ns: ns.update({"__module__": owner.__module__}),
+    wrapped.__working_view_cls__ = _build_view_class(
+        f"{wrapped.__name__}_WorkingView",
+        wrapped,
+        mode="working",
     )
-    thawed_type = thawed_dataclass(
-        frozen_type=state_type,
-        hint_resolution=HintResolutionMode.STRICT_MODULE,
-    )(raw_thawed)
-    setattr(module, thawed_name, thawed_type)
-    setattr(state_type, "_paired_type", thawed_type)
-    return state_type, thawed_type
+    return wrapped
 
 
 __all__ = [
-    "LifecycleBinding",
-    "LifecycleTransaction",
+    "FieldSpec",
     "LifecycleContext",
+    "LifecycleTransaction",
+    "Record",
     "TransactionManager",
-    "const",
-    "managed",
-    "managed_binding",
+    "lifecycle_field",
     "managed_context",
 ]

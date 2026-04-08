@@ -1,248 +1,334 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import pytest
 
 from pyrolyze.lifecycle import (
-    LifecycleContext,
     TransactionManager,
-    const,
-    managed,
-    managed_binding,
+    lifecycle_field,
     managed_context,
 )
 
 
-@dataclass(eq=False, slots=True)
-class TrackingBinding:
-    name: str
-    events: list[tuple[str, str, bool | None]]
+class AlwaysEqual:
+    def __init__(self, label: str) -> None:
+        self.label = label
 
-    def accepted(self) -> None:
-        self.events.append(("accepted", self.name, None))
-
-    def close(self, *, was_committed: bool) -> None:
-        self.events.append(("closed", self.name, was_committed))
+    def __eq__(self, other: object) -> bool:
+        del other
+        return True
 
 
-@managed_context
-class ManagedSlotContext(LifecycleContext):
-    invoke_dirty: bool = managed(default=True)
-    seen_in_pass: bool = managed(default=False)
+class GeoPoint:
+    pass
 
 
-@managed_context
-class ManagedRerunnableSlotContext(ManagedSlotContext):
-    slot_id: str = managed(default="")
+class Point(GeoPoint):
+    pass
 
 
 @managed_context
-class ManagedSlotCallContext(ManagedRerunnableSlotContext):
-    function_identity: object | None = managed(default=None)
-    schema: tuple[int, tuple[str, ...]] = managed(default=(0, ()))
-    last_args: tuple[object, ...] = managed(default_factory=tuple)
-    last_kwargs: tuple[tuple[str, object], ...] = managed(default_factory=tuple)
-    binding: TrackingBinding | None = managed_binding(default=None)
-    site_bindings: dict[str, TrackingBinding] = managed_binding(default_factory=dict)
+class MatrixContext:
+    value: int = lifecycle_field(default=0, compare="value")
+    ref: object | None = lifecycle_field(default=None, compare="identity")
+    tracked: int = lifecycle_field(default=1, compare="value", state_factory=dict)
+
+    def total(self) -> int:
+        return self.value + self.tracked
+
+    @property
+    def doubled(self) -> int:
+        return self.value * 2
+
+    @staticmethod
+    def static_total(left: int, right: int) -> int:
+        return left + right
+
+    @classmethod
+    def class_name(cls) -> str:
+        return cls.__name__
 
 
 @managed_context
-class ManagedContainerContext(ManagedRerunnableSlotContext):
-    native_root: bool = managed(default=False)
-    site_bindings: dict[str, TrackingBinding] = managed_binding(default_factory=dict)
+class TrackedContext:
+    value: int = lifecycle_field(default=0, compare="value")
+
+    def after_commit(self, previous: object, current: object) -> None:
+        self.events.append(("commit", previous.value, current.value))
+
+    def after_rollback(self, current: object) -> None:
+        self.events.append(("rollback", current.value))
 
 
 @managed_context
-class ManagedChildContext(LifecycleContext):
-    label: str = managed(default="child")
+class BaseManaged:
+    base_value: int = lifecycle_field(default=10)
+
+    def base_total(self) -> int:
+        return self.base_value
 
 
 @managed_context
-class ManagedComponentCallContext(ManagedRerunnableSlotContext):
-    component_identity: object | None = managed(default=None)
-    schema: tuple[int, tuple[str, ...]] = managed(default=(0, ()))
-    child_context: ManagedChildContext | None = managed_binding(default=None)
-    owned_handlers: dict[str, TrackingBinding] = managed_binding(default_factory=dict)
+class DerivedManaged(BaseManaged):
+    child_value: int = lifecycle_field(default=5)
+
+    def child_total(self) -> int:
+        return super().base_total() + self.child_value
 
 
 @managed_context
-class ManagedOverrideContext(ManagedRerunnableSlotContext):
-    declared_keys: tuple[str, ...] = managed(default_factory=tuple)
-    values: tuple[object, ...] = managed(default_factory=tuple)
-
-    def before_commit(self, current_state: object, working_state: object) -> None:
-        current = current_state
-        working = working_state
-        if len(working.declared_keys) != len(working.values):
-            raise ValueError("override key/value arity must match")
-        if current.declared_keys and working.declared_keys != current.declared_keys:
-            raise ValueError("override keys are fixed after first commit")
+class BasePoints:
+    points: list[GeoPoint | None] | None = lifecycle_field(default=None)
 
 
 @managed_context
-class ManagedTrackedContext(LifecycleContext):
-    value: int = managed(default=0)
-
-    def after_commit(self, previous_state: object, current_state: object) -> None:
-        self.events.append(("commit", previous_state.value, current_state.value))
-
-    def after_rollback(self, current_state: object) -> None:
-        self.events.append(("rollback", current_state.value))
+class DerivedPoints(BasePoints):
+    points: list[Point | None] | None = lifecycle_field(default_factory=list)
 
 
-@managed_context
-class ManagedConstBase(LifecycleContext):
-    slot_id: str = const()
-    label: str = managed(default="base")
+with pytest.raises(TypeError, match="incompatible lifecycle field override"):
+
+    @managed_context
+    class CompareBase:
+        points: list[GeoPoint | None] | None = lifecycle_field(default=None, compare="value")
+
+    @managed_context
+    class CompareMismatch(CompareBase):
+        points: list[Point | None] | None = lifecycle_field(default=None, compare="identity")
 
 
-@managed_context
-class ManagedConstChild(ManagedConstBase):
-    module_id: str = const(default="default-module")
-    count: int = managed(default=0)
+def test_field_specs_bind_handler_matrix_at_decoration_time() -> None:
+    state_cls = MatrixContext.__state_cls__
+    value_name = "value"
+    ref_name = "ref"
+    tracked_name = "tracked"
+
+    assert state_cls.__name__ == "MatrixContext_State"
+    assert state_cls.__field_names__ == ("value", "ref", "tracked")
+
+    assert (
+        state_cls.__class_ftable_set_default__[value_name]
+        is state_cls.__class_ftable_set_default__[tracked_name]
+    )
+    assert (
+        state_cls.__class_ftable_set_default__[value_name]
+        is not state_cls.__class_ftable_set_default__[ref_name]
+    )
+
+    assert (
+        state_cls.__class_ftable_get_default__[value_name]
+        is state_cls.__class_ftable_get_default__[ref_name]
+        is state_cls.__class_ftable_get_default__[tracked_name]
+    )
+    assert (
+        state_cls.__class_ftable_get_current__[value_name]
+        is state_cls.__class_ftable_get_current__[ref_name]
+        is state_cls.__class_ftable_get_current__[tracked_name]
+    )
+    assert (
+        state_cls.__class_ftable_get_working__[value_name]
+        is state_cls.__class_ftable_get_working__[ref_name]
+        is state_cls.__class_ftable_get_working__[tracked_name]
+    )
+    assert (
+        state_cls.__class_ftable_commit_field__[value_name]
+        is state_cls.__class_ftable_commit_field__[ref_name]
+        is state_cls.__class_ftable_commit_field__[tracked_name]
+    )
+    assert (
+        state_cls.__class_ftable_rollback_field__[value_name]
+        is state_cls.__class_ftable_rollback_field__[ref_name]
+        is state_cls.__class_ftable_rollback_field__[tracked_name]
+    )
 
 
-def test_slot_call_context_binding_and_binding_map_use_commit_and_rollback_lifecycle() -> None:
-    events: list[tuple[str, str, bool | None]] = []
-    context = ManagedSlotCallContext(slot_id="slot-call")
+def test_managed_context_wraps_plain_class_onto_internal_base() -> None:
+    context = MatrixContext()
 
-    binding_one = TrackingBinding("binding-1", events)
-    metadata_one = TrackingBinding("metadata-1", events)
-
-    context.function_identity = "fn"
-    context.binding = binding_one
-    context.site_bindings["site"] = metadata_one
-    context.commit()
-
-    assert context.current_state.binding is binding_one
-    assert context.current_state.site_bindings["site"] is metadata_one
-    assert events == [
-        ("accepted", "binding-1", None),
-        ("accepted", "metadata-1", None),
-    ]
-
-    binding_two = TrackingBinding("binding-2", events)
-    metadata_two = TrackingBinding("metadata-2", events)
-
-    context.binding = binding_two
-    context.site_bindings["site"] = metadata_two
-    context.rollback()
-
-    assert context.current_state.binding is binding_one
-    assert context.current_state.site_bindings["site"] is metadata_one
-    assert events == [
-        ("accepted", "binding-1", None),
-        ("accepted", "metadata-1", None),
-        ("closed", "binding-2", False),
-        ("closed", "metadata-2", False),
-    ]
-
-    context.binding = None
-    del context.site_bindings["site"]
-    context.commit()
-
-    assert context.current_state.binding is None
-    assert dict(context.current_state.site_bindings) == {}
-    assert events == [
-        ("accepted", "binding-1", None),
-        ("accepted", "metadata-1", None),
-        ("closed", "binding-2", False),
-        ("closed", "metadata-2", False),
-        ("closed", "binding-1", True),
-        ("closed", "metadata-1", True),
-    ]
+    assert hasattr(MatrixContext, "__state_cls__")
+    assert MatrixContext.__bases__[0].__name__ == "MatrixContext"
+    assert hasattr(context, "state")
+    assert context.value == 0
 
 
-def test_container_context_inherits_state_shape_and_no_op_commit_is_quiet() -> None:
-    events: list[tuple[str, str, bool | None]] = []
-    context = ManagedContainerContext(slot_id="container")
-    metadata = TrackingBinding("container-meta", events)
+def test_managed_context_inheritance_merges_fields_and_view_methods() -> None:
+    manager = TransactionManager()
+    context = DerivedManaged(transaction_manager=manager)
 
-    context.invoke_dirty = False
-    context.native_root = True
-    context.site_bindings["container"] = metadata
-    context.commit()
+    assert DerivedManaged.__state_cls__.__field_names__ == ("base_value", "child_value")
+    assert context.base_value == 10
+    assert context.child_value == 5
+    assert isinstance(context.current, DerivedManaged)
+    assert context.current.base_total() == 10
+    assert context.current.child_total() == 15
 
-    assert context.current_state.slot_id == "container"
-    assert context.current_state.invoke_dirty is False
-    assert context.current_state.native_root is True
-    assert events == [("accepted", "container-meta", None)]
+    manager.begin()
+    context.child_value = 9
 
-    context.commit()
-
-    assert context.current_state.native_root is True
-    assert events == [("accepted", "container-meta", None)]
+    assert context.working.base_total() == 10
+    assert context.working.child_total() == 19
 
 
-def test_component_context_can_manage_nested_child_contexts_and_handler_maps() -> None:
-    events: list[tuple[str, str, bool | None]] = []
-    context = ManagedComponentCallContext(slot_id="component")
+def test_managed_context_field_reappearance_merges_compatibly() -> None:
+    context = DerivedPoints()
+    spec = DerivedPoints.__state_cls__.__field_specs__["points"]
 
-    first_child = ManagedChildContext(label="first")
-    first_handler = TrackingBinding("first-handler", events)
-
-    context.child_context = first_child
-    context.owned_handlers["click"] = first_handler
-    context.commit()
-
-    assert context.current_state.child_context is first_child
-    assert events == [("accepted", "first-handler", None)]
-    assert first_child.is_closed is False
-
-    second_child = ManagedChildContext(label="second")
-    second_handler = TrackingBinding("second-handler", events)
-
-    context.child_context = second_child
-    context.owned_handlers["click"] = second_handler
-    context.commit()
-
-    assert first_child.is_closed is True
-    assert second_child.is_closed is False
-    assert events == [
-        ("accepted", "first-handler", None),
-        ("accepted", "second-handler", None),
-        ("closed", "first-handler", True),
-    ]
-
-    context.close()
-
-    assert second_child.is_closed is True
-    assert events == [
-        ("accepted", "first-handler", None),
-        ("accepted", "second-handler", None),
-        ("closed", "first-handler", True),
-        ("closed", "second-handler", True),
-    ]
+    assert spec.annotation == list[Point | None] | None
+    assert context.points == []
 
 
-def test_override_context_uses_custom_commit_validation_for_fixed_structure() -> None:
-    context = ManagedOverrideContext(slot_id="override")
+def test_unmanaged_attributes_are_shared_across_stable_views() -> None:
+    context = MatrixContext()
 
-    context.declared_keys = ("theme", "locale")
-    context.values = ("dark", "en")
-    context.commit()
+    context.events = ["created"]
 
-    context.values = ("light", "fr")
-    context.commit()
-    assert context.current_state.values == ("light", "fr")
+    assert context.events == ["created"]
+    assert context.current.events == ["created"]
+    assert context.working.events == ["created"]
 
-    context.declared_keys = ("theme",)
-    context.values = ("light",)
+    context.current.events.append("current")
+    assert context.working.events == ["created", "current"]
 
-    with pytest.raises(ValueError, match="fixed"):
-        context.commit()
 
-    assert context.working_state is not None
-    context.rollback()
-    assert context.current_state.declared_keys == ("theme", "locale")
-    assert context.current_state.values == ("light", "fr")
+def test_view_methods_use_normal_python_resolution() -> None:
+    manager = TransactionManager()
+    context = MatrixContext(transaction_manager=manager)
+
+    assert isinstance(context.current, MatrixContext)
+    assert isinstance(context.working, MatrixContext)
+    assert context.current.total() == 1
+    assert context.current.doubled == 0
+    assert context.current.static_total(2, 3) == 5
+    assert context.current.class_name() == "MatrixContext_CurrentView"
+
+    manager.begin()
+    context.value = 4
+
+    assert context.working.total() == 5
+    assert context.working.doubled == 8
+    assert context.working.static_total(3, 4) == 7
+    assert context.working.class_name() == "MatrixContext_WorkingView"
+
+
+def test_default_record_reads_current_until_write_then_reads_working_overlay() -> None:
+    manager = TransactionManager()
+    context = MatrixContext(transaction_manager=manager)
+
+    assert type(context.state) is MatrixContext.__state_cls__
+    assert context.value == 0
+    assert context.current.value == 0
+    assert context._working_record is None
+
+    manager.begin()
+
+    assert context.value == 0
+    assert context.working.value == 0
+    context.value = 3
+
+    assert context.value == 3
+    assert context.current.value == 0
+    assert context.working.value == 3
+    assert context._working_record is not None
+
+    manager.rollback()
+
+    assert context.value == 0
+    assert context.current.value == 0
+    assert context._working_record is None
+
+
+def test_working_view_reads_current_baseline_until_staged_override_exists() -> None:
+    manager = TransactionManager()
+    context = MatrixContext(transaction_manager=manager)
+
+    manager.begin()
+
+    assert context._working_record is None
+    assert context.working.value == 0
+
+    context.value = 5
+
+    assert context._working_record is not None
+
+    assert context.value == 5
+    assert context.current.value == 0
+    assert context.working.value == 5
+
+
+def test_value_and_identity_fields_use_different_setter_semantics() -> None:
+    context = MatrixContext()
+    assert context._working_record is None
+
+    with pytest.raises(RuntimeError, match="active lifecycle transaction"):
+        context.value = 0
+
+    left = AlwaysEqual("left")
+    right = AlwaysEqual("right")
+
+    manager = TransactionManager()
+    context = MatrixContext(transaction_manager=manager)
+    manager.begin()
+    context.ref = left
+    manager.commit()
+
+    assert context.ref is left
+    assert context.current.ref is left
+
+    manager.begin()
+    context.ref = right
+
+    assert context.ref is right
+    assert context.current.ref is left
+
+
+def test_managed_writes_require_explicit_transaction() -> None:
+    context = MatrixContext()
+
+    with pytest.raises(RuntimeError, match="active lifecycle transaction"):
+        context.value = 3
+
+    with pytest.raises(RuntimeError, match="active lifecycle transaction"):
+        context.working.value = 3
+
+
+def test_field_runtime_state_uses_copy_on_write_and_rollback_discards_working_state() -> None:
+    manager = TransactionManager()
+    context = MatrixContext(transaction_manager=manager)
+
+    committed_state = context.__get_current_field_state__("tracked")
+    committed_state["phase"] = "committed"
+
+    manager.begin()
+    working_state = context.__ensure_working_field_state__("tracked")
+    working_state["phase"] = "working"
+
+    assert working_state is not committed_state
+    assert context.__get_field_state__("tracked") == {"phase": "working"}
+    assert context.__get_current_field_state__("tracked") == {"phase": "committed"}
+
+    manager.rollback()
+
+    assert context.__get_current_field_state__("tracked") == {"phase": "committed"}
+    assert context._working_record is None
+
+
+def test_field_runtime_state_commits_back_into_current_record() -> None:
+    manager = TransactionManager()
+    context = MatrixContext(transaction_manager=manager)
+
+    context.__get_current_field_state__("tracked")["phase"] = "committed"
+
+    manager.begin()
+    context.__ensure_working_field_state__("tracked")["phase"] = "next"
+    manager.commit()
+
+    assert context.__get_current_field_state__("tracked") == {"phase": "next"}
+    assert context._working_record is None
 
 
 def test_transaction_manager_commits_only_dirty_contexts() -> None:
     manager = TransactionManager()
-    left = ManagedTrackedContext(transaction_manager=manager)
-    right = ManagedTrackedContext(transaction_manager=manager)
+    left = TrackedContext(transaction_manager=manager)
+    right = TrackedContext(transaction_manager=manager)
     left.events = []
     right.events = []
 
@@ -250,8 +336,8 @@ def test_transaction_manager_commits_only_dirty_contexts() -> None:
     left.value = 10
     manager.commit()
 
-    assert left.current_state.value == 10
-    assert right.current_state.value == 0
+    assert left.current.value == 10
+    assert right.current.value == 0
     assert left.events == [("commit", 0, 10)]
     assert right.events == []
     assert manager.active_transaction is None
@@ -259,8 +345,8 @@ def test_transaction_manager_commits_only_dirty_contexts() -> None:
 
 def test_transaction_manager_rolls_back_only_dirty_contexts() -> None:
     manager = TransactionManager()
-    left = ManagedTrackedContext(transaction_manager=manager)
-    right = ManagedTrackedContext(transaction_manager=manager)
+    left = TrackedContext(transaction_manager=manager)
+    right = TrackedContext(transaction_manager=manager)
     left.events = []
     right.events = []
 
@@ -268,8 +354,8 @@ def test_transaction_manager_rolls_back_only_dirty_contexts() -> None:
     left.value = 20
     manager.rollback()
 
-    assert left.current_state.value == 0
-    assert right.current_state.value == 0
+    assert left.current.value == 0
+    assert right.current.value == 0
     assert left.events == [("rollback", 0)]
     assert right.events == []
     assert manager.active_transaction is None
@@ -285,31 +371,3 @@ def test_transaction_manager_rejects_nested_transactions() -> None:
         manager.begin()
 
     manager.rollback()
-
-
-def test_const_fields_are_set_at_construction_and_not_part_of_managed_state() -> None:
-    context = ManagedConstChild(slot_id="slot-a", count=3)
-
-    assert context.slot_id == "slot-a"
-    assert context.module_id == "default-module"
-    assert context.current_state.count == 3
-    assert not hasattr(context.current_state, "slot_id")
-    assert not hasattr(context.current_state, "module_id")
-
-
-def test_const_fields_cannot_be_mutated_after_construction() -> None:
-    context = ManagedConstChild(slot_id="slot-a")
-
-    with pytest.raises(AttributeError, match="slot_id is const"):
-        context.slot_id = "slot-b"
-
-    with pytest.raises(AttributeError, match="module_id is const"):
-        context.module_id = "other-module"
-
-
-def test_const_fields_are_inherited() -> None:
-    context = ManagedConstChild(slot_id="slot-a", module_id="module-a", count=5)
-
-    assert context.slot_id == "slot-a"
-    assert context.module_id == "module-a"
-    assert context.current_state.count == 5
