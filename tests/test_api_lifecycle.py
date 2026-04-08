@@ -12,6 +12,7 @@ from pyrolyze.lifecycle import (
     managed_context,
     owned,
     static,
+    transient,
 )
 
 
@@ -89,6 +90,11 @@ class BindingContext:
 class OwnedContext:
     child: SpyBinding | None = owned(default=None)
     children: dict[str, SpyBinding] = owned(default_factory=dict)
+
+
+@managed_context
+class TransientContext:
+    seen_in_pass: bool = transient(default=False)
 
 
 @managed_context
@@ -364,6 +370,39 @@ def test_owned_map_closes_all_committed_children_on_owner_close() -> None:
 
     assert left.closed_states == [True]
     assert right.closed_states == [True]
+
+
+def test_transient_field_is_visible_during_transaction_and_cleared_on_commit() -> None:
+    manager = TransactionManager()
+    context = TransientContext(transaction_manager=manager)
+
+    assert context.seen_in_pass is False
+    assert context.current.seen_in_pass is False
+
+    manager.begin()
+    context.seen_in_pass = True
+
+    assert context.seen_in_pass is True
+    assert context.current.seen_in_pass is False
+    assert context.working.seen_in_pass is True
+
+    manager.commit()
+
+    assert context.seen_in_pass is False
+    assert context.current.seen_in_pass is False
+    assert context.working.seen_in_pass is False
+
+
+def test_transient_field_is_cleared_on_rollback() -> None:
+    manager = TransactionManager()
+    context = TransientContext(transaction_manager=manager)
+
+    manager.begin()
+    context.seen_in_pass = True
+    manager.rollback()
+
+    assert context.seen_in_pass is False
+    assert context.current.seen_in_pass is False
 
 def test_managed_context_inheritance_merges_fields_and_view_methods() -> None:
     manager = TransactionManager()

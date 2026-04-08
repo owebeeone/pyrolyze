@@ -15,7 +15,7 @@ The core ideas are:
   overlay
 - transaction managers enlist only contexts that actually promote to working
 
-Only the restarted Phase 1.1/1.7 surface is implemented here:
+Only the restarted Phase 1.1/1.8 surface is implemented here:
 
 - ``lifecycle_field``
 - ``const``
@@ -23,6 +23,7 @@ Only the restarted Phase 1.1/1.7 surface is implemented here:
 - ``managed``
 - ``binding``
 - ``owned``
+- ``transient``
 - ``managed_context``
 - ``LifecycleContext``
 - ``TransactionManager``
@@ -204,13 +205,13 @@ class LifecycleField:
         state_factory: Callable[[], Any] | None = None,
         state_copy: StateCopyHelper | None = None,
     ) -> None:
-        if kind not in {"managed", "const", "static", "binding", "owned"}:
+        if kind not in {"managed", "const", "static", "binding", "owned", "transient"}:
             raise TypeError(f"unsupported lifecycle field kind {kind!r}")
         if compare not in {"value", "identity"}:
             raise TypeError(f"unsupported compare mode {compare!r}")
         if default is not MISSING and default_factory is not MISSING:
             raise TypeError("lifecycle fields cannot define both default and default_factory")
-        if kind in {"const", "static", "binding", "owned"} and state_factory is not None:
+        if kind in {"const", "static", "binding", "owned", "transient"} and state_factory is not None:
             raise TypeError(f"{kind} fields cannot define state_factory")
         self.compare = compare
         self.default = default
@@ -331,6 +332,19 @@ def owned(
     return lifecycle_field(
         kind="owned",
         compare="identity",
+        default=default,
+        default_factory=default_factory,
+    )
+
+
+def transient(
+    *,
+    default: Any = MISSING,
+    default_factory: Callable[[], Any] | object = MISSING,
+) -> Any:
+    return lifecycle_field(
+        kind="transient",
+        compare="value",
         default=default,
         default_factory=default_factory,
     )
@@ -946,6 +960,16 @@ def _build_class_tables(
                 close_field[name] = _close_binding_field
             state_factory[name] = None
             state_copy[name] = None
+        elif spec.kind == "transient":
+            get_default[name] = _get_default_overlay_field
+            get_current[name] = _get_current_field
+            get_working[name] = _get_working_overlay_field
+            set_default[name] = _set_default_value_field
+            set_working[name] = _set_working_value_field
+            commit_field[name] = _close_noop
+            rollback_field[name] = _close_noop
+            state_factory[name] = None
+            state_copy[name] = None
         else:
             raise TypeError(f"unsupported lifecycle field kind {spec.kind!r}")
             close_field[name] = _close_noop
@@ -1131,4 +1155,5 @@ __all__ = [
     "managed_context",
     "owned",
     "static",
+    "transient",
 ]
