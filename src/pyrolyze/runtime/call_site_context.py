@@ -159,6 +159,23 @@ class CallSiteContextManager:
     def get_current(self, slot_id: Hashable) -> CallSiteContext | None:
         return self._pass_context.current.contexts.get(slot_id)
 
+    def get_visible(self, slot_id: Hashable) -> CallSiteContext | None:
+        return self._staged.get(slot_id) or self._current.get(slot_id)
+
+    def iter_current(self) -> tuple[CallSiteContext, ...]:
+        return tuple(self._current.values())
+
+    @property
+    def _current(self) -> dict[Hashable, CallSiteContext]:
+        return self._pass_context.state.current_record.values["contexts"]
+
+    @property
+    def _staged(self) -> dict[Hashable, CallSiteContext]:
+        working = self._pass_context.state.working_record
+        if working is None:
+            return {}
+        return working.values.get("contexts", {})
+
     def stage(self, slot_id: Hashable, context: CallSiteContext) -> None:
         next_contexts = dict(self._pass_context.contexts)
         next_contexts[slot_id] = context
