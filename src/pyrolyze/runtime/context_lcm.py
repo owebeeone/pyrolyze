@@ -57,6 +57,27 @@ class _SlotCallSlotState:
     runtime_locals: dict[str, Any] = local_store(default_factory=dict)
 
 
+@managed_context
+class _ComponentCallSlotState:
+    component_identity: Any = local_store(default=None)
+    schema: tuple[int, tuple[str, ...]] = local_store(default=(0, ()))
+    child_context: _base.RenderContext | None = local_store(default=None)
+    last_runtime_func: Callable[..., Any] | None = local_store(default=None)
+    last_bound_receiver: object = local_store(default=_base._BOUND_METHOD_SELF_MISSING)
+    last_args: tuple[Any, ...] = local_store(default_factory=tuple)
+    last_kwargs: dict[str, Any] = local_store(default_factory=dict)
+    last_plain_args: tuple[Any, ...] = local_store(default_factory=tuple)
+    last_plain_kwargs: dict[str, Any] = local_store(default_factory=dict)
+    last_dirty_state: _base.DirtyStateContext | None = local_store(default=None)
+    pending_dirty_state: _base.DirtyStateContext | None = local_store(default=None)
+    uses_dirty_state_api: bool = local_store(default=False)
+    packed_kwargs: bool = local_store(default=False)
+    packed_kwarg_param_names: tuple[str, ...] = local_store(default_factory=tuple)
+    param_names: tuple[str, ...] = local_store(default_factory=tuple)
+    site_metadata: tuple[_base.RuntimeSiteMetadata[Any], ...] = local_store(default_factory=tuple)
+    pass_owned_event_handler_order: tuple[_base.SlotId, ...] = local_store(default_factory=tuple)
+
+
 class _LifecycleSlotMixin:
     _lcm_fields: tuple[str, ...] = ()
     _lcm_field_map: dict[str, str] = {}
@@ -509,16 +530,290 @@ class SlotCallSlotContext(_LifecycleSlotMixin, _base.SlotCallSlotContext):
         _base.SlotContext.deactivate(self)
 
 
+@dataclass(slots=True)
+class ComponentCallSlotContext(_LifecycleSlotMixin, _base.ComponentCallSlotContext):
+    _lcm_state: _ComponentCallSlotState = field(init=False, repr=False)
+
+    _lcm_fields = (
+        "component_identity",
+        "schema",
+        "child_context",
+        "last_runtime_func",
+        "last_bound_receiver",
+        "last_args",
+        "last_kwargs",
+        "last_plain_args",
+        "last_plain_kwargs",
+        "last_dirty_state",
+        "pending_dirty_state",
+        "uses_dirty_state_api",
+        "packed_kwargs",
+        "packed_kwarg_param_names",
+        "param_names",
+        "site_metadata",
+        "_pass_owned_event_handler_order",
+    )
+    _lcm_field_map = {
+        "_pass_owned_event_handler_order": "pass_owned_event_handler_order",
+    }
+
+    def __post_init__(self) -> None:
+        _base.RerunnableSlotContext.__post_init__(self)
+        object.__setattr__(
+            self,
+            "_lcm_state",
+            _ComponentCallSlotState(
+                component_identity=self.component_identity,
+                schema=self.schema,
+                child_context=self.child_context,
+                last_runtime_func=self.last_runtime_func,
+                last_bound_receiver=self.last_bound_receiver,
+                last_args=self.last_args,
+                last_kwargs=self.last_kwargs,
+                last_plain_args=self.last_plain_args,
+                last_plain_kwargs=self.last_plain_kwargs,
+                last_dirty_state=self.last_dirty_state,
+                pending_dirty_state=self.pending_dirty_state,
+                uses_dirty_state_api=self.uses_dirty_state_api,
+                packed_kwargs=self.packed_kwargs,
+                packed_kwarg_param_names=self.packed_kwarg_param_names,
+                param_names=self.param_names,
+                site_metadata=self.site_metadata,
+                pass_owned_event_handler_order=self._pass_owned_event_handler_order,
+            ),
+        )
+        self._lcm_sync()
+
+    def invoke(
+        self,
+        component: Callable[..., Any],
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+        *,
+        dirty_state: _base.DirtyStateContext | None = None,
+        _pyr_param_names: tuple[str, ...] | None = None,
+        _pyr_args_dirty: tuple[Any, ...] | None = None,
+        _pyr_kwargs_dirty: dict[str, Any] | None = None,
+    ) -> None:
+        raw_component, _ = _base._unwrap(component)
+        metadata, bound_receiver = _base._component_call_key(raw_component)
+        runtime_func = _base._resolve_runtime_component_func(getattr(metadata, "_func", None))
+        if metadata is None or runtime_func is None:
+            raise TypeError("component_call expects a ComponentRef with _pyrolyze_meta._func")
+
+        if bound_receiver is _base._BOUND_METHOD_SELF_MISSING:
+            identity_key = raw_component
+        else:
+            underlying = getattr(raw_component, "__func__", None)
+            identity_key = ("bound_component", id(bound_receiver), underlying)
+
+        schema = (len(args), tuple(sorted(kwargs)))
+        if self.child_context is None or self.component_identity != identity_key or self.schema != schema:
+            self._dispose_child_context()
+            self.child_context = _base.RenderContext(
+                owner_slot=self,
+                scheduler_root=self.render_context._scheduler_root,
+                authored_app_context_lookup=self.parent._effective_authored_app_context_lookup(),
+            )
+            self.component_identity = identity_key
+            self.schema = schema
+
+        self._begin_owned_event_handler_pass()
+        try:
+            self.last_runtime_func = runtime_func
+            self.last_bound_receiver = bound_receiver
+            self.param_names = tuple(getattr(metadata, "param_names", ()))
+            self.packed_kwargs = bool(getattr(metadata, "packed_kwargs", False))
+            self.packed_kwarg_param_names = tuple(getattr(metadata, "packed_kwarg_param_names", ()))
+            effective_param_names = _pyr_param_names or self.param_names
+            if dirty_state is None and effective_param_names:
+                dirty_state = _base.dirtyof_values(
+                    _base.build_function_arg_dirty_map(
+                        effective_param_names,
+                        _pyr_args_dirty or (),
+                        _pyr_kwargs_dirty or {},
+                    )
+                )
+            if dirty_state is None:
+                normalized_args = tuple(_base._bind_pending_event_plain_value(self, _base._unwrap(arg)[0]) for arg in args)
+                normalized_kwargs = {
+                    key: _base._bind_pending_event_plain_value(self, _base._unwrap(value)[0])
+                    for key, value in kwargs.items()
+                }
+                self.last_args = normalized_args
+                self.last_kwargs = normalized_kwargs
+                self.last_plain_args = ()
+                self.last_plain_kwargs = {}
+                self.last_dirty_state = None
+                self.pending_dirty_state = None
+                self.uses_dirty_state_api = False
+            else:
+                self.last_plain_args = tuple(_base._bind_pending_event_plain_value(self, _base._unwrap(arg)[0]) for arg in args)
+                self.last_plain_kwargs = {
+                    key: _base._bind_pending_event_plain_value(self, _base._unwrap(value)[0])
+                    for key, value in kwargs.items()
+                }
+                self.last_dirty_state = dirty_state
+                self.pending_dirty_state = dirty_state
+                self.last_args = ()
+                self.last_kwargs = {}
+                self.uses_dirty_state_api = True
+            self.child_context._authored_app_context_lookup = self.parent._effective_authored_app_context_lookup()
+            self.child_context._mounted_callback = self._rerun_child
+            self.child_context._run_boundary()
+        except BaseException:
+            self.rollback_owned_event_handlers()
+            raise
+        self._committed_ui = self.child_context._committed_ui
+
+    def _begin_owned_event_handler_pass(self) -> None:
+        self._pass_owned_event_handler_order = tuple(
+            slot_id
+            for slot_id, child in self._children.items()
+            if isinstance(child, EventHandlerSlotContext)
+        )
+        for child in self._children.values():
+            if isinstance(child, EventHandlerSlotContext):
+                child.seen_in_pass = False
+
+    def commit_owned_event_handlers(self) -> None:
+        if not self._pass_owned_event_handler_order and not any(
+            isinstance(child, EventHandlerSlotContext) and child.seen_in_pass
+            for child in self._children.values()
+        ):
+            return
+        unseen_slots = [
+            slot_id
+            for slot_id, child in self._children.items()
+            if isinstance(child, EventHandlerSlotContext) and not child.seen_in_pass
+        ]
+        for slot_id in unseen_slots:
+            child = self._children.get(slot_id)
+            if child is not None:
+                child.deactivate()
+
+        for child in self._children.values():
+            if isinstance(child, EventHandlerSlotContext):
+                child.commit_handler()
+
+        self._pass_owned_event_handler_order = ()
+
+    def rollback_owned_event_handlers(self) -> None:
+        if not self._pass_owned_event_handler_order and not any(
+            isinstance(child, EventHandlerSlotContext) and child.seen_in_pass
+            for child in self._children.values()
+        ):
+            return
+        committed_ids = set(self._pass_owned_event_handler_order)
+        for slot_id, child in list(self._children.items()):
+            if not isinstance(child, EventHandlerSlotContext):
+                continue
+            if slot_id not in committed_ids:
+                child.deactivate()
+                continue
+            child.rollback_handler()
+            child.seen_in_pass = True
+        self._pass_owned_event_handler_order = ()
+
+    def _rerun_child(self) -> None:
+        child_context = self.child_context
+        runtime_func = self.last_runtime_func
+        if child_context is None or runtime_func is None:
+            raise RuntimeError("component child is not mounted")
+        if self.uses_dirty_state_api:
+            dirty_state = self.pending_dirty_state
+            if dirty_state is None:
+                dirty_state = _base._clean_dirty_state(self.last_dirty_state)
+            else:
+                self.pending_dirty_state = None
+            if self.packed_kwargs:
+                packed_kwargs = _base.pack_function_args(
+                    self.packed_kwarg_param_names,
+                    self.last_plain_args,
+                    self.last_plain_kwargs,
+                )
+                if self.last_bound_receiver is _base._BOUND_METHOD_SELF_MISSING:
+                    runtime_func(child_context, dirty_state, **packed_kwargs)
+                else:
+                    runtime_func(self.last_bound_receiver, child_context, dirty_state, **packed_kwargs)
+                self._committed_ui = child_context._committed_ui
+                if not self.parent._scope_active:
+                    self.parent._refresh_committed_ui_from_children()
+                return
+            if self.last_bound_receiver is _base._BOUND_METHOD_SELF_MISSING:
+                runtime_func(child_context, dirty_state, *self.last_plain_args, **self.last_plain_kwargs)
+            else:
+                runtime_func(
+                    self.last_bound_receiver,
+                    child_context,
+                    dirty_state,
+                    *self.last_plain_args,
+                    **self.last_plain_kwargs,
+                )
+            self._committed_ui = child_context._committed_ui
+            if not self.parent._scope_active:
+                self.parent._refresh_committed_ui_from_children()
+            return
+
+        if self.packed_kwargs:
+            packed_kwargs = _base.pack_function_args(
+                self.packed_kwarg_param_names,
+                self.last_args,
+                self.last_kwargs,
+            )
+            if self.last_bound_receiver is _base._BOUND_METHOD_SELF_MISSING:
+                runtime_func(child_context, **packed_kwargs)
+            else:
+                runtime_func(self.last_bound_receiver, child_context, **packed_kwargs)
+            self._committed_ui = child_context._committed_ui
+            if not self.parent._scope_active:
+                self.parent._refresh_committed_ui_from_children()
+            return
+
+        if self.last_bound_receiver is _base._BOUND_METHOD_SELF_MISSING:
+            runtime_func(child_context, *self.last_args, **self.last_kwargs)
+        else:
+            runtime_func(
+                self.last_bound_receiver,
+                child_context,
+                *self.last_args,
+                **self.last_kwargs,
+            )
+        self._committed_ui = child_context._committed_ui
+        if not self.parent._scope_active:
+            self.parent._refresh_committed_ui_from_children()
+
+    def _dispose_child_context(self) -> None:
+        child_context = self.child_context
+        if child_context is None:
+            return
+        child_context._remove_from_scheduler()
+        for child in list(child_context._children.values()):
+            child.deactivate()
+        child_context._children.clear()
+        child_context._slots_by_id.clear()
+        child_context._mounted_callback = None
+        self.child_context = None
+        self.pending_dirty_state = None
+        self._committed_ui = ()
+
+    def deactivate(self) -> None:
+        self._dispose_child_context()
+        _base.SlotContext.deactivate(self)
+
+
 _base.EventHandlerSlotContext = EventHandlerSlotContext
 _base.ContainerSlotContext = ContainerSlotContext
 _base.LeafSlotContext = LeafSlotContext
 _base.SlotExprSlotContext = SlotExprSlotContext
 _base.SlotCallSlotContext = SlotCallSlotContext
+_base.ComponentCallSlotContext = ComponentCallSlotContext
 
 globals()["EventHandlerSlotContext"] = EventHandlerSlotContext
 globals()["ContainerSlotContext"] = ContainerSlotContext
 globals()["LeafSlotContext"] = LeafSlotContext
 globals()["SlotExprSlotContext"] = SlotExprSlotContext
 globals()["SlotCallSlotContext"] = SlotCallSlotContext
+globals()["ComponentCallSlotContext"] = ComponentCallSlotContext
 
 __PYROLYZE_CONTEXT_IMPLEMENTATION__ = "lcm"
