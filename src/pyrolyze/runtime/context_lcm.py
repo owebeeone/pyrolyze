@@ -78,6 +78,19 @@ class _ComponentCallSlotState:
     pass_owned_event_handler_order: tuple[_base.SlotId, ...] = local_store(default_factory=tuple)
 
 
+@managed_context
+class _AppContextOverrideSlotState:
+    declared_keys: tuple[_base.AppContextKey[Any], ...] = local_store(default_factory=tuple)
+    committed_values: tuple[Any, ...] = local_store(default_factory=tuple)
+    committed_key_states: dict[_base.AppContextKey[Any], _base._CommittedAppContextOverrideKeyState] = local_store(default_factory=dict)
+    committed_lookup: _base.AppContextLookup = local_store(default_factory=_base._empty_authored_app_context_lookup)
+    pass_committed_values: tuple[Any, ...] = local_store(default_factory=tuple)
+    pass_committed_lookup: _base.AppContextLookup = local_store(default_factory=_base._empty_authored_app_context_lookup)
+    pending_values: tuple[Any, ...] = local_store(default_factory=tuple)
+    pending_lookup: _base.AppContextLookup = local_store(default_factory=_base._empty_authored_app_context_lookup)
+    pending_initialized: bool = local_store(default=False)
+
+
 class _LifecycleSlotMixin:
     _lcm_fields: tuple[str, ...] = ()
     _lcm_field_map: dict[str, str] = {}
@@ -802,12 +815,144 @@ class ComponentCallSlotContext(_LifecycleSlotMixin, _base.ComponentCallSlotConte
         _base.SlotContext.deactivate(self)
 
 
+@dataclass(slots=True)
+class AppContextOverrideSlotContext(_LifecycleSlotMixin, _base.AppContextOverrideSlotContext):
+    _lcm_state: _AppContextOverrideSlotState = field(init=False, repr=False)
+
+    _lcm_fields = (
+        "declared_keys",
+        "committed_values",
+        "_committed_key_states",
+        "_committed_lookup",
+        "_pass_committed_values",
+        "_pass_committed_lookup",
+        "_pending_values",
+        "_pending_lookup",
+        "_pending_initialized",
+    )
+    _lcm_field_map = {
+        "_committed_key_states": "committed_key_states",
+        "_committed_lookup": "committed_lookup",
+        "_pass_committed_values": "pass_committed_values",
+        "_pass_committed_lookup": "pass_committed_lookup",
+        "_pending_values": "pending_values",
+        "_pending_lookup": "pending_lookup",
+        "_pending_initialized": "pending_initialized",
+    }
+
+    def __post_init__(self) -> None:
+        _base.RerunnableSlotContext.__post_init__(self)
+        object.__setattr__(
+            self,
+            "_lcm_state",
+            _AppContextOverrideSlotState(
+                declared_keys=self.declared_keys,
+                committed_values=self.committed_values,
+                committed_key_states=self._committed_key_states,
+                committed_lookup=self._committed_lookup,
+                pass_committed_values=self._pass_committed_values,
+                pass_committed_lookup=self._pass_committed_lookup,
+                pending_values=self._pending_values,
+                pending_lookup=self._pending_lookup,
+                pending_initialized=self._pending_initialized,
+            ),
+        )
+        self._lcm_sync()
+
+    def stage_override(
+        self,
+        keys: tuple[_base.AppContextKey[Any], ...],
+        values: tuple[Any, ...],
+    ) -> None:
+        self._validate_override(keys, values)
+        if self.declared_keys and self.declared_keys != keys:
+            raise _base.AppContextOverrideStructureError(
+                "app_context_override fixed keys cannot change at one slot"
+            )
+        if not self.declared_keys:
+            self.declared_keys = keys
+        self._apply_pending_values(values)
+        self._pending_values = values
+        self._pending_lookup = _base.OverlayAppContextLookup(
+            parent=_base._ParentAuthoredAppContextLookup(self.parent),
+            drips={key: self._committed_key_states[key].drip for key in keys},
+        )
+        self._pending_initialized = True
+
+    def _effective_authored_app_context_lookup(self) -> _base.AppContextLookup:
+        if self._scope_active and self._pending_initialized:
+            return self._pending_lookup
+        if self.declared_keys:
+            return self._committed_lookup
+        return _base.ContextBase._effective_authored_app_context_lookup(self)
+
+    def _begin_scope_pass(self) -> None:
+        self._pass_committed_values = self.committed_values
+        self._pass_committed_lookup = self._committed_lookup
+        _base.ContextBase._begin_scope_pass(self)
+
+    def _commit_scope_pass(self) -> None:
+        if not self._pending_initialized:
+            raise RuntimeError("app_context_override slot was not staged")
+        self.committed_values = self._pending_values
+        self._committed_lookup = _base.OverlayAppContextLookup(
+            parent=_base._ParentAuthoredAppContextLookup(self.parent),
+            drips={key: self._committed_key_states[key].drip for key in self.declared_keys},
+        )
+        _base.ContextBase._commit_scope_pass(self)
+        self._pending_values = ()
+        self._pending_lookup = _base.EMPTY_APP_CONTEXT_LOOKUP
+        self._pending_initialized = False
+        self._pass_committed_values = ()
+        self._pass_committed_lookup = _base.EMPTY_APP_CONTEXT_LOOKUP
+
+    def _rollback_scope_pass(self) -> None:
+        _base.ContextBase._rollback_scope_pass(self)
+        self.committed_values = self._pass_committed_values
+        self._committed_lookup = self._pass_committed_lookup
+        if self.declared_keys and len(self._pass_committed_values) == len(self.declared_keys):
+            self._apply_values(self._pass_committed_values)
+        elif not self._pass_committed_values:
+            for state in self._committed_key_states.values():
+                state.deactivate()
+        self._pending_values = ()
+        self._pending_lookup = _base.EMPTY_APP_CONTEXT_LOOKUP
+        self._pending_initialized = False
+        self._pass_committed_values = ()
+        self._pass_committed_lookup = _base.EMPTY_APP_CONTEXT_LOOKUP
+
+    def deactivate(self) -> None:
+        for state in self._committed_key_states.values():
+            state.deactivate()
+        self._committed_key_states = {}
+        self._pending_values = ()
+        self._pending_lookup = _base.EMPTY_APP_CONTEXT_LOOKUP
+        self._pending_initialized = False
+        _base.SlotContext.deactivate(self)
+
+    def _apply_pending_values(self, values: tuple[Any, ...]) -> None:
+        self._apply_values(values)
+
+    def _apply_values(self, values: tuple[Any, ...]) -> None:
+        parent_lookup = self.parent._effective_authored_app_context_lookup()
+        for key, value in zip(self.declared_keys, values, strict=True):
+            state = self._committed_key_states.get(key)
+            if state is None:
+                state = _base._CommittedAppContextOverrideKeyState(key=key)
+                self._committed_key_states[key] = state
+            if value is None:
+                state.sync_parent(parent_lookup.resolve_drip(key))
+            else:
+                state.sync_value(value)
+
+
 _base.EventHandlerSlotContext = EventHandlerSlotContext
 _base.ContainerSlotContext = ContainerSlotContext
 _base.LeafSlotContext = LeafSlotContext
 _base.SlotExprSlotContext = SlotExprSlotContext
 _base.SlotCallSlotContext = SlotCallSlotContext
 _base.ComponentCallSlotContext = ComponentCallSlotContext
+_base.AppContextOverrideSlotContext = AppContextOverrideSlotContext
 
 globals()["EventHandlerSlotContext"] = EventHandlerSlotContext
 globals()["ContainerSlotContext"] = ContainerSlotContext
@@ -815,5 +960,6 @@ globals()["LeafSlotContext"] = LeafSlotContext
 globals()["SlotExprSlotContext"] = SlotExprSlotContext
 globals()["SlotCallSlotContext"] = SlotCallSlotContext
 globals()["ComponentCallSlotContext"] = ComponentCallSlotContext
+globals()["AppContextOverrideSlotContext"] = AppContextOverrideSlotContext
 
 __PYROLYZE_CONTEXT_IMPLEMENTATION__ = "lcm"
