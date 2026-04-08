@@ -22,7 +22,7 @@ _SLOT_2 = SlotId(_MODULE_ID, 2, line_no=11)
 class _FakeBinding(CallSiteBindingBase):
     cleanup_count: int = 0
 
-    def close(self) -> None:
+    def _close(self) -> None:
         self.cleanup_count += 1
 
 
@@ -164,6 +164,18 @@ def test_context_close_is_idempotent() -> None:
     context.close()
 
     assert binding.ref_count == 0
+    assert binding.cleanup_count == 1
+
+
+def test_call_site_binding_base_tracks_accepted_state() -> None:
+    binding = _FakeBinding()
+
+    assert binding.is_accepted is False
+    binding.accepted()
+    assert binding.is_accepted is True
+
+    binding.dec_ref()
+
     assert binding.cleanup_count == 1
 
 

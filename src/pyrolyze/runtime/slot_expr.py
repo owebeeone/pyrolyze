@@ -212,7 +212,7 @@ class _SlotExprCallSiteBinding(CallSiteBindingBase):
     def rollback(self) -> None:
         self.binding.rollback()
 
-    def close(self) -> None:
+    def _close(self) -> None:
         self.binding.deactivate()
 
 

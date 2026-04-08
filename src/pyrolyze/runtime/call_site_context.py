@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+from abc import ABC
 from dataclasses import InitVar, dataclass, field, replace
 from enum import IntEnum
 from typing import Any, Generic, Hashable, Iterable, Mapping, Self, TypeVar
+
+from pyrolyze.lifecycle import BindingBase
 
 from .pyro_call import RuntimeSiteMetadata
 
@@ -56,27 +58,8 @@ class CallSiteArgs:
 
 
 @dataclass(slots=True, eq=False)
-class CallSiteBindingBase(ABC):
-    _call_site_ref_count: int = field(default=1, init=False, repr=False, compare=False)
-
-    @property
-    def ref_count(self) -> int:
-        return self._call_site_ref_count
-
-    def inc_ref(self) -> None:
-        if self._call_site_ref_count <= 0:
-            raise RuntimeError("cannot retain a dead call-site binding")
-        self._call_site_ref_count += 1
-
-    def dec_ref(self) -> None:
-        if self._call_site_ref_count <= 0:
-            raise AssertionError("dec_ref called without a matching inc_ref")
-        self._call_site_ref_count -= 1
-        if self._call_site_ref_count == 0:
-            self.close()
-
-    @abstractmethod
-    def close(self) -> None: ...
+class CallSiteBindingBase(BindingBase):
+    pass
 
 
 @dataclass(slots=True)
