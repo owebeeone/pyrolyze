@@ -105,6 +105,11 @@ class TransientContext:
 
 
 @managed_context
+class TransientOptionalContext:
+    tag: object | None = transient(default=None)
+
+
+@managed_context
 class LocalStoreContext:
     cache: dict[str, int] = local_store(default_factory=dict)
 
@@ -431,6 +436,41 @@ def test_transient_field_is_cleared_on_rollback() -> None:
 
     assert context.seen_in_pass is False
     assert context.current.seen_in_pass is False
+
+
+def test_transient_none_default_requires_active_transaction_to_assign() -> None:
+    manager = TransactionManager()
+    context = TransientOptionalContext(transaction_manager=manager)
+
+    assert context.tag is None
+    assert context.current.tag is None
+
+    with pytest.raises(RuntimeError, match="active lifecycle transaction"):
+        context.tag = object()
+
+
+def test_transient_none_default_reset_after_commit_and_rollback() -> None:
+    manager = TransactionManager()
+    sentinel = object()
+
+    context = TransientOptionalContext(transaction_manager=manager)
+    assert context.tag is None
+
+    manager.begin()
+    context.tag = sentinel
+    assert context.tag is sentinel
+    assert context.current.tag is None
+
+    manager.commit()
+    assert context.tag is None
+    assert context.current.tag is None
+    assert context.working.tag is None
+
+    manager.begin()
+    context.tag = sentinel
+    manager.rollback()
+    assert context.tag is None
+    assert context.current.tag is None
 
 
 def test_local_store_survives_commit_and_is_shared_across_views() -> None:

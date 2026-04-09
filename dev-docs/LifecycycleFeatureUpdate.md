@@ -315,14 +315,28 @@ Required behavior:
 
 Important clarification:
 
-The current `lifecycle.py` implementation is only partially aligned with this.
-Today `transient` still has a baseline value in `current_record`. That is
-convenient for defaults, but it is not the ideal final semantics for pass-local
-state.
+For the `*StateMgr` refactor, the existing `transient` model is good enough if
+the field default is chosen to preserve the distinctions the runtime actually
+needs.
 
-For the `*StateMgr` refactor, `transient` should be tightened to mean exactly:
+Recommended rule:
 
-- transaction-local scratch with no authoritative post-transaction role
+- use `default=None` when `None` can mean "not evaluated this pass"
+- otherwise use an explicit sentinel such as `UNSET` / `NOT_SET`
+
+This gives the required state detectability:
+
+- not evaluated this pass
+- evaluated this pass and produced an empty value
+- evaluated this pass and produced a non-empty value
+
+So `transient` does not need a new field kind or a separate "scratch" concept.
+The implementation may retain a baseline default internally as long as the
+observable semantics remain:
+
+- transaction-local writes
+- reset to the sentinel/default after commit and rollback
+- no authoritative publication
 
 ## `local_store`
 
@@ -376,6 +390,31 @@ Required behavior:
 - old owned values must not be torn down until replacement commits
 - commit publishes the new owner/value atomically
 - rollback restores old owner/value atomically
+
+Current assessment:
+
+For the current refactor pass, the existing `owned` behavior is good enough if
+application logic treats the owned value as single-owner by convention.
+
+That means:
+
+- owned values are expected not to be shared across multiple owned locations
+- rollback tears down a newly staged owned value
+- commit tears down the replaced prior owned value
+- child-before-parent commit ordering still matters for structural safety
+
+So, for now, `owned` is partly documentation of intent rather than a fully
+enforced exclusivity mechanism.
+
+Possible later hardening:
+
+- commit-time exclusivity checks such as `ref_count == 1`
+- stronger owned-specific hooks distinct from shared binding hooks
+- explicit diagnostics when an owned value is observed in multiple locations
+
+Those checks are intentionally deferred. The immediate migration goal is to use
+`owned` as the declared lifecycle kind and rely on application logic to uphold
+single-owner discipline.
 
 Typical examples:
 
@@ -521,30 +560,17 @@ Required behavior:
 
 ## 3. Distinct `owned` semantics
 
-The current implementation treats `binding` and `owned` too similarly.
+The current implementation treats `binding` and `owned` similarly, but that is
+acceptable for the first refactor pass as long as:
 
-`owned` needs:
+- application logic treats owned values as single-owner by convention
+- rollback tears down newly staged owned values
+- commit tears down replaced prior owned values
+- postorder finalization is preserved
 
-- rollback teardown of newly created staged values
-- commit-time transfer of exclusive ownership
-- postorder finalization support
-
-This should be explicit in the lifecycle field hooks.
-
-## 4. Stronger `transient` semantics
-
-`transient` needs to behave as true transaction-local pass state.
-
-Required changes:
-
-- avoid treating `current_record` as authoritative storage for transient
-- ensure transient values are always cleared at transaction end
-- ensure transient values are not mistaken for committed fallback state
-
-The implementation may still materialize default values conveniently, but the
-semantic model must be:
-
-- transient is never published state
+Stronger exclusivity enforcement is deferred. Future hardening may add owned-
+specific checks or hooks, but this is not required to begin the declarative
+manager migration.
 
 ## 5. Pre-commit validation hooks
 
@@ -832,10 +858,11 @@ The lifecycle contract remains primary.
 ## Phase A: feature support in `lifecycle.py`
 
 1. Introduce outermost-boundary-controlled auto-joined transaction semantics.
-2. Tighten `transient` to be true pass-local state.
-3. Separate `owned` from `binding`.
-4. Add validation hooks.
-5. Add graph commit ordering support.
+2. Add validation hooks.
+3. Add graph commit ordering support.
+4. Standardize sentinel/default conventions for pass-local `transient` fields.
+5. Keep `owned` as a documented single-owner convention for now; defer
+   exclusivity checks.
 
 ## Phase B: field classification pass over `runtime/context_state/*`
 
@@ -879,7 +906,8 @@ This lifecycle feature update is complete when:
 2. `local_store` is used only for caches/helpers.
 3. Nested child renders no longer commit independently from the outer boundary
    render attempt.
-4. `owned` semantics are distinct from `binding` semantics in code and tests.
+4. `owned` is declared and used as a single-owner convention, with application
+   logic upholding exclusivity for now.
 5. mount/directive and app-context override validation can run before
    publication.
 6. parent publication occurs only after child publication is finalized.
@@ -891,8 +919,6 @@ This lifecycle feature update is complete when:
 The missing lifecycle features are:
 
 - auto-joined transactions rooted at outermost boundaries
-- true transaction-local `transient` semantics
-- real `owned` semantics distinct from `binding`
 - pre-commit validation
 - graph-aware commit ordering
 - strict discipline that `local_store` is never authoritative
