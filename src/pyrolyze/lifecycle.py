@@ -26,6 +26,8 @@ Only the restarted Phase 1.1/1.10 surface is implemented here:
 - ``transient``
 - ``local_store``
 - ``derived``
+- ``commit_order_key``
+- ``commit_validator``
 - ``managed_context``
 - ``LifecycleContext``
 - ``TransactionManager``
@@ -44,6 +46,16 @@ from typing import Any
 from pyrolyze.type_annotations import is_annotation_narrower_or_equal
 
 _SENTINEL = object()
+
+
+class LifecycleValidatorReturnedFalse(RuntimeError):
+    """Raised when a context's ``validate_commit`` hook returns False (not an exception)."""
+
+    def __init__(self, context: "LifecycleContext") -> None:
+        self.context = context
+        super().__init__(
+            f"validate_commit returned False for {type(context).__qualname__!r}",
+        )
 
 
 @dataclass(slots=True)
@@ -74,44 +86,89 @@ def _view_init(self, *, _state: LifecycleContextState, _owner: _ManagedContextBa
 class LifecycleTransaction:
     tx_id: int
     dirty_contexts: dict[int, LifecycleContext] = field(default_factory=dict)
+    validator_contexts: dict[int, LifecycleContext] = field(default_factory=dict)
+
+    def commit_order(self) -> tuple[LifecycleContext, ...]:
+        contexts = list(self.dirty_contexts.values())
+        contexts.sort(key=lambda context: context.commit_order_key(), reverse=True)
+        return tuple(contexts)
+
+    def rollback_dirty(self) -> None:
+        for ctx in list(self.dirty_contexts.values()):
+            ctx._rollback_transaction(self.tx_id)
+
+    def validate_commit(self) -> None:
+        failures: list[BaseException] = []
+        for context in self.validator_contexts.values():
+            try:
+                ok = context.validate_commit()
+            except BaseException as exc:
+                failures.append(exc)
+                continue
+            if not ok:
+                failures.append(LifecycleValidatorReturnedFalse(context))
+        if failures:
+            raise ExceptionGroup("lifecycle commit validation failed", failures)
+
+    def apply_commits(self) -> None:
+        for context in self.commit_order():
+            context._commit_transaction(self.tx_id)
 
 
+@dataclass(slots=True)
 class TransactionManager:
-    def __init__(self) -> None:
-        self._next_tx_id = 1
-        self.active_transaction: LifecycleTransaction | None = None
+    _next_tx_id: int = field(default=1, init=False, repr=False)
+    active_transaction: LifecycleTransaction | None = field(default=None, init=False, repr=False)
+    begin_count: int = field(default=0, init=False, repr=False)
 
     def begin(self) -> LifecycleTransaction:
-        if self.active_transaction is not None:
-            raise RuntimeError("nested lifecycle transactions are not supported")
-        transaction = LifecycleTransaction(tx_id=self._next_tx_id)
-        self._next_tx_id += 1
-        self.active_transaction = transaction
+        if self.begin_count == 0:
+            if self.active_transaction is not None:
+                raise RuntimeError("lifecycle transaction manager state is corrupted")
+            self.active_transaction = LifecycleTransaction(tx_id=self._next_tx_id)
+            self._next_tx_id += 1
+        self.begin_count += 1
+        transaction = self.active_transaction
+        assert transaction is not None
         return transaction
 
     def commit(self) -> int | None:
+        if self.begin_count <= 0:
+            raise RuntimeError("no active lifecycle transaction")
+        if self.begin_count > 1:
+            self.begin_count -= 1
+            return None
         transaction = self.active_transaction
         if transaction is None:
-            return None
-        for context in list(transaction.dirty_contexts.values()):
-            context._commit_transaction(transaction.tx_id)
+            raise RuntimeError("lifecycle transaction manager state is corrupted")
+        try:
+            transaction.validate_commit()
+        except BaseExceptionGroup as exc_group:
+            self.rollback()
+            raise exc_group
+        tx_id = transaction.tx_id
+        transaction.apply_commits()
         self.active_transaction = None
-        return transaction.tx_id
+        self.begin_count = 0
+        return tx_id
 
     def rollback(self) -> int | None:
+        if self.begin_count <= 0 or self.active_transaction is None:
+            raise RuntimeError("no active lifecycle transaction")
         transaction = self.active_transaction
-        if transaction is None:
-            return None
-        for context in list(transaction.dirty_contexts.values()):
-            context._rollback_transaction(transaction.tx_id)
+        transaction.rollback_dirty()
+        tx_id = transaction.tx_id
         self.active_transaction = None
-        return transaction.tx_id
+        self.begin_count = 0
+        return tx_id
 
     def enlist(self, context: LifecycleContext) -> int:
         transaction = self.active_transaction
         if transaction is None:
             raise RuntimeError("no active lifecycle transaction")
         transaction.dirty_contexts[id(context)] = context
+        if context.requires_validation():
+            transaction.validator_contexts[id(context)] = context
         return transaction.tx_id
 
     def drop(self, context: LifecycleContext, tx_id: int | None = None) -> None:
@@ -120,7 +177,9 @@ class TransactionManager:
             return
         if tx_id is not None and transaction.tx_id != tx_id:
             return
-        transaction.dirty_contexts.pop(id(context), None)
+        cid = id(context)
+        transaction.dirty_contexts.pop(cid, None)
+        transaction.validator_contexts.pop(cid, None)
 
 
 @dataclass(eq=False, slots=True)
@@ -190,6 +249,16 @@ class FieldSpec:
         if self.kind == "static":
             if self.default is MISSING and self.default_factory is MISSING:
                 return _SENTINEL
+        if self.kind == "commit_order_key":
+            if self.default is not MISSING:
+                return self.default
+            if self.default_factory is not MISSING:
+                return self.default_factory()
+            return ()
+        if self.kind == "commit_validator":
+            if self.default is not MISSING:
+                return self.default
+            return None
         if self.default is not MISSING:
             return self.default
         if self.default_factory is not MISSING:
@@ -224,13 +293,43 @@ class LifecycleField:
         state_factory: Callable[[], Any] | None = None,
         state_copy: StateCopyHelper | None = None,
     ) -> None:
-        if kind not in {"managed", "const", "static", "binding", "owned", "transient", "local_store", "derived"}:
+        if kind not in {
+            "managed",
+            "const",
+            "static",
+            "binding",
+            "owned",
+            "transient",
+            "local_store",
+            "derived",
+            "commit_order_key",
+            "commit_validator",
+        }:
             raise TypeError(f"unsupported lifecycle field kind {kind!r}")
         if compare not in {"value", "identity"}:
             raise TypeError(f"unsupported compare mode {compare!r}")
         if default is not MISSING and default_factory is not MISSING:
             raise TypeError("lifecycle fields cannot define both default and default_factory")
-        if kind in {"const", "static", "binding", "owned", "transient", "local_store", "derived"} and state_factory is not None:
+        if kind == "commit_validator":
+            if default_factory is not MISSING:
+                raise TypeError("commit_validator fields cannot define default_factory")
+            if initial_working is not MISSING:
+                raise TypeError("commit_validator fields cannot define initial_working")
+        if (
+            kind
+            in {
+                "const",
+                "static",
+                "binding",
+                "owned",
+                "transient",
+                "local_store",
+                "derived",
+                "commit_order_key",
+                "commit_validator",
+            }
+            and state_factory is not None
+        ):
             raise TypeError(f"{kind} fields cannot define state_factory")
         self.compare = compare
         self.default = default
@@ -410,6 +509,27 @@ def derived(
         compare="value",
         default=default,
         default_factory=default_factory,
+    )
+
+
+def commit_order_key(
+    *,
+    default: Any = MISSING,
+    default_factory: Callable[[], Any] | object = MISSING,
+) -> Any:
+    return lifecycle_field(
+        kind="commit_order_key",
+        compare="value",
+        default=default,
+        default_factory=default_factory,
+    )
+
+
+def commit_validator(*, default: Any = MISSING) -> Any:
+    return lifecycle_field(
+        kind="commit_validator",
+        compare="identity",
+        default=default,
     )
 
 
@@ -726,6 +846,8 @@ class LifecycleContextState:
         "closed",
         "current_view",
         "working_view",
+        "_commit_order_key",
+        "commit_validator",
     )
 
     def __init__(
@@ -769,6 +891,22 @@ class LifecycleContextState:
         if values:
             unexpected = ", ".join(sorted(values))
             raise TypeError(f"unexpected lifecycle constructor fields: {unexpected}")
+
+        commit_key_names = [n for n, s in type(self).__field_specs__.items() if s.kind == "commit_order_key"]
+        if len(commit_key_names) > 1:
+            raise TypeError("at most one commit_order_key field is allowed")
+        if commit_key_names:
+            self._commit_order_key = self.current_record.values[commit_key_names[0]]
+        else:
+            self._commit_order_key = ()
+
+        validator_names = [n for n, s in type(self).__field_specs__.items() if s.kind == "commit_validator"]
+        if len(validator_names) > 1:
+            raise TypeError("at most one commit_validator field is allowed")
+        if validator_names:
+            self.commit_validator = self.current_record.values[validator_names[0]]
+        else:
+            self.commit_validator = None
 
     def get_field(self, name: str) -> Any:
         return type(self).__class_ftable_get_default__[name](self, name)
@@ -963,6 +1101,25 @@ class _ManagedContextBase:
 
     def accepted(self) -> None:
         return None
+    
+    def commit_order_key(self) -> tuple[Any, ...]:
+        """Return the sort key used for manager commit ordering (higher sorts first).
+
+        Declare the value with the ``commit_order_key`` field helper using another
+        attribute name so this method is not shadowed.
+        """
+        return self._state._commit_order_key
+    
+    def requires_validation(self) -> bool:
+        """Return True if the context requires validation before commit, False otherwise."""
+        return self._state.commit_validator is not None
+
+    def validate_commit(self) -> bool:
+        """Return True if the context is valid and can be committed, False otherwise."""
+        validator = self._state.commit_validator
+        if validator is not None:
+            return validator(self)
+        return True
 
     def close(self, *, was_committed: bool = True) -> None:
         self._state.close(was_committed=was_committed)
@@ -1139,6 +1296,16 @@ def _build_class_tables(
             commit_field[name] = _reset_derived_field
             rollback_field[name] = _reset_derived_field
             close_field[name] = _reset_derived_field
+            state_factory[name] = None
+            state_copy[name] = None
+        elif spec.kind in {"commit_order_key", "commit_validator"}:
+            get_default[name] = _get_current_field
+            get_current[name] = _get_current_field
+            get_working[name] = _get_current_field
+            set_default[name] = _set_const_field
+            set_working[name] = _set_const_field
+            commit_field[name] = _close_noop
+            rollback_field[name] = _close_noop
             state_factory[name] = None
             state_copy[name] = None
         else:
@@ -1331,9 +1498,12 @@ __all__ = [
     "BindingBase",
     "LifecycleContext",
     "LifecycleTransaction",
+    "LifecycleValidatorReturnedFalse",
     "Record",
     "TransactionManager",
     "binding",
+    "commit_order_key",
+    "commit_validator",
     "const",
     "derived",
     "lifecycle_field",

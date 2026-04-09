@@ -33,6 +33,16 @@ python = ["3.12", "3.13", "3.14", "3.15"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+[tool.ruff]
+target-version = "py312"
+src = ["src"]
+
+[tool.ruff.lint]
+# PEP 257: module docstring immediately after ``__future__`` imports; imports follow. Ruff E402 otherwise fires on every import.
+
+[tool.ruff.lint.per-file-ignores]
+"src/pyrolyze/lifecycle.py" = ["E402"]
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 

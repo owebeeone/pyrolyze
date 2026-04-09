@@ -4,9 +4,13 @@ import pytest
 
 from pyrolyze.lifecycle import (
     BindingBase,
+    LifecycleContext,
     LifecycleTransaction,
+    LifecycleValidatorReturnedFalse,
     TransactionManager,
     binding,
+    commit_order_key,
+    commit_validator,
     const,
     derived,
     lifecycle_field,
@@ -778,13 +782,220 @@ def test_transaction_manager_rolls_back_only_dirty_contexts() -> None:
     assert manager.active_transaction is None
 
 
-def test_transaction_manager_rejects_nested_transactions() -> None:
+def test_transaction_manager_begin_is_nestable_balanced_by_commit() -> None:
+    manager = TransactionManager()
+    outer = manager.begin()
+    inner = manager.begin()
+    assert outer is inner is manager.active_transaction
+    assert manager.begin_count == 2
+
+    assert manager.commit() is None
+    assert manager.begin_count == 1
+    assert manager.active_transaction is not None
+
+    tx_id = manager.commit()
+    assert tx_id == 1
+    assert manager.active_transaction is None
+    assert manager.begin_count == 0
+
+
+def test_transaction_manager_commit_and_rollback_require_balanced_begin() -> None:
+    manager = TransactionManager()
+    with pytest.raises(RuntimeError, match="no active lifecycle transaction"):
+        manager.commit()
+    with pytest.raises(RuntimeError, match="no active lifecycle transaction"):
+        manager.rollback()
+
+    manager.begin()
+    manager.rollback()
+    with pytest.raises(RuntimeError, match="no active lifecycle transaction"):
+        manager.rollback()
+
+
+def test_commit_order_key_fields_control_manager_commit_order() -> None:
+    manager = TransactionManager()
+    commit_names: list[str] = []
+
+    @managed_context
+    class RankedContext:
+        name: str = const(default="")
+        rank: tuple[int, ...] = commit_order_key(default=(0,))
+        value: int = managed(default=0)
+
+        def after_commit(self, previous: object, current: object) -> None:
+            del previous, current
+            commit_names.append(self.name)
+
+    low = RankedContext(transaction_manager=manager, name="low", rank=(1,))
+    high = RankedContext(transaction_manager=manager, name="high", rank=(2,))
+    manager.begin()
+    low.value = 1
+    high.value = 1
+    manager.commit()
+
+    assert commit_names == ["high", "low"]
+
+
+def test_default_commit_order_key_is_empty_tuple() -> None:
+    manager = TransactionManager()
+    ctx = TrackedContext(transaction_manager=manager)
+    assert ctx.commit_order_key() == ()
+
+
+def test_commit_validator_runs_before_context_commits() -> None:
+    manager = TransactionManager()
+    validated: list[str] = []
+
+    def check(ctx: LifecycleContext) -> bool:
+        validated.append(type(ctx).__name__)
+        return True
+
+    @managed_context
+    class ValidatedContext:
+        value: int = managed(default=0)
+        on_commit_ok: object | None = commit_validator(default=check)
+
+    ctx = ValidatedContext(transaction_manager=manager)
+    assert ctx.requires_validation() is True
+    manager.begin()
+    ctx.value = 3
+    manager.commit()
+    assert validated == ["ValidatedContext"]
+
+
+def test_commit_validator_failure_aborts_transaction() -> None:
+    manager = TransactionManager()
+    validation_allowed = {"ok": False}
+
+    def guard(_ctx: LifecycleContext) -> bool:
+        return validation_allowed["ok"]
+
+    @managed_context
+    class BadContext:
+        value: int = managed(default=0)
+        must_pass: object | None = commit_validator(default=guard)
+
+    ctx = BadContext(transaction_manager=manager)
+    manager.begin()
+    ctx.value = 7
+    with pytest.raises(ExceptionGroup, match="lifecycle commit validation failed") as failure:
+        manager.commit()
+    assert len(failure.value.exceptions) == 1
+    assert isinstance(failure.value.exceptions[0], LifecycleValidatorReturnedFalse)
+
+    assert ctx.current.value == 0
+    assert ctx._working_record is None
+    assert manager.active_transaction is None
+    assert manager.begin_count == 0
+
+    # Manager must accept a brand-new transaction (would fail if begin_count/active leaked).
+    validation_allowed["ok"] = True
+    tx2 = manager.begin()
+    assert tx2.tx_id == 2
+    ctx.value = 5
+    manager.commit()
+    assert ctx.current.value == 5
+
+
+def test_commit_validator_failure_on_outermost_nested_begin_rollbacks_and_resets_manager() -> None:
     manager = TransactionManager()
 
-    transaction = manager.begin()
-    assert transaction.tx_id == 1
+    def reject(_ctx: LifecycleContext) -> bool:
+        return False
 
-    with pytest.raises(RuntimeError, match="nested"):
-        manager.begin()
+    @managed_context
+    class BadContext:
+        value: int = managed(default=0)
+        must_pass: object | None = commit_validator(default=reject)
 
-    manager.rollback()
+    ctx = BadContext(transaction_manager=manager)
+    manager.begin()
+    manager.begin()
+    ctx.value = 3
+    assert manager.commit() is None
+    assert manager.begin_count == 1
+    assert manager.active_transaction is not None
+
+    with pytest.raises(ExceptionGroup, match="lifecycle commit validation failed") as failure:
+        manager.commit()
+    assert len(failure.value.exceptions) == 1
+    assert isinstance(failure.value.exceptions[0], LifecycleValidatorReturnedFalse)
+
+    assert ctx.current.value == 0
+    assert ctx._working_record is None
+    assert manager.active_transaction is None
+    assert manager.begin_count == 0
+
+    tx2 = manager.begin()
+    assert tx2.tx_id == 2
+
+
+def test_commit_validation_runs_all_validators_and_raises_exception_group() -> None:
+    manager = TransactionManager()
+
+    def boom_value(_ctx: LifecycleContext) -> bool:
+        raise ValueError("first problem")
+
+    def boom_type(_ctx: LifecycleContext) -> bool:
+        raise TypeError("second problem")
+
+    @managed_context
+    class First:
+        value: int = managed(default=0)
+        chk: object | None = commit_validator(default=boom_value)
+
+    @managed_context
+    class Second:
+        value: int = managed(default=0)
+        chk: object | None = commit_validator(default=boom_type)
+
+    first = First(transaction_manager=manager)
+    second = Second(transaction_manager=manager)
+    manager.begin()
+    first.value = 1
+    second.value = 1
+
+    with pytest.raises(ExceptionGroup, match="lifecycle commit validation failed") as failure:
+        manager.commit()
+
+    excs = failure.value.exceptions
+    assert len(excs) == 2
+    assert isinstance(excs[0], ValueError) and str(excs[0]) == "first problem"
+    assert isinstance(excs[1], TypeError) and str(excs[1]) == "second problem"
+    assert first.current.value == 0
+    assert second.current.value == 0
+
+
+def test_commit_validation_collects_false_and_raised_errors_together() -> None:
+    manager = TransactionManager()
+
+    def returns_false(_ctx: LifecycleContext) -> bool:
+        return False
+
+    def raises_exc(_ctx: LifecycleContext) -> bool:
+        raise RuntimeError("validator blew up")
+
+    @managed_context
+    class Quiet:
+        value: int = managed(default=0)
+        chk: object | None = commit_validator(default=returns_false)
+
+    @managed_context
+    class Loud:
+        value: int = managed(default=0)
+        chk: object | None = commit_validator(default=raises_exc)
+
+    quiet = Quiet(transaction_manager=manager)
+    loud = Loud(transaction_manager=manager)
+    manager.begin()
+    quiet.value = 1
+    loud.value = 1
+
+    with pytest.raises(ExceptionGroup, match="lifecycle commit validation failed") as failure:
+        manager.commit()
+
+    excs = failure.value.exceptions
+    assert len(excs) == 2
+    assert isinstance(excs[0], LifecycleValidatorReturnedFalse)
+    assert excs[0].context is quiet
+    assert isinstance(excs[1], RuntimeError) and str(excs[1]) == "validator blew up"
