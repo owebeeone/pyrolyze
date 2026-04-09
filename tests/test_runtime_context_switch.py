@@ -10,6 +10,7 @@ def _reload_runtime_context():
 
 
 def test_runtime_context_defaults_to_lcm(monkeypatch) -> None:
+    monkeypatch.delenv("PYROLYZE_CONTEXT_IMPL", raising=False)
     monkeypatch.delenv("PYROLYZE_USE_CONTEXT_LCM", raising=False)
 
     module = _reload_runtime_context()
@@ -19,6 +20,7 @@ def test_runtime_context_defaults_to_lcm(monkeypatch) -> None:
 
 
 def test_runtime_context_can_switch_back_to_original(monkeypatch) -> None:
+    monkeypatch.delenv("PYROLYZE_CONTEXT_IMPL", raising=False)
     monkeypatch.setenv("PYROLYZE_USE_CONTEXT_LCM", "0")
 
     module = _reload_runtime_context()

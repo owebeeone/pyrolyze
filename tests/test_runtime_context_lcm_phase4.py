@@ -3,7 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from pyrolyze.api import MountSelector, PyrolyzeMountAdvertisement, PyrolyzeMountAdvertisementRequest
+import pytest
+
+from pyrolyze.api import (
+    MountDirective,
+    MountSelector,
+    PyrolyzeMountAdvertisement,
+    PyrolyzeMountAdvertisementRequest,
+    UIElement,
+    no_emit,
+    validate_mount_selectors,
+)
 from pyrolyze.runtime.call_site_context import CallSiteArgs, CallSiteContext
 from pyrolyze.runtime import context_lcm as runtime
 from pyrolyze.runtime.slot_call_semantics import PyrolyzeMountAdvertisementBinding, SlotCallBinding, SlotCallBindingHost
@@ -235,3 +245,30 @@ def test_slot_expr_slot_context_syncs_committed_ui_from_current_call_sites() -> 
     assert slot._committed_ui[0].key == "anchor"
 
     root.rollback_pass()
+
+
+def test_directive_slot_context_rolls_back_no_emit_children_without_super_type_error() -> None:
+    root = runtime.RenderContext()
+
+    with pytest.raises(RuntimeError, match="no_emit"):
+        with root.pass_scope():
+            with root.open_directive(_slot(61), validate_mount_selectors, no_emit) as mount_ctx:
+                mount_ctx.call_native(UIElement, kind="badge", props={"text": "Hidden"})
+
+    assert root.debug_ui() == ()
+
+
+def test_directive_slot_context_commits_mount_directive_tree() -> None:
+    root = runtime.RenderContext()
+    selector = MountSelector.named("menu")
+
+    with root.pass_scope():
+        with root.open_directive(_slot(62), validate_mount_selectors, selector) as mount_ctx:
+            mount_ctx.call_native(UIElement, kind="badge", props={"text": "File"})
+
+    assert root.debug_ui() == (
+        MountDirective(
+            selectors=(selector,),
+            children=(UIElement(kind="badge", props={"text": "File"}),),
+        ),
+    )

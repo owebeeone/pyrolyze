@@ -6,17 +6,28 @@ import importlib
 import os
 
 
-def _use_lcm_context() -> bool:
+def _selected_context_impl() -> str:
+    explicit = os.environ.get("PYROLYZE_CONTEXT_IMPL")
+    if explicit is not None:
+        value = explicit.strip().lower()
+        if value in {"lcm", "original", "bare", "bare_refactor"}:
+            return value
+        raise RuntimeError(f"unsupported PYROLYZE_CONTEXT_IMPL={explicit!r}")
+
     raw = os.environ.get("PYROLYZE_USE_CONTEXT_LCM")
     if raw is None:
-        return True
-    return raw.strip().lower() not in {"", "0", "false", "no", "off"}
+        return "lcm"
+    return "lcm" if raw.strip().lower() not in {"", "0", "false", "no", "off"} else "original"
 
 
-if _use_lcm_context():
-    _impl = importlib.import_module(".context_lcm", __package__)
-else:
-    _impl = importlib.import_module(".context_original", __package__)
+_IMPL_MODULES = {
+    "lcm": ".context_lcm",
+    "original": ".context_original",
+    "bare": ".context_bare",
+    "bare_refactor": ".context_bare_refactor",
+}
+
+_impl = importlib.import_module(_IMPL_MODULES[_selected_context_impl()], __package__)
 
 for _name, _value in vars(_impl).items():
     if _name.startswith("_") and _name != "__all__":
