@@ -163,12 +163,12 @@ def capture_context_graph(context: RenderContext) -> CapturedContextGraph:
 def walk_context_graph(context: RenderContext, listener: ContextGraphListener) -> None:
     _walk_context_node(
         _LogicalContext(
-        kind=context.context_kind(),
-        slot_id=context.current_slot_id(),
-        generation_id=context.current_generation_id(),
-        site_metadata=_context_site_metadata_records(context),
-        own_ui=_own_ui_records(context),
-        children=tuple(_logical_children(context)),
+            kind=context.context_kind(),
+            slot_id=context.current_slot_id(),
+            generation_id=context.current_generation_id(),
+            site_metadata=_context_site_metadata_records(context),
+            own_ui=_own_ui_records(context),
+            children=tuple(_logical_children(context)),
         ),
         listener,
         render_owner_slot_id=None,

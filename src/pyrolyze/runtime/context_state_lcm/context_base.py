@@ -3,9 +3,33 @@ from __future__ import annotations
 import os
 from typing import Any, Callable, TypeVar
 
+from pyrolyze.api import UIElement
 from pyrolyze.runtime.app_context import APP_CONTEXT_MISSING
 from pyrolyze.runtime.slot_call_semantics import ExternalStoreRef
+from pyrolyze.runtime.slot_expr import SlotExpr
 from ._base import StateMgrBase
+from ._support import (
+    PendingEventHandlerBinding,
+    REFRACTOR_CLASSES,
+    _AppContextOverrideHandle,
+    _CommittedUiEntry,
+    _ContainerCallHandle,
+    _ContextSlotExprHost,
+    _DirectiveCallHandle,
+    _KeyedLoopIterable,
+    _MountContainerCallHandle,
+    _NativeContainerCallHandle,
+    _PyrolyzeContainerCallHandle,
+    _clean_dirty_state,
+    _component_call_key,
+    _container_runtime_context_param_name,
+    _native_context_param_name,
+    _native_emission_slot_identity,
+    _resolve_runtime_component_func,
+    _resolve_runtime_site_call,
+    _unwrap,
+    _unwrap_native_value,
+)
 
 
 T = TypeVar("T")
@@ -231,10 +255,10 @@ class ContextBaseStateMgr(StateMgrBase):
         dirty_lambda: Callable[..., Any],
     ) -> Any:
         self.owner._require_active_scope()
-        from pyrolyze.runtime.slot_expr import SlotExpr
-        from pyrolyze.runtime.context_bare_refactor import _ContextSlotExprHost, SlotExprSlotContext
-
-        expr_slot = self.owner._ensure_slot(slot_id, SlotExprSlotContext)
+        slot_expr_slot_context_cls = REFRACTOR_CLASSES.slot_expr_slot_context_cls
+        if slot_expr_slot_context_cls is None:
+            raise RuntimeError("slot expr slot context class is not configured")
+        expr_slot = self.owner._ensure_slot(slot_id, slot_expr_slot_context_cls)
         return (
             SlotExpr(value_lambda, dirty_lambda)
             .apply_slot_context(self.owner)
@@ -252,9 +276,10 @@ class ContextBaseStateMgr(StateMgrBase):
 
     def visit_slot_and_dirty(self, slot_id: Any) -> bool:
         self.owner._require_active_scope()
-        from pyrolyze.runtime.context_bare_refactor import SlotContext
-
-        slot = self.owner._ensure_slot(slot_id, SlotContext)
+        slot_context_cls = REFRACTOR_CLASSES.slot_context_cls
+        if slot_context_cls is None:
+            raise RuntimeError("slot context class is not configured")
+        slot = self.owner._ensure_slot(slot_id, slot_context_cls)
         return slot.invoke_dirty
 
     def keyed_loop(
@@ -265,9 +290,10 @@ class ContextBaseStateMgr(StateMgrBase):
         key_fn: Callable[[T], Any],
     ) -> Any:
         self.owner._require_active_scope()
-        from pyrolyze.runtime.context_bare_refactor import KeyedLoopSlotContext, _KeyedLoopIterable, _unwrap
-
-        loop_slot = self.owner._ensure_slot(slot_id, KeyedLoopSlotContext)
+        keyed_loop_slot_context_cls = REFRACTOR_CLASSES.keyed_loop_slot_context_cls
+        if keyed_loop_slot_context_cls is None:
+            raise RuntimeError("keyed loop slot context class is not configured")
+        loop_slot = self.owner._ensure_slot(slot_id, keyed_loop_slot_context_cls)
         raw_values, _ = _unwrap(values)
         return _KeyedLoopIterable(owner=loop_slot, values=tuple(raw_values), key_fn=key_fn)
 
@@ -283,22 +309,11 @@ class ContextBaseStateMgr(StateMgrBase):
         **kwargs: Any,
     ) -> Any:
         self.owner._require_active_scope()
-        from pyrolyze.runtime.context_bare_refactor import (
-            ContainerSlotContext,
-            DirectiveSlotContext,
-            _ContainerCallHandle,
-            _MountContainerCallHandle,
-            _NativeContainerCallHandle,
-            _PyrolyzeContainerCallHandle,
-            _clean_dirty_state,
-            _component_call_key,
-            _container_runtime_context_param_name,
-            _native_context_param_name,
-            _resolve_runtime_component_func,
-            _resolve_runtime_site_call,
-        )
-
-        slot = self.owner._ensure_slot(slot_id, ContainerSlotContext)
+        container_slot_context_cls = REFRACTOR_CLASSES.container_slot_context_cls
+        directive_slot_context_cls = REFRACTOR_CLASSES.directive_slot_context_cls
+        if container_slot_context_cls is None or directive_slot_context_cls is None:
+            raise RuntimeError("container/directive slot context classes are not configured")
+        slot = self.owner._ensure_slot(slot_id, container_slot_context_cls)
         raw_container_fn, raw_args, raw_kwargs, site_metadata = _resolve_runtime_site_call(
             slot,
             container_fn,
@@ -310,7 +325,7 @@ class ContextBaseStateMgr(StateMgrBase):
             return None
         mount_context_param = _container_runtime_context_param_name(raw_container_fn)
         if mount_context_param is not None:
-            directive_slot = self.owner._ensure_slot(slot_id, DirectiveSlotContext)
+            directive_slot = self.owner._ensure_slot(slot_id, directive_slot_context_cls)
             return _MountContainerCallHandle(
                 slot=directive_slot,
                 container_fn=raw_container_fn,
@@ -359,16 +374,18 @@ class ContextBaseStateMgr(StateMgrBase):
         **kwargs: Any,
     ) -> Any:
         self.owner._require_active_scope()
-        from pyrolyze.runtime.context_bare_refactor import DirectiveSlotContext, _DirectiveCallHandle
-
-        slot = self.owner._ensure_slot(slot_id, DirectiveSlotContext)
+        directive_slot_context_cls = REFRACTOR_CLASSES.directive_slot_context_cls
+        if directive_slot_context_cls is None:
+            raise RuntimeError("directive slot context class is not configured")
+        slot = self.owner._ensure_slot(slot_id, directive_slot_context_cls)
         return _DirectiveCallHandle(slot=slot, directive_fn=directive_fn, args=args, kwargs=kwargs)
 
     def open_app_context_override(self, slot_id: Any, keys: tuple[Any, ...], *values: Any) -> Any:
         self.owner._require_active_scope()
-        from pyrolyze.runtime.context_bare_refactor import AppContextOverrideSlotContext, _AppContextOverrideHandle
-
-        slot = self.owner._ensure_slot(slot_id, AppContextOverrideSlotContext)
+        app_context_override_slot_context_cls = REFRACTOR_CLASSES.app_context_override_slot_context_cls
+        if app_context_override_slot_context_cls is None:
+            raise RuntimeError("app-context override slot context class is not configured")
+        slot = self.owner._ensure_slot(slot_id, app_context_override_slot_context_cls)
         return _AppContextOverrideHandle(slot=slot, keys=keys, values=values)
 
     def component_call(
@@ -383,15 +400,10 @@ class ContextBaseStateMgr(StateMgrBase):
         **kwargs: Any,
     ) -> Any:
         self.owner._require_active_scope()
-        from pyrolyze.runtime.context_bare_refactor import (
-            ComponentCallSlotContext,
-            _component_call_key,
-            _resolve_runtime_component_func,
-            _resolve_runtime_site_call,
-            _unwrap,
-        )
-
-        slot = self.owner._ensure_slot(slot_id, ComponentCallSlotContext)
+        component_call_slot_context_cls = REFRACTOR_CLASSES.component_call_slot_context_cls
+        if component_call_slot_context_cls is None:
+            raise RuntimeError("component call slot context class is not configured")
+        slot = self.owner._ensure_slot(slot_id, component_call_slot_context_cls)
         raw_component, raw_args, raw_kwargs, site_metadata = _resolve_runtime_site_call(
             slot,
             component,
@@ -419,15 +431,14 @@ class ContextBaseStateMgr(StateMgrBase):
 
     def event_handler(self, slot_id: Any, *, dirty: bool, callback: Callable[..., Any]) -> Any:
         self.owner._require_active_scope()
-        from pyrolyze.runtime.context_bare_refactor import EventHandlerSlotContext
-
-        slot = self.owner._ensure_slot(slot_id, EventHandlerSlotContext)
+        event_handler_slot_context_cls = REFRACTOR_CLASSES.event_handler_slot_context_cls
+        if event_handler_slot_context_cls is None:
+            raise RuntimeError("event handler slot context class is not configured")
+        slot = self.owner._ensure_slot(slot_id, event_handler_slot_context_cls)
         return slot.stage_callback(callback=callback, dirty=dirty)
 
     def event_handler_binding(self, slot_id: Any, *, dirty: bool, callback: Callable[..., Any]) -> Any:
         self.owner._require_active_scope()
-        from pyrolyze.runtime.context_bare_refactor import PendingEventHandlerBinding
-
         return PendingEventHandlerBinding(
             slot_id=self.owner._resolve_slot_id(slot_id),
             dirty=dirty,
@@ -435,9 +446,6 @@ class ContextBaseStateMgr(StateMgrBase):
         )
 
     def call_native(self, factory: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-        from pyrolyze.runtime.context_bare_refactor import _CommittedUiEntry, _native_emission_slot_identity, _unwrap_native_value
-        from pyrolyze.api import UIElement
-
         self.owner._require_active_scope()
         raw_args = tuple(_unwrap_native_value(arg) for arg in args)
         raw_kwargs = {key: _unwrap_native_value(value) for key, value in kwargs.items()}

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from .rerunnable_slot_context import RerunnableSlotContextStateMgr
+from ._support import _SlotCallResult, _structured_dirty_projection
 
 
 class LoopItemSlotContextStateMgr(RerunnableSlotContextStateMgr):
@@ -13,8 +14,6 @@ class LoopItemSlotContextStateMgr(RerunnableSlotContextStateMgr):
         self.current_initialized = False
 
     def current_value(self) -> Any:
-        from pyrolyze.runtime.context_bare_refactor import _SlotCallResult
-
         self.owner._require_active_scope()
         return _SlotCallResult(
             dirty=self.current_dirty,
@@ -22,8 +21,6 @@ class LoopItemSlotContextStateMgr(RerunnableSlotContextStateMgr):
         )
 
     def update_current(self, value: Any) -> None:
-        from pyrolyze.runtime.context_bare_refactor import _structured_dirty_projection
-
         self.current_dirty = _structured_dirty_projection(
             previous=self.current,
             current=value,

@@ -2,9 +2,15 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from pyrolyze.runtime.slot_call_semantics import PyrolyzeMountAdvertisementBinding
 from pyrolyze.runtime.trace import TraceChannel, emit_trace, trace_enabled
 
 from .context_base import ContextBaseStateMgr
+from ._support import (
+    DuplicateMountAdvertisementError,
+    REFRACTOR_CLASSES,
+    REFRACTOR_RUNTIME,
+)
 
 
 class RenderContextStateMgr(ContextBaseStateMgr):
@@ -145,9 +151,9 @@ class RenderContextStateMgr(ContextBaseStateMgr):
         owner_slot.parent._refresh_committed_ui_from_children()
 
     def walk_context_graph(self, listener: object) -> None:
-        from pyrolyze.visitor import walk_context_graph
-
-        walk_context_graph(self.owner, listener)
+        if REFRACTOR_RUNTIME.walk_context_graph is None:
+            raise RuntimeError("context graph walker is not configured")
+        REFRACTOR_RUNTIME.walk_context_graph(self.owner, listener)
 
     def close_app_contexts(self) -> None:
         self.owner._scheduler_root._app_context_store.close_all()
@@ -188,12 +194,11 @@ class RenderContextStateMgr(ContextBaseStateMgr):
         scheduler_root._flush_poster(scheduler_root.run_pending_invalidations)
 
     def _rebuild_mount_advertisement_surface(self) -> None:
-        from pyrolyze.runtime.context_bare_refactor import SlotCallSlotContext, SlotExprSlotContext
-        from pyrolyze.runtime.slot_call_semantics import PyrolyzeMountAdvertisementBinding
-
+        slot_call_slot_context_cls = REFRACTOR_CLASSES.slot_call_slot_context_cls
+        slot_expr_slot_context_cls = REFRACTOR_CLASSES.slot_expr_slot_context_cls
         next_entries: dict[Any, Any] = {}
         for slot_id, slot in self.owner._slots_by_id.items():
-            if isinstance(slot, SlotCallSlotContext):
+            if slot_call_slot_context_cls is not None and isinstance(slot, slot_call_slot_context_cls):
                 binding = slot.binding
                 if not isinstance(binding, PyrolyzeMountAdvertisementBinding):
                     continue
@@ -202,7 +207,7 @@ class RenderContextStateMgr(ContextBaseStateMgr):
                     continue
                 next_entries[slot_id] = advertisement
                 continue
-            if isinstance(slot, SlotExprSlotContext):
+            if slot_expr_slot_context_cls is not None and isinstance(slot, slot_expr_slot_context_cls):
                 for call_site_context in slot.call_site_context_manager._current.values():
                     binding = call_site_context.binding
                     wrapped_binding = getattr(binding, "binding", None) if binding is not None else None
@@ -227,8 +232,6 @@ class RenderContextStateMgr(ContextBaseStateMgr):
         *,
         surface_owner_id: Any,
     ) -> None:
-        from pyrolyze.runtime.context_bare_refactor import DuplicateMountAdvertisementError
-
         surface_entries = [
             advertisement
             for advertisement in advertisements_by_slot.values()

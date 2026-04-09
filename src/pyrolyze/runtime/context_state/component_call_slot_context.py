@@ -2,6 +2,17 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from ._support import (
+    _BOUND_METHOD_SELF_MISSING,
+    _bind_pending_event_plain_value,
+    _clean_dirty_state,
+    _component_call_key,
+    _resolve_runtime_component_func,
+    _unwrap,
+    dirtyof_values,
+)
+from pyrolyze.runtime.function_arg_helpers import build_function_arg_dirty_map, pack_function_args
+
 from .rerunnable_slot_context import RerunnableSlotContextStateMgr
 
 
@@ -18,16 +29,6 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
         _pyr_kwargs_dirty: dict[str, Any] | None = None,
     ) -> Any:
         owner = self.owner
-        from pyrolyze.runtime.context_bare_refactor import (
-            _BOUND_METHOD_SELF_MISSING,
-            _bind_pending_event_plain_value,
-            _clean_dirty_state,
-            _component_call_key,
-            _resolve_runtime_component_func,
-            _unwrap,
-            dirtyof_values,
-        )
-        from pyrolyze.runtime.function_arg_helpers import build_function_arg_dirty_map
 
         raw_component, _ = _unwrap(component)
         metadata, bound_receiver = _component_call_key(raw_component)
@@ -196,8 +197,6 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
 
     def _rerun_child(self) -> None:
         owner = self.owner
-        from pyrolyze.runtime.context_bare_refactor import _BOUND_METHOD_SELF_MISSING, _clean_dirty_state
-        from pyrolyze.runtime.function_arg_helpers import pack_function_args
 
         child_context = owner.child_context
         runtime_func = owner.last_runtime_func

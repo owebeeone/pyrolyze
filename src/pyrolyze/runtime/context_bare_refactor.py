@@ -28,6 +28,7 @@ from .app_context import (
     AppContextStore,
 )
 from .call_site_context import CallSiteContextManager
+from .context_state import _support
 from .context_state import (
     AppContextOverrideSlotContextStateMgr,
     ComponentCallSlotContextStateMgr,
@@ -203,11 +204,9 @@ class ContainerCallRuntimeContext:
         self.slot = slot
 
     def open_directive(self, *selectors: SlotSelector) -> Any:
-        from pyrolyze.api import validate_mount_selectors
-
         return _DirectiveCallHandle(
             slot=self.slot,
-            directive_fn=validate_mount_selectors,
+            directive_fn=_support.validate_mount_selectors,
             args=selectors,
             kwargs={},
         )
@@ -1763,6 +1762,54 @@ class RenderContext(ContextBase):
         next_entries = dict(self._mount_advertisements_by_slot)
         next_entries.pop(slot_id, None)
         self._mount_advertisements_by_slot = next_entries
+
+
+DirtyStateContext = _support.DirtyStateContext
+dirtyof = _support.dirtyof
+dirtyof_values = _support.dirtyof_values
+SlotOwnershipError = _support.SlotOwnershipError
+DuplicateKeyError = _support.DuplicateKeyError
+DuplicateMountAdvertisementError = _support.DuplicateMountAdvertisementError
+MountAdvertisementContextError = _support.MountAdvertisementContextError
+AppContextOverrideStructureError = _support.AppContextOverrideStructureError
+_SlotCallResult = _support._SlotCallResult
+PendingEventHandlerBinding = _support.PendingEventHandlerBinding
+_CommittedUiEntry = _support._CommittedUiEntry
+ContainerCallRuntimeContext = _support.ContainerCallRuntimeContext
+_ContextSlotExprHost = _support._ContextSlotExprHost
+_unwrap = _support._unwrap
+_resolve_runtime_site_call = _support._resolve_runtime_site_call
+_unwrap_native_value = _support._unwrap_native_value
+_native_context_param_name = _support._native_context_param_name
+_container_runtime_context_param_name = _support._container_runtime_context_param_name
+_BOUND_METHOD_SELF_MISSING = _support._BOUND_METHOD_SELF_MISSING
+_component_call_key = _support._component_call_key
+_clean_dirty_state = _support._clean_dirty_state
+_resolve_runtime_component_func = _support._resolve_runtime_component_func
+_native_emission_slot_identity = _support._native_emission_slot_identity
+_bind_pending_event_plain_value = _support._bind_pending_event_plain_value
+_finish_context_pass = _support._finish_context_pass
+_ContainerCallHandle = _support._ContainerCallHandle
+_DirectiveCallHandle = _support._DirectiveCallHandle
+_MountContainerCallHandle = _support._MountContainerCallHandle
+_AppContextOverrideHandle = _support._AppContextOverrideHandle
+_NativeContainerCallHandle = _support._NativeContainerCallHandle
+_PyrolyzeContainerCallHandle = _support._PyrolyzeContainerCallHandle
+_structured_dirty_projection = _support._structured_dirty_projection
+_KeyedLoopIterable = _support._KeyedLoopIterable
+
+_support.REFRACTOR_CLASSES.context_base_cls = ContextBase
+_support.REFRACTOR_CLASSES.render_context_cls = RenderContext
+_support.REFRACTOR_CLASSES.slot_context_cls = SlotContext
+_support.REFRACTOR_CLASSES.event_handler_slot_context_cls = EventHandlerSlotContext
+_support.REFRACTOR_CLASSES.slot_expr_slot_context_cls = SlotExprSlotContext
+_support.REFRACTOR_CLASSES.slot_call_slot_context_cls = SlotCallSlotContext
+_support.REFRACTOR_CLASSES.directive_slot_context_cls = DirectiveSlotContext
+_support.REFRACTOR_CLASSES.app_context_override_slot_context_cls = AppContextOverrideSlotContext
+_support.REFRACTOR_CLASSES.container_slot_context_cls = ContainerSlotContext
+_support.REFRACTOR_CLASSES.component_call_slot_context_cls = ComponentCallSlotContext
+_support.REFRACTOR_CLASSES.keyed_loop_slot_context_cls = KeyedLoopSlotContext
+_support.REFRACTOR_CLASSES.loop_item_slot_context_cls = LoopItemSlotContext
 
 
 __all__ = [
