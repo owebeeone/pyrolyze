@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 import os
-from typing import Any, Callable, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, TypeVar
 
-from pyrolyze.api import UIElement
+from pyrolyze.api import MountDirective, UIElement
+from pyrolyze.freezable import freezable_dataclass, frozen_dataclass
 from pyrolyze.runtime.app_context import APP_CONTEXT_MISSING
 from pyrolyze.runtime.slot_call_semantics import ExternalStoreRef
 from pyrolyze.runtime.slot_expr import SlotExpr
@@ -33,6 +35,78 @@ from ._support import (
 
 
 T = TypeVar("T")
+
+if TYPE_CHECKING:
+    from pyrolyze.runtime.app_context import AppContextKey
+    from pyrolyze.runtime.context_bare_refactor_lcm import RenderContext, SlotContext
+    from pyrolyze.runtime.slot_identity import SlotId
+
+
+UiNode = UIElement | MountDirective
+
+
+@dataclass(frozen=True, slots=True)
+class UiSnapshotEntry:
+    generation_id: int
+    element: UiNode
+
+
+@freezable_dataclass(frozen_type="FrozenContextSubtreeState")
+class ContextSubtreeState:
+    children: list[tuple["SlotId", "SlotContext"]] = field(default_factory=list)
+    own_ui: list[UiNode] = field(default_factory=list)
+    own_ui_entries: list[UiSnapshotEntry] = field(default_factory=list)
+    ui: list[UiNode] = field(default_factory=list)
+    # Integration note:
+    # Keep this record as a declarative snapshot container first.
+    # The current plan is to move ContextBaseStateMgr toward:
+    # - one managed frozen subtree snapshot
+    # - transient pass/rollback/staged records
+    # - direct lifecycle assignment / snapshot restore
+    #
+    # That means the speculative member helpers that merely set fields or
+    # reconstruct pre-pass state are probably unnecessary. In the lifecycle
+    # version, rollback should prefer restoring a prior frozen subtree value
+    # rather than rebuilding pieces of state in place.
+    #
+    # If richer methods survive later, they should represent real subtree
+    # invariants, not thin wrappers over simple assignment.
+    #
+    # Candidate helpers intentionally not added yet:
+    # - replace_children(...)
+    # - restore_children(...)
+    # - apply_own_ui_entries(...)
+    # - replace_ui(...)
+
+
+@frozen_dataclass(mutable_type=ContextSubtreeState)
+class FrozenContextSubtreeState:
+    pass
+
+
+@dataclass(slots=True)
+class ContextPassControl:
+    scope_active: bool = False
+    literal_index: int = 0
+
+
+@dataclass(slots=True)
+class ContextRollbackState:
+    child_order: tuple["SlotId", ...] = ()
+    child_dirty: dict["SlotId", bool] = field(default_factory=dict)
+    prior_subtree: FrozenContextSubtreeState | None = None
+    prior_committed_native_root: bool | None = None
+
+
+@dataclass(slots=True)
+class ContextStagedState:
+    ui: list[UiNode] = field(default_factory=list)
+    ui_entries: list[UiSnapshotEntry] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class ContextLocalCache:
+    literal_initialized: list[bool] = field(default_factory=list)
 
 
 def _context_kind(owner: Any) -> str:
