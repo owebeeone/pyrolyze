@@ -29,11 +29,6 @@ from pyrolyze.runtime.slot_expr import (
 
 @dataclass
 class FakeSlotContext(SlotExprLiteralContext):
-    initial_render: bool = True
-
-    def lit_dirty(self, value):
-        return self.initial_render
-
     def current_slot_id(self):
         return ("fake-slot",)
 
@@ -85,11 +80,11 @@ def test_args_capture_and_call() -> None:
 
 def test_slot_expr_single_call_binds_scalar_result_and_dirt() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=True)
+    slot_ctx = FakeSlotContext()
     expr = SlotExpr.single_call(
         LiteralFunctionProvider(lambda value: value),
         lambda: slot_params("clock"),
-        lambda: slot_params_dirt(slot_ctx.lit_dirty("clock")),
+        lambda: slot_params_dirt(False),
     ).apply_slot_context(slot_ctx).apply_dirt_sink(dm)
 
     value = expr.evaluate("value")
@@ -100,15 +95,15 @@ def test_slot_expr_single_call_binds_scalar_result_and_dirt() -> None:
 
 def test_slot_expr_single_call_fast_path_matches_general_path() -> None:
     dm_fast = DM()
-    slot_ctx_fast = FakeSlotContext(initial_render=True)
+    slot_ctx_fast = FakeSlotContext()
     fast = SlotExpr.single_call(
         LiteralFunctionProvider(lambda value: value),
         lambda: slot_params("clock"),
-        lambda: slot_params_dirt(slot_ctx_fast.lit_dirty("clock")),
+        lambda: slot_params_dirt(False),
     ).apply_slot_context(slot_ctx_fast).apply_dirt_sink(dm_fast)
 
     dm_general = DM()
-    slot_ctx_general = FakeSlotContext(initial_render=True)
+    slot_ctx_general = FakeSlotContext()
     general = (
         SlotExpr(
             value_lambda=lambda v1: v1.eval(),
@@ -118,7 +113,7 @@ def test_slot_expr_single_call_fast_path_matches_general_path() -> None:
             "v1",
             LiteralFunctionProvider(lambda value: value),
             lambda: slot_params("clock"),
-            lambda: slot_params_dirt(slot_ctx_general.lit_dirty("clock")),
+            lambda: slot_params_dirt(False),
         )
         .apply_slot_context(slot_ctx_general)
         .apply_dirt_sink(dm_general)
@@ -130,7 +125,7 @@ def test_slot_expr_single_call_fast_path_matches_general_path() -> None:
 
 def test_slot_expr_or_short_circuits_right_eval_and_right_dirt_is_clean() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     touched = {"right": 0}
 
     def left() -> str:
@@ -165,7 +160,7 @@ def test_slot_expr_or_short_circuits_right_eval_and_right_dirt_is_clean() -> Non
 
 def test_slot_expr_and_short_circuits_right_eval_and_right_dirt_is_clean() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     touched = {"right": 0}
 
     def left() -> str:
@@ -200,7 +195,7 @@ def test_slot_expr_and_short_circuits_right_eval_and_right_dirt_is_clean() -> No
 
 def test_slot_expr_multiple_calls_combines_dirt() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     expr = (
         SlotExpr(
             value_lambda=lambda a, b: a.eval() + b.eval(),
@@ -220,11 +215,11 @@ def test_slot_expr_multiple_calls_combines_dirt() -> None:
 
 def test_slot_expr_multi_result_unpacks_value_and_dirt() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=True)
+    slot_ctx = FakeSlotContext()
     expr = SlotExpr.single_call(
         LiteralFunctionProvider(lambda initial: (initial, lambda next_value: next_value)),
         lambda: slot_params(3),
-        lambda: slot_params_dirt(slot_ctx.lit_dirty(3)),
+        lambda: slot_params_dirt(False),
     ).apply_slot_context(slot_ctx).apply_dirt_sink(dm)
 
     val, func = expr.evaluate("val", "func")
@@ -237,11 +232,11 @@ def test_slot_expr_multi_result_unpacks_value_and_dirt() -> None:
 
 def test_slot_expr_multi_result_keeps_tuple_dirty_under_one_name() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=True)
+    slot_ctx = FakeSlotContext()
     expr = SlotExpr.single_call(
         LiteralFunctionProvider(lambda initial: (initial, lambda next_value: next_value)),
         lambda: slot_params(3),
-        lambda: slot_params_dirt(slot_ctx.lit_dirty(3)),
+        lambda: slot_params_dirt(False),
     ).apply_slot_context(slot_ctx).apply_dirt_sink(dm)
 
     result = expr.evaluate("result")
@@ -253,11 +248,11 @@ def test_slot_expr_multi_result_keeps_tuple_dirty_under_one_name() -> None:
 
 def test_slot_expr_evaluate_raises_on_value_shape_mismatch() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=True)
+    slot_ctx = FakeSlotContext()
     expr = SlotExpr.single_call(
         LiteralFunctionProvider(lambda value: value),
         lambda: slot_params(3),
-        lambda: slot_params_dirt(slot_ctx.lit_dirty(3)),
+        lambda: slot_params_dirt(False),
     ).apply_slot_context(slot_ctx).apply_dirt_sink(dm)
 
     try:
@@ -270,7 +265,7 @@ def test_slot_expr_evaluate_raises_on_value_shape_mismatch() -> None:
 
 def test_slot_expr_nested_args_can_depend_on_prior_evaluator() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=True)
+    slot_ctx = FakeSlotContext()
     expr = (
         SlotExpr(
             value_lambda=lambda v1, v2: v2.eval(),
@@ -280,7 +275,7 @@ def test_slot_expr_nested_args_can_depend_on_prior_evaluator() -> None:
             "v1",
             LiteralFunctionProvider(lambda value: value),
             lambda: slot_params("clock"),
-            lambda: slot_params_dirt(slot_ctx.lit_dirty("clock")),
+            lambda: slot_params_dirt(False),
         )
         .slot_call(
             "v2",
@@ -300,12 +295,12 @@ def test_slot_expr_nested_args_can_depend_on_prior_evaluator() -> None:
 
 def test_slot_expr_rerender_clean_shape_for_tuple_result() -> None:
     dm = DM()
-    initial_slot_ctx = FakeSlotContext(initial_render=True)
+    initial_slot_ctx = FakeSlotContext()
     setter = lambda next_value: next_value
     expr = SlotExpr.single_call(
         LiteralFunctionProvider(lambda initial: (initial, setter)),
         lambda: slot_params(3),
-        lambda: slot_params_dirt(initial_slot_ctx.lit_dirty(3)),
+        lambda: slot_params_dirt(False),
     ).apply_slot_context(initial_slot_ctx).apply_dirt_sink(dm)
 
     _ = expr.evaluate("result")
@@ -318,7 +313,7 @@ def test_slot_expr_rerender_clean_shape_for_tuple_result() -> None:
 
 def test_slot_expr_single_call_does_not_reinvoke_when_inputs_are_stable() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     calls = {"count": 0}
 
     def source(value: str) -> str:
@@ -338,7 +333,7 @@ def test_slot_expr_single_call_does_not_reinvoke_when_inputs_are_stable() -> Non
 
 def test_slot_expr_single_call_reinvokes_when_input_dirt_is_true_even_if_value_matches() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     calls = {"count": 0}
     dirt = {"value": False}
 
@@ -360,7 +355,7 @@ def test_slot_expr_single_call_reinvokes_when_input_dirt_is_true_even_if_value_m
 
 def test_slot_expr_single_call_reinvokes_when_function_dirt_is_true_even_if_inputs_are_stable() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     calls = {"count": 0}
     func_dirty = {"value": False}
 
@@ -382,7 +377,7 @@ def test_slot_expr_single_call_reinvokes_when_function_dirt_is_true_even_if_inpu
 
 def test_slot_expr_single_call_reinvokes_when_invoke_dirty_is_set_even_if_inputs_are_stable() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     calls = {"count": 0}
 
     def source(value: str) -> str:
@@ -403,7 +398,7 @@ def test_slot_expr_single_call_reinvokes_when_invoke_dirty_is_set_even_if_inputs
 
 def test_slot_expr_runtime_context_injection_supports_locals_and_invalidate() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     calls = {"count": 0}
 
     def source(*, runtime: SlotRuntimeContext) -> int:
@@ -427,7 +422,7 @@ def test_slot_expr_runtime_context_injection_supports_locals_and_invalidate() ->
 
 def test_slot_expr_runtime_context_is_not_double_injected_when_explicitly_supplied() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     seen = {"same": False}
 
     def source(*, runtime: SlotRuntimeContext) -> bool:
@@ -446,7 +441,7 @@ def test_slot_expr_runtime_context_is_not_double_injected_when_explicitly_suppli
 
 
 def test_slot_expr_invoke_dirty_fast_path_matches_general_slot_call() -> None:
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     fast_dm = DM()
     general_dm = DM()
     fast_calls = {"count": 0}
@@ -490,7 +485,7 @@ def test_slot_expr_invoke_dirty_fast_path_matches_general_slot_call() -> None:
 
 
 def test_slot_expr_runtime_context_injection_matches_general_slot_call() -> None:
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     fast_dm = DM()
     general_dm = DM()
     module_id = ModuleId("slot_expr_runtime_ctx")
@@ -863,7 +858,7 @@ def test_slot_expr_external_store_ref_refreshes_without_reinvoking_call() -> Non
         )
 
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=True)
+    slot_ctx = FakeSlotContext()
     expr = SlotExpr.single_call(
         LiteralFunctionProvider(source),
         lambda: slot_params(),
@@ -1073,7 +1068,7 @@ def test_slot_expr_effect_like_results_expose_none_and_track_dirty() -> None:
     expr = SlotExpr.single_call(
         LiteralFunctionProvider(lambda: UseEffectRequest(effect_fn=lambda: None, deps=("a",))),
         lambda: slot_params(),
-        lambda: slot_params_dirt(slot_ctx.lit_dirty(None)),
+        lambda: slot_params_dirt(False),
     ).apply_slot_context(slot_ctx).apply_dirt_sink(dm)
 
     assert expr.evaluate("effect_result") is None
@@ -1082,7 +1077,7 @@ def test_slot_expr_effect_like_results_expose_none_and_track_dirty() -> None:
 
 def test_slot_expr_use_effect_runs_post_commit_and_cleans_up_on_deactivate() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     events: list[str] = []
     gate = {"value": False}
     gate_dirty = {"value": False}

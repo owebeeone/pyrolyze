@@ -140,18 +140,6 @@ def test_context_base_pass_scope_rolls_back_on_exception() -> None:
     assert root._scope_active is False
 
 
-def test_context_base_lit_dirty_is_true_only_on_first_visit_per_index() -> None:
-    root = RenderContext()
-
-    with root.pass_scope():
-        assert root.lit_dirty("a") is True
-        assert root.lit_dirty("b") is True
-
-    with root.pass_scope():
-        assert root.lit_dirty("a") is False
-        assert root.lit_dirty("b") is False
-
-
 def test_render_context_mount_runs_callback_and_debug_helpers_work() -> None:
     root = RenderContext()
     child = SlotContext(render_context=root, parent=root, slot_id=_slot(9))

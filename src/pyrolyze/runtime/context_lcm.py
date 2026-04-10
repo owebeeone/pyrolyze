@@ -377,8 +377,6 @@ class ContextBase(SlotExprLiteralContext):
     def __init__(self, render_context: RenderContext) -> None:
         self._render_context = render_context
         self._children: dict[SlotId, SlotContext] = {}
-        self._literal_initialized: list[bool] = []
-        self._literal_index = 0
         self._scope_active = False
         self._pass_child_order: tuple[SlotId, ...] = ()
         self._pass_child_dirty: dict[SlotId, bool] = {}
@@ -470,19 +468,6 @@ class ContextBase(SlotExprLiteralContext):
 
     def rollback_pass(self) -> None:
         self._rollback_scope_pass()
-
-    @override
-    def lit_dirty(self, value: Any) -> bool:
-        self._require_active_scope()
-
-        literal_index = self._literal_index
-        self._literal_index += 1
-
-        if literal_index == len(self._literal_initialized):
-            self._literal_initialized.append(True)
-            return True
-
-        return False
 
     def slot_expr(
         self,
@@ -688,7 +673,6 @@ class ContextBase(SlotExprLiteralContext):
             raise RuntimeError("scope already active")
 
         self._scope_active = True
-        self._literal_index = 0
         self._pass_child_order = tuple(self._children.keys())
         self._pass_child_dirty = {
             slot_id: child.invoke_dirty for slot_id, child in self._children.items()

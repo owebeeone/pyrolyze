@@ -90,27 +90,12 @@ class FrozenContextSubtreeState:
 @dataclass(slots=True)
 class ContextPassControl:
     scope_active: bool = False
-    literal_index: int = 0
-
-
-@dataclass(slots=True)
-class ContextRollbackState:
-    child_order: tuple["SlotId", ...] = ()
-    child_dirty: dict["SlotId", bool] = field(default_factory=dict)
-    prior_subtree: FrozenContextSubtreeState | None = None
-    prior_committed_native_root: bool | None = None
 
 
 @dataclass(slots=True)
 class ContextStagedState:
     ui: list[UiNode] = field(default_factory=list)
     ui_entries: list[UiSnapshotEntry] = field(default_factory=list)
-
-
-@dataclass(slots=True)
-class ContextLocalCache:
-    literal_initialized: list[bool] = field(default_factory=list)
-
 
 @managed_context
 class ContextBaseStateMgr(StateMgrBase):
@@ -124,6 +109,14 @@ class ContextBaseStateMgr(StateMgrBase):
     # This change is only to move the state classification into actual
     # lifecycle/freezable declarations so the intended field semantics are
     # visible in the file.
+    #
+    # Rewrite note:
+    # Do not carry forward explicit "prior_committed_*" scratch for managed
+    # published state. During the function rewrite, previous committed values
+    # should be read from self.current.<field> instead. In particular,
+    # prior_committed_native_root should be replaced by the container state's
+    # current committed_native_root view rather than copied into transient
+    # scratch.
     _generation_tracker_key: AppContextKey[GenerationTracker] = const()
     _render_context: RenderContext = const()
     _subtree: FrozenContextSubtreeState = managed(default=FrozenContextSubtreeState())
@@ -132,17 +125,11 @@ class ContextBaseStateMgr(StateMgrBase):
         working_default_factory=ContextPassControl,
         tx_group=PASS_TX_GROUP,
     )
-    _rollback_state: ContextRollbackState | None = transient(
-        default=None,
-        working_default_factory=ContextRollbackState,
-        tx_group=PASS_TX_GROUP,
-    )
     _staged_state: ContextStagedState | None = transient(
         default=None,
         working_default_factory=ContextStagedState,
         tx_group=PASS_TX_GROUP,
     )
-    _local_cache: ContextLocalCache = local_store(default_factory=ContextLocalCache)
 
     def __init__(self, owner: ContextBase) -> None:
         super().__init__(owner)
@@ -212,7 +199,6 @@ class ContextBaseStateMgr(StateMgrBase):
         if owner._scope_active:
             raise RuntimeError("scope already active")
         owner._scope_active = True
-        owner._literal_index = 0
         owner._pass_child_order = tuple(owner._children.keys())
         owner._pass_child_dirty = {
             slot_id: child.invoke_dirty for slot_id, child in owner._children.items()
@@ -303,18 +289,6 @@ class ContextBaseStateMgr(StateMgrBase):
         owner._pass_own_committed_ui_entries = ()
         owner._staged_ui = []
         owner._staged_ui_entries = []
-
-    def lit_dirty(self, value: Any) -> Any:
-        _ = value
-        owner = self.owner
-        if not owner._scope_active:
-            raise RuntimeError("scope is not active")
-        literal_index = owner._literal_index
-        owner._literal_index += 1
-        if literal_index == len(owner._literal_initialized):
-            owner._literal_initialized.append(True)
-            return True
-        return False
 
     def slot_expr(
         self,

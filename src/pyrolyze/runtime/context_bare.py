@@ -197,10 +197,6 @@ class ContextBase:
     def rollback_pass(self) -> None:
         _unavailable()
 
-    def lit_dirty(self, value: Any) -> Any:
-        _ = value
-        _unavailable()
-
     def slot_expr(
         self,
         slot_id: SlotId,

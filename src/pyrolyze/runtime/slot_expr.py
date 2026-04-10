@@ -62,8 +62,7 @@ def slot_params_dirt(*args: Any, **kwds: Any) -> Args[Any]:
 
 
 class SlotExprLiteralContext(ABC):
-    @abstractmethod
-    def lit_dirty(self, value: T) -> bool: ...
+    pass
 
 
 class SlotCallFunctionProvider(ABC):
@@ -82,9 +81,8 @@ class LiteralFunctionProvider(SlotCallFunctionProvider):
         return self.func
 
     def get_dirty(self, expr: SlotExpr) -> Any:
-        if expr.slot_ctx is None:
-            raise RuntimeError("slot_expr requires apply_slot_context() before evaluate()")
-        return expr.slot_ctx.lit_dirty(self.func)
+        del expr
+        return False
 
 
 @dataclass(frozen=True, slots=True)

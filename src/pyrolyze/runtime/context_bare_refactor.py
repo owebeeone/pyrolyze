@@ -473,8 +473,6 @@ class ContextBase(_StateDelegatingObject, SlotExprLiteralContext):
         "_generation_tracker_key",
         "_render_context",
         "_children",
-        "_literal_initialized",
-        "_literal_index",
         "_scope_active",
         "_pass_child_order",
         "_pass_child_dirty",
@@ -638,9 +636,6 @@ class ContextBase(_StateDelegatingObject, SlotExprLiteralContext):
 
     def rollback_pass(self) -> None:
         self._rollback_scope_pass()
-
-    def lit_dirty(self, value: Any) -> Any:
-        return self._delegate("lit_dirty", value)
 
     def slot_expr(
         self,

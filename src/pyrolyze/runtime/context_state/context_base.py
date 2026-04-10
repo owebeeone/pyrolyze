@@ -40,8 +40,6 @@ class ContextBaseStateMgr(StateMgrBase):
         self._generation_tracker_key = owner._generation_tracker_key_const
         self._render_context = owner.render_context
         self._children: dict[Any, Any] = {}
-        self._literal_initialized: list[bool] = []
-        self._literal_index = 0
         self._scope_active = False
         self._pass_child_order: tuple[Any, ...] = ()
         self._pass_child_dirty: dict[Any, bool] = {}
@@ -118,7 +116,6 @@ class ContextBaseStateMgr(StateMgrBase):
         if owner._scope_active:
             raise RuntimeError("scope already active")
         owner._scope_active = True
-        owner._literal_index = 0
         owner._pass_child_order = tuple(owner._children.keys())
         owner._pass_child_dirty = {
             slot_id: child.invoke_dirty for slot_id, child in owner._children.items()
@@ -209,18 +206,6 @@ class ContextBaseStateMgr(StateMgrBase):
         owner._pass_own_committed_ui_entries = ()
         owner._staged_ui = []
         owner._staged_ui_entries = []
-
-    def lit_dirty(self, value: Any) -> Any:
-        _ = value
-        owner = self.owner
-        if not owner._scope_active:
-            raise RuntimeError("scope is not active")
-        literal_index = owner._literal_index
-        owner._literal_index += 1
-        if literal_index == len(owner._literal_initialized):
-            owner._literal_initialized.append(True)
-            return True
-        return False
 
     def slot_expr(
         self,
