@@ -76,6 +76,10 @@ def build_working_cycle(self: LifecycleContext) -> list[object] | None:
     return self.items
 
 
+def reject_commit(_ctx: LifecycleContext) -> bool:
+    return False
+
+
 with pytest.raises(TypeError, match="unsupported parameter"):
 
     def invalid_default_factory(nope: object) -> int:
@@ -196,6 +200,36 @@ with pytest.raises(TypeError, match="incompatible lifecycle field override"):
     @managed_context
     class GroupedMismatchContext(GroupedBaseContext):
         value: int = managed(default=1, tx_group=GROUP_BETA)
+
+
+@managed_context
+class DefaultGroupedMetadataContext:
+    value: int = managed(default=0)
+    validator: object | None = commit_validator(default=lambda _ctx: True)
+    order_key: tuple[int, ...] = commit_order_key(default=(2,))
+
+
+@managed_context
+class GroupedScratchFactoryContext:
+    value: int = managed(default=0, tx_group=GROUP_ALPHA)
+    scratch: list[int] | None = transient(
+        default=None,
+        working_default_factory=list,
+        tx_group=GROUP_BETA,
+    )
+
+
+@managed_context
+class GroupedManagedContext:
+    left: int = managed(default=0, tx_group=GROUP_ALPHA)
+    right: int = managed(default=0, tx_group=GROUP_BETA)
+
+
+@managed_context
+class GroupedIndependentCommitContext:
+    left: int = managed(default=0, tx_group=GROUP_ALPHA)
+    right: int = managed(default=0, tx_group=GROUP_BETA)
+    left_ok: object | None = commit_validator(default=reject_commit, tx_group=GROUP_ALPHA)
 
 
 @managed_context
@@ -320,6 +354,13 @@ def test_tx_group_defaults_to_default_transaction() -> None:
     assert specs["value"].tx_group == DEFAULT_TRANSACTION
     assert specs["ref"].tx_group == DEFAULT_TRANSACTION
     assert specs["tracked"].tx_group == DEFAULT_TRANSACTION
+
+
+def test_validator_and_order_key_default_to_default_transaction() -> None:
+    specs = DefaultGroupedMetadataContext.__state_cls__.__field_specs__
+
+    assert specs["validator"].tx_group == DEFAULT_TRANSACTION
+    assert specs["order_key"].tx_group == DEFAULT_TRANSACTION
 
 
 def test_tx_group_metadata_is_recorded_for_grouped_fields() -> None:
@@ -1147,6 +1188,80 @@ def test_unified_working_view_reflects_all_active_group_working_state() -> None:
     assert context.current.value == 5
     assert context.current.scratch is False
     assert context.scratch is False
+
+
+def test_publish_only_group_does_not_activate_pass_group_working_default() -> None:
+    manager = TransactionManager(tx_groups={GROUP_ALPHA, GROUP_BETA})
+    context = GroupedScratchFactoryContext(transaction_manager=manager)
+
+    manager.begin(GROUP_ALPHA)
+    context.value = 8
+    assert context.scratch is None
+    manager.rollback(GROUP_ALPHA)
+
+    manager.begin(GROUP_BETA)
+    assert context.scratch == []
+    context.scratch.append(1)
+    assert context.scratch == [1]
+    manager.rollback(GROUP_BETA)
+
+    assert context.current.scratch is None
+    assert context.scratch is None
+
+
+def test_group_begin_counts_are_tracked_independently() -> None:
+    manager = TransactionManager(tx_groups={GROUP_ALPHA, GROUP_BETA})
+    context = GroupedManagedContext(transaction_manager=manager)
+
+    manager.begin(GROUP_ALPHA)
+    manager.begin(GROUP_ALPHA)
+    manager.begin(GROUP_BETA)
+    context.left = 3
+    context.right = 4
+
+    assert manager.commit(GROUP_ALPHA) is None
+    assert context.current.left == 0
+    assert context.left == 3
+
+    manager.commit(GROUP_BETA)
+    assert context.current.right == 4
+
+    manager.commit(GROUP_ALPHA)
+    assert context.current.left == 3
+
+
+def test_multi_group_context_manager_commits_each_group() -> None:
+    manager = TransactionManager(tx_groups={GROUP_ALPHA, GROUP_BETA})
+    context = GroupedManagedContext(transaction_manager=manager)
+
+    with manager.begin(GROUP_ALPHA, GROUP_BETA):
+        context.left = 10
+        context.right = 11
+        assert context.left == 10
+        assert context.right == 11
+        assert context.current.left == 0
+        assert context.current.right == 0
+
+    assert context.current.left == 10
+    assert context.current.right == 11
+
+
+def test_multi_group_commit_is_ordered_independent_not_coupled() -> None:
+    manager = TransactionManager(tx_groups={GROUP_ALPHA, GROUP_BETA})
+    context = GroupedIndependentCommitContext(transaction_manager=manager)
+
+    manager.begin(GROUP_ALPHA)
+    manager.begin(GROUP_BETA)
+    context.left = 1
+    context.right = 2
+
+    with pytest.raises(ExceptionGroup):
+        manager.commit(GROUP_BETA, GROUP_ALPHA)
+
+    assert context.current.right == 2
+    assert context.current.left == 0
+    assert context.right == 2
+    assert context.left == 0
 
 
 def test_transaction_manager_commit_and_rollback_require_balanced_begin() -> None:
