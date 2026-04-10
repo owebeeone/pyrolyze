@@ -1089,6 +1089,66 @@ def test_transaction_manager_validate_then_commit_only_skips_second_validation()
     assert ctx.current.value == 5
 
 
+def test_grouped_field_write_requires_its_own_transaction_group() -> None:
+    manager = TransactionManager(tx_groups={GROUP_ALPHA, GROUP_BETA})
+    context = GroupedFieldContext(transaction_manager=manager)
+
+    manager.begin(GROUP_ALPHA)
+    context.value = 3
+
+    assert context.value == 3
+    assert context.current.value == 0
+
+    with pytest.raises(RuntimeError, match="active lifecycle transaction"):
+        context.scratch = True
+
+    manager.rollback(GROUP_ALPHA)
+
+
+def test_default_group_field_does_not_use_non_default_transaction_groups() -> None:
+    manager = TransactionManager(tx_groups={GROUP_ALPHA})
+    context = MatrixContext(transaction_manager=manager)
+
+    manager.begin(GROUP_ALPHA)
+    with pytest.raises(RuntimeError, match="active lifecycle transaction"):
+        context.value = 9
+    manager.rollback(GROUP_ALPHA)
+
+    manager.begin()
+    context.value = 9
+    manager.commit()
+
+    assert context.current.value == 9
+
+
+def test_unified_working_view_reflects_all_active_group_working_state() -> None:
+    manager = TransactionManager(tx_groups={GROUP_ALPHA, GROUP_BETA})
+    context = GroupedFieldContext(transaction_manager=manager)
+
+    manager.begin(GROUP_ALPHA)
+    context.value = 5
+    manager.begin(GROUP_BETA)
+    context.scratch = True
+
+    assert context.working.value == 5
+    assert context.working.scratch is True
+    assert context.current.value == 0
+    assert context.current.scratch is False
+
+    manager.commit(GROUP_ALPHA)
+
+    assert context.current.value == 5
+    assert context.value == 5
+    assert context.scratch is True
+    assert context.current.scratch is False
+
+    manager.rollback(GROUP_BETA)
+
+    assert context.current.value == 5
+    assert context.current.scratch is False
+    assert context.scratch is False
+
+
 def test_transaction_manager_commit_and_rollback_require_balanced_begin() -> None:
     manager = TransactionManager()
     with pytest.raises(RuntimeError, match="no active lifecycle transaction"):
