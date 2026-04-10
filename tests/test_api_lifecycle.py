@@ -50,6 +50,41 @@ class SpyBinding(BindingBase):
         self.closed_states.append(self.is_accepted)
 
 
+def build_triplet(self: LifecycleContext, current: LifecycleContext, working: LifecycleContext) -> tuple[int, int, int]:
+    return (self.base, current.base, working.base)
+
+
+def build_pass_items(
+    self: LifecycleContext,
+    current: LifecycleContext,
+    working: LifecycleContext,
+) -> list[int]:
+    return [self.base, current.base, working.base]
+
+
+def build_cycle_left(self: LifecycleContext) -> int:
+    return self.right + 1
+
+
+def build_cycle_right(self: LifecycleContext) -> int:
+    return self.left + 1
+
+
+def build_working_cycle(self: LifecycleContext) -> list[object] | None:
+    return self.items
+
+
+with pytest.raises(TypeError, match="unsupported parameter"):
+
+    def invalid_default_factory(nope: object) -> int:
+        del nope
+        return 1
+
+    @managed_context
+    class InvalidFactoryParamContext:
+        value: int = managed(default_factory=invalid_default_factory)
+
+
 @managed_context
 class MatrixContext:
     value: int = lifecycle_field(default=0, compare="value")
@@ -128,6 +163,29 @@ class ValueControlContext:
     value: int = managed(default=0)
     first_pass: bool = managed(default=False, initial_working=True)
     items: tuple[int, ...] = managed(default_factory=tuple, freeze=tuple, thaw=list)
+
+
+@managed_context
+class ContextAwareDefaultFactoryContext:
+    triplet: tuple[int, int, int] = managed(default_factory=build_triplet)
+    base: int = managed(default=7)
+
+
+@managed_context
+class ContextAwareWorkingFactoryContext:
+    base: int = managed(default=1)
+    items: list[int] | None = transient(default=None, working_default_factory=build_pass_items)
+
+
+@managed_context
+class DefaultFactoryCycleContext:
+    left: int = managed(default_factory=build_cycle_left)
+    right: int = managed(default_factory=build_cycle_right)
+
+
+@managed_context
+class WorkingFactoryCycleContext:
+    items: list[object] | None = transient(default=None, working_default_factory=build_working_cycle)
 
 
 @managed_context
@@ -232,6 +290,15 @@ def test_managed_context_wraps_plain_class_onto_internal_base() -> None:
     assert context.value == 0
 
 
+def test_view_navigation_is_closed_over_current_and_working_views() -> None:
+    context = MatrixContext()
+
+    assert context.current.current is context.current
+    assert context.current.working is context.working
+    assert context.working.current is context.current
+    assert context.working.working is context.working
+
+
 def test_const_fields_are_constructor_only_and_read_only_everywhere() -> None:
     context = ConstContext()
 
@@ -276,6 +343,20 @@ def test_managed_alias_behaves_like_managed_field() -> None:
     context.value = 4
     assert context.value == 4
     assert context.current.value == 1
+
+
+def test_context_aware_default_factory_can_resolve_other_fields_and_views() -> None:
+    context = ContextAwareDefaultFactoryContext()
+    state_cls = ContextAwareDefaultFactoryContext.__state_cls__
+
+    assert context.base == 7
+    assert context.triplet == (7, 7, 7)
+    assert "triplet" in state_cls.__class_ftable_default_factory_runner__
+
+
+def test_context_aware_default_factory_cycle_is_detected() -> None:
+    with pytest.raises(RuntimeError, match="lifecycle factory cycle detected"):
+        DefaultFactoryCycleContext()
 
 
 def test_binding_base_closes_once_and_uses_accepted_state() -> None:
@@ -471,6 +552,38 @@ def test_transient_none_default_reset_after_commit_and_rollback() -> None:
     manager.rollback()
     assert context.tag is None
     assert context.current.tag is None
+
+
+def test_transient_working_default_factory_creates_tx_local_scratch_from_views() -> None:
+    manager = TransactionManager()
+    context = ContextAwareWorkingFactoryContext(transaction_manager=manager)
+
+    assert context.items is None
+    assert context.current.items is None
+
+    manager.begin()
+    context.base = 9
+
+    assert context.items == [9, 1, 9]
+    assert context.current.items is None
+    assert context.working.items == [9, 1, 9]
+    assert context._working_record is not None
+
+    manager.commit()
+
+    assert context.items is None
+    assert context.current.items is None
+    assert context.working.items is None
+
+
+def test_transient_working_default_factory_cycle_is_detected() -> None:
+    manager = TransactionManager()
+    context = WorkingFactoryCycleContext(transaction_manager=manager)
+
+    manager.begin()
+    with pytest.raises(RuntimeError, match="lifecycle factory cycle detected"):
+        _ = context.items
+    manager.rollback()
 
 
 def test_local_store_survives_commit_and_is_shared_across_views() -> None:

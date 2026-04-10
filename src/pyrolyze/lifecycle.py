@@ -229,6 +229,59 @@ StateCopyHelper = Callable[[Any], Any]
 FieldGetter = Callable[["LifecycleContextState", str], Any]
 FieldSetter = Callable[["LifecycleContextState", str, Any], None]
 FieldHook = Callable[["LifecycleContextState", str], None]
+FactoryRunner = Callable[["LifecycleContextState"], Any]
+
+_SUPPORTED_FACTORY_PARAMS = frozenset({"self", "current", "working"})
+
+
+def _compile_factory_runner(
+    *,
+    field_name: str,
+    hook_name: str,
+    factory: Callable[..., Any],
+) -> FactoryRunner:
+    if inspect.isbuiltin(factory) or inspect.isclass(factory):
+        return lambda state, factory=factory: factory()
+    try:
+        signature = inspect.signature(factory)
+    except (TypeError, ValueError):
+        return lambda state, factory=factory: factory()
+    parameter_names: tuple[str, ...] = ()
+    if signature.parameters:
+        names: list[str] = []
+        for parameter in signature.parameters.values():
+            if parameter.kind not in {
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                inspect.Parameter.KEYWORD_ONLY,
+            }:
+                raise TypeError(
+                    f"{hook_name} for field {field_name!r} must use named parameters only",
+                )
+            if parameter.name not in _SUPPORTED_FACTORY_PARAMS:
+                allowed = ", ".join(sorted(_SUPPORTED_FACTORY_PARAMS))
+                raise TypeError(
+                    f"{hook_name} for field {field_name!r} uses unsupported parameter "
+                    f"{parameter.name!r}; allowed: {allowed}",
+                )
+            names.append(parameter.name)
+        parameter_names = tuple(names)
+    if not parameter_names:
+        return lambda state, factory=factory: factory()
+
+    def run(state: LifecycleContextState, factory: Callable[..., Any] = factory) -> Any:
+        kwargs: dict[str, Any] = {}
+        for name in parameter_names:
+            if name == "self":
+                kwargs[name] = state.owner
+            elif name == "current":
+                kwargs[name] = state.current_view
+            elif name == "working":
+                kwargs[name] = state.working_view
+            else:
+                raise AssertionError(f"unexpected compiled lifecycle factory parameter {name!r}")
+        return factory(**kwargs)
+
+    return run
 
 
 @dataclass(slots=True)
@@ -239,6 +292,7 @@ class FieldSpec:
     compare: str
     default: Any = MISSING
     default_factory: Callable[[], Any] | object = MISSING
+    working_default_factory: Callable[[], Any] | object = MISSING
     initial_working: Any = MISSING
     freeze: Callable[[Any], Any] | None = None
     thaw: Callable[[Any], Any] | None = None
@@ -278,6 +332,7 @@ class LifecycleField:
         "state_copy",
         "state_factory",
         "thaw",
+        "working_default_factory",
     )
 
     def __init__(
@@ -287,6 +342,7 @@ class LifecycleField:
         compare: str = "value",
         default: Any = MISSING,
         default_factory: Callable[[], Any] | object = MISSING,
+        working_default_factory: Callable[[], Any] | object = MISSING,
         initial_working: Any = MISSING,
         freeze: Callable[[Any], Any] | None = None,
         thaw: Callable[[Any], Any] | None = None,
@@ -310,6 +366,8 @@ class LifecycleField:
             raise TypeError(f"unsupported compare mode {compare!r}")
         if default is not MISSING and default_factory is not MISSING:
             raise TypeError("lifecycle fields cannot define both default and default_factory")
+        if working_default_factory is not MISSING and kind != "transient":
+            raise TypeError("only transient fields can define working_default_factory")
         if kind == "commit_validator":
             if default_factory is not MISSING:
                 raise TypeError("commit_validator fields cannot define default_factory")
@@ -334,6 +392,7 @@ class LifecycleField:
         self.compare = compare
         self.default = default
         self.default_factory = default_factory
+        self.working_default_factory = working_default_factory
         self.initial_working = initial_working
         self.freeze = freeze
         self.kind = kind
@@ -361,6 +420,7 @@ class LifecycleField:
             compare=self.compare,
             default=self.default,
             default_factory=self.default_factory,
+            working_default_factory=self.working_default_factory,
             initial_working=self.initial_working,
             freeze=self.freeze,
             thaw=self.thaw,
@@ -380,6 +440,7 @@ def lifecycle_field(
     compare: str = "value",
     default: Any = MISSING,
     default_factory: Callable[[], Any] | object = MISSING,
+    working_default_factory: Callable[[], Any] | object = MISSING,
     initial_working: Any = MISSING,
     freeze: Callable[[Any], Any] | None = None,
     thaw: Callable[[Any], Any] | None = None,
@@ -391,6 +452,7 @@ def lifecycle_field(
         compare=compare,
         default=default,
         default_factory=default_factory,
+        working_default_factory=working_default_factory,
         initial_working=initial_working,
         freeze=freeze,
         state_factory=state_factory,
@@ -477,12 +539,14 @@ def transient(
     *,
     default: Any = MISSING,
     default_factory: Callable[[], Any] | object = MISSING,
+    working_default_factory: Callable[[], Any] | object = MISSING,
 ) -> Any:
     return lifecycle_field(
         kind="transient",
         compare="value",
         default=default,
         default_factory=default_factory,
+        working_default_factory=working_default_factory,
     )
 
 
@@ -537,18 +601,18 @@ def _get_default_overlay_field(state: LifecycleContextState, name: str) -> Any:
     working = state.working_record
     if working is not None and name in working.values:
         return working.values[name]
-    return state.current_record.values[name]
+    return state.resolve_default_field(name)
 
 
 def _get_current_field(state: LifecycleContextState, name: str) -> Any:
-    return state.current_record.values[name]
+    return state.resolve_default_field(name)
 
 
 def _get_working_overlay_field(state: LifecycleContextState, name: str) -> Any:
     working = state.working_record
     if working is not None and name in working.values:
         return working.values[name]
-    return state.current_record.values[name]
+    return state.resolve_default_field(name)
 
 
 def _get_managed_initial_working_field(state: LifecycleContextState, name: str) -> Any:
@@ -559,7 +623,7 @@ def _get_managed_initial_working_field(state: LifecycleContextState, name: str) 
     spec = type(state).__field_specs__[name]
     if transaction is not None and not state.ever_committed and spec.initial_working is not MISSING:
         return spec.initial_working
-    return state.current_record.values[name]
+    return state.resolve_default_field(name)
 
 
 def _get_managed_thawed_field(state: LifecycleContextState, name: str) -> Any:
@@ -569,26 +633,36 @@ def _get_managed_thawed_field(state: LifecycleContextState, name: str) -> Any:
     transaction = state.transaction_manager.active_transaction if state.transaction_manager is not None else None
     spec = type(state).__field_specs__[name]
     if transaction is None or spec.thaw is None:
-        return state.current_record.values[name]
+        return state.resolve_default_field(name)
     working = state.ensure_working_record()
     if name not in working.values:
-        working.values[name] = spec.thaw(state.current_record.values[name])
+        working.values[name] = spec.thaw(state.resolve_default_field(name))
     return working.values[name]
 
 
+def _get_transient_working_default_field(state: LifecycleContextState, name: str) -> Any:
+    working = state.working_record
+    if working is not None and name in working.values:
+        return working.values[name]
+    transaction = state.transaction_manager.active_transaction if state.transaction_manager is not None else None
+    if transaction is not None and name in type(state).__class_ftable_working_default_factory_runner__:
+        return state.resolve_working_default_field(name)
+    return state.resolve_default_field(name)
+
+
 def _get_static_field(state: LifecycleContextState, name: str) -> Any:
-    value = state.current_record.values[name]
+    value = state.resolve_default_field(name)
     if value is _SENTINEL:
         raise AttributeError(f"static field {name!r} is not initialized")
     return value
 
 
 def _get_local_store_field(state: LifecycleContextState, name: str) -> Any:
-    return state.local_store_values[name]
+    return state.resolve_default_field(name)
 
 
 def _get_derived_field(state: LifecycleContextState, name: str) -> Any:
-    return state.derived_values[name]
+    return state.resolve_default_field(name)
 
 
 def _is_binding_map_value(value: Any) -> bool:
@@ -812,11 +886,11 @@ def _close_noop(state: LifecycleContextState, name: str) -> None:
 
 
 def _close_local_store_field(state: LifecycleContextState, name: str) -> None:
-    state.local_store_values[name] = type(state).__field_specs__[name].default_value()
+    state.reset_to_default(name)
 
 
 def _reset_derived_field(state: LifecycleContextState, name: str) -> None:
-    state.derived_values[name] = type(state).__field_specs__[name].default_value()
+    state.reset_to_default(name)
 
 
 class LifecycleContextState:
@@ -832,6 +906,8 @@ class LifecycleContextState:
     __class_ftable_close_field__: dict[str, FieldHook] = {}
     __class_ftable_state_factory__: dict[str, FieldStateFactory | None] = {}
     __class_ftable_state_copy__: dict[str, StateCopyHelper | None] = {}
+    __class_ftable_default_factory_runner__: dict[str, FactoryRunner] = {}
+    __class_ftable_working_default_factory_runner__: dict[str, FactoryRunner] = {}
 
     __slots__ = (
         "owner",
@@ -848,6 +924,7 @@ class LifecycleContextState:
         "working_view",
         "_commit_order_key",
         "commit_validator",
+        "_resolving_factories",
     )
 
     def __init__(
@@ -858,6 +935,7 @@ class LifecycleContextState:
         values: dict[str, Any],
     ) -> None:
         self.owner = owner
+        object.__setattr__(owner, "_state", self)
         self.transaction_manager = transaction_manager
         self.current_record = Record()
         self.working_record: Record | None = None
@@ -869,28 +947,26 @@ class LifecycleContextState:
         self.closed = False
         self.current_view = type(owner).__current_view_cls__(_state=self, _owner=owner)
         self.working_view = type(owner).__working_view_cls__(_state=self, _owner=owner)
+        self._resolving_factories: list[tuple[str, str]] = []
 
         for name, spec in type(self).__field_specs__.items():
             if spec.kind == "local_store":
                 if name in values:
                     self.local_store_values[name] = values.pop(name)
-                else:
-                    self.local_store_values[name] = spec.default_value()
                 continue
             if spec.kind == "derived":
                 if name in values:
                     self.derived_values[name] = values.pop(name)
-                else:
-                    self.derived_values[name] = spec.default_value()
                 continue
             if name in values:
                 self.current_record.values[name] = values.pop(name)
-            else:
-                self.current_record.values[name] = spec.default_value()
 
         if values:
             unexpected = ", ".join(sorted(values))
             raise TypeError(f"unexpected lifecycle constructor fields: {unexpected}")
+
+        for name in type(self).__field_specs__:
+            self.resolve_default_field(name)
 
         commit_key_names = [n for n, s in type(self).__field_specs__.items() if s.kind == "commit_order_key"]
         if len(commit_key_names) > 1:
@@ -972,6 +1048,78 @@ class LifecycleContextState:
 
     def snapshot_current(self) -> _RecordSnapshot:
         return _RecordSnapshot(self.current_record.values)
+
+    def _default_store_contains(self, name: str) -> bool:
+        spec = type(self).__field_specs__[name]
+        if spec.kind == "local_store":
+            return name in self.local_store_values
+        if spec.kind == "derived":
+            return name in self.derived_values
+        return name in self.current_record.values
+
+    def _get_default_store_value(self, name: str) -> Any:
+        spec = type(self).__field_specs__[name]
+        if spec.kind == "local_store":
+            return self.local_store_values[name]
+        if spec.kind == "derived":
+            return self.derived_values[name]
+        return self.current_record.values[name]
+
+    def _set_default_store_value(self, name: str, value: Any) -> Any:
+        spec = type(self).__field_specs__[name]
+        if spec.kind == "local_store":
+            self.local_store_values[name] = value
+        elif spec.kind == "derived":
+            self.derived_values[name] = value
+        else:
+            self.current_record.values[name] = value
+        return value
+
+    def _run_factory_runner(self, kind: str, name: str, runner: FactoryRunner) -> Any:
+        key = (kind, name)
+        if key in self._resolving_factories:
+            cycle = " -> ".join(
+                f"{step_kind}:{step_name}" for step_kind, step_name in (*self._resolving_factories, key)
+            )
+            raise RuntimeError(f"lifecycle factory cycle detected: {cycle}")
+        self._resolving_factories.append(key)
+        try:
+            return runner(self)
+        finally:
+            popped = self._resolving_factories.pop()
+            assert popped == key
+
+    def resolve_default_field(self, name: str) -> Any:
+        if self._default_store_contains(name):
+            return self._get_default_store_value(name)
+        runner = type(self).__class_ftable_default_factory_runner__.get(name)
+        if runner is not None:
+            value = self._run_factory_runner("default_factory", name, runner)
+        else:
+            value = type(self).__field_specs__[name].default_value()
+        return self._set_default_store_value(name, value)
+
+    def resolve_working_default_field(self, name: str) -> Any:
+        self.require_active_transaction()
+        working = self.ensure_working_record()
+        if name in working.values:
+            return working.values[name]
+        runner = type(self).__class_ftable_working_default_factory_runner__.get(name)
+        if runner is None:
+            return self.resolve_default_field(name)
+        value = self._run_factory_runner("working_default_factory", name, runner)
+        working.values[name] = value
+        return value
+
+    def reset_to_default(self, name: str) -> Any:
+        spec = type(self).__field_specs__[name]
+        if spec.kind == "local_store":
+            self.local_store_values.pop(name, None)
+        elif spec.kind == "derived":
+            self.derived_values.pop(name, None)
+        else:
+            self.current_record.values.pop(name, None)
+        return self.resolve_default_field(name)
 
     def commit(self) -> _ManagedContextBase:
         if self.working_record is None:
@@ -1203,8 +1351,22 @@ def _build_class_tables(
     close_field: dict[str, FieldHook] = {}
     state_factory: dict[str, FieldStateFactory | None] = {}
     state_copy: dict[str, StateCopyHelper | None] = {}
+    default_factory_runner: dict[str, FactoryRunner] = {}
+    working_default_factory_runner: dict[str, FactoryRunner] = {}
 
     for name, spec in specs.items():
+        if spec.default_factory is not MISSING:
+            default_factory_runner[name] = _compile_factory_runner(
+                field_name=name,
+                hook_name="default_factory",
+                factory=typing.cast(Callable[..., Any], spec.default_factory),
+            )
+        if spec.working_default_factory is not MISSING:
+            working_default_factory_runner[name] = _compile_factory_runner(
+                field_name=name,
+                hook_name="working_default_factory",
+                factory=typing.cast(Callable[..., Any], spec.working_default_factory),
+            )
         if spec.kind == "managed":
             if spec.thaw is not None:
                 get_default[name] = _get_managed_thawed_field
@@ -1267,9 +1429,13 @@ def _build_class_tables(
             state_factory[name] = None
             state_copy[name] = None
         elif spec.kind == "transient":
-            get_default[name] = _get_default_overlay_field
+            if name in working_default_factory_runner:
+                get_default[name] = _get_transient_working_default_field
+                get_working[name] = _get_transient_working_default_field
+            else:
+                get_default[name] = _get_default_overlay_field
+                get_working[name] = _get_working_overlay_field
             get_current[name] = _get_current_field
-            get_working[name] = _get_working_overlay_field
             set_default[name] = _set_default_value_field
             set_working[name] = _set_working_value_field
             commit_field[name] = _close_noop
@@ -1325,6 +1491,8 @@ def _build_class_tables(
         "__class_ftable_close_field__": close_field,
         "__class_ftable_state_factory__": state_factory,
         "__class_ftable_state_copy__": state_copy,
+        "__class_ftable_default_factory_runner__": default_factory_runner,
+        "__class_ftable_working_default_factory_runner__": working_default_factory_runner,
     }
 
 
@@ -1379,6 +1547,11 @@ def _merge_field_specs(base: FieldSpec, derived: FieldSpec) -> FieldSpec:
     else:
         default = base.default
         default_factory = base.default_factory
+    working_default_factory = (
+        derived.working_default_factory
+        if derived.working_default_factory is not MISSING
+        else base.working_default_factory
+    )
     state_factory = derived.state_factory if derived.state_factory is not None else base.state_factory
     state_copy = derived.state_copy if derived.state_copy != copy.copy else base.state_copy
     initial_working = (
@@ -1394,6 +1567,7 @@ def _merge_field_specs(base: FieldSpec, derived: FieldSpec) -> FieldSpec:
         compare=base.compare,
         default=default,
         default_factory=default_factory,
+        working_default_factory=working_default_factory,
         initial_working=initial_working,
         freeze=freeze,
         thaw=thaw,
