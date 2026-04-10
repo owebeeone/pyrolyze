@@ -4,6 +4,7 @@ import pytest
 
 from pyrolyze.lifecycle import (
     BindingBase,
+    GroupTransactionManager,
     LifecycleContext,
     LifecycleTransaction,
     LifecycleValidatorReturnedFalse,
@@ -950,6 +951,84 @@ def test_transaction_manager_begin_is_nestable_balanced_by_commit() -> None:
     assert tx_id == 1
     assert manager.active_transaction is None
     assert manager.begin_count == 0
+
+
+def test_group_transaction_manager_preserves_previous_single_group_behavior() -> None:
+    manager = GroupTransactionManager()
+    outer = manager.begin()
+    inner = manager.begin()
+
+    assert outer is inner is manager.active_transaction
+    assert manager.begin_count == 2
+
+    assert manager.commit() is None
+    assert manager.begin_count == 1
+    assert manager.active_transaction is not None
+
+    tx_id = manager.commit_only()
+    assert tx_id == 1
+    assert manager.active_transaction is None
+    assert manager.begin_count == 0
+
+
+def test_transaction_manager_context_manager_commits_on_clean_exit() -> None:
+    manager = TransactionManager()
+    context = ManagedAliasContext(transaction_manager=manager)
+
+    with manager.begin():
+        context.value = 4
+        assert context.value == 4
+        assert context.current.value == 1
+
+    assert context.current.value == 4
+    assert manager.active_transaction is None
+    assert manager.begin_count == 0
+
+
+def test_transaction_manager_context_manager_rolls_back_on_exception() -> None:
+    manager = TransactionManager()
+    context = ManagedAliasContext(transaction_manager=manager)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        with manager.begin():
+            context.value = 7
+            raise RuntimeError("boom")
+
+    assert context.current.value == 1
+    assert manager.active_transaction is None
+    assert manager.begin_count == 0
+
+
+def test_transaction_manager_rejects_unknown_group() -> None:
+    manager = TransactionManager(tx_groups={"known"})
+
+    with pytest.raises(RuntimeError, match="unknown lifecycle transaction group"):
+        manager.begin("unknown")
+
+
+def test_transaction_manager_validate_then_commit_only_skips_second_validation() -> None:
+    validations: list[str] = []
+
+    def check(ctx: LifecycleContext) -> bool:
+        validations.append(type(ctx).__name__)
+        return True
+
+    @managed_context
+    class ValidatedContext:
+        value: int = managed(default=0)
+        on_commit_ok: object | None = commit_validator(default=check)
+
+    manager = TransactionManager()
+    ctx = ValidatedContext(transaction_manager=manager)
+    manager.begin()
+    ctx.value = 5
+
+    manager.validate()
+    assert validations == ["ValidatedContext"]
+
+    manager.commit_only()
+    assert validations == ["ValidatedContext"]
+    assert ctx.current.value == 5
 
 
 def test_transaction_manager_commit_and_rollback_require_balanced_begin() -> None:

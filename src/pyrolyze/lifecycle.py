@@ -37,6 +37,7 @@ import copy
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from collections.abc import Callable
+from collections.abc import Hashable
 from dataclasses import MISSING, dataclass, field
 import inspect
 import types
@@ -46,6 +47,7 @@ from typing import Any
 from pyrolyze.type_annotations import is_annotation_narrower_or_equal
 
 _SENTINEL = object()
+DEFAULT_TRANSACTION: Hashable = "default_transaction"
 
 
 class LifecycleValidatorReturnedFalse(RuntimeError):
@@ -87,6 +89,8 @@ class LifecycleTransaction:
     tx_id: int
     dirty_contexts: dict[int, LifecycleContext] = field(default_factory=dict)
     validator_contexts: dict[int, LifecycleContext] = field(default_factory=dict)
+    _scope_commit: Callable[[], Any] | None = field(default=None, init=False, repr=False, compare=False)
+    _scope_rollback: Callable[[], Any] | None = field(default=None, init=False, repr=False, compare=False)
 
     def commit_order(self) -> tuple[LifecycleContext, ...]:
         contexts = list(self.dirty_contexts.values())
@@ -114,9 +118,37 @@ class LifecycleTransaction:
         for context in self.commit_order():
             context._commit_transaction(self.tx_id)
 
+    def bind_scope(
+        self,
+        *,
+        commit: Callable[[], Any],
+        rollback: Callable[[], Any],
+    ) -> "LifecycleTransaction":
+        self._scope_commit = commit
+        self._scope_rollback = rollback
+        return self
+
+    def __enter__(self) -> "LifecycleTransaction":
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: Any,
+    ) -> bool:
+        del exc, tb
+        if self._scope_commit is None or self._scope_rollback is None:
+            raise RuntimeError("lifecycle transaction scope is not bound")
+        if exc_type is None:
+            self._scope_commit()
+        else:
+            self._scope_rollback()
+        return False
+
 
 @dataclass(slots=True)
-class TransactionManager:
+class GroupTransactionManager:
     _next_tx_id: int = field(default=1, init=False, repr=False)
     active_transaction: LifecycleTransaction | None = field(default=None, init=False, repr=False)
     begin_count: int = field(default=0, init=False, repr=False)
@@ -130,9 +162,17 @@ class TransactionManager:
         self.begin_count += 1
         transaction = self.active_transaction
         assert transaction is not None
-        return transaction
+        return transaction.bind_scope(commit=self.commit, rollback=self.rollback)
 
-    def commit(self) -> int | None:
+    def validate(self) -> None:
+        if self.begin_count <= 0:
+            raise RuntimeError("no active lifecycle transaction")
+        transaction = self.active_transaction
+        if transaction is None:
+            raise RuntimeError("lifecycle transaction manager state is corrupted")
+        transaction.validate_commit()
+
+    def commit_only(self) -> int | None:
         if self.begin_count <= 0:
             raise RuntimeError("no active lifecycle transaction")
         if self.begin_count > 1:
@@ -141,16 +181,24 @@ class TransactionManager:
         transaction = self.active_transaction
         if transaction is None:
             raise RuntimeError("lifecycle transaction manager state is corrupted")
-        try:
-            transaction.validate_commit()
-        except BaseExceptionGroup as exc_group:
-            self.rollback()
-            raise exc_group
         tx_id = transaction.tx_id
         transaction.apply_commits()
         self.active_transaction = None
         self.begin_count = 0
         return tx_id
+
+    def commit(self) -> int | None:
+        if self.begin_count <= 0:
+            raise RuntimeError("no active lifecycle transaction")
+        if self.begin_count > 1:
+            self.begin_count -= 1
+            return None
+        try:
+            self.validate()
+        except BaseExceptionGroup as exc_group:
+            self.rollback()
+            raise exc_group
+        return self.commit_only()
 
     def rollback(self) -> int | None:
         if self.begin_count <= 0 or self.active_transaction is None:
@@ -180,6 +228,166 @@ class TransactionManager:
         cid = id(context)
         transaction.dirty_contexts.pop(cid, None)
         transaction.validator_contexts.pop(cid, None)
+
+
+class _MultiGroupTransactionScope:
+    __slots__ = ("_manager", "_groups")
+
+    def __init__(self, manager: "TransactionManager", groups: tuple[Hashable, ...]) -> None:
+        self._manager = manager
+        self._groups = groups
+
+    def __enter__(self) -> "_MultiGroupTransactionScope":
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: Any,
+    ) -> bool:
+        del exc, tb
+        if exc_type is None:
+            self._manager.commit(*reversed(self._groups))
+        else:
+            self._manager.rollback(*reversed(self._groups))
+        return False
+
+
+class TransactionManager:
+    __slots__ = ("_tx_groups", "_tx_group_set", "_group_managers")
+
+    def __init__(self, *, tx_groups: typing.Iterable[Hashable] = ()) -> None:
+        normalized_groups: list[Hashable] = []
+        seen = {DEFAULT_TRANSACTION}
+        for group in tx_groups:
+            if group in seen:
+                continue
+            seen.add(group)
+            normalized_groups.append(group)
+        self._tx_groups = tuple(normalized_groups)
+        self._tx_group_set = frozenset((DEFAULT_TRANSACTION, *self._tx_groups))
+        self._group_managers: dict[Hashable, GroupTransactionManager] = {}
+
+    @property
+    def tx_groups(self) -> tuple[Hashable, ...]:
+        return self._tx_groups
+
+    @property
+    def active_transaction(self) -> LifecycleTransaction | None:
+        return self._get_group_manager(DEFAULT_TRANSACTION).active_transaction
+
+    @active_transaction.setter
+    def active_transaction(self, value: LifecycleTransaction | None) -> None:
+        self._get_group_manager(DEFAULT_TRANSACTION).active_transaction = value
+
+    @property
+    def begin_count(self) -> int:
+        return self._get_group_manager(DEFAULT_TRANSACTION).begin_count
+
+    def _normalize_groups(self, groups: tuple[Hashable, ...]) -> tuple[Hashable, ...]:
+        if not groups:
+            return (DEFAULT_TRANSACTION, *self._tx_groups)
+        normalized: list[Hashable] = []
+        seen: set[Hashable] = set()
+        for group in groups:
+            self._require_known_group(group)
+            if group in seen:
+                continue
+            seen.add(group)
+            normalized.append(group)
+        return tuple(normalized)
+
+    def _require_known_group(self, group: Hashable) -> None:
+        if group not in self._tx_group_set:
+            raise RuntimeError(f"unknown lifecycle transaction group {group!r}")
+
+    def _get_group_manager(self, group: Hashable) -> GroupTransactionManager:
+        self._require_known_group(group)
+        manager = self._group_managers.get(group)
+        if manager is None:
+            manager = GroupTransactionManager()
+            self._group_managers[group] = manager
+        return manager
+
+    def begin(self, *groups: Hashable) -> LifecycleTransaction | _MultiGroupTransactionScope:
+        normalized_groups = self._normalize_groups(groups)
+        if len(normalized_groups) == 1:
+            return self._get_group_manager(normalized_groups[0]).begin()
+        for group in normalized_groups:
+            self._get_group_manager(group).begin()
+        return _MultiGroupTransactionScope(self, normalized_groups)
+
+    def validate(self, *groups: Hashable) -> None:
+        normalized_groups = self._normalize_groups(groups)
+        failures: list[BaseException] = []
+        for group in normalized_groups:
+            try:
+                self._get_group_manager(group).validate()
+            except BaseException as exc:
+                failures.append(exc)
+        if not failures:
+            return
+        if len(failures) == 1:
+            raise failures[0]
+        raise ExceptionGroup("lifecycle transaction group validation failed", failures)
+
+    def commit_only(self, *groups: Hashable) -> int | tuple[int | None, ...] | None:
+        normalized_groups = self._normalize_groups(groups)
+        if len(normalized_groups) == 1:
+            return self._get_group_manager(normalized_groups[0]).commit_only()
+        failures: list[BaseException] = []
+        results: list[int | None] = []
+        for group in normalized_groups:
+            try:
+                results.append(self._get_group_manager(group).commit_only())
+            except BaseException as exc:
+                failures.append(exc)
+        if failures:
+            if len(failures) == 1:
+                raise failures[0]
+            raise ExceptionGroup("lifecycle transaction group commit_only failed", failures)
+        return tuple(results)
+
+    def commit(self, *groups: Hashable) -> int | tuple[int | None, ...] | None:
+        normalized_groups = self._normalize_groups(groups)
+        if len(normalized_groups) == 1:
+            return self._get_group_manager(normalized_groups[0]).commit()
+        failures: list[BaseException] = []
+        results: list[int | None] = []
+        for group in normalized_groups:
+            try:
+                results.append(self._get_group_manager(group).commit())
+            except BaseException as exc:
+                failures.append(exc)
+        if failures:
+            if len(failures) == 1:
+                raise failures[0]
+            raise ExceptionGroup("lifecycle transaction group commit failed", failures)
+        return tuple(results)
+
+    def rollback(self, *groups: Hashable) -> int | tuple[int | None, ...] | None:
+        normalized_groups = self._normalize_groups(groups)
+        if len(normalized_groups) == 1:
+            return self._get_group_manager(normalized_groups[0]).rollback()
+        failures: list[BaseException] = []
+        results: list[int | None] = []
+        for group in normalized_groups:
+            try:
+                results.append(self._get_group_manager(group).rollback())
+            except BaseException as exc:
+                failures.append(exc)
+        if failures:
+            if len(failures) == 1:
+                raise failures[0]
+            raise ExceptionGroup("lifecycle transaction group rollback failed", failures)
+        return tuple(results)
+
+    def enlist(self, context: LifecycleContext) -> int:
+        return self._get_group_manager(DEFAULT_TRANSACTION).enlist(context)
+
+    def drop(self, context: LifecycleContext, tx_id: int | None = None) -> None:
+        self._get_group_manager(DEFAULT_TRANSACTION).drop(context, tx_id)
 
 
 @dataclass(eq=False, slots=True)
