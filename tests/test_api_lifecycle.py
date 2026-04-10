@@ -19,6 +19,9 @@ from pyrolyze.lifecycle import (
     local_store,
     managed,
     managed_context,
+    on_after_commit,
+    on_after_rollback,
+    on_before_commit,
     owned,
     static,
     transient,
@@ -78,6 +81,81 @@ def build_working_cycle(self: LifecycleContext) -> list[object] | None:
 
 def reject_commit(_ctx: LifecycleContext) -> bool:
     return False
+
+
+def record_before_commit(
+    self: LifecycleContext,
+    current: LifecycleContext,
+    working: LifecycleContext,
+    tx_group: str,
+) -> None:
+    self.events.append(("before", current.value, working.value, tx_group))
+
+
+def record_after_commit(
+    self: LifecycleContext,
+    previous: object,
+    current: LifecycleContext,
+    tx_group: str,
+) -> None:
+    previous_handle = getattr(previous, "handle", None)
+    self.events.append(
+        (
+            "after",
+            getattr(previous, "value", None),
+            current.value,
+            None if previous_handle is None else previous_handle.is_closed,
+            tx_group,
+        )
+    )
+
+
+def record_after_rollback(
+    self: LifecycleContext,
+    current: LifecycleContext,
+    tx_group: str,
+) -> None:
+    self.events.append(("rollback", current.value, tx_group))
+
+
+def raise_after_commit(
+    self: LifecycleContext,
+    previous: object,
+    current: LifecycleContext,
+    tx_group: str,
+) -> None:
+    if not getattr(self, "raise_hook", False):
+        return
+    previous_handle = getattr(previous, "handle", None)
+    self.events.append(
+        (
+            "after_raise",
+            None if previous_handle is None else previous_handle.is_closed,
+            None if current.handle is None else current.handle.label,
+            tx_group,
+        )
+    )
+    raise RuntimeError("hook boom")
+
+
+def record_base_after_commit(
+    self: LifecycleContext,
+    previous: object,
+    current: LifecycleContext,
+    tx_group: str,
+) -> None:
+    del previous, current, tx_group
+    self.events.append("base")
+
+
+def record_derived_after_commit(
+    self: LifecycleContext,
+    previous: object,
+    current: LifecycleContext,
+    tx_group: str,
+) -> None:
+    del previous, current, tx_group
+    self.events.append("derived")
 
 
 with pytest.raises(TypeError, match="unsupported parameter"):
@@ -233,6 +311,42 @@ class GroupedIndependentCommitContext:
 
 
 @managed_context
+class CommitHookContext:
+    value: int = managed(default=0)
+    handle: SpyBinding | None = binding(default=None)
+    before_hook: object | None = on_before_commit(default=record_before_commit)
+    after_hook: object | None = on_after_commit(default=record_after_commit)
+    rollback_hook: object | None = on_after_rollback(default=record_after_rollback)
+
+
+@managed_context
+class RaisingCommitHookContext:
+    handle: SpyBinding | None = binding(default=None)
+    after_hook: object | None = on_after_commit(default=raise_after_commit)
+
+
+@managed_context
+class CommitHookBaseContext:
+    value: int = managed(default=0)
+    base_after_hook: object | None = on_after_commit(default=record_base_after_commit)
+
+
+@managed_context
+class CommitHookDerivedContext(CommitHookBaseContext):
+    derived_after_hook: object | None = on_after_commit(default=record_derived_after_commit)
+
+
+with pytest.raises(TypeError, match="incompatible lifecycle field override"):
+
+    @managed_context
+    class CommitHookOverrideMismatchContext(CommitHookBaseContext):
+        base_after_hook: object | None = on_after_commit(
+            default=record_derived_after_commit,
+            tx_group=GROUP_ALPHA,
+        )
+
+
+@managed_context
 class ContextAwareDefaultFactoryContext:
     triplet: tuple[int, int, int] = managed(default_factory=build_triplet)
     base: int = managed(default=7)
@@ -361,6 +475,22 @@ def test_validator_and_order_key_default_to_default_transaction() -> None:
 
     assert specs["validator"].tx_group == DEFAULT_TRANSACTION
     assert specs["order_key"].tx_group == DEFAULT_TRANSACTION
+
+
+def test_commit_hook_fields_compile_to_runner_tables_and_not_stored_values() -> None:
+    state_cls = CommitHookContext.__state_cls__
+    context = CommitHookContext()
+
+    assert DEFAULT_TRANSACTION in state_cls.__class_ftable_before_commit_runners__
+    assert DEFAULT_TRANSACTION in state_cls.__class_ftable_after_commit_runners__
+    assert DEFAULT_TRANSACTION in state_cls.__class_ftable_after_rollback_runners__
+    assert len(state_cls.__class_ftable_before_commit_runners__[DEFAULT_TRANSACTION]) == 1
+    assert len(state_cls.__class_ftable_after_commit_runners__[DEFAULT_TRANSACTION]) == 1
+    assert len(state_cls.__class_ftable_after_rollback_runners__[DEFAULT_TRANSACTION]) == 1
+
+    assert "before_hook" not in context.state.current_record.values
+    assert "after_hook" not in context.state.current_record.values
+    assert "rollback_hook" not in context.state.current_record.values
 
 
 def test_tx_group_metadata_is_recorded_for_grouped_fields() -> None:
@@ -1262,6 +1392,79 @@ def test_multi_group_commit_is_ordered_independent_not_coupled() -> None:
     assert context.current.left == 0
     assert context.right == 2
     assert context.left == 0
+
+
+def test_commit_hook_runners_observe_previous_binding_before_deferred_release() -> None:
+    manager = TransactionManager()
+    context = CommitHookContext(transaction_manager=manager)
+    context.events = []
+    first = SpyBinding("first")
+    second = SpyBinding("second")
+
+    manager.begin()
+    context.value = 1
+    context.handle = first
+    manager.commit()
+
+    manager.begin()
+    context.value = 2
+    context.handle = second
+    manager.commit()
+
+    assert ("before", 1, 2, DEFAULT_TRANSACTION) in context.events
+    assert ("after", 1, 2, False, DEFAULT_TRANSACTION) in context.events
+    assert first.closed_states == [True]
+    assert second.is_accepted is True
+
+
+def test_after_rollback_hook_runs_after_group_rollback() -> None:
+    manager = TransactionManager()
+    context = CommitHookContext(transaction_manager=manager)
+    context.events = []
+
+    manager.begin()
+    context.value = 9
+    manager.rollback()
+
+    assert context.current.value == 0
+    assert context.events == [("rollback", 0, DEFAULT_TRANSACTION)]
+
+
+def test_after_commit_hook_exception_still_releases_previous_binding_and_clears_manager() -> None:
+    manager = TransactionManager()
+    context = RaisingCommitHookContext(transaction_manager=manager)
+    context.events = []
+    context.raise_hook = False
+    first = SpyBinding("first")
+    second = SpyBinding("second")
+
+    manager.begin()
+    context.handle = first
+    manager.commit()
+
+    manager.begin()
+    context.raise_hook = True
+    context.handle = second
+    with pytest.raises(RuntimeError, match="hook boom"):
+        manager.commit()
+
+    assert context.current.handle is second
+    assert first.closed_states == [True]
+    assert context.events == [("after_raise", False, "second", DEFAULT_TRANSACTION)]
+    assert manager.active_transaction is None
+    assert manager.begin_count == 0
+
+
+def test_commit_hook_fields_aggregate_by_distinct_name_in_mro_order() -> None:
+    manager = TransactionManager()
+    context = CommitHookDerivedContext(transaction_manager=manager)
+    context.events = []
+
+    manager.begin()
+    context.value = 1
+    manager.commit()
+
+    assert context.events == ["base", "derived"]
 
 
 def test_transaction_manager_commit_and_rollback_require_balanced_begin() -> None:

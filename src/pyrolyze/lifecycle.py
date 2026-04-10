@@ -28,6 +28,9 @@ Only the restarted Phase 1.1/1.10 surface is implemented here:
 - ``derived``
 - ``commit_order_key``
 - ``commit_validator``
+- ``on_before_commit``
+- ``on_after_commit``
+- ``on_after_rollback``
 - ``managed_context``
 - ``LifecycleContext``
 - ``TransactionManager``
@@ -205,9 +208,11 @@ class GroupTransactionManager:
         if transaction is None:
             raise RuntimeError("lifecycle transaction manager state is corrupted")
         tx_id = transaction.tx_id
-        transaction.apply_commits()
-        self.active_transaction = None
-        self.begin_count = 0
+        try:
+            transaction.apply_commits()
+        finally:
+            self.active_transaction = None
+            self.begin_count = 0
         return tx_id
 
     def commit(self, tx_group: Hashable = DEFAULT_TRANSACTION) -> int | None:
@@ -482,22 +487,28 @@ FieldGetter = Callable[["LifecycleContextState", str], Any]
 FieldSetter = Callable[["LifecycleContextState", str, Any], None]
 FieldHook = Callable[["LifecycleContextState", str], None]
 FactoryRunner = Callable[["LifecycleContextState"], Any]
+InjectedRunner = Callable[["LifecycleContextState", dict[str, Any]], Any]
 
 _SUPPORTED_FACTORY_PARAMS = frozenset({"self", "current", "working"})
+_BEFORE_COMMIT_PARAMS = frozenset({"self", "current", "working", "tx_group"})
+_AFTER_COMMIT_PARAMS = frozenset({"self", "previous", "current", "tx_group"})
+_AFTER_ROLLBACK_PARAMS = frozenset({"self", "current", "tx_group"})
+_NONSTORED_HOOK_KINDS = frozenset({"on_before_commit", "on_after_commit", "on_after_rollback"})
 
 
-def _compile_factory_runner(
+def _compile_injected_runner(
     *,
     field_name: str,
     hook_name: str,
-    factory: Callable[..., Any],
-) -> FactoryRunner:
-    if inspect.isbuiltin(factory) or inspect.isclass(factory):
-        return lambda state, factory=factory: factory()
+    function: Callable[..., Any],
+    allowed_params: frozenset[str],
+) -> InjectedRunner:
+    if inspect.isbuiltin(function) or inspect.isclass(function):
+        return lambda state, injected, function=function: function()
     try:
-        signature = inspect.signature(factory)
+        signature = inspect.signature(function)
     except (TypeError, ValueError):
-        return lambda state, factory=factory: factory()
+        return lambda state, injected, function=function: function()
     parameter_names: tuple[str, ...] = ()
     if signature.parameters:
         names: list[str] = []
@@ -509,8 +520,8 @@ def _compile_factory_runner(
                 raise TypeError(
                     f"{hook_name} for field {field_name!r} must use named parameters only",
                 )
-            if parameter.name not in _SUPPORTED_FACTORY_PARAMS:
-                allowed = ", ".join(sorted(_SUPPORTED_FACTORY_PARAMS))
+            if parameter.name not in allowed_params:
+                allowed = ", ".join(sorted(allowed_params))
                 raise TypeError(
                     f"{hook_name} for field {field_name!r} uses unsupported parameter "
                     f"{parameter.name!r}; allowed: {allowed}",
@@ -518,22 +529,60 @@ def _compile_factory_runner(
             names.append(parameter.name)
         parameter_names = tuple(names)
     if not parameter_names:
-        return lambda state, factory=factory: factory()
+        return lambda state, injected, function=function: function()
 
-    def run(state: LifecycleContextState, factory: Callable[..., Any] = factory) -> Any:
+    def run(
+        state: LifecycleContextState,
+        injected: dict[str, Any],
+        function: Callable[..., Any] = function,
+    ) -> Any:
         kwargs: dict[str, Any] = {}
         for name in parameter_names:
             if name == "self":
                 kwargs[name] = state.owner
             elif name == "current":
-                kwargs[name] = state.current_view
+                kwargs[name] = injected.get("current", state.current_view)
             elif name == "working":
-                kwargs[name] = state.working_view
+                kwargs[name] = injected.get("working", state.working_view)
+            elif name == "previous":
+                kwargs[name] = injected["previous"]
+            elif name == "tx_group":
+                kwargs[name] = injected["tx_group"]
             else:
-                raise AssertionError(f"unexpected compiled lifecycle factory parameter {name!r}")
-        return factory(**kwargs)
+                raise AssertionError(f"unexpected compiled lifecycle parameter {name!r}")
+        return function(**kwargs)
 
     return run
+
+
+def _compile_factory_runner(
+    *,
+    field_name: str,
+    hook_name: str,
+    factory: Callable[..., Any],
+) -> FactoryRunner:
+    injected_runner = _compile_injected_runner(
+        field_name=field_name,
+        hook_name=hook_name,
+        function=factory,
+        allowed_params=_SUPPORTED_FACTORY_PARAMS,
+    )
+    return lambda state, injected_runner=injected_runner: injected_runner(state, {})
+
+
+def _compile_hook_runner(
+    *,
+    field_name: str,
+    hook_name: str,
+    hook: Callable[..., Any],
+    allowed_params: frozenset[str],
+) -> InjectedRunner:
+    return _compile_injected_runner(
+        field_name=field_name,
+        hook_name=hook_name,
+        function=hook,
+        allowed_params=allowed_params,
+    )
 
 
 @dataclass(slots=True)
@@ -615,6 +664,9 @@ class LifecycleField:
             "derived",
             "commit_order_key",
             "commit_validator",
+            "on_before_commit",
+            "on_after_commit",
+            "on_after_rollback",
         }:
             raise TypeError(f"unsupported lifecycle field kind {kind!r}")
         if compare not in {"value", "identity"}:
@@ -628,6 +680,15 @@ class LifecycleField:
                 raise TypeError("commit_validator fields cannot define default_factory")
             if initial_working is not MISSING:
                 raise TypeError("commit_validator fields cannot define initial_working")
+        if kind in _NONSTORED_HOOK_KINDS:
+            if default is MISSING:
+                raise TypeError(f"{kind} fields require default=callable")
+            if default_factory is not MISSING:
+                raise TypeError(f"{kind} fields cannot define default_factory")
+            if working_default_factory is not MISSING:
+                raise TypeError(f"{kind} fields cannot define working_default_factory")
+            if initial_working is not MISSING:
+                raise TypeError(f"{kind} fields cannot define initial_working")
         if (
             kind
             in {
@@ -640,6 +701,9 @@ class LifecycleField:
                 "derived",
                 "commit_order_key",
                 "commit_validator",
+                "on_before_commit",
+                "on_after_commit",
+                "on_after_rollback",
             }
             and state_factory is not None
         ):
@@ -869,6 +933,55 @@ def commit_validator(
         tx_group=tx_group,
         default=default,
     )
+
+
+def on_before_commit(
+    *,
+    tx_group: Hashable = DEFAULT_TRANSACTION,
+    default: Any = MISSING,
+) -> Any:
+    return lifecycle_field(
+        kind="on_before_commit",
+        compare="identity",
+        tx_group=tx_group,
+        default=default,
+    )
+
+
+def on_after_commit(
+    *,
+    tx_group: Hashable = DEFAULT_TRANSACTION,
+    default: Any = MISSING,
+) -> Any:
+    return lifecycle_field(
+        kind="on_after_commit",
+        compare="identity",
+        tx_group=tx_group,
+        default=default,
+    )
+
+
+def on_after_rollback(
+    *,
+    tx_group: Hashable = DEFAULT_TRANSACTION,
+    default: Any = MISSING,
+) -> Any:
+    return lifecycle_field(
+        kind="on_after_rollback",
+        compare="identity",
+        tx_group=tx_group,
+        default=default,
+    )
+
+
+def _get_hook_declaration_field(state: LifecycleContextState, name: str) -> Any:
+    del state
+    raise AttributeError(f"hook field {name!r} is a declaration and is not readable")
+
+
+def _set_hook_declaration_field(state: LifecycleContextState, name: str, value: Any) -> None:
+    del state, value
+    raise AttributeError(f"hook field {name!r} is a declaration and is not writable")
 
 
 def _get_default_overlay_field_for_index(
@@ -1274,7 +1387,7 @@ def _commit_binding_field_for_index(state: LifecycleContextState, name: str, tx_
     if next_value is not None and next_value is not current:
         next_value.accepted()
     if current is not None and current is not next_value:
-        current.dec_ref()
+        state.defer_commit_cleanup(current.dec_ref)
     state.current_record.values[name] = next_value
 
 
@@ -1311,7 +1424,7 @@ def _commit_binding_map_field_for_index(state: LifecycleContextState, name: str,
     current_map = state.current_record.values[name]
     next_map = working.values[name]
     _accept_binding_map(next_map)
-    _release_binding_map(current_map)
+    state.defer_commit_cleanup(lambda current_map=current_map: _release_binding_map(current_map))
     state.current_record.values[name] = next_map
 
 
@@ -1372,6 +1485,9 @@ class LifecycleContextState:
     __class_ftable_tx_index__: dict[str, int] = {}
     __class_ftable_default_factory_runner__: dict[str, FactoryRunner] = {}
     __class_ftable_working_default_factory_runner__: dict[str, FactoryRunner] = {}
+    __class_ftable_before_commit_runners__: dict[Hashable, tuple[InjectedRunner, ...]] = {}
+    __class_ftable_after_commit_runners__: dict[Hashable, tuple[InjectedRunner, ...]] = {}
+    __class_ftable_after_rollback_runners__: dict[Hashable, tuple[InjectedRunner, ...]] = {}
 
     __slots__ = (
         "owner",
@@ -1386,6 +1502,7 @@ class LifecycleContextState:
         "current_view",
         "working_view",
         "_resolving_factories",
+        "_deferred_commit_cleanup",
     )
 
     def __init__(
@@ -1408,8 +1525,11 @@ class LifecycleContextState:
         self.current_view = type(owner).__current_view_cls__(_state=self, _owner=owner)
         self.working_view = type(owner).__working_view_cls__(_state=self, _owner=owner)
         self._resolving_factories: list[tuple[str, str]] = []
+        self._deferred_commit_cleanup: list[Callable[[], None]] | None = None
 
         for name, spec in type(self).__field_specs__.items():
+            if spec.kind in _NONSTORED_HOOK_KINDS:
+                continue
             if spec.kind == "local_store":
                 if name in values:
                     self.local_store_values[name] = values.pop(name)
@@ -1426,6 +1546,8 @@ class LifecycleContextState:
             raise TypeError(f"unexpected lifecycle constructor fields: {unexpected}")
 
         for name in type(self).__field_specs__:
+            if type(self).__field_specs__[name].kind in _NONSTORED_HOOK_KINDS:
+                continue
             self.resolve_default_field(name)
 
     def get_field(self, name: str) -> Any:
@@ -1620,6 +1742,58 @@ class LifecycleContextState:
             return None
         return self.current_record.values[field_name]
 
+    def defer_commit_cleanup(self, callback: Callable[[], None]) -> None:
+        if self._deferred_commit_cleanup is None:
+            callback()
+            return
+        self._deferred_commit_cleanup.append(callback)
+
+    def _run_before_commit_hooks(
+        self,
+        tx_group: Hashable,
+        *,
+        current: _ManagedContextBase,
+        working: _ManagedContextBase,
+    ) -> None:
+        self.owner.before_commit(current, working)
+        injected = {
+            "current": current,
+            "working": working,
+            "tx_group": tx_group,
+        }
+        for runner in type(self).__class_ftable_before_commit_runners__.get(tx_group, ()):
+            runner(self, injected)
+
+    def _run_after_commit_hooks(
+        self,
+        tx_group: Hashable,
+        *,
+        previous: _RecordSnapshot,
+        current: _ManagedContextBase,
+    ) -> None:
+        self.owner.after_commit(previous, self.snapshot_current())
+        injected = {
+            "previous": previous,
+            "current": current,
+            "tx_group": tx_group,
+        }
+        for runner in type(self).__class_ftable_after_commit_runners__.get(tx_group, ()):
+            runner(self, injected)
+
+    def _run_after_rollback_hooks(
+        self,
+        tx_group: Hashable,
+        *,
+        current: _ManagedContextBase,
+    ) -> None:
+        self.owner.after_rollback(self.snapshot_current())
+        injected = {
+            "current": current,
+            "tx_group": tx_group,
+        }
+        for runner in type(self).__class_ftable_after_rollback_runners__.get(tx_group, ()):
+            runner(self, injected)
+
     def reset_to_default(self, name: str) -> Any:
         spec = type(self).__field_specs__[name]
         if spec.kind == "local_store":
@@ -1640,15 +1814,39 @@ class LifecycleContextState:
             self.transaction_manager.drop(self.owner, tx_state.working_tx_id, tx_group)
 
         previous = self.snapshot_current()
-        self.owner.before_commit(self.current_view, self.working_view)
-        for name in type(self).__field_names__:
-            if self.tx_index_for_field(name) != tx_index:
-                continue
-            type(self).__class_ftable_commit_field__[name](self, name)
-        tx_state.working_record = None
-        tx_state.working_tx_id = None
-        self.ever_committed = True
-        self.owner.after_commit(previous, self.snapshot_current())
+        committed = False
+        self._deferred_commit_cleanup = []
+        try:
+            self._run_before_commit_hooks(
+                tx_group,
+                current=self.current_view,
+                working=self.working_view,
+            )
+            for name in type(self).__field_names__:
+                if self.tx_index_for_field(name) != tx_index:
+                    continue
+                type(self).__class_ftable_commit_field__[name](self, name)
+            tx_state.working_record = None
+            tx_state.working_tx_id = None
+            self.ever_committed = True
+            committed = True
+            current = self.owner.current
+            try:
+                self._run_after_commit_hooks(tx_group, previous=previous, current=current)
+            finally:
+                for callback in self._deferred_commit_cleanup:
+                    callback()
+        except BaseException:
+            if not committed and tx_state.working_record is not None:
+                for name in type(self).__field_names__:
+                    if self.tx_index_for_field(name) != tx_index:
+                        continue
+                    type(self).__class_ftable_rollback_field__[name](self, name)
+                tx_state.working_record = None
+                tx_state.working_tx_id = None
+            raise
+        finally:
+            self._deferred_commit_cleanup = None
         return self.owner.current
 
     def rollback(self, tx_group: Hashable = DEFAULT_TRANSACTION) -> _ManagedContextBase:
@@ -1666,7 +1864,7 @@ class LifecycleContextState:
             type(self).__class_ftable_rollback_field__[name](self, name)
         tx_state.working_record = None
         tx_state.working_tx_id = None
-        self.owner.after_rollback(self.snapshot_current())
+        self._run_after_rollback_hooks(tx_group, current=self.owner.current)
         return self.owner.current
 
     def commit_transaction(
@@ -1886,6 +2084,62 @@ class _ManagedContextBase:
 LifecycleContext = _ManagedContextBase
 
 
+def _build_hook_runner_tables(
+    specs: dict[str, FieldSpec],
+) -> dict[str, dict[Hashable, tuple[InjectedRunner, ...]]]:
+    before_commit_runners: dict[Hashable, list[InjectedRunner]] = {}
+    after_commit_runners: dict[Hashable, list[InjectedRunner]] = {}
+    after_rollback_runners: dict[Hashable, list[InjectedRunner]] = {}
+
+    for name, spec in specs.items():
+        if spec.kind not in _NONSTORED_HOOK_KINDS:
+            continue
+        hook = typing.cast(Callable[..., Any], spec.default)
+        if not callable(hook):
+            raise TypeError(f"{spec.kind} field {name!r} requires a callable default")
+        if spec.kind == "on_before_commit":
+            before_commit_runners.setdefault(spec.tx_group, []).append(
+                _compile_hook_runner(
+                    field_name=name,
+                    hook_name="on_before_commit",
+                    hook=hook,
+                    allowed_params=_BEFORE_COMMIT_PARAMS,
+                )
+            )
+        elif spec.kind == "on_after_commit":
+            after_commit_runners.setdefault(spec.tx_group, []).append(
+                _compile_hook_runner(
+                    field_name=name,
+                    hook_name="on_after_commit",
+                    hook=hook,
+                    allowed_params=_AFTER_COMMIT_PARAMS,
+                )
+            )
+        elif spec.kind == "on_after_rollback":
+            after_rollback_runners.setdefault(spec.tx_group, []).append(
+                _compile_hook_runner(
+                    field_name=name,
+                    hook_name="on_after_rollback",
+                    hook=hook,
+                    allowed_params=_AFTER_ROLLBACK_PARAMS,
+                )
+            )
+        else:
+            raise AssertionError(f"unexpected hook field kind {spec.kind!r}")
+
+    return {
+        "__class_ftable_before_commit_runners__": {
+            tx_group: tuple(runners) for tx_group, runners in before_commit_runners.items()
+        },
+        "__class_ftable_after_commit_runners__": {
+            tx_group: tuple(runners) for tx_group, runners in after_commit_runners.items()
+        },
+        "__class_ftable_after_rollback_runners__": {
+            tx_group: tuple(runners) for tx_group, runners in after_rollback_runners.items()
+        },
+    }
+
+
 def _build_class_tables(
     specs: dict[str, FieldSpec],
     *,
@@ -2023,6 +2277,16 @@ def _build_class_tables(
             get_working[name] = _get_current_field
             set_default[name] = _set_const_field
             set_working[name] = _set_const_field
+            commit_field[name] = _close_noop
+            rollback_field[name] = _close_noop
+            state_factory[name] = None
+            state_copy[name] = None
+        elif spec.kind in _NONSTORED_HOOK_KINDS:
+            get_default[name] = _get_hook_declaration_field
+            get_current[name] = _get_hook_declaration_field
+            get_working[name] = _get_hook_declaration_field
+            set_default[name] = _set_hook_declaration_field
+            set_working[name] = _set_hook_declaration_field
             commit_field[name] = _close_noop
             rollback_field[name] = _close_noop
             state_factory[name] = None
@@ -2239,6 +2503,8 @@ def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
         tx_group_to_index=state_cls.__class_tx_group_to_index__,
     ).items():
         setattr(state_cls, table_name, table)
+    for table_name, table in _build_hook_runner_tables(state_cls.__field_specs__).items():
+        setattr(state_cls, table_name, table)
     wrapped.__state_cls__ = state_cls
     wrapped.__current_view_cls__ = _build_view_class(
         f"{wrapped.__name__}_CurrentView",
@@ -2272,6 +2538,9 @@ __all__ = [
     "local_store",
     "managed",
     "managed_context",
+    "on_after_commit",
+    "on_after_rollback",
+    "on_before_commit",
     "owned",
     "static",
     "transient",
