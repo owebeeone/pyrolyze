@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .context_base import _context_kind
+from pyrolyze.runtime.slot_kinds import ContextKind
 from ._base import StateMgrBase, unavailable
 
 
@@ -13,8 +13,8 @@ class SlotContextStateMgr(StateMgrBase):
     def current_generation_id(self) -> int:
         return self.owner.render_context.current_generation_id()
 
-    def context_kind(self) -> str:
-        return _context_kind(self.owner)
+    def context_kind(self) -> ContextKind:
+        return self.owner.get_kind()
 
     def visit_self_and_dirty(self) -> bool:
         owner = self.owner

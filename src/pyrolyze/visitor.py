@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from pyrolyze.api import UIElement
+from pyrolyze.runtime.slot_kinds import ContextKind
 from pyrolyze.runtime.pyro_call import RuntimeSiteMetadata
 from pyrolyze.runtime.context import (
     ComponentCallSlotContext,
@@ -20,7 +21,9 @@ from pyrolyze.runtime.context import (
 
 @dataclass(frozen=True, slots=True)
 class ContextVisitRecord:
-    kind: str
+    # Visitor-visible context classification for capture/debug output.
+    # This is descriptive metadata, not a runtime dispatch token.
+    kind: ContextKind
     slot_id: SlotId | None
     generation_id: int
     site_metadata: tuple["CapturedSiteMetadata", ...] = ()
@@ -58,7 +61,9 @@ class CapturedSiteMetadata:
 
 @dataclass(frozen=True, slots=True)
 class CapturedContext:
-    kind: str
+    # Stable descriptive kind emitted by the runtime visitor API.
+    # Consumers should treat this as inspection/debug metadata.
+    kind: ContextKind
     slot_id: SlotId | None
     generation_id: int
     site_metadata: tuple[CapturedSiteMetadata, ...]
@@ -229,7 +234,7 @@ def compare_context_graphs(
 
 @dataclass(frozen=True, slots=True)
 class _LogicalContext:
-    kind: str
+    kind: ContextKind
     slot_id: SlotId | None
     generation_id: int
     site_metadata: tuple[CapturedSiteMetadata, ...]

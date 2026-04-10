@@ -49,6 +49,17 @@ commits. This is what backend reconcilers consume.
 - graph capture helpers
   - `src/pyrolyze/visitor.py`
 
+## Visitor API note
+
+The visitor capture API records a visitor-visible context `kind` for each
+captured node.
+
+- `kind` exists so captured graphs have a stable descriptive label that does not
+  depend on raw Python class names in the exported graph shape
+- `kind` is inspection/debug metadata for visitors and graph diffs
+- `kind` is not intended to be a runtime dispatch mechanism; runtime behavior
+  should continue to use class polymorphism and explicit methods
+
 ## Primary tests
 
 - `tests/test_context_graph_phase1.py`

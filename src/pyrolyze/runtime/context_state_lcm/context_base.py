@@ -6,7 +6,9 @@ from typing import TYPE_CHECKING, Any, Callable, TypeVar
 
 from pyrolyze.api import MountDirective, UIElement
 from pyrolyze.freezable import freezable_dataclass, frozen_dataclass
+from pyrolyze.lifecycle import const, local_store, managed, managed_context, transient
 from pyrolyze.runtime.app_context import APP_CONTEXT_MISSING
+from pyrolyze.runtime.slot_kinds import ContextKind
 from pyrolyze.runtime.slot_call_semantics import ExternalStoreRef
 from pyrolyze.runtime.slot_expr import SlotExpr
 from ._base import StateMgrBase
@@ -37,12 +39,13 @@ from ._support import (
 T = TypeVar("T")
 
 if TYPE_CHECKING:
-    from pyrolyze.runtime.app_context import AppContextKey
-    from pyrolyze.runtime.context_bare_refactor_lcm import RenderContext, SlotContext
+    from pyrolyze.runtime.app_context import AppContextKey, GenerationTracker
+    from pyrolyze.runtime.context_bare_refactor_lcm import ContextBase, RenderContext, SlotContext
     from pyrolyze.runtime.slot_identity import SlotId
 
 
 UiNode = UIElement | MountDirective
+PASS_TX_GROUP = "context_pass"
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,68 +112,59 @@ class ContextLocalCache:
     literal_initialized: list[bool] = field(default_factory=list)
 
 
-def _context_kind(owner: Any) -> str:
-    owner_type_name = type(owner).__name__
-    if owner_type_name == "RenderContext":
-        return "render_root" if getattr(owner, "_owner_slot", None) is None else "component_render"
-    if owner_type_name == "AppContextOverrideSlotContext":
-        return "app_context_override"
-    if owner_type_name == "ContainerSlotContext":
-        return "container"
-    if owner_type_name == "SlotCallSlotContext":
-        return "slot_call"
-    if owner_type_name == "ComponentCallSlotContext":
-        return "component_call"
-    if owner_type_name == "KeyedLoopSlotContext":
-        return "keyed_loop"
-    if owner_type_name == "LoopItemSlotContext":
-        return "loop_item"
-    if owner_type_name == "EventHandlerSlotContext":
-        return "event_handler"
-    if owner_type_name == "LeafSlotContext":
-        return "leaf"
-    if owner_type_name == "SlotContext":
-        return "slot"
-    return owner_type_name
-
-
+@managed_context
 class ContextBaseStateMgr(StateMgrBase):
-    def __init__(self, owner: Any) -> None:
+    # These field declarations are the lifecycle target semantics for the
+    # context base state manager.
+    #
+    # Important:
+    # The methods below are still the legacy behavior scaffold and still talk
+    # in terms of owner._children / owner._committed_ui / owner._scope_active.
+    # We are intentionally not resolving that behavioral mismatch in this step.
+    # This change is only to move the state classification into actual
+    # lifecycle/freezable declarations so the intended field semantics are
+    # visible in the file.
+    _generation_tracker_key: AppContextKey[GenerationTracker] = const()
+    _render_context: RenderContext = const()
+    _subtree: FrozenContextSubtreeState = managed(default=FrozenContextSubtreeState())
+    _pass_control: ContextPassControl | None = transient(
+        default=None,
+        working_default_factory=ContextPassControl,
+        tx_group=PASS_TX_GROUP,
+    )
+    _rollback_state: ContextRollbackState | None = transient(
+        default=None,
+        working_default_factory=ContextRollbackState,
+        tx_group=PASS_TX_GROUP,
+    )
+    _staged_state: ContextStagedState | None = transient(
+        default=None,
+        working_default_factory=ContextStagedState,
+        tx_group=PASS_TX_GROUP,
+    )
+    _local_cache: ContextLocalCache = local_store(default_factory=ContextLocalCache)
+
+    def __init__(self, owner: ContextBase) -> None:
         super().__init__(owner)
         self._generation_tracker_key = owner._generation_tracker_key_const
         self._render_context = owner.render_context
-        self._children: dict[Any, Any] = {}
-        self._literal_initialized: list[bool] = []
-        self._literal_index = 0
-        self._scope_active = False
-        self._pass_child_order: tuple[Any, ...] = ()
-        self._pass_child_dirty: dict[Any, bool] = {}
-        self._committed_ui: tuple[Any, ...] = ()
-        self._own_committed_ui: tuple[Any, ...] = ()
-        self._own_committed_ui_entries: tuple[Any, ...] = ()
-        self._pass_committed_ui: tuple[Any, ...] = ()
-        self._pass_own_committed_ui: tuple[Any, ...] = ()
-        self._pass_own_committed_ui_entries: tuple[Any, ...] = ()
-        self._staged_ui: list[Any] = []
-        self._staged_ui_entries: list[Any] = []
-        self._pass_committed_native_root = False
 
-    def root_context(self) -> Any:
+    def root_context(self) -> RenderContext:
         return self._render_context
 
-    def get_app_context(self, key: Any) -> Any:
+    def get_app_context(self, key: AppContextKey[T]) -> T:
         return self.owner.root_context._scheduler_root._app_context_store.get(key)
 
-    def has_app_context(self, key: Any) -> bool:
+    def has_app_context(self, key: AppContextKey[object]) -> bool:
         return self.owner.root_context._scheduler_root._app_context_store.has(key)
 
-    def get_authored_app_context(self, key: Any) -> Any:
+    def get_authored_app_context(self, key: AppContextKey[T]) -> T:
         return self.owner._effective_authored_app_context_lookup().get(key)
 
-    def has_authored_app_context(self, key: Any) -> bool:
+    def has_authored_app_context(self, key: AppContextKey[object]) -> bool:
         return self.owner._effective_authored_app_context_lookup().has(key)
 
-    def authored_app_context_ref(self, key: Any) -> Any:
+    def authored_app_context_ref(self, key: AppContextKey[T]) -> ExternalStoreRef[T]:
         lookup = self.owner._effective_authored_app_context_lookup()
         drip = lookup.resolve_drip(key)
         if drip is None or drip.get() is APP_CONTEXT_MISSING:
@@ -188,7 +182,7 @@ class ContextBaseStateMgr(StateMgrBase):
 
             return drip.subscribe_priority(on_change)
 
-        def get() -> Any:
+        def get() -> T:
             current = drip.get()
             if current is APP_CONTEXT_MISSING:
                 raise LookupError(f"no authored app context for key {key.debug_name!r}")
@@ -204,11 +198,11 @@ class ContextBaseStateMgr(StateMgrBase):
         tracker = self.get_app_context(self._generation_tracker_key)
         return tracker.current()
 
-    def current_slot_id(self) -> Any:
+    def current_slot_id(self) -> SlotId | None:
         return getattr(self.owner, "slot_id", None)
 
-    def context_kind(self) -> str:
-        return _context_kind(self.owner)
+    def context_kind(self) -> ContextKind:
+        return self.owner.get_kind()
 
     def pass_scope(self) -> Any:
         return self.owner._pass_scope_handle_cls(context=self.owner, activate=not self.owner._scope_active)
@@ -289,7 +283,7 @@ class ContextBaseStateMgr(StateMgrBase):
             child.invoke_dirty = owner._pass_child_dirty.get(slot_id, child.invoke_dirty)
             child.seen_in_pass = True
 
-        restored_children: dict[Any, Any] = {}
+        restored_children: dict[SlotId, SlotContext] = {}
         for slot_id in owner._pass_child_order:
             child = owner._children.get(slot_id)
             if child is not None:

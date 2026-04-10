@@ -56,6 +56,7 @@ from .slot_call_core import (
     should_invoke_slot_call,
 )
 from .pyro_call import RuntimeSiteMetadata, resolve_runtime_pyro_call
+from .slot_kinds import ContextKind
 from .trace import TraceChannel, emit_trace, trace_enabled
 from .slot_identity import ModuleId, ModuleRegistry, SlotId, SlotIdPath, module_registry
 
@@ -372,6 +373,7 @@ class _InvalidationScheduler:
 
 
 class ContextBase(SlotExprLiteralContext):
+    _context_kind = ContextKind.SLOT
     def __init__(self, render_context: RenderContext) -> None:
         self._render_context = render_context
         self._children: dict[SlotId, SlotContext] = {}
@@ -451,8 +453,11 @@ class ContextBase(SlotExprLiteralContext):
             return self._authored_app_context_lookup
         return EMPTY_APP_CONTEXT_LOOKUP
 
-    def context_kind(self) -> str:
-        return _context_kind(self)
+    def context_kind(self) -> ContextKind:
+        return self.get_kind()
+
+    def get_kind(self) -> ContextKind:
+        return type(self)._context_kind
 
     def pass_scope(self) -> _PassScopeHandle:
         return _PassScopeHandle(context=self, activate=not self._scope_active)
@@ -1033,6 +1038,7 @@ def _bind_pending_event_plain_value(owner: ContextBase, value: Any) -> Any:
 
 @dataclass(slots=True)
 class SlotContext:
+    _context_kind = ContextKind.SLOT
     render_context: RenderContext
     parent: ContextBase
     slot_id: SlotId
@@ -1045,8 +1051,11 @@ class SlotContext:
     def current_generation_id(self) -> int:
         return self.render_context.current_generation_id()
 
-    def context_kind(self) -> str:
-        return _context_kind(self)
+    def context_kind(self) -> ContextKind:
+        return self.get_kind()
+
+    def get_kind(self) -> ContextKind:
+        return type(self)._context_kind
 
     def visit_self_and_dirty(self) -> bool:
         if not isinstance(self, ContextBase):
@@ -1067,6 +1076,7 @@ class SlotContext:
 
 @dataclass(slots=True)
 class EventHandlerSlotContext(SlotContext):
+    _context_kind = ContextKind.EVENT_HANDLER
     committed_callback: Callable[..., Any] | None = None
     committed_key: object | None = None
     staged_callback: Callable[..., Any] | None = None
@@ -1207,6 +1217,7 @@ class SlotExprSlotContext(RerunnableSlotContext):
 
 @dataclass(slots=True)
 class SlotCallSlotContext(RerunnableSlotContext):
+    _context_kind = ContextKind.SLOT_CALL
     function_identity: Any = None
     schema: tuple[int, tuple[str, ...]] = (0, ())
     last_args: tuple[Any, ...] = ()
@@ -1468,6 +1479,7 @@ class _CommittedAppContextOverrideKeyState:
 
 @dataclass(slots=True)
 class AppContextOverrideSlotContext(RerunnableSlotContext):
+    _context_kind = ContextKind.APP_CONTEXT_OVERRIDE
     declared_keys: tuple[AppContextKey[Any], ...] = ()
     committed_values: tuple[Any, ...] = ()
     _committed_key_states: dict[AppContextKey[Any], _CommittedAppContextOverrideKeyState] = field(default_factory=dict)
@@ -1590,6 +1602,7 @@ class AppContextOverrideSlotContext(RerunnableSlotContext):
 
 @dataclass(slots=True)
 class ContainerSlotContext(RerunnableSlotContext):
+    _context_kind = ContextKind.CONTAINER
     expects_native_root: bool = False
     committed_native_root: bool = False
     _pass_committed_native_root: bool = False
@@ -1598,6 +1611,7 @@ class ContainerSlotContext(RerunnableSlotContext):
 
 @dataclass(slots=True)
 class ComponentCallSlotContext(RerunnableSlotContext):
+    _context_kind = ContextKind.COMPONENT_CALL
     component_identity: Any = None
     schema: tuple[int, tuple[str, ...]] = (0, ())
     child_context: RenderContext | None = None
@@ -1871,11 +1885,13 @@ class ComponentCallSlotContext(RerunnableSlotContext):
 
 @dataclass(slots=True)
 class KeyedLoopSlotContext(RerunnableSlotContext):
+    _context_kind = ContextKind.KEYED_LOOP
     pass
 
 
 @dataclass(slots=True)
 class LoopItemSlotContext(RerunnableSlotContext):
+    _context_kind = ContextKind.LOOP_ITEM
     current: Any = None
     current_dirty: Any = True
     current_initialized: bool = False
@@ -1896,6 +1912,7 @@ class LoopItemSlotContext(RerunnableSlotContext):
 
 @dataclass(slots=True)
 class LeafSlotContext(RerunnableSlotContext):
+    _context_kind = ContextKind.LEAF
     last_args: tuple[Any, ...] = ()
     last_kwargs: tuple[tuple[str, Any], ...] = ()
 
@@ -2257,6 +2274,10 @@ class _KeyedLoopIterable(Generic[T]):
 
 
 class RenderContext(ContextBase):
+    def get_kind(self) -> ContextKind:
+        if self._owner_slot is None:
+            return ContextKind.RENDER_ROOT
+        return ContextKind.COMPONENT_RENDER
     def __init__(
         self,
         *,
@@ -2599,31 +2620,6 @@ class RenderContext(ContextBase):
             )
 
         self._mount_advertisements_by_slot = next_entries
-
-
-def _context_kind(context: object) -> str:
-    if isinstance(context, RenderContext):
-        return "render_root" if context._owner_slot is None else "component_render"
-    if isinstance(context, AppContextOverrideSlotContext):
-        return "app_context_override"
-    if isinstance(context, ContainerSlotContext):
-        return "container"
-    if isinstance(context, SlotCallSlotContext):
-        return "slot_call"
-    if isinstance(context, ComponentCallSlotContext):
-        return "component_call"
-    if isinstance(context, KeyedLoopSlotContext):
-        return "keyed_loop"
-    if isinstance(context, LoopItemSlotContext):
-        return "loop_item"
-    if isinstance(context, EventHandlerSlotContext):
-        return "event_handler"
-    if isinstance(context, LeafSlotContext):
-        return "leaf"
-    if isinstance(context, SlotContext):
-        return "slot"
-    return type(context).__name__
-
 
 __all__ = [
     "AppContextOverrideSlotContext",

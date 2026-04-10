@@ -36,6 +36,7 @@ from .slot_call_semantics import (
     UseEffectBinding,
     UseEffectRequest,
 )
+from .slot_kinds import ContextKind
 from .slot_identity import ModuleId, ModuleRegistry, SlotId, SlotIdPath, module_registry
 
 
@@ -142,6 +143,7 @@ class ContainerCallRuntimeContext:
 
 
 class ContextBase:
+    _context_kind = ContextKind.SLOT
     render_context: "RenderContext"
 
     def __init__(self, render_context: "RenderContext") -> None:
@@ -177,8 +179,11 @@ class ContextBase:
     def current_slot_id(self) -> SlotId:
         _unavailable()
 
-    def context_kind(self) -> str:
-        _unavailable()
+    def context_kind(self) -> ContextKind:
+        return self.get_kind()
+
+    def get_kind(self) -> ContextKind:
+        return type(self)._context_kind
 
     def pass_scope(self) -> Any:
         _unavailable()
@@ -310,6 +315,7 @@ class ContextBase:
 
 
 class SlotContext:
+    _context_kind = ContextKind.SLOT
     render_context: "RenderContext"
     parent: ContextBase
     slot_id: SlotId
@@ -336,8 +342,11 @@ class SlotContext:
     def current_generation_id(self) -> int:
         _unavailable()
 
-    def context_kind(self) -> str:
-        _unavailable()
+    def context_kind(self) -> ContextKind:
+        return self.get_kind()
+
+    def get_kind(self) -> ContextKind:
+        return type(self)._context_kind
 
     def visit_self_and_dirty(self) -> bool:
         _unavailable()
@@ -347,6 +356,7 @@ class SlotContext:
 
 
 class EventHandlerSlotContext(SlotContext):
+    _context_kind = ContextKind.EVENT_HANDLER
     def stage_callback(
         self,
         *,
@@ -403,6 +413,7 @@ class SlotExprSlotContext(RerunnableSlotContext):
 
 
 class SlotCallSlotContext(RerunnableSlotContext):
+    _context_kind = ContextKind.SLOT_CALL
     def evaluate(
         self,
         func: Callable[..., T],
@@ -462,6 +473,7 @@ class DirectiveSlotContext(SlotCallSlotContext):
 
 
 class AppContextOverrideSlotContext(RerunnableSlotContext):
+    _context_kind = ContextKind.APP_CONTEXT_OVERRIDE
     def stage_override(
         self,
         keys: tuple[AppContextKey[Any], ...],
@@ -472,10 +484,12 @@ class AppContextOverrideSlotContext(RerunnableSlotContext):
 
 
 class ContainerSlotContext(RerunnableSlotContext):
+    _context_kind = ContextKind.CONTAINER
     pass
 
 
 class ComponentCallSlotContext(RerunnableSlotContext):
+    _context_kind = ContextKind.COMPONENT_CALL
     def invoke(
         self,
         component: Callable[..., Any],
@@ -509,10 +523,12 @@ class ComponentCallSlotContext(RerunnableSlotContext):
 
 
 class KeyedLoopSlotContext(RerunnableSlotContext):
+    _context_kind = ContextKind.KEYED_LOOP
     pass
 
 
 class LoopItemSlotContext(RerunnableSlotContext):
+    _context_kind = ContextKind.LOOP_ITEM
     def current_value(self) -> Any:
         _unavailable()
 
@@ -522,6 +538,7 @@ class LoopItemSlotContext(RerunnableSlotContext):
 
 
 class LeafSlotContext(RerunnableSlotContext):
+    _context_kind = ContextKind.LEAF
     def invoke(self, leaf_fn: Callable[..., Any], args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
         _ = (leaf_fn, args, kwargs)
         _unavailable()
@@ -539,6 +556,10 @@ class LeafSlotContext(RerunnableSlotContext):
 
 
 class RenderContext(ContextBase):
+    def get_kind(self) -> ContextKind:
+        if self._owner_slot is None:
+            return ContextKind.RENDER_ROOT
+        return ContextKind.COMPONENT_RENDER
     def __init__(
         self,
         *,

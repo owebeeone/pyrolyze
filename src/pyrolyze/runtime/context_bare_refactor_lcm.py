@@ -68,6 +68,7 @@ from .slot_call_semantics import (
     UseEffectBinding,
     UseEffectRequest,
 )
+from .slot_kinds import ContextKind
 from .slot_identity import ModuleId, ModuleRegistry, SlotId, SlotIdPath, module_registry
 from .trace import TraceChannel, emit_trace, trace_enabled
 
@@ -82,12 +83,16 @@ def _unavailable() -> None:
 class _StateDelegatingObject:
     _state_mgr_cls = ContextBaseStateMgr
     _state_mgr: Any
+    _context_kind = ContextKind.SLOT
 
     def _init_state_mgr(self) -> None:
-        self._state_mgr = self._state_mgr_cls(self)
+        self._state_mgr = self._state_mgr_cls(owner=self)
 
     def _delegate(self, name: str, *args: Any, **kwargs: Any) -> Any:
         return getattr(self._state_mgr, name)(*args, **kwargs)
+
+    def get_kind(self) -> ContextKind:
+        return type(self)._context_kind
 
 
 @dataclass(frozen=True, slots=True)
@@ -463,6 +468,7 @@ class ContextBase(_StateDelegatingObject, SlotExprLiteralContext):
     _state_mgr_cls = ContextBaseStateMgr
     _pass_scope_handle_cls = _PassScopeHandle
     _generation_tracker_key_const = GENERATION_TRACKER_KEY
+    _context_kind = ContextKind.SLOT
     _state_attr_names = {
         "_generation_tracker_key",
         "_render_context",
@@ -618,7 +624,7 @@ class ContextBase(_StateDelegatingObject, SlotExprLiteralContext):
     def current_slot_id(self) -> SlotId:
         return self._delegate("current_slot_id")
 
-    def context_kind(self) -> str:
+    def context_kind(self) -> ContextKind:
         return self._delegate("context_kind")
 
     def pass_scope(self) -> Any:
@@ -751,6 +757,7 @@ class ContextBase(_StateDelegatingObject, SlotExprLiteralContext):
 
 class SlotContext(_StateDelegatingObject):
     _state_mgr_cls = SlotContextStateMgr
+    _context_kind = ContextKind.SLOT
     render_context: "RenderContext"
     parent: ContextBase
     slot_id: SlotId
@@ -780,7 +787,7 @@ class SlotContext(_StateDelegatingObject):
     def current_generation_id(self) -> int:
         return self._delegate("current_generation_id")
 
-    def context_kind(self) -> str:
+    def context_kind(self) -> ContextKind:
         return self._delegate("context_kind")
 
     def visit_self_and_dirty(self) -> bool:
@@ -792,6 +799,7 @@ class SlotContext(_StateDelegatingObject):
 
 class EventHandlerSlotContext(SlotContext):
     _state_mgr_cls = EventHandlerSlotContextStateMgr
+    _context_kind = ContextKind.EVENT_HANDLER
 
     def __init__(
         self,
@@ -895,6 +903,7 @@ class SlotExprSlotContext(RerunnableSlotContext):
 
 class SlotCallSlotContext(RerunnableSlotContext):
     _state_mgr_cls = SlotCallSlotContextStateMgr
+    _context_kind = ContextKind.SLOT_CALL
 
     def __init__(
         self,
@@ -1101,6 +1110,7 @@ class DirectiveSlotContext(SlotCallSlotContext):
 
 class AppContextOverrideSlotContext(RerunnableSlotContext):
     _state_mgr_cls = AppContextOverrideSlotContextStateMgr
+    _context_kind = ContextKind.APP_CONTEXT_OVERRIDE
 
     def __init__(
         self,
@@ -1138,6 +1148,7 @@ class AppContextOverrideSlotContext(RerunnableSlotContext):
 
 class ContainerSlotContext(RerunnableSlotContext):
     _state_mgr_cls = ContainerSlotContextStateMgr
+    _context_kind = ContextKind.CONTAINER
 
     def __init__(
         self,
@@ -1152,6 +1163,7 @@ class ContainerSlotContext(RerunnableSlotContext):
 
 class ComponentCallSlotContext(RerunnableSlotContext):
     _state_mgr_cls = ComponentCallSlotContextStateMgr
+    _context_kind = ContextKind.COMPONENT_CALL
 
     def __init__(
         self,
@@ -1198,10 +1210,12 @@ class ComponentCallSlotContext(RerunnableSlotContext):
 
 class KeyedLoopSlotContext(RerunnableSlotContext):
     _state_mgr_cls = KeyedLoopSlotContextStateMgr
+    _context_kind = ContextKind.KEYED_LOOP
 
 
 class LoopItemSlotContext(RerunnableSlotContext):
     _state_mgr_cls = LoopItemSlotContextStateMgr
+    _context_kind = ContextKind.LOOP_ITEM
     _state_attr_names = ContextBase._state_attr_names | {
         "current",
         "current_dirty",
@@ -1217,6 +1231,7 @@ class LoopItemSlotContext(RerunnableSlotContext):
 
 class LeafSlotContext(RerunnableSlotContext):
     _state_mgr_cls = LeafSlotContextStateMgr
+    _context_kind = ContextKind.LEAF
 
     def __init__(
         self,
@@ -1617,6 +1632,11 @@ class RenderContext(ContextBase):
                 authored_app_context_lookup or scheduler_root._authored_app_context_lookup
             )
         ContextBase.__init__(self, self)
+
+    def get_kind(self) -> ContextKind:
+        if self._owner_slot is None:
+            return ContextKind.RENDER_ROOT
+        return ContextKind.COMPONENT_RENDER
 
     def pass_scope(self) -> Any:
         return self._delegate("pass_scope")

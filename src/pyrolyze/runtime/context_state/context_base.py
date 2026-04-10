@@ -5,6 +5,7 @@ from typing import Any, Callable, TypeVar
 
 from pyrolyze.api import UIElement
 from pyrolyze.runtime.app_context import APP_CONTEXT_MISSING
+from pyrolyze.runtime.slot_kinds import ContextKind
 from pyrolyze.runtime.slot_call_semantics import ExternalStoreRef
 from pyrolyze.runtime.slot_expr import SlotExpr
 from ._base import StateMgrBase
@@ -33,33 +34,6 @@ from ._support import (
 
 
 T = TypeVar("T")
-
-
-def _context_kind(owner: Any) -> str:
-    owner_type_name = type(owner).__name__
-    if owner_type_name == "RenderContext":
-        return "render_root" if getattr(owner, "_owner_slot", None) is None else "component_render"
-    if owner_type_name == "AppContextOverrideSlotContext":
-        return "app_context_override"
-    if owner_type_name == "ContainerSlotContext":
-        return "container"
-    if owner_type_name == "SlotCallSlotContext":
-        return "slot_call"
-    if owner_type_name == "ComponentCallSlotContext":
-        return "component_call"
-    if owner_type_name == "KeyedLoopSlotContext":
-        return "keyed_loop"
-    if owner_type_name == "LoopItemSlotContext":
-        return "loop_item"
-    if owner_type_name == "EventHandlerSlotContext":
-        return "event_handler"
-    if owner_type_name == "LeafSlotContext":
-        return "leaf"
-    if owner_type_name == "SlotContext":
-        return "slot"
-    return owner_type_name
-
-
 class ContextBaseStateMgr(StateMgrBase):
     def __init__(self, owner: Any) -> None:
         super().__init__(owner)
@@ -133,8 +107,8 @@ class ContextBaseStateMgr(StateMgrBase):
     def current_slot_id(self) -> Any:
         return getattr(self.owner, "slot_id", None)
 
-    def context_kind(self) -> str:
-        return _context_kind(self.owner)
+    def context_kind(self) -> ContextKind:
+        return self.owner.get_kind()
 
     def pass_scope(self) -> Any:
         return self.owner._pass_scope_handle_cls(context=self.owner, activate=not self.owner._scope_active)
