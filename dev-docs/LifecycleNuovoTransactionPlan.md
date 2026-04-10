@@ -55,7 +55,49 @@ with per-group working state
 
 This is the first substantive behavior change.
 
-## Phase 4: Tests
+## Phase 3B: Commit Hooks and Deferred Release
+
+This phase exists because Phase 4 originally mixed two different categories of
+work:
+
+- tests for grouped transaction behavior that is already implemented after
+  Phases 1-3
+- tests for commit-hook and retained-resource semantics that require new runtime
+  machinery
+
+Those latter items are not just tests. They depend on new lifecycle features
+and must be implemented before their tests can honestly be called part of the
+general grouped-transaction verification phase.
+
+Implement:
+
+1. Commit-specific lifecycle field kinds:
+   - `on_before_commit`
+   - `on_after_commit`
+   - `on_after_rollback`
+2. Decoration-time compilation of those declarations into group-scoped runner
+   tables, not ordinary current/working stored fields
+3. Group-aware hook dispatch during commit/rollback
+4. Hook parameter injection support for:
+   - `self`
+   - `current`
+   - `working`
+   - `previous`
+   - `tx_group`
+5. Deferred release bookkeeping for old `binding` / `owned` values so
+   `previous` remains valid until all `on_after_commit` handlers for that group
+   have completed
+6. `finally`-protected cleanup so deferred releases still happen exactly once if
+   post-commit handlers raise
+7. Inheritance / aggregation rules for commit-hook declarations:
+   - aggregate by distinct field name
+   - same-name override may not change `tx_group`
+   - execution order follows merged MRO field order
+
+This phase is the missing dependency boundary that the original plan did not
+spell out clearly enough.
+
+## Phase 4A: Tests for Implemented Grouped Transaction Core
 
 Add tests for:
 
@@ -73,6 +115,13 @@ Add tests for:
   rather than atomic coupled operations
 - application code can use `validate(...)` + `commit_only(...)` to implement
   coupled transaction policy outside lifecycle core
+
+This phase is the honest verification bucket for Phases 1-3 only.
+
+## Phase 4B: Tests Unblocked by Phase 3B
+
+Add tests for:
+
 - post-commit handlers can observe `previous` binding/owned values before final
   release
 - deferred release of previous binding/owned values happens after all post-commit

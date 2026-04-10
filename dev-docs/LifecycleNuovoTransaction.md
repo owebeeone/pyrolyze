@@ -781,7 +781,48 @@ with per-group working state
 
 This is the first substantive behavior change.
 
-### Phase 4: Tests
+### Phase 3B: Commit Hooks and Deferred Release
+
+This phase exists because the original phase breakdown mixed two different
+things under the later test phase:
+
+- grouped transaction behavior that becomes testable immediately after Phases
+  1-3
+- commit-hook and retained-resource semantics that still require additional
+  lifecycle runtime support
+
+Those retained-resource and hook items are not “just tests”. They require new
+runtime machinery and therefore need their own implementation phase.
+
+Implement:
+
+1. Commit-specific lifecycle field kinds:
+   - `on_before_commit`
+   - `on_after_commit`
+   - `on_after_rollback`
+2. Decoration-time compilation into group-scoped runner tables rather than
+   ordinary stored fields
+3. Group-aware hook dispatch during commit/rollback
+4. Hook parameter injection for:
+   - `self`
+   - `current`
+   - `working`
+   - `previous`
+   - `tx_group`
+5. Deferred release bookkeeping for old `binding` / `owned` values so
+   `previous` remains valid until all `on_after_commit` handlers for that group
+   complete
+6. `finally`-protected deferred cleanup so retained resources are released
+   exactly once even if post-commit handlers raise
+7. Inheritance / aggregation behavior:
+   - aggregate by distinct field name
+   - same-name overrides may not change `tx_group`
+   - run in merged MRO field order
+
+This is the missing dependency boundary that the original plan failed to make
+explicit.
+
+### Phase 4A: Tests for Implemented Grouped Transaction Core
 
 Add tests for:
 
@@ -795,6 +836,15 @@ Add tests for:
 - validator/order metadata uses default group when unspecified
 - unknown groups fail immediately against manager `tx_groups`
 - context-manager `begin(...)` commits on clean exit and rolls back on exception
+- multi-group `begin/commit/rollback` remain ordered independent operations
+  rather than atomic coupled operations
+
+This is the verification bucket for Phases 1-3 only.
+
+### Phase 4B: Tests Unblocked by Phase 3B
+
+Add tests for:
+
 - post-commit handlers can observe `previous` binding/owned values before final
   release
 - deferred release of previous binding/owned values happens after all post-commit
