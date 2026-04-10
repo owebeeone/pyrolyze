@@ -28,6 +28,10 @@ It is organized by reader and task:
   - goldens, versioned test runs, AST kernels, tracing
 - [reference/Glossary.md](reference/Glossary.md)
   - stable terms and quick lookup
+- [reference/Lifecycle_And_Freezable.md](reference/Lifecycle_And_Freezable.md)
+  - declarative state lifecycle
+  - frozen/mutable model pairing
+  - transaction groups, bindings, and rollback patterns
 
 Recommended reading order:
 

@@ -1,5 +1,6 @@
 # py-rolyze reference docs
 
+- **Lifecycle + freezable (users and maintainers):** [Lifecycle And Freezable](./Lifecycle_And_Freezable.md) — reference for declarative lifecycle fields, transaction groups, `BindingBase`, and mutable/frozen dataclass pairing.
 - **Spec (maintainers):** [Generated UI Library Reference Doc Spec](./Generated_UI_Library_Reference_Doc_Spec.md) — defines layout, content rules, and generator hooks so **user-facing** reference pages stay consistent.
 - **Generated output (PySide6, users):** `generated/pyside6/entities.md` + `properties.md` — run from repo root:
   `uv run python py-rolyze/pyrolyze_tools/generate_semantic_library.py PySide6.QtWidgets --output-dir <backends/pyside6> --gen-docs`
