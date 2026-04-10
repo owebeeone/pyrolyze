@@ -4,6 +4,7 @@ import pytest
 
 from pyrolyze.lifecycle import (
     BindingBase,
+    DEFAULT_TRANSACTION,
     GroupTransactionManager,
     LifecycleContext,
     LifecycleTransaction,
@@ -166,6 +167,37 @@ class ValueControlContext:
     items: tuple[int, ...] = managed(default_factory=tuple, freeze=tuple, thaw=list)
 
 
+GROUP_ALPHA = "group_alpha"
+GROUP_BETA = "group_beta"
+
+
+@managed_context
+class GroupedFieldContext:
+    value: int = managed(default=0, tx_group=GROUP_ALPHA)
+    scratch: bool = transient(default=False, tx_group=GROUP_BETA)
+    handle: SpyBinding | None = binding(default=None, tx_group=GROUP_ALPHA)
+    child: SpyBinding | None = owned(default=None, tx_group=GROUP_BETA)
+    validator: object | None = commit_validator(default=lambda _ctx: True, tx_group=GROUP_ALPHA)
+    order_key: tuple[int, ...] = commit_order_key(default=(1,), tx_group=GROUP_BETA)
+
+
+@managed_context
+class GroupedBaseContext:
+    value: int = managed(default=0, tx_group=GROUP_ALPHA)
+
+
+@managed_context
+class GroupedDerivedContext(GroupedBaseContext):
+    value: int = managed(default=1, tx_group=GROUP_ALPHA)
+
+
+with pytest.raises(TypeError, match="incompatible lifecycle field override"):
+
+    @managed_context
+    class GroupedMismatchContext(GroupedBaseContext):
+        value: int = managed(default=1, tx_group=GROUP_BETA)
+
+
 @managed_context
 class ContextAwareDefaultFactoryContext:
     triplet: tuple[int, int, int] = managed(default_factory=build_triplet)
@@ -280,6 +312,32 @@ def test_field_specs_bind_handler_matrix_at_decoration_time() -> None:
         is state_cls.__class_ftable_rollback_field__[ref_name]
         is state_cls.__class_ftable_rollback_field__[tracked_name]
     )
+
+
+def test_tx_group_defaults_to_default_transaction() -> None:
+    specs = MatrixContext.__state_cls__.__field_specs__
+
+    assert specs["value"].tx_group == DEFAULT_TRANSACTION
+    assert specs["ref"].tx_group == DEFAULT_TRANSACTION
+    assert specs["tracked"].tx_group == DEFAULT_TRANSACTION
+
+
+def test_tx_group_metadata_is_recorded_for_grouped_fields() -> None:
+    specs = GroupedFieldContext.__state_cls__.__field_specs__
+
+    assert specs["value"].tx_group == GROUP_ALPHA
+    assert specs["scratch"].tx_group == GROUP_BETA
+    assert specs["handle"].tx_group == GROUP_ALPHA
+    assert specs["child"].tx_group == GROUP_BETA
+    assert specs["validator"].tx_group == GROUP_ALPHA
+    assert specs["order_key"].tx_group == GROUP_BETA
+
+
+def test_same_name_override_may_keep_same_tx_group() -> None:
+    spec = GroupedDerivedContext.__state_cls__.__field_specs__["value"]
+
+    assert spec.tx_group == GROUP_ALPHA
+    assert GroupedDerivedContext().value == 1
 
 
 def test_managed_context_wraps_plain_class_onto_internal_base() -> None:

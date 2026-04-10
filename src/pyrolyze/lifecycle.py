@@ -502,6 +502,7 @@ class FieldSpec:
     default_factory: Callable[[], Any] | object = MISSING
     working_default_factory: Callable[[], Any] | object = MISSING
     initial_working: Any = MISSING
+    tx_group: Hashable = DEFAULT_TRANSACTION
     freeze: Callable[[Any], Any] | None = None
     thaw: Callable[[Any], Any] | None = None
     state_factory: FieldStateFactory | None = None
@@ -540,6 +541,7 @@ class LifecycleField:
         "state_copy",
         "state_factory",
         "thaw",
+        "tx_group",
         "working_default_factory",
     )
 
@@ -548,6 +550,7 @@ class LifecycleField:
         *,
         kind: str = "managed",
         compare: str = "value",
+        tx_group: Hashable = DEFAULT_TRANSACTION,
         default: Any = MISSING,
         default_factory: Callable[[], Any] | object = MISSING,
         working_default_factory: Callable[[], Any] | object = MISSING,
@@ -607,6 +610,7 @@ class LifecycleField:
         self.state_factory = state_factory
         self.state_copy = state_copy or copy.copy
         self.thaw = thaw
+        self.tx_group = tx_group
         self.name: str | None = None
 
     def __set_name__(self, owner: type[LifecycleContext], name: str) -> None:
@@ -626,6 +630,7 @@ class LifecycleField:
             kind=self.kind,
             annotation=annotation,
             compare=self.compare,
+            tx_group=self.tx_group,
             default=self.default,
             default_factory=self.default_factory,
             working_default_factory=self.working_default_factory,
@@ -646,6 +651,7 @@ def lifecycle_field(
     *,
     kind: str = "managed",
     compare: str = "value",
+    tx_group: Hashable = DEFAULT_TRANSACTION,
     default: Any = MISSING,
     default_factory: Callable[[], Any] | object = MISSING,
     working_default_factory: Callable[[], Any] | object = MISSING,
@@ -658,6 +664,7 @@ def lifecycle_field(
     return LifecycleField(
         kind=kind,
         compare=compare,
+        tx_group=tx_group,
         default=default,
         default_factory=default_factory,
         working_default_factory=working_default_factory,
@@ -684,6 +691,7 @@ def const(
 def managed(
     *,
     compare: str = "value",
+    tx_group: Hashable = DEFAULT_TRANSACTION,
     default: Any = MISSING,
     default_factory: Callable[[], Any] | object = MISSING,
     initial_working: Any = MISSING,
@@ -695,6 +703,7 @@ def managed(
     return lifecycle_field(
         kind="managed",
         compare=compare,
+        tx_group=tx_group,
         default=default,
         default_factory=default_factory,
         initial_working=initial_working,
@@ -719,12 +728,14 @@ def static(
 
 def binding(
     *,
+    tx_group: Hashable = DEFAULT_TRANSACTION,
     default: Any = MISSING,
     default_factory: Callable[[], Any] | object = MISSING,
 ) -> Any:
     return lifecycle_field(
         kind="binding",
         compare="identity",
+        tx_group=tx_group,
         default=default,
         default_factory=default_factory,
     )
@@ -732,12 +743,14 @@ def binding(
 
 def owned(
     *,
+    tx_group: Hashable = DEFAULT_TRANSACTION,
     default: Any = MISSING,
     default_factory: Callable[[], Any] | object = MISSING,
 ) -> Any:
     return lifecycle_field(
         kind="owned",
         compare="identity",
+        tx_group=tx_group,
         default=default,
         default_factory=default_factory,
     )
@@ -745,6 +758,7 @@ def owned(
 
 def transient(
     *,
+    tx_group: Hashable = DEFAULT_TRANSACTION,
     default: Any = MISSING,
     default_factory: Callable[[], Any] | object = MISSING,
     working_default_factory: Callable[[], Any] | object = MISSING,
@@ -752,6 +766,7 @@ def transient(
     return lifecycle_field(
         kind="transient",
         compare="value",
+        tx_group=tx_group,
         default=default,
         default_factory=default_factory,
         working_default_factory=working_default_factory,
@@ -786,21 +801,28 @@ def derived(
 
 def commit_order_key(
     *,
+    tx_group: Hashable = DEFAULT_TRANSACTION,
     default: Any = MISSING,
     default_factory: Callable[[], Any] | object = MISSING,
 ) -> Any:
     return lifecycle_field(
         kind="commit_order_key",
         compare="value",
+        tx_group=tx_group,
         default=default,
         default_factory=default_factory,
     )
 
 
-def commit_validator(*, default: Any = MISSING) -> Any:
+def commit_validator(
+    *,
+    tx_group: Hashable = DEFAULT_TRANSACTION,
+    default: Any = MISSING,
+) -> Any:
     return lifecycle_field(
         kind="commit_validator",
         compare="identity",
+        tx_group=tx_group,
         default=default,
     )
 
@@ -1733,6 +1755,8 @@ def _merge_field_specs(base: FieldSpec, derived: FieldSpec) -> FieldSpec:
         raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
     if base.compare != derived.compare:
         raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
+    if base.tx_group != derived.tx_group:
+        raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
     if base.initial_working != derived.initial_working and derived.initial_working is not MISSING:
         raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
     if base.freeze != derived.freeze and derived.freeze is not None:
@@ -1773,6 +1797,7 @@ def _merge_field_specs(base: FieldSpec, derived: FieldSpec) -> FieldSpec:
         kind=base.kind,
         annotation=derived.annotation,
         compare=base.compare,
+        tx_group=base.tx_group,
         default=default,
         default_factory=default_factory,
         working_default_factory=working_default_factory,
@@ -1878,6 +1903,8 @@ def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
 __all__ = [
     "FieldSpec",
     "BindingBase",
+    "DEFAULT_TRANSACTION",
+    "GroupTransactionManager",
     "LifecycleContext",
     "LifecycleTransaction",
     "LifecycleValidatorReturnedFalse",
