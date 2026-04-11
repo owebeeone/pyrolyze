@@ -1453,7 +1453,10 @@ class ConstKind(StoredNeverKind, ImmutableConfigKind):
 @define_kind
 class StaticKind(StoredOnceKind, ImmutableConfigKind):
     name = "static"
-    helper_doc = "Class-level shared value, written at most once."
+    helper_doc = (
+        "Written at most once: either a single assignment, or default/default_factory "
+        "on first read (whichever happens first). Constructor kwargs count as that write."
+    )
 
     @classmethod
     def default_value(cls, spec: FieldSpec) -> Any:
@@ -2057,7 +2060,7 @@ def _set_const_field(state: LifecycleContextState, name: str, value: Any) -> Non
 
 
 def _set_static_field(state: LifecycleContextState, name: str, value: Any) -> None:
-    current = state.current_record.values[name]
+    current = state.current_record.values.get(name, _SENTINEL)
     if current is _SENTINEL:
         state.current_record.values[name] = value
         return
@@ -2428,6 +2431,11 @@ class LifecycleContextState:
 
         for name, spec in type(self).__field_specs__.items():
             if issubclass(spec.kind, NonStoredHookKind):
+                continue
+            # StaticKind resolves defaults on first read (or defers to a single
+            # user assignment when there is no default/default_factory), so eager
+            # resolution here would consume the one-shot slot before user code.
+            if issubclass(spec.kind, StaticKind):
                 continue
             self.resolve_default_field(name)
 

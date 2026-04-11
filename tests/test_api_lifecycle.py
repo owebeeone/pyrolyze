@@ -564,6 +564,80 @@ def test_static_fields_allow_one_assignment_and_ignore_commit_rollback() -> None
         context.declared = ("x",)
 
 
+def test_static_default_factory_runs_on_first_read_only_once() -> None:
+    factory_calls: list[None] = []
+
+    def make_items() -> list[int]:
+        factory_calls.append(None)
+        return [1, 2]
+
+    @managed_context
+    class StaticLazyFactoryContext:
+        items: list[int] = static(default_factory=make_items)
+
+    ctx = StaticLazyFactoryContext()
+    assert factory_calls == []
+    assert "items" not in ctx.state.current_record.values
+
+    assert ctx.items == [1, 2]
+    assert factory_calls == [None]
+    assert ctx.items == [1, 2]
+    assert factory_calls == [None]
+
+
+def test_static_default_runs_on_first_read() -> None:
+    @managed_context
+    class StaticLazyDefaultContext:
+        n: int = static(default=42)
+
+    ctx = StaticLazyDefaultContext()
+    assert "n" not in ctx.state.current_record.values
+    assert ctx.n == 42
+    assert ctx.state.current_record.values["n"] == 42
+
+
+def test_static_assignment_before_read_still_allows_one_write() -> None:
+    @managed_context
+    class StaticAssignFirstContext:
+        items: list[int] = static(default_factory=list)
+
+    ctx = StaticAssignFirstContext()
+    ctx.items = [7]
+    assert ctx.items == [7]
+    with pytest.raises(AttributeError, match="already initialized"):
+        ctx.items = [8]
+
+
+def test_static_default_factory_freezes_local_store_snapshot_at_first_read() -> None:
+    """Lazy ``static`` reads ``local_store`` at first get; later cache changes do not update it."""
+
+    @managed_context
+    class SnapshotFromLocalStoreContext:
+        cache: dict[str, int] = local_store(default_factory=dict)
+        snapshot_values: list[int] = static(
+            default_factory=lambda self: sorted(self.cache.values()),
+        )
+
+    read_first = SnapshotFromLocalStoreContext()
+    assert read_first.cache == {}
+    assert read_first.snapshot_values == []
+    read_first.cache["a"] = 1
+    read_first.cache["b"] = 2
+    # First read saw an empty cache; later mutations do not change the cached snapshot.
+    assert read_first.snapshot_values == []
+    assert read_first.snapshot_values is read_first.snapshot_values
+
+    populate_first = SnapshotFromLocalStoreContext()
+    populate_first.cache["a"] = 1
+    populate_first.cache["b"] = 2
+    assert populate_first.snapshot_values == [1, 2]
+    populate_first.cache["c"] = 3
+    assert populate_first.snapshot_values == [1, 2]
+
+    with pytest.raises(AttributeError, match="already initialized"):
+        populate_first.snapshot_values = [9]
+
+
 def test_managed_alias_behaves_like_managed_field() -> None:
     manager = TransactionManager()
     context = ManagedAliasContext(transaction_manager=manager)
