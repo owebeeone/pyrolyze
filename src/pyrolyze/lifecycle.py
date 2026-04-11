@@ -525,40 +525,120 @@ class _FieldTables:
     working_default_factory_runner: dict[str, FactoryRunner] = field(default_factory=dict)
 
 
+@dataclass(frozen=True, slots=True)
+class ExposedParam:
+    """Appears in the generated helper's keyword-only signature."""
+    annotation_src: str
+    default_src: str
+    doc: str = ""
+    allowed_values: frozenset | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class FixedParam:
+    """Passed to lifecycle_field with a fixed value; not in the signature."""
+    value_src: str
+
+
+class _ScrubType:
+    __slots__ = ()
+    def __repr__(self) -> str:
+        return 'SCRUB_PARAM'
+
+
+SCRUB_PARAM = _ScrubType()
+
+_ParamEntry = ExposedParam | FixedParam | _ScrubType
+
+
+class HelperParams:
+    """Chained builder for ``helper_params`` declarations on ``LCKind``."""
+
+    __slots__ = ('_params',)
+
+    def __init__(self) -> None:
+        self._params: dict[str, _ParamEntry] = {}
+
+    def param(self, name: str, doc: str = "") -> "HelperParams":
+        preset = _PARAM_PRESETS[name]
+        self._params[name] = ExposedParam(
+            preset.annotation_src, preset.default_src, doc, preset.allowed_values,
+        )
+        return self
+
+    def fixed(self, name: str, value_src: str) -> "HelperParams":
+        self._params[name] = FixedParam(value_src)
+        return self
+
+    def scrub(self, name: str) -> "HelperParams":
+        self._params[name] = SCRUB_PARAM
+        return self
+
+
+def _param(name: str, doc: str = "") -> HelperParams:
+    return HelperParams().param(name, doc)
+
+
+def _fixed(name: str, value_src: str) -> HelperParams:
+    return HelperParams().fixed(name, value_src)
+
+
+def _scrub(name: str) -> HelperParams:
+    return HelperParams().scrub(name)
+
+
+_PARAM_PRESETS: dict[str, ExposedParam] = {
+    "compare":                 ExposedParam("str",                        '"value"',            allowed_values=frozenset({"value", "identity"})),
+    "tx_group":                ExposedParam("Hashable",                   "DEFAULT_TRANSACTION"),
+    "default":                 ExposedParam("Any",                        "MISSING"),
+    "default_factory":         ExposedParam("Callable[[], Any] | object", "MISSING"),
+    "working_default_factory": ExposedParam("Callable[[], Any] | object", "MISSING"),
+    "initial_working":         ExposedParam("Any",                        "MISSING"),
+    "freeze":                  ExposedParam("Callable[[Any], Any] | None", "None"),
+    "thaw":                    ExposedParam("Callable[[Any], Any] | None", "None"),
+    "state_factory":           ExposedParam("Callable[[], Any] | None",   "None"),
+    "state_copy":              ExposedParam("StateCopyHelper | None",     "None"),
+}
+
+
+_LIFECYCLE_FIELD_NEUTRALS: dict[str, Any] = {
+    "compare":                 "value",
+    "tx_group":                DEFAULT_TRANSACTION,
+    "default":                 MISSING,
+    "default_factory":         MISSING,
+    "working_default_factory": MISSING,
+    "initial_working":         MISSING,
+    "freeze":                  None,
+    "thaw":                    None,
+    "state_factory":           None,
+    "state_copy":              None,
+}
+
+
+def _resolve_helper_params(cls: type) -> dict[str, ExposedParam | FixedParam]:
+    merged: dict[str, ExposedParam | FixedParam] = {}
+    for base in reversed(cls.__mro__):
+        hp = base.__dict__.get('helper_params')
+        if hp is None:
+            continue
+        for name, entry in hp._params.items():
+            if isinstance(entry, _ScrubType):
+                merged.pop(name, None)
+            else:
+                merged[name] = entry
+    return merged
+
+
+_TERMINAL_KINDS: list[type] = []
+
+
 class LCKind:
     name: str = "<unset>"
+    _resolved_params: dict[str, ExposedParam | FixedParam]
 
-    @classmethod
-    def validate_compare(cls, compare: str) -> None:
-        raise NotImplementedError
-
-    @classmethod
-    def validate_default(cls, spec: FieldSpec) -> None:
-        return None
-
-    @classmethod
-    def validate_default_factory(cls, spec: FieldSpec) -> None:
-        return None
-
-    @classmethod
-    def validate_working_default_factory(cls, spec: FieldSpec) -> None:
-        return None
-
-    @classmethod
-    def validate_initial_working(cls, spec: FieldSpec) -> None:
-        return None
-
-    @classmethod
-    def validate_state_factory(cls, spec: FieldSpec) -> None:
-        return None
-
-    @classmethod
-    def validate_state_copy(cls, spec: FieldSpec) -> None:
-        return None
-
-    @classmethod
-    def validate_tx_group(cls, spec: FieldSpec) -> None:
-        return None
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        cls._resolved_params = _resolve_helper_params(cls)
 
     @classmethod
     def validate_spec(cls, spec: FieldSpec) -> None:
@@ -566,14 +646,21 @@ class LCKind:
 
     @classmethod
     def validate_field_spec(cls, spec: FieldSpec) -> None:
-        cls.validate_compare(spec.compare)
-        cls.validate_default(spec)
-        cls.validate_default_factory(spec)
-        cls.validate_working_default_factory(spec)
-        cls.validate_initial_working(spec)
-        cls.validate_state_factory(spec)
-        cls.validate_state_copy(spec)
-        cls.validate_tx_group(spec)
+        resolved = cls._resolved_params
+        for kwarg, neutral in _LIFECYCLE_FIELD_NEUTRALS.items():
+            actual = getattr(spec, kwarg)
+            param = resolved.get(kwarg)
+            if param is None:
+                if actual is not neutral and actual != neutral:
+                    raise TypeError(
+                        f"{cls.name!r} fields cannot define {kwarg}"
+                    )
+            elif isinstance(param, ExposedParam) and param.allowed_values is not None:
+                if actual not in param.allowed_values:
+                    raise TypeError(
+                        f"{cls.name!r} fields require {kwarg} in "
+                        f"{param.allowed_values}"
+                    )
         cls.validate_spec(spec)
 
     @classmethod
@@ -733,20 +820,7 @@ class LCKind:
         tables.state_copy[name] = cls.build_state_copy(spec)
 
 
-class ValueCompareKind(LCKind):
-    @classmethod
-    def validate_compare(cls, compare: str) -> None:
-        if compare != "value":
-            raise TypeError(f"{cls.name!r} fields require compare='value'")
-
-
-class ValueOrIdentityCompareKind(LCKind):
-    @classmethod
-    def validate_compare(cls, compare: str) -> None:
-        if compare not in {"value", "identity"}:
-            raise TypeError(
-                f"{cls.name!r} fields require compare in {{'value', 'identity'}}"
-            )
+LCKind._resolved_params = {}
 
 
 class NoStateHelpersOperationalKind(LCKind):
@@ -1031,99 +1105,6 @@ class HookOperationalKind(
         return _set_hook_declaration_field
 
 
-class AllowsDefaultKind(LCKind):
-    @classmethod
-    def validate_default(cls, spec: FieldSpec) -> None:
-        return None
-
-
-class ForbidsDefaultKind(LCKind):
-    @classmethod
-    def validate_default(cls, spec: FieldSpec) -> None:
-        if spec.default is not MISSING:
-            raise TypeError(f"{cls.name!r} fields cannot define default")
-
-
-class AllowsDefaultFactoryKind(LCKind):
-    @classmethod
-    def validate_default_factory(cls, spec: FieldSpec) -> None:
-        return None
-
-
-class ForbidsDefaultFactoryKind(LCKind):
-    @classmethod
-    def validate_default_factory(cls, spec: FieldSpec) -> None:
-        if spec.default_factory is not MISSING:
-            raise TypeError(f"{cls.name!r} fields cannot define default_factory")
-
-
-class AllowsWorkingDefaultFactoryKind(LCKind):
-    @classmethod
-    def validate_working_default_factory(cls, spec: FieldSpec) -> None:
-        return None
-
-
-class ForbidsWorkingDefaultFactoryKind(LCKind):
-    @classmethod
-    def validate_working_default_factory(cls, spec: FieldSpec) -> None:
-        if spec.working_default_factory is not MISSING:
-            raise TypeError(
-                f"{cls.name!r} fields cannot define working_default_factory"
-            )
-
-
-class AllowsInitialWorkingKind(LCKind):
-    @classmethod
-    def validate_initial_working(cls, spec: FieldSpec) -> None:
-        return None
-
-
-class ForbidsInitialWorkingKind(LCKind):
-    @classmethod
-    def validate_initial_working(cls, spec: FieldSpec) -> None:
-        if spec.initial_working is not MISSING:
-            raise TypeError(f"{cls.name!r} fields cannot define initial_working")
-
-
-class AllowsStateFactoryKind(LCKind):
-    @classmethod
-    def validate_state_factory(cls, spec: FieldSpec) -> None:
-        return None
-
-
-class ForbidsStateFactoryKind(LCKind):
-    @classmethod
-    def validate_state_factory(cls, spec: FieldSpec) -> None:
-        if spec.state_factory is not None:
-            raise TypeError(f"{cls.name!r} fields cannot define state_factory")
-
-
-class AllowsStateCopyKind(LCKind):
-    @classmethod
-    def validate_state_copy(cls, spec: FieldSpec) -> None:
-        return None
-
-
-class ForbidsStateCopyKind(LCKind):
-    @classmethod
-    def validate_state_copy(cls, spec: FieldSpec) -> None:
-        if spec.state_copy is not None:
-            raise TypeError(f"{cls.name!r} fields cannot define state_copy")
-
-
-class AllowsTxGroupKind(LCKind):
-    @classmethod
-    def validate_tx_group(cls, spec: FieldSpec) -> None:
-        return None
-
-
-class ForbidsCustomTxGroupKind(LCKind):
-    @classmethod
-    def validate_tx_group(cls, spec: FieldSpec) -> None:
-        if spec.tx_group != DEFAULT_TRANSACTION:
-            raise TypeError(f"{cls.name!r} fields cannot override tx_group")
-
-
 class CurrentRecordStorageKind(LCKind):
     pass
 
@@ -1254,62 +1235,31 @@ class NonStoredHookKind(DeclarationStorageKind, LCKind):
     def validate_spec(cls, spec: FieldSpec) -> None:
         if spec.default is MISSING:
             raise TypeError(f"{cls.name!r} fields require default=callable")
-        if spec.default_factory is not MISSING:
-            raise TypeError(f"{cls.name!r} fields cannot define default_factory")
-        if spec.working_default_factory is not MISSING:
-            raise TypeError(
-                f"{cls.name!r} fields cannot define working_default_factory"
-            )
-        if spec.initial_working is not MISSING:
-            raise TypeError(f"{cls.name!r} fields cannot define initial_working")
-        if spec.state_factory is not None:
-            raise TypeError(f"{cls.name!r} fields cannot define state_factory")
-        if spec.state_copy is not None:
-            raise TypeError(f"{cls.name!r} fields cannot define state_copy")
 
 
-class DefaultStoredKind(
-    StoredKind,
-    ValueOrIdentityCompareKind,
-    OverlayOperationalKind,
-    AllowsDefaultKind,
-    AllowsDefaultFactoryKind,
-    ForbidsWorkingDefaultFactoryKind,
-    AllowsInitialWorkingKind,
-    AllowsStateFactoryKind,
-    AllowsStateCopyKind,
-    AllowsTxGroupKind,
-):
-    pass
+class DefaultStoredKind(StoredKind, OverlayOperationalKind):
+    helper_params = (
+        _param("compare").param("tx_group")
+        .param("default").param("default_factory")
+        .param("initial_working")
+        .param("freeze").param("thaw")
+        .param("state_factory").param("state_copy")
+    )
 
 
-class SimpleStoredKind(
-    StoredKind,
-    ValueOrIdentityCompareKind,
-    OverlayOperationalKind,
-    AllowsDefaultKind,
-    AllowsDefaultFactoryKind,
-    ForbidsWorkingDefaultFactoryKind,
-    ForbidsInitialWorkingKind,
-    ForbidsStateFactoryKind,
-    ForbidsStateCopyKind,
-    AllowsTxGroupKind,
-):
-    pass
+class SimpleStoredKind(StoredKind, OverlayOperationalKind):
+    helper_params = (
+        _param("compare").param("tx_group")
+        .param("default").param("default_factory")
+    )
 
 
-class HookKind(
-    NonStoredHookKind,
-    ValueOrIdentityCompareKind,
-    HookOperationalKind,
-    AllowsDefaultKind,
-    ForbidsDefaultFactoryKind,
-    ForbidsWorkingDefaultFactoryKind,
-    ForbidsInitialWorkingKind,
-    ForbidsStateFactoryKind,
-    ForbidsStateCopyKind,
-    AllowsTxGroupKind,
-):
+class HookKind(NonStoredHookKind, HookOperationalKind):
+    helper_params = (
+        _fixed("compare", '"identity"')
+        .param("tx_group").param("default")
+    )
+
     @classmethod
     def register_hook_runner(
         cls,
@@ -1321,18 +1271,11 @@ class HookKind(
         raise NotImplementedError
 
 
-class ImmutableConfigKind(
-    StoredKind,
-    ValueCompareKind,
-    AllowsDefaultKind,
-    AllowsDefaultFactoryKind,
-    ForbidsWorkingDefaultFactoryKind,
-    ForbidsInitialWorkingKind,
-    ForbidsStateFactoryKind,
-    ForbidsStateCopyKind,
-    ForbidsCustomTxGroupKind,
-):
-    pass
+class ImmutableConfigKind(StoredKind):
+    helper_params = (
+        _fixed("compare", '"value"')
+        .param("default").param("default_factory")
+    )
 
 
 class StoredNeverKind(ConstOperationalKind):
@@ -1347,51 +1290,30 @@ class ResourceKind(RetainedResourceOperationalKind, SimpleStoredKind):
     pass
 
 
-class StoredMetadataKind(
-    StoredKind,
-    ValueOrIdentityCompareKind,
-    StoredDeclarationOperationalKind,
-    AllowsDefaultKind,
-    ForbidsDefaultFactoryKind,
-    ForbidsWorkingDefaultFactoryKind,
-    ForbidsInitialWorkingKind,
-    ForbidsStateFactoryKind,
-    ForbidsStateCopyKind,
-    AllowsTxGroupKind,
-):
-    pass
+class StoredMetadataKind(StoredKind, StoredDeclarationOperationalKind):
+    helper_params = (
+        _param("compare").param("tx_group").param("default")
+    )
 
 
 class HookDeclarationKind(HookKind):
     pass
 
 
-class LocalLikeKind(
-    StoredKind,
-    ValueCompareKind,
-    AllowsDefaultKind,
-    AllowsDefaultFactoryKind,
-    ForbidsInitialWorkingKind,
-    ForbidsStateFactoryKind,
-    ForbidsStateCopyKind,
-):
-    pass
+class LocalLikeKind(StoredKind):
+    helper_params = (
+        _fixed("compare", '"value"')
+        .param("default").param("default_factory")
+    )
 
 
-class TxScopedScratchKind(
-    TransientOperationalKind,
-    AllowsWorkingDefaultFactoryKind,
-    AllowsTxGroupKind,
-    LocalLikeKind,
-):
-    pass
+class TxScopedScratchKind(TransientOperationalKind, LocalLikeKind):
+    helper_params = (
+        _param("working_default_factory").param("tx_group")
+    )
 
 
-class NonTransactionalHelperKind(
-    ForbidsWorkingDefaultFactoryKind,
-    ForbidsCustomTxGroupKind,
-    LocalLikeKind,
-):
+class NonTransactionalHelperKind(LocalLikeKind):
     pass
 
 
@@ -1411,16 +1333,127 @@ class DerivedHelperKind(
     pass
 
 
+_DEFINED_KIND_NAMES: set[str] = set()
+
+
+def define_kind(cls: type[LCKind]) -> type[LCKind]:
+    """Decorator for terminal LCKind classes.
+
+    Validates the declaration and registers the kind for helper generation.
+    Actual helper functions are installed by ``_generate_kind_helpers()``
+    after ``lifecycle_field`` is defined.
+    """
+    name = cls.name
+    if name == "<unset>":
+        raise TypeError(f"{cls.__name__} must set name")
+    if name in _DEFINED_KIND_NAMES:
+        raise TypeError(f"duplicate kind name {name!r}")
+    if not hasattr(cls, 'helper_doc'):
+        raise TypeError(f"{cls.__name__} must set helper_doc")
+    _DEFINED_KIND_NAMES.add(name)
+    _TERMINAL_KINDS.append(cls)
+    return cls
+
+
+def _generate_kind_helpers() -> None:
+    """Generate and install all helper functions for registered terminal kinds.
+
+    Must be called after ``lifecycle_field`` is defined.
+    """
+    import sys
+    module = sys.modules[__name__]
+    all_list: list[str] = getattr(module, '__all__', [])
+
+    exec_globals: dict[str, Any] = {
+        'lifecycle_field': lifecycle_field,
+        'MISSING': MISSING,
+        'DEFAULT_TRANSACTION': DEFAULT_TRANSACTION,
+    }
+
+    for kind_cls in _TERMINAL_KINDS:
+        resolved = kind_cls._resolved_params
+        name = kind_cls.name
+        lc_name = f"LC_{name.upper()}"
+
+        exposed: list[tuple[str, ExposedParam]] = []
+        fixed: list[tuple[str, FixedParam]] = []
+        for pname, entry in resolved.items():
+            if isinstance(entry, ExposedParam):
+                exposed.append((pname, entry))
+            elif isinstance(entry, FixedParam):
+                fixed.append((pname, entry))
+
+        local_ns: dict[str, Any] = {
+            '_kind_cls': kind_cls,
+            'lifecycle_field': lifecycle_field,
+        }
+
+        sig_parts: list[str] = []
+        call_parts: list[str] = [f"kind=_kind_cls"]
+        annotation_stmts: list[str] = []
+
+        for pname, param in exposed:
+            dflt_key = f'_dflt_{pname}'
+            local_ns[dflt_key] = eval(param.default_src, exec_globals)  # noqa: S307
+            sig_parts.append(f"{pname}={dflt_key}")
+            call_parts.append(f"{pname}={pname}")
+
+        for pname, param in fixed:
+            fval_key = f'_fval_{pname}'
+            local_ns[fval_key] = eval(param.value_src, exec_globals)  # noqa: S307
+            call_parts.append(f"{pname}={fval_key}")
+
+        sig_str = ", ".join(sig_parts)
+        call_str = ", ".join(call_parts)
+
+        src = (
+            f"def {name}(*, {sig_str}) -> Any:\n"
+            f"    return lifecycle_field({call_str})\n"
+        )
+
+        fn_ns: dict[str, Any] = {'Any': Any, **local_ns}
+        exec(src, fn_ns)  # noqa: S102
+        fn = fn_ns[name]
+        fn.__module__ = __name__
+        fn.__qualname__ = name
+        fn.__doc__ = getattr(kind_cls, 'helper_doc', None)
+
+        ann: dict[str, Any] = {}
+        for pname, param in exposed:
+            try:
+                ann[pname] = eval(param.annotation_src, exec_globals)  # noqa: S307
+            except Exception:
+                ann[pname] = param.annotation_src
+        ann['return'] = Any
+        fn.__annotations__ = ann
+
+        setattr(module, name, fn)
+        setattr(module, lc_name, kind_cls)
+
+        if name not in all_list:
+            all_list.append(name)
+        if lc_name not in all_list:
+            all_list.append(lc_name)
+
+        kind_cls._generated_helper = fn
+
+
+@define_kind
 class ManagedKind(DefaultStoredKind):
     name = "managed"
+    helper_doc = "Managed transactional field with overlay, commit, and rollback."
 
 
+@define_kind
 class ConstKind(StoredNeverKind, ImmutableConfigKind):
     name = "const"
+    helper_doc = "Immutable per-instance configuration, set at construction."
 
 
+@define_kind
 class StaticKind(StoredOnceKind, ImmutableConfigKind):
     name = "static"
+    helper_doc = "Class-level shared value, written at most once."
 
     @classmethod
     def default_value(cls, spec: FieldSpec) -> Any:
@@ -1429,28 +1462,43 @@ class StaticKind(StoredOnceKind, ImmutableConfigKind):
         return super().default_value(spec)
 
 
+@define_kind
 class BindingKind(ResourceKind):
     name = "binding"
+    helper_doc = "Identity-compared retained resource binding."
+    helper_params = _fixed("compare", '"identity"')
 
 
+@define_kind
 class OwnedKind(ResourceKind):
     name = "owned"
+    helper_doc = "Identity-compared owned child resource."
+    helper_params = _fixed("compare", '"identity"')
 
 
+@define_kind
 class TransientKind(TxScopedScratchKind):
     name = "transient"
+    helper_doc = "Transaction-scoped scratch that exists only while a group is open."
 
 
+@define_kind
 class LocalStoreKind(NonTransactionalLocalKind):
     name = "local_store"
+    helper_doc = "Non-transactional local storage, cleared on close."
 
 
+@define_kind
 class DerivedKind(DerivedHelperKind):
     name = "derived"
+    helper_doc = "Cached derived value, reset on commit/rollback/close."
 
 
+@define_kind
 class CommitOrderKeyKind(StoredMetadataKind):
     name = "commit_order_key"
+    helper_doc = "Sortable key controlling commit ordering within a group."
+    helper_params = _fixed("compare", '"value"').param("default_factory")
 
     @classmethod
     def default_value(cls, spec: FieldSpec) -> Any:
@@ -1475,8 +1523,11 @@ class CommitOrderKeyKind(StoredMetadataKind):
         special_tables.commit_order_key_by_group[spec.tx_group] = name
 
 
+@define_kind
 class CommitValidatorKind(StoredMetadataKind):
     name = "commit_validator"
+    helper_doc = "Callable that validates state before commit is finalized."
+    helper_params = _fixed("compare", '"identity"')
 
     @classmethod
     def default_value(cls, spec: FieldSpec) -> Any:
@@ -1499,8 +1550,10 @@ class CommitValidatorKind(StoredMetadataKind):
         special_tables.commit_validator_by_group[spec.tx_group] = name
 
 
+@define_kind
 class OnBeforeCommitKind(HookDeclarationKind):
     name = "on_before_commit"
+    helper_doc = "Hook invoked before a transaction group commits."
 
     @classmethod
     def register_hook_runner(
@@ -1523,8 +1576,10 @@ class OnBeforeCommitKind(HookDeclarationKind):
         )
 
 
+@define_kind
 class OnAfterCommitKind(HookDeclarationKind):
     name = "on_after_commit"
+    helper_doc = "Hook invoked after a transaction group commits."
 
     @classmethod
     def register_hook_runner(
@@ -1547,8 +1602,10 @@ class OnAfterCommitKind(HookDeclarationKind):
         )
 
 
+@define_kind
 class OnAfterRollbackKind(HookDeclarationKind):
     name = "on_after_rollback"
+    helper_doc = "Hook invoked after a transaction group rolls back."
 
     @classmethod
     def register_hook_runner(
@@ -1569,21 +1626,6 @@ class OnAfterRollbackKind(HookDeclarationKind):
                 allowed_params=_AFTER_ROLLBACK_PARAMS,
             )
         )
-
-
-LC_MANAGED = ManagedKind
-LC_CONST = ConstKind
-LC_STATIC = StaticKind
-LC_BINDING = BindingKind
-LC_OWNED = OwnedKind
-LC_TRANSIENT = TransientKind
-LC_LOCAL_STORE = LocalStoreKind
-LC_DERIVED = DerivedKind
-LC_COMMIT_ORDER_KEY = CommitOrderKeyKind
-LC_COMMIT_VALIDATOR = CommitValidatorKind
-LC_ON_BEFORE_COMMIT = OnBeforeCommitKind
-LC_ON_AFTER_COMMIT = OnAfterCommitKind
-LC_ON_AFTER_ROLLBACK = OnAfterRollbackKind
 
 
 def _compile_injected_runner(
@@ -1714,7 +1756,7 @@ class LifecycleField:
     def __init__(
         self,
         *,
-        kind: type[LCKind] = LC_MANAGED,
+        kind: type[LCKind] = ManagedKind,
         compare: str = "value",
         tx_group: Hashable = DEFAULT_TRANSACTION,
         default: Any = MISSING,
@@ -1797,7 +1839,7 @@ class LifecycleField:
 
 def lifecycle_field(
     *,
-    kind: type[LCKind] = LC_MANAGED,
+    kind: type[LCKind] = ManagedKind,
     compare: str = "value",
     tx_group: Hashable = DEFAULT_TRANSACTION,
     default: Any = MISSING,
@@ -1824,194 +1866,7 @@ def lifecycle_field(
     )
 
 
-def const(
-    *,
-    default: Any = MISSING,
-    default_factory: Callable[[], Any] | object = MISSING,
-) -> Any:
-    return lifecycle_field(
-        kind=LC_CONST,
-        default=default,
-        default_factory=default_factory,
-    )
-
-
-def managed(
-    *,
-    compare: str = "value",
-    tx_group: Hashable = DEFAULT_TRANSACTION,
-    default: Any = MISSING,
-    default_factory: Callable[[], Any] | object = MISSING,
-    initial_working: Any = MISSING,
-    freeze: Callable[[Any], Any] | None = None,
-    thaw: Callable[[Any], Any] | None = None,
-    state_factory: Callable[[], Any] | None = None,
-    state_copy: StateCopyHelper | None = None,
-) -> Any:
-    return lifecycle_field(
-        kind=LC_MANAGED,
-        compare=compare,
-        tx_group=tx_group,
-        default=default,
-        default_factory=default_factory,
-        initial_working=initial_working,
-        freeze=freeze,
-        state_factory=state_factory,
-        state_copy=state_copy,
-        thaw=thaw,
-    )
-
-
-def static(
-    *,
-    default: Any = MISSING,
-    default_factory: Callable[[], Any] | object = MISSING,
-) -> Any:
-    return lifecycle_field(
-        kind=LC_STATIC,
-        default=default,
-        default_factory=default_factory,
-    )
-
-
-def binding(
-    *,
-    tx_group: Hashable = DEFAULT_TRANSACTION,
-    default: Any = MISSING,
-    default_factory: Callable[[], Any] | object = MISSING,
-) -> Any:
-    return lifecycle_field(
-        kind=LC_BINDING,
-        compare="identity",
-        tx_group=tx_group,
-        default=default,
-        default_factory=default_factory,
-    )
-
-
-def owned(
-    *,
-    tx_group: Hashable = DEFAULT_TRANSACTION,
-    default: Any = MISSING,
-    default_factory: Callable[[], Any] | object = MISSING,
-) -> Any:
-    return lifecycle_field(
-        kind=LC_OWNED,
-        compare="identity",
-        tx_group=tx_group,
-        default=default,
-        default_factory=default_factory,
-    )
-
-
-def transient(
-    *,
-    tx_group: Hashable = DEFAULT_TRANSACTION,
-    default: Any = MISSING,
-    default_factory: Callable[[], Any] | object = MISSING,
-    working_default_factory: Callable[[], Any] | object = MISSING,
-) -> Any:
-    return lifecycle_field(
-        kind=LC_TRANSIENT,
-        compare="value",
-        tx_group=tx_group,
-        default=default,
-        default_factory=default_factory,
-        working_default_factory=working_default_factory,
-    )
-
-
-def local_store(
-    *,
-    default: Any = MISSING,
-    default_factory: Callable[[], Any] | object = MISSING,
-) -> Any:
-    return lifecycle_field(
-        kind=LC_LOCAL_STORE,
-        compare="value",
-        default=default,
-        default_factory=default_factory,
-    )
-
-
-def derived(
-    *,
-    default: Any = MISSING,
-    default_factory: Callable[[], Any] | object = MISSING,
-) -> Any:
-    return lifecycle_field(
-        kind=LC_DERIVED,
-        compare="value",
-        default=default,
-        default_factory=default_factory,
-    )
-
-
-def commit_order_key(
-    *,
-    tx_group: Hashable = DEFAULT_TRANSACTION,
-    default: Any = MISSING,
-    default_factory: Callable[[], Any] | object = MISSING,
-) -> Any:
-    return lifecycle_field(
-        kind=LC_COMMIT_ORDER_KEY,
-        compare="value",
-        tx_group=tx_group,
-        default=default,
-        default_factory=default_factory,
-    )
-
-
-def commit_validator(
-    *,
-    tx_group: Hashable = DEFAULT_TRANSACTION,
-    default: Any = MISSING,
-) -> Any:
-    return lifecycle_field(
-        kind=LC_COMMIT_VALIDATOR,
-        compare="identity",
-        tx_group=tx_group,
-        default=default,
-    )
-
-
-def on_before_commit(
-    *,
-    tx_group: Hashable = DEFAULT_TRANSACTION,
-    default: Any = MISSING,
-) -> Any:
-    return lifecycle_field(
-        kind=LC_ON_BEFORE_COMMIT,
-        compare="identity",
-        tx_group=tx_group,
-        default=default,
-    )
-
-
-def on_after_commit(
-    *,
-    tx_group: Hashable = DEFAULT_TRANSACTION,
-    default: Any = MISSING,
-) -> Any:
-    return lifecycle_field(
-        kind=LC_ON_AFTER_COMMIT,
-        compare="identity",
-        tx_group=tx_group,
-        default=default,
-    )
-
-
-def on_after_rollback(
-    *,
-    tx_group: Hashable = DEFAULT_TRANSACTION,
-    default: Any = MISSING,
-) -> Any:
-    return lifecycle_field(
-        kind=LC_ON_AFTER_ROLLBACK,
-        compare="identity",
-        tx_group=tx_group,
-        default=default,
-    )
+_generate_kind_helpers()
 
 
 def _get_hook_declaration_field(state: LifecycleContextState, name: str) -> Any:
@@ -3340,37 +3195,11 @@ __all__ = [
     "DEFAULT_TRANSACTION",
     "GroupTransactionManager",
     "LCKind",
-    "LC_BINDING",
-    "LC_COMMIT_ORDER_KEY",
-    "LC_COMMIT_VALIDATOR",
-    "LC_CONST",
-    "LC_DERIVED",
-    "LC_LOCAL_STORE",
-    "LC_MANAGED",
-    "LC_ON_AFTER_COMMIT",
-    "LC_ON_AFTER_ROLLBACK",
-    "LC_ON_BEFORE_COMMIT",
-    "LC_OWNED",
-    "LC_STATIC",
-    "LC_TRANSIENT",
     "LifecycleContext",
     "LifecycleTransaction",
     "LifecycleValidatorReturnedFalse",
     "Record",
     "TransactionManager",
-    "binding",
-    "commit_order_key",
-    "commit_validator",
-    "const",
-    "derived",
     "lifecycle_field",
-    "local_store",
-    "managed",
     "managed_context",
-    "on_after_commit",
-    "on_after_rollback",
-    "on_before_commit",
-    "owned",
-    "static",
-    "transient",
 ]

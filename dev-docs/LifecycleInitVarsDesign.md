@@ -1342,273 +1342,61 @@ themselves is an implementation choice. The important rule is:
    special-field registration must dispatch through `LCKind` methods too, not
    helper-side special cases.
 
-### Generated field helpers
+### Phase split
 
-The `LCKind` model should go one step further: it should become the single
-source of truth for the public field helper functions too.
+This lifecycle iteration is intentionally split into two separate phases.
 
-Today we effectively maintain the same semantics in three places:
+#### Phase 1A: `LCKind` integration only
 
-- validation logic
-- field-table generation logic
-- handwritten helper functions such as `const()`, `managed()`, `transient()`
+Phase 1A is the structural refactor that replaces stringly-typed lifecycle
+kinds with class-based `LCKind` behavior.
 
-That duplication is unnecessary. Once kinds are class-based, each terminal kind
-can declare the constructor surface it supports and lifecycle can generate the
-helper function from that declaration.
+What Phase 1A changes:
 
-Target shape:
+- introduce the `LCKind` hierarchy and `LC_*` exports
+- change `FieldSpec.kind` and `LifecycleField.kind` to store an `LCKind`
+  class, not a raw string
+- move validation onto `LCKind`
+- move constructor-value routing onto `LCKind`
+- move default-store routing onto `LCKind`
+- move special-field registration onto `LCKind`
+- move hook-runner registration onto `LCKind`
+- move ftable installation onto `LCKind`
+- keep the existing handwritten public helper functions (`const`,
+  `managed`, `transient`, etc), but make them call `lifecycle_field` with the
+  new `LC_*` kind classes
 
-- each terminal kind declares which keyword parameters it accepts
-- each terminal kind declares the defaults and annotations for those parameters
-- lifecycle uses that to:
-  - validate `FieldSpec`
-  - build the ftable entries
-  - generate the public helper function
-  - generate human-readable documentation for that helper
+What Phase 1A explicitly does not change:
 
-This is the intended single-source-of-truth endpoint.
+- no generated helper functions
+- no `@define_kind`
+- no helper signature generation
+- no initvars
+- no constructor-generation redesign
+- no intended public behavior changes
 
-### Kind-declared helper signatures
+Phase 1A acceptance criteria:
 
-Each terminal kind should declare the helper signature it wants exposed.
+- the lifecycle API surface behaves the same as before
+- existing helper names stay the same
+- existing helper defaults stay the same
+- transaction behavior stays the same
+- tests should pass with the same result set as the pre-refactor baseline
 
-Near-copy-paste candidate shape:
+In short: Phase 1A changes the implementation model, not the public helper
+surface.
 
-```python
-class KindParam:
-    # Declarative description of one helper-function parameter.
-    name: str
-    annotation_src: str
-    default_expr_src: str
-    doc: str
+#### Phase 1B: generated helper substitution
 
+Phase 1B is specified in a separate document:
+[LifecycleGeneratedKindHelpers.md](LifecycleGeneratedKindHelpers.md).
 
-class LCKind:
-    name: str = "<unset>"
+The two phases have different goals:
 
-    @classmethod
-    def field_helper_name(cls) -> str:
-        # Most kinds use their lifecycle name directly.
-        return cls.name
-
-    @classmethod
-    def field_helper_params(cls) -> tuple[KindParam, ...]:
-        # Terminal kinds override this.
-        raise NotImplementedError
-
-    @classmethod
-    def field_helper_doc(cls) -> str:
-        # Terminal kinds override this with a short semantic summary.
-        raise NotImplementedError
-
-    @classmethod
-    def field_helper_call_kwargs(cls) -> tuple[str, ...]:
-        # Names forwarded into lifecycle_field(...).
-        return tuple(param.name for param in cls.field_helper_params())
-```
-
-Then a terminal kind can say exactly what its public helper surface is:
-
-```python
-class ConstKind(StoredNeverKind, ImmutableConfigKind):
-    name = "const"
-
-    @classmethod
-    def field_helper_doc(cls) -> str:
-        return "Immutable per-instance configuration copied or derived at construction."
-
-    @classmethod
-    def field_helper_params(cls) -> tuple[KindParam, ...]:
-        return (
-            KindParam(
-                name="default",
-                annotation_src="Any",
-                default_expr_src="MISSING",
-                doc="Literal default value.",
-            ),
-            KindParam(
-                name="default_factory",
-                annotation_src="Callable[[], Any] | object",
-                default_expr_src="MISSING",
-                doc="Factory used when no explicit default is supplied.",
-            ),
-        )
-```
-
-And:
-
-```python
-class TransientKind(TxScopedScratchKind):
-    name = "transient"
-
-    @classmethod
-    def field_helper_doc(cls) -> str:
-        return "Pass-local scratch that exists only while a transaction group is open."
-
-    @classmethod
-    def field_helper_params(cls) -> tuple[KindParam, ...]:
-        return (
-            KindParam(
-                name="tx_group",
-                annotation_src="Hashable",
-                default_expr_src="DEFAULT_TRANSACTION",
-                doc="Transaction group that owns this scratch field.",
-            ),
-            KindParam(
-                name="default",
-                annotation_src="Any",
-                default_expr_src="MISSING",
-                doc="Default scratch value before first write.",
-            ),
-            KindParam(
-                name="default_factory",
-                annotation_src="Callable[[], Any] | object",
-                default_expr_src="MISSING",
-                doc="Factory for the default scratch value.",
-            ),
-            KindParam(
-                name="working_default_factory",
-                annotation_src="Callable[[], Any] | object",
-                default_expr_src="MISSING",
-                doc="Factory used to materialize the working scratch value lazily.",
-            ),
-        )
-```
-
-### Generated helper functions
-
-The helper functions such as `const()` and `transient()` should be generated
-from terminal kind declarations rather than handwritten.
-
-The generated function body should be real source, not a generic `**kwargs`
-wrapper, so:
-
-- the Python signature is exact
-- editors and `help()` show the real callable surface
-- generated docs can quote the same signature
-
-Target generated shape:
-
-```python
-def const(
-    *,
-    default: Any = MISSING,
-    default_factory: Callable[[], Any] | object = MISSING,
-) -> Any:
-    return lifecycle_field(
-        kind=LC_CONST,
-        default=default,
-        default_factory=default_factory,
-    )
-```
-
-And:
-
-```python
-def transient(
-    *,
-    tx_group: Hashable = DEFAULT_TRANSACTION,
-    default: Any = MISSING,
-    default_factory: Callable[[], Any] | object = MISSING,
-    working_default_factory: Callable[[], Any] | object = MISSING,
-) -> Any:
-    return lifecycle_field(
-        kind=LC_TRANSIENT,
-        tx_group=tx_group,
-        default=default,
-        default_factory=default_factory,
-        working_default_factory=working_default_factory,
-    )
-```
-
-Important constraint:
-
-- helper generation uses declared metadata only
-- helper generation must not reverse-engineer signatures from implementation
-- kinds remain the canonical declaration point
-
-Implementation technique:
-
-- use the same source-generation pattern as stdlib `dataclasses`
-- render real Python source for the helper function
-- `exec(...)` that source in a controlled namespace
-- bind real default values and annotation objects through generated locals
-- do not use a generic `**kwargs` wrapper plus `__signature__` patching as the
-  primary implementation
-
-Reason:
-
-- real Python call signatures produce the right error messages
-- `help()` and editor introspection reflect the actual callable surface
-- generated docs can reuse the same rendered signature
-- this is a proven standard-library technique for exact generated APIs
-
-### `@define_kind`
-
-The cleanest way to keep terminal kinds declarative is to use a class decorator
-that validates the declaration and generates the public helper function.
-
-Target shape:
-
-```python
-@define_kind
-class ConstKind(StoredNeverKind, ImmutableConfigKind):
-    name = "const"
-    helper_doc = "Immutable per-instance configuration copied or derived at construction."
-    helper_params = (
-        KindParam("default", "Any", "MISSING", "Literal default value."),
-        KindParam(
-            "default_factory",
-            "Callable[[], Any] | object",
-            "MISSING",
-            "Factory used when no explicit default is supplied.",
-        ),
-    )
-```
-
-The decorator should:
-
-- validate that the class is terminal and has a unique `name`
-- validate that `helper_params` are legal for the kind
-- validate that helper param names do not collide with reserved names
-- generate the helper function source
-- install it on the lifecycle module under `field_helper_name()`
-- attach helper documentation and signature metadata back onto the kind
-
-This keeps all declarative knowledge in one place:
-
-- validation policy
-- operational policy
-- public helper signature
-- public helper docs
-
-### Auto-generated docs
-
-Once helper signatures are declarative, lifecycle can also generate docs for
-each field kind automatically.
-
-At minimum, lifecycle should be able to produce for every terminal kind:
-
-- helper name
-- exact keyword-only signature
-- one-paragraph semantic summary
-- parameter table with defaults and per-parameter docs
-- validation notes inferred from the kind hierarchy
-
-That can drive:
-
-- `help(pyrolyze.lifecycle.const)`
-- markdown API docs
-- debug dumps for `managed_context`
-- future schema export if needed
-
-The point is the same as the `LCKind` refactor itself:
-
-- no handwritten duplicate lists
-- no repeated helper signatures drifting out of sync
-- no docstrings that silently lie
-- one canonical declaration for behavior and API surface
+- Phase 1A removes string dispatch and centralizes runtime semantics
+- Phase 1B removes handwritten helper duplication, the Allows/Forbids mixin
+  explosion, and centralizes both validation and helper API declarations into
+  a single param-descriptor system
 
 ## Problem
 
