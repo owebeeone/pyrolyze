@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from pyrolyze.runtime.slot_kinds import ContextKind
+
+from ._base import USE_FACTORY, USE_OWNER
+from ._support import REFRACTOR_CLASSES
 from ._support import (
     _BOUND_METHOD_SELF_MISSING,
     _bind_pending_event_plain_value,
@@ -17,19 +21,47 @@ from .rerunnable_slot_context import RerunnableSlotContextStateMgr
 
 
 class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
+    def __init__(self, owner: object, **kwargs: object) -> None:
+        super().__init__(owner, **kwargs)
+        self._component_identity: Any = None
+        self._schema: tuple[int, tuple[str, ...]] = (0, ())
+        self._child_context_state_mgr: Any = None
+        self._last_runtime_func: Callable[..., Any] | None = None
+        self._last_bound_receiver: object = object()
+        self._last_args: tuple[Any, ...] = ()
+        self._last_kwargs: dict[str, Any] = {}
+        self._last_plain_args: tuple[Any, ...] = ()
+        self._last_plain_kwargs: dict[str, Any] = {}
+        self._last_dirty_state: Any = None
+        self._pending_dirty_state: Any = None
+        self._uses_dirty_state_api = False
+        self._packed_kwargs = False
+        self._packed_kwarg_param_names: tuple[str, ...] = ()
+        self._param_names: tuple[str, ...] = ()
+        self._site_metadata: tuple[Any, ...] = ()
+        self._pass_owned_event_handler_order: tuple[Any, ...] = ()
+
     def invoke(
         self,
         component: Callable[..., Any],
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
         *,
+        owner_slot_facade: Any = USE_OWNER,
+        scheduler_root_facade: Any = USE_OWNER,
+        render_context_factory: Callable[..., Any] | object = USE_FACTORY,
         dirty_state: Any = None,
         _pyr_param_names: tuple[str, ...] | None = None,
         _pyr_args_dirty: tuple[Any, ...] | None = None,
         _pyr_kwargs_dirty: dict[str, Any] | None = None,
     ) -> Any:
-        owner = self.owner
-
+        owner_slot_facade = self._resolve_owner_arg(owner_slot_facade)
+        scheduler_root_facade = self._resolve_owner_arg(scheduler_root_facade)
+        if render_context_factory is USE_FACTORY:
+            render_context_cls = REFRACTOR_CLASSES.render_context_cls
+            if render_context_cls is None:
+                raise RuntimeError("render context class is not configured")
+            render_context_factory = render_context_cls
         raw_component, _ = _unwrap(component)
         metadata, bound_receiver = _component_call_key(raw_component)
         runtime_func = _resolve_runtime_component_func(getattr(metadata, "_func", None))
@@ -51,28 +83,25 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
             packed_kwarg_param_names = tuple(getattr(metadata, "packed_kwarg_param_names", ()))
 
         schema = (len(args), tuple(sorted(kwargs)))
-        if (
-            owner.child_context is None
-            or owner.component_identity != identity_key
-            or owner.schema != schema
-        ):
+        if self._child_context_state_mgr is None or self._component_identity != identity_key or self._schema != schema:
             self._dispose_child_context()
-            owner.child_context = owner._render_context_cls(
-                owner_slot=owner,
-                scheduler_root=owner.render_context._scheduler_root,
-                authored_app_context_lookup=owner.parent._effective_authored_app_context_lookup(),
+            child_context = render_context_factory(
+                owner_slot=owner_slot_facade,
+                scheduler_root=scheduler_root_facade,
+                authored_app_context_lookup=self._parent_state_mgr.effective_authored_app_context_lookup(),
             )
-            owner.component_identity = identity_key
-            owner.schema = schema
+            self._child_context_state_mgr = child_context._state_mgr
+            self._component_identity = identity_key
+            self._schema = schema
 
         self._begin_owned_event_handler_pass()
         try:
-            owner.last_runtime_func = runtime_func
-            owner.last_bound_receiver = bound_receiver
-            owner.param_names = param_names
-            owner.packed_kwargs = packed_kwargs
-            owner.packed_kwarg_param_names = packed_kwarg_param_names
-            effective_param_names = _pyr_param_names or owner.param_names
+            self._last_runtime_func = runtime_func
+            self._last_bound_receiver = bound_receiver
+            self._param_names = param_names
+            self._packed_kwargs = packed_kwargs
+            self._packed_kwarg_param_names = packed_kwarg_param_names
+            effective_param_names = _pyr_param_names or self._param_names
             if dirty_state is None and effective_param_names:
                 dirty_state = dirtyof_values(
                     build_function_arg_dirty_map(
@@ -82,181 +111,157 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
                     )
                 )
             if dirty_state is None:
-                owner.last_args = tuple(
-                    _bind_pending_event_plain_value(owner, _unwrap(arg)[0])
+                self._last_args = tuple(
+                    _bind_pending_event_plain_value(self, _unwrap(arg)[0])
                     for arg in args
                 )
-                owner.last_kwargs = {
-                    key: _bind_pending_event_plain_value(owner, _unwrap(value)[0])
+                self._last_kwargs = {
+                    key: _bind_pending_event_plain_value(self, _unwrap(value)[0])
                     for key, value in kwargs.items()
                 }
-                owner.last_plain_args = ()
-                owner.last_plain_kwargs = {}
-                owner.last_dirty_state = None
-                owner.pending_dirty_state = None
-                owner.uses_dirty_state_api = False
+                self._last_plain_args = ()
+                self._last_plain_kwargs = {}
+                self._last_dirty_state = None
+                self._pending_dirty_state = None
+                self._uses_dirty_state_api = False
             else:
-                owner.last_plain_args = tuple(
-                    _bind_pending_event_plain_value(owner, _unwrap(arg)[0])
+                self._last_plain_args = tuple(
+                    _bind_pending_event_plain_value(self, _unwrap(arg)[0])
                     for arg in args
                 )
-                owner.last_plain_kwargs = {
-                    key: _bind_pending_event_plain_value(owner, _unwrap(value)[0])
+                self._last_plain_kwargs = {
+                    key: _bind_pending_event_plain_value(self, _unwrap(value)[0])
                     for key, value in kwargs.items()
                 }
-                owner.last_dirty_state = dirty_state
-                owner.pending_dirty_state = dirty_state
-                owner.last_args = ()
-                owner.last_kwargs = {}
-                owner.uses_dirty_state_api = True
-            owner.child_context._authored_app_context_lookup = owner.parent._effective_authored_app_context_lookup()
-            owner.child_context._mounted_callback = self._rerun_child
-            owner.child_context._run_boundary()
+                self._last_dirty_state = dirty_state
+                self._pending_dirty_state = dirty_state
+                self._last_args = ()
+                self._last_kwargs = {}
+                self._uses_dirty_state_api = True
+            child_context = self._child_context_state_mgr.owner
+            self._child_context_state_mgr._authored_app_context_lookup = (
+                self._parent_state_mgr.effective_authored_app_context_lookup()
+            )
+            self._child_context_state_mgr._mounted_callback = self._rerun_child
+            child_context._run_boundary()
         except BaseException:
             self.rollback_owned_event_handlers()
             raise
-        owner._committed_ui = owner.child_context._committed_ui
+        self._committed_ui = self._child_context_state_mgr._committed_ui
         return None
 
     def commit_owned_event_handlers(self) -> None:
-        owner = self.owner
-        if not owner._pass_owned_event_handler_order and not any(
-            type(child).__name__ == "EventHandlerSlotContext" and child.seen_in_pass
-            for child in owner._children.values()
+        if not self._pass_owned_event_handler_order and not any(
+            child.context_kind() == ContextKind.EVENT_HANDLER and child._seen_in_pass
+            for child in self._children.values()
         ):
             return
         unseen_slots = [
             slot_id
-            for slot_id, child in owner._children.items()
-            if type(child).__name__ == "EventHandlerSlotContext" and not child.seen_in_pass
+            for slot_id, child in self._children.items()
+            if child.context_kind() == ContextKind.EVENT_HANDLER and not child._seen_in_pass
         ]
         for slot_id in unseen_slots:
-            child = owner._children.get(slot_id)
+            child = self._children.get(slot_id)
             if child is not None:
                 child.deactivate()
 
-        for child in owner._children.values():
-            if type(child).__name__ == "EventHandlerSlotContext":
+        for child in self._children.values():
+            if child.context_kind() == ContextKind.EVENT_HANDLER:
                 child.commit_handler()
 
-        owner._pass_owned_event_handler_order = ()
+        self._pass_owned_event_handler_order = ()
 
     def rollback_owned_event_handlers(self) -> None:
-        owner = self.owner
-        if not owner._pass_owned_event_handler_order and not any(
-            type(child).__name__ == "EventHandlerSlotContext" and child.seen_in_pass
-            for child in owner._children.values()
+        if not self._pass_owned_event_handler_order and not any(
+            child.context_kind() == ContextKind.EVENT_HANDLER and child._seen_in_pass
+            for child in self._children.values()
         ):
             return
-        committed_ids = set(owner._pass_owned_event_handler_order)
-        for slot_id, child in list(owner._children.items()):
-            if type(child).__name__ != "EventHandlerSlotContext":
+        committed_ids = set(self._pass_owned_event_handler_order)
+        for slot_id, child in list(self._children.items()):
+            if child.context_kind() != ContextKind.EVENT_HANDLER:
                 continue
             if slot_id not in committed_ids:
                 child.deactivate()
                 continue
             child.rollback_handler()
-            child.seen_in_pass = True
-        owner._pass_owned_event_handler_order = ()
+            child._seen_in_pass = True
+        self._pass_owned_event_handler_order = ()
 
     def deactivate(self) -> None:
         self._dispose_child_context()
         super().deactivate()
 
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        owner = self.owner
-        owner.component_identity = None
-        owner.schema = (0, ())
-        owner.child_context = None
-        owner.last_runtime_func = None
-        owner.last_bound_receiver = object()
-        owner.last_args = ()
-        owner.last_kwargs = {}
-        owner.last_plain_args = ()
-        owner.last_plain_kwargs = {}
-        owner.last_dirty_state = None
-        owner.pending_dirty_state = None
-        owner.uses_dirty_state_api = False
-        owner.packed_kwargs = False
-        owner.packed_kwarg_param_names = ()
-        owner.param_names = ()
-        owner.site_metadata = ()
-        owner._pass_owned_event_handler_order = ()
-
     def _begin_owned_event_handler_pass(self) -> None:
-        owner = self.owner
-        owner._pass_owned_event_handler_order = tuple(
+        self._pass_owned_event_handler_order = tuple(
             slot_id
-            for slot_id, child in owner._children.items()
-            if type(child).__name__ == "EventHandlerSlotContext"
+            for slot_id, child in self._children.items()
+            if child.context_kind() == ContextKind.EVENT_HANDLER
         )
-        for child in owner._children.values():
-            if type(child).__name__ == "EventHandlerSlotContext":
-                child.seen_in_pass = False
+        for child in self._children.values():
+            if child.context_kind() == ContextKind.EVENT_HANDLER:
+                child._seen_in_pass = False
 
     def _rerun_child(self) -> None:
-        owner = self.owner
-
-        child_context = owner.child_context
-        runtime_func = owner.last_runtime_func
+        child_context = None if self._child_context_state_mgr is None else self._child_context_state_mgr.owner
+        runtime_func = self._last_runtime_func
         if child_context is None or runtime_func is None:
             raise RuntimeError("component child is not mounted")
-        if owner.uses_dirty_state_api:
-            dirty_state = owner.pending_dirty_state
+        if self._uses_dirty_state_api:
+            dirty_state = self._pending_dirty_state
             if dirty_state is None:
-                dirty_state = _clean_dirty_state(owner.last_dirty_state)
+                dirty_state = _clean_dirty_state(self._last_dirty_state)
             else:
-                owner.pending_dirty_state = None
-            if owner.packed_kwargs:
+                self._pending_dirty_state = None
+            if self._packed_kwargs:
                 packed_kwargs = pack_function_args(
-                    owner.packed_kwarg_param_names,
-                    owner.last_plain_args,
-                    owner.last_plain_kwargs,
+                    self._packed_kwarg_param_names,
+                    self._last_plain_args,
+                    self._last_plain_kwargs,
                 )
-                if owner.last_bound_receiver is _BOUND_METHOD_SELF_MISSING:
+                if self._last_bound_receiver is _BOUND_METHOD_SELF_MISSING:
                     runtime_func(child_context, dirty_state, **packed_kwargs)
                 else:
-                    runtime_func(owner.last_bound_receiver, child_context, dirty_state, **packed_kwargs)
-            elif owner.last_bound_receiver is _BOUND_METHOD_SELF_MISSING:
-                runtime_func(child_context, dirty_state, *owner.last_plain_args, **owner.last_plain_kwargs)
+                    runtime_func(self._last_bound_receiver, child_context, dirty_state, **packed_kwargs)
+            elif self._last_bound_receiver is _BOUND_METHOD_SELF_MISSING:
+                runtime_func(child_context, dirty_state, *self._last_plain_args, **self._last_plain_kwargs)
             else:
                 runtime_func(
-                    owner.last_bound_receiver,
+                    self._last_bound_receiver,
                     child_context,
                     dirty_state,
-                    *owner.last_plain_args,
-                    **owner.last_plain_kwargs,
+                    *self._last_plain_args,
+                    **self._last_plain_kwargs,
                 )
-        elif owner.packed_kwargs:
+        elif self._packed_kwargs:
             packed_kwargs = pack_function_args(
-                owner.packed_kwarg_param_names,
-                owner.last_args,
-                owner.last_kwargs,
+                self._packed_kwarg_param_names,
+                self._last_args,
+                self._last_kwargs,
             )
-            if owner.last_bound_receiver is _BOUND_METHOD_SELF_MISSING:
+            if self._last_bound_receiver is _BOUND_METHOD_SELF_MISSING:
                 runtime_func(child_context, **packed_kwargs)
             else:
-                runtime_func(owner.last_bound_receiver, child_context, **packed_kwargs)
-        elif owner.last_bound_receiver is _BOUND_METHOD_SELF_MISSING:
-            runtime_func(child_context, *owner.last_args, **owner.last_kwargs)
+                runtime_func(self._last_bound_receiver, child_context, **packed_kwargs)
+        elif self._last_bound_receiver is _BOUND_METHOD_SELF_MISSING:
+            runtime_func(child_context, *self._last_args, **self._last_kwargs)
         else:
-            runtime_func(owner.last_bound_receiver, child_context, *owner.last_args, **owner.last_kwargs)
-        owner._committed_ui = child_context._committed_ui
-        if not owner.parent._scope_active:
-            owner.parent._refresh_committed_ui_from_children()
+            runtime_func(self._last_bound_receiver, child_context, *self._last_args, **self._last_kwargs)
+        self._committed_ui = child_context._state_mgr._committed_ui
+        if not self._parent_state_mgr.is_scope_active():
+            self._parent_state_mgr.refresh_committed_ui_from_children()
 
     def _dispose_child_context(self) -> None:
-        owner = self.owner
-        child_context = owner.child_context
+        child_context = None if self._child_context_state_mgr is None else self._child_context_state_mgr.owner
         if child_context is None:
             return
         child_context._remove_from_scheduler()
-        for child in list(child_context._children.values()):
+        for child in list(child_context._state_mgr._children.values()):
             child.deactivate()
-        child_context._children.clear()
-        child_context._slots_by_id.clear()
-        child_context._mounted_callback = None
-        owner.child_context = None
-        owner.pending_dirty_state = None
-        owner._committed_ui = ()
+        child_context._state_mgr._children.clear()
+        child_context._state_mgr.clear_registered_slots()
+        child_context._state_mgr._mounted_callback = None
+        self._child_context_state_mgr = None
+        self._pending_dirty_state = None
+        self._committed_ui = ()

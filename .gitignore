@@ -12,3 +12,4 @@ tests/.uv-venvs/
 tests/actual_test_results/
 diagnostics/
 scratch/
+*-old.py

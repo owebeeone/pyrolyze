@@ -78,103 +78,96 @@ class _CommittedAppContextOverrideKeyState:
 
 
 class AppContextOverrideSlotContextStateMgr(RerunnableSlotContextStateMgr):
+    def __init__(self, owner: object, **kwargs: object) -> None:
+        super().__init__(owner, **kwargs)
+        self._structure_error_cls = type(owner)._structure_error_cls
+        self._declared_keys: tuple[Any, ...] = ()
+        self._committed_values: tuple[Any, ...] = ()
+        self._committed_key_states: dict[Any, _CommittedAppContextOverrideKeyState] = {}
+        self._committed_lookup: AppContextLookup = EMPTY_APP_CONTEXT_LOOKUP
+        self._pass_committed_values: tuple[Any, ...] = ()
+        self._pass_committed_lookup: AppContextLookup = EMPTY_APP_CONTEXT_LOOKUP
+        self._pending_values: tuple[Any, ...] = ()
+        self._pending_lookup: AppContextLookup = EMPTY_APP_CONTEXT_LOOKUP
+        self._pending_initialized = False
+
     def stage_override(self, keys: tuple[Any, ...], values: tuple[Any, ...]) -> None:
-        owner = self.owner
         self._validate_override(keys, values)
-        if owner.declared_keys and owner.declared_keys != keys:
-            raise owner._structure_error_cls(
+        if self._declared_keys and self._declared_keys != keys:
+            raise self._structure_error_cls(
                 "app_context_override fixed keys cannot change at one slot"
             )
-        if not owner.declared_keys:
-            owner.declared_keys = keys
+        if not self._declared_keys:
+            self._declared_keys = keys
         self._apply_pending_values(values)
-        owner._pending_values = values
-        owner._pending_lookup = OverlayAppContextLookup(
-            parent=_ParentAuthoredAppContextLookup(owner.parent),
-            drips={key: owner._committed_key_states[key].drip for key in keys},
+        self._pending_values = values
+        self._pending_lookup = OverlayAppContextLookup(
+            parent=self._parent_state_mgr.effective_authored_app_context_lookup(),
+            drips={key: self._committed_key_states[key].drip for key in keys},
         )
-        owner._pending_initialized = True
+        self._pending_initialized = True
 
     def effective_authored_app_context_lookup(self) -> AppContextLookup:
-        owner = self.owner
-        if owner._scope_active and owner._pending_initialized:
-            return owner._pending_lookup
-        if owner.declared_keys:
-            return owner._committed_lookup
-        return owner.parent._effective_authored_app_context_lookup()
+        if self._scope_active and self._pending_initialized:
+            return self._pending_lookup
+        if self._declared_keys:
+            return self._committed_lookup
+        return self._parent_state_mgr.effective_authored_app_context_lookup()
 
     def begin_scope_pass(self) -> None:
-        owner = self.owner
-        owner._pass_committed_values = owner.committed_values
-        owner._pass_committed_lookup = owner._committed_lookup
+        self._pass_committed_values = self._committed_values
+        self._pass_committed_lookup = self._committed_lookup
         super().begin_pass()
 
     def commit_scope_pass(self) -> None:
-        owner = self.owner
-        if not owner._pending_initialized:
+        if not self._pending_initialized:
             raise RuntimeError("app_context_override slot was not staged")
-        owner.committed_values = owner._pending_values
-        owner._committed_lookup = OverlayAppContextLookup(
-            parent=_ParentAuthoredAppContextLookup(owner.parent),
-            drips={key: owner._committed_key_states[key].drip for key in owner.declared_keys},
+        self._committed_values = self._pending_values
+        self._committed_lookup = OverlayAppContextLookup(
+            parent=self._parent_state_mgr.effective_authored_app_context_lookup(),
+            drips={key: self._committed_key_states[key].drip for key in self._declared_keys},
         )
         super().end_pass()
-        owner._pending_values = ()
-        owner._pending_lookup = EMPTY_APP_CONTEXT_LOOKUP
-        owner._pending_initialized = False
-        owner._pass_committed_values = ()
-        owner._pass_committed_lookup = EMPTY_APP_CONTEXT_LOOKUP
+        self._pending_values = ()
+        self._pending_lookup = EMPTY_APP_CONTEXT_LOOKUP
+        self._pending_initialized = False
+        self._pass_committed_values = ()
+        self._pass_committed_lookup = EMPTY_APP_CONTEXT_LOOKUP
 
     def rollback_scope_pass(self) -> None:
-        owner = self.owner
         super().rollback_pass()
-        owner.committed_values = owner._pass_committed_values
-        owner._committed_lookup = owner._pass_committed_lookup
-        if owner.declared_keys and len(owner._pass_committed_values) == len(owner.declared_keys):
-            self._apply_values(owner._pass_committed_values)
-        elif not owner._pass_committed_values:
-            for state in owner._committed_key_states.values():
+        self._committed_values = self._pass_committed_values
+        self._committed_lookup = self._pass_committed_lookup
+        if self._declared_keys and len(self._pass_committed_values) == len(self._declared_keys):
+            self._apply_values(self._pass_committed_values)
+        elif not self._pass_committed_values:
+            for state in self._committed_key_states.values():
                 state.deactivate()
-        owner._pending_values = ()
-        owner._pending_lookup = EMPTY_APP_CONTEXT_LOOKUP
-        owner._pending_initialized = False
-        owner._pass_committed_values = ()
-        owner._pass_committed_lookup = EMPTY_APP_CONTEXT_LOOKUP
+        self._pending_values = ()
+        self._pending_lookup = EMPTY_APP_CONTEXT_LOOKUP
+        self._pending_initialized = False
+        self._pass_committed_values = ()
+        self._pass_committed_lookup = EMPTY_APP_CONTEXT_LOOKUP
 
     def deactivate(self) -> None:
-        owner = self.owner
-        for state in owner._committed_key_states.values():
+        for state in self._committed_key_states.values():
             state.deactivate()
-        owner._committed_key_states = {}
-        owner._pending_values = ()
-        owner._pending_lookup = EMPTY_APP_CONTEXT_LOOKUP
-        owner._pending_initialized = False
+        self._committed_key_states = {}
+        self._pending_values = ()
+        self._pending_lookup = EMPTY_APP_CONTEXT_LOOKUP
+        self._pending_initialized = False
         super().deactivate()
-
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        owner = self.owner
-        owner.declared_keys = ()
-        owner.committed_values = ()
-        owner._committed_key_states = {}
-        owner._committed_lookup = EMPTY_APP_CONTEXT_LOOKUP
-        owner._pass_committed_values = ()
-        owner._pass_committed_lookup = EMPTY_APP_CONTEXT_LOOKUP
-        owner._pending_values = ()
-        owner._pending_lookup = EMPTY_APP_CONTEXT_LOOKUP
-        owner._pending_initialized = False
 
     def _apply_pending_values(self, values: tuple[Any, ...]) -> None:
         self._apply_values(values)
 
     def _apply_values(self, values: tuple[Any, ...]) -> None:
-        owner = self.owner
-        parent_lookup = owner.parent._effective_authored_app_context_lookup()
-        for key, value in zip(owner.declared_keys, values, strict=True):
-            state = owner._committed_key_states.get(key)
+        parent_lookup = self._parent_state_mgr.effective_authored_app_context_lookup()
+        for key, value in zip(self._declared_keys, values, strict=True):
+            state = self._committed_key_states.get(key)
             if state is None:
                 state = _CommittedAppContextOverrideKeyState(key=key)
-                owner._committed_key_states[key] = state
+                self._committed_key_states[key] = state
             if value is None:
                 state.sync_parent(parent_lookup.resolve_drip(key))
             else:
@@ -186,19 +179,19 @@ class AppContextOverrideSlotContextStateMgr(RerunnableSlotContextStateMgr):
         values: tuple[Any, ...],
     ) -> None:
         if not keys:
-            raise self.owner._structure_error_cls("app_context_override requires at least one key")
+            raise self._structure_error_cls("app_context_override requires at least one key")
         if len(keys) != len(values):
-            raise self.owner._structure_error_cls(
+            raise self._structure_error_cls(
                 "app_context_override key/value arity must match"
             )
         seen: set[AppContextKey[Any]] = set()
         for key in keys:
             if not isinstance(key, AppContextKey):
-                raise self.owner._structure_error_cls(
+                raise self._structure_error_cls(
                     "app_context_override keys must be AppContextKey instances"
                 )
             if key in seen:
-                raise self.owner._structure_error_cls(
+                raise self._structure_error_cls(
                     f"app_context_override duplicate key {key.debug_name!r}"
                 )
             seen.add(key)

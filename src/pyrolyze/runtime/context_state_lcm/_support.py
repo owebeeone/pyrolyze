@@ -15,9 +15,12 @@ from pyrolyze.api import (
     validate_mount_selectors,
 )
 
+from ..app_context import GENERATION_TRACKER_KEY, AppContextKey
 from ..function_arg_helpers import build_function_arg_dirty_map, pack_function_args
 from ..pyro_call import RuntimeSiteMetadata, resolve_runtime_pyro_call
+from ..slot_call_semantics import ExternalStoreRef
 from ..slot_call_core import runtime_context_param_name
+from ..slot_kinds import ContextKind
 from ..slot_identity import SlotId, SlotIdPath
 
 
@@ -113,48 +116,100 @@ class _CommittedUiEntry:
     element: UIElement | MountDirective
 
 
+@dataclass(frozen=True, slots=True)
+class SlotRuntimeContext:
+    slot: Any
+
+    def get_or_init_local(self, key: str, factory: Callable[[], T]) -> T:
+        locals_map = self.slot._runtime_locals
+        if key not in locals_map:
+            locals_map[key] = factory()
+        return cast(T, locals_map[key])
+
+    def get_local(self, key: str, default: object | None = None) -> object | None:
+        return self.slot._runtime_locals.get(key, default)
+
+    def set_local(self, key: str, value: object) -> None:
+        self.slot._runtime_locals[key] = value
+
+    def invalidate(self) -> None:
+        self.slot._mark_binding_dirty()
+
+    def stable_local_id(self, key: str) -> tuple[SlotId, str]:
+        return (self.slot.slot_id, key)
+
+    def get_app_context(self, key: AppContextKey[T]) -> T:
+        return self.slot.root_context._scheduler_root._app_context_store.get(key)
+
+    def has_app_context(self, key: AppContextKey[Any]) -> bool:
+        return self.slot.root_context._scheduler_root._app_context_store.has(key)
+
+    def get_authored_app_context(self, key: AppContextKey[T]) -> T:
+        return self.slot.get_authored_app_context(key)
+
+    def has_authored_app_context(self, key: AppContextKey[Any]) -> bool:
+        return self.slot.has_authored_app_context(key)
+
+    def authored_app_context_ref(self, key: AppContextKey[T]) -> ExternalStoreRef[T]:
+        return self.slot.authored_app_context_ref(key)
+
+    def current_generation_id(self) -> int:
+        tracker = self.get_app_context(GENERATION_TRACKER_KEY)
+        return tracker.current()
+
+    def current_slot_id(self) -> SlotId:
+        return self.slot.slot_id
+
+
 @dataclass(slots=True)
 class _SlotExprHostSlotProxy:
-    slot_id: SlotId
-    parent: Any
-    render_context: Any
-    invoke_dirty: bool = False
+    _slot_id: SlotId
+    _parent_state_mgr: Any
+    _render_context_state_mgr: Any
+    _invoke_dirty: bool = False
+
+    def current_slot_id(self) -> SlotId:
+        return self._slot_id
 
 
 @dataclass(slots=True)
 class _ContextSlotExprHost:
-    owner: Any
+    owner_state_mgr: Any
     slot_id: SlotId
     _proxy: _SlotExprHostSlotProxy = field(init=False)
 
     def __post_init__(self) -> None:
-        render_context_cls = REFRACTOR_CLASSES.render_context_cls
-        is_render_context = render_context_cls is not None and isinstance(self.owner, render_context_cls)
-        render_context = self.owner if is_render_context else self.owner.root_context
-        parent = None if is_render_context else self.owner
+        is_render_context = self.owner_state_mgr.context_kind() in {
+            ContextKind.RENDER_ROOT,
+            ContextKind.COMPONENT_RENDER,
+        }
+        render_context = (
+            self.owner_state_mgr if is_render_context else self.owner_state_mgr._render_context_state_mgr
+        )
+        parent = None if is_render_context else self.owner_state_mgr
         self._proxy = _SlotExprHostSlotProxy(
-            slot_id=self.slot_id,
-            parent=parent,
-            render_context=render_context,
+            _slot_id=self.slot_id,
+            _parent_state_mgr=parent,
+            _render_context_state_mgr=render_context,
         )
 
     def queue_slot_call_invalidation(self) -> None:
-        self._proxy.render_context._queue_invalidation_from(self._proxy, include_source=False)
+        self._proxy._render_context_state_mgr.queue_invalidation_from(self._proxy, include_source=False)
 
     def mark_slot_call_refresh_only(self) -> None:
         self.queue_slot_call_invalidation()
 
     def enqueue_slot_call_post_commit(self, callback: Callable[[], None]) -> None:
-        self._proxy.render_context._enqueue_post_commit(callback)
+        self._proxy._render_context_state_mgr.enqueue_post_commit(callback)
 
     def publish_slot_call_mount_advertisement(
         self,
         request: PyrolyzeMountAdvertisementRequest,
     ) -> PyrolyzeMountAdvertisement:
-        return self._proxy.render_context._publish_mount_advertisement(self._proxy, request)
+        return self._proxy._render_context_state_mgr.publish_mount_advertisement(self._proxy, request)
 
     def withdraw_slot_call_mount_advertisement(self) -> None:
-        self._proxy.render_context._withdraw_mount_advertisement(self.slot_id)
+        self._proxy._render_context_state_mgr.withdraw_mount_advertisement(self.slot_id)
 
 
 def _dirty_state_truthy(value: Any) -> bool:
@@ -316,19 +371,23 @@ def _native_emission_slot_identity(context: Any) -> SlotIdPath | None:
 
 def _bind_pending_event_plain_value(owner: Any, value: Any) -> Any:
     if isinstance(value, PendingEventHandlerBinding):
+        if hasattr(owner, "materialize_pending_event_handler"):
+            return owner.materialize_pending_event_handler(value)
         return owner._materialize_pending_event_handler(value)
     return value
 
 
 def _resolve_mount_advertisement_owner(parent: Any) -> Any:
     current: Any = parent
-    slot_context_cls = REFRACTOR_CLASSES.slot_context_cls
-    container_slot_context_cls = REFRACTOR_CLASSES.container_slot_context_cls
     while current is not None:
-        if container_slot_context_cls is not None and isinstance(current, container_slot_context_cls):
+        context_kind = current.context_kind()
+        if context_kind == ContextKind.CONTAINER:
             return current
-        if slot_context_cls is not None and isinstance(current, slot_context_cls):
-            current = current.parent
+        if context_kind not in {
+            ContextKind.RENDER_ROOT,
+            ContextKind.COMPONENT_RENDER,
+        }:
+            current = current.parent if hasattr(current, "parent") else current._parent_state_mgr
             continue
         return None
     return None
@@ -341,9 +400,28 @@ def _finish_context_pass(context: Any, *, commit: bool) -> None:
     try:
         context.end_pass()
     except BaseException:
-        if getattr(context, "_scope_active", False):
+        if context._state_mgr.is_scope_active():
             context.rollback_pass()
         raise
+
+
+@dataclass(slots=True)
+class _PassScopeHandle:
+    context: Any
+    activate: bool = True
+
+    def __enter__(self) -> None:
+        if self.activate:
+            self.context.begin_pass()
+        return None
+
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
+        if self.activate:
+            if exc_type is None:
+                self.context.end_pass()
+            else:
+                self.context.rollback_pass()
+        return False
 
 
 class ContainerCallRuntimeContext:
@@ -423,7 +501,7 @@ class _DirectiveCallHandle(AbstractContextManager[Any]):
                 raise RuntimeError("mount(no_emit) does not allow emitted children")
             _finish_context_pass(self.slot, commit=True)
         except BaseException:
-            if getattr(self.slot, "_scope_active", False):
+            if self.slot._state_mgr.is_scope_active():
                 _finish_context_pass(self.slot, commit=False)
             raise
         return False
@@ -500,7 +578,7 @@ class _NativeContainerCallHandle(AbstractContextManager[Any]):
             result = self.container_fn(self.slot, *bound_args, **bound_kwargs)
             if result is not None:
                 raise TypeError("@pyrolyze functions must return None")
-            if len(self.slot._staged_ui) != 1:
+            if self.slot._state_mgr.staged_ui_len() != 1:
                 raise RuntimeError("native container helpers must emit exactly one root UIElement")
         except BaseException:
             self.slot._rollback_scope_pass()
@@ -573,7 +651,7 @@ class _PyrolyzeContainerCallHandle(AbstractContextManager[Any]):
                     )
             if result is not None:
                 raise TypeError("@pyrolyze functions must return None")
-            if len(self.slot._staged_ui) != 1:
+            if self.slot._state_mgr.staged_ui_len() != 1:
                 raise RuntimeError("native container helpers must emit exactly one root UIElement")
         except BaseException:
             self.slot._rollback_scope_pass()
@@ -587,6 +665,62 @@ class _PyrolyzeContainerCallHandle(AbstractContextManager[Any]):
         finally:
             self.slot.expects_native_root = False
         return False
+
+
+@dataclass(slots=True)
+class _InvalidationScheduler:
+    queue: list[Any] = field(default_factory=list)
+    deferred: list[Any] = field(default_factory=list)
+    active: list[Any] = field(default_factory=list)
+
+    def request(self, boundary: Any) -> None:
+        if self._is_blocked_by_active(boundary):
+            self._merge_boundary(self.deferred, boundary)
+            return
+        self._merge_boundary(self.queue, boundary)
+
+    def enter_active(self, boundary: Any) -> None:
+        self.active.append(boundary)
+
+    def exit_active(self, boundary: Any) -> None:
+        if self.active and self.active[-1] is boundary:
+            self.active.pop()
+        else:
+            self.active = [active for active in self.active if active is not boundary]
+        self._promote_deferred()
+
+    def pop_next(self) -> Any | None:
+        if not self.queue:
+            return None
+        return self.queue.pop(0)
+
+    def has_pending_work(self) -> bool:
+        return bool(self.queue or self.deferred)
+
+    def remove(self, boundary: Any) -> None:
+        self.queue = [queued for queued in self.queue if queued is not boundary]
+        self.deferred = [queued for queued in self.deferred if queued is not boundary]
+        self.active = [active for active in self.active if active is not boundary]
+
+    def _promote_deferred(self) -> None:
+        remaining: list[Any] = []
+        for boundary in self.deferred:
+            if self._is_blocked_by_active(boundary):
+                remaining.append(boundary)
+            else:
+                self._merge_boundary(self.queue, boundary)
+        self.deferred = remaining
+
+    def _is_blocked_by_active(self, boundary: Any) -> bool:
+        return any(active._is_ancestor_boundary_of(boundary) for active in self.active)
+
+    def _merge_boundary(self, targets: list[Any], boundary: Any) -> None:
+        if any(queued._is_ancestor_boundary_of(boundary) for queued in targets):
+            return
+        targets[:] = [queued for queued in targets if not boundary._is_ancestor_boundary_of(queued)]
+        if any(queued is boundary for queued in targets):
+            return
+        targets.append(boundary)
 
 
 def _structured_dirty_projection(
@@ -613,7 +747,8 @@ def _all_dirty_projection(value: Any) -> Any:
 
 @dataclass(slots=True)
 class _KeyedLoopIterable(Generic[T]):
-    owner: Any
+    owner_state_mgr: Any
+    parent_facade: Any
     values: tuple[T, ...]
     key_fn: Callable[[T], Any]
 
@@ -621,25 +756,30 @@ class _KeyedLoopIterable(Generic[T]):
         loop_item_slot_context_cls = REFRACTOR_CLASSES.loop_item_slot_context_cls
         if loop_item_slot_context_cls is None:
             raise RuntimeError("loop item slot context class is not configured")
-        self.owner._begin_scope_pass()
+        self.owner_state_mgr.begin_pass()
         seen_keys: set[Any] = set()
         try:
             for value in self.values:
                 key = self.key_fn(value)
+                owner_slot_id = self.owner_state_mgr.current_slot_id()
                 if key in seen_keys:
-                    raise DuplicateKeyError(f"duplicate key {key!r} for loop slot {self.owner.slot_id!r}")
+                    raise DuplicateKeyError(f"duplicate key {key!r} for loop slot {owner_slot_id!r}")
                 seen_keys.add(key)
                 item_slot = SlotId(
-                    module_id=self.owner.slot_id.module_id,
-                    slot_index=self.owner.slot_id.slot_index,
+                    module_id=owner_slot_id.module_id,
+                    slot_index=owner_slot_id.slot_index,
                     key_path=(key,),
-                    line_no=self.owner.slot_id.line_no,
+                    line_no=owner_slot_id.line_no,
                 )
-                item = self.owner._ensure_slot(item_slot, loop_item_slot_context_cls)
+                item = self.owner_state_mgr.ensure_slot(
+                    item_slot,
+                    loop_item_slot_context_cls,
+                    parent_facade=self.parent_facade,
+                )
                 item.update_current(value)
                 yield item
         except BaseException:
-            self.owner._rollback_scope_pass()
+            self.owner_state_mgr.rollback_pass()
             raise
         else:
-            self.owner._commit_scope_pass()
+            self.owner_state_mgr.end_pass()
