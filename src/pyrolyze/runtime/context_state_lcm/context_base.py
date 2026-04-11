@@ -88,11 +88,6 @@ class FrozenContextSubtreeState:
 
 
 @dataclass(slots=True)
-class ContextPassControl:
-    scope_active: bool = False
-
-
-@dataclass(slots=True)
 class ContextStagedState:
     ui: list[UiNode] = field(default_factory=list)
     ui_entries: list[UiSnapshotEntry] = field(default_factory=list)
@@ -117,24 +112,19 @@ class ContextBaseStateMgr(StateMgrBase):
     # prior_committed_native_root should be replaced by the container state's
     # current committed_native_root view rather than copied into transient
     # scratch.
-    _generation_tracker_key: AppContextKey[GenerationTracker] = const()
-    _render_context: RenderContext = const()
-    _subtree: FrozenContextSubtreeState = managed(default=FrozenContextSubtreeState())
-    _pass_control: ContextPassControl | None = transient(
-        default=None,
-        working_default_factory=ContextPassControl,
-        tx_group=PASS_TX_GROUP,
+    _generation_tracker_key: AppContextKey[GenerationTracker] = const(
+        default_factory=lambda self: self.owner._generation_tracker_key_const
     )
+    _render_context: RenderContext = const(
+        default_factory=lambda self: self.owner.render_context
+    )
+    _subtree: FrozenContextSubtreeState = managed(default=FrozenContextSubtreeState())
+    _scope_active: bool = transient(default=False, tx_group=PASS_TX_GROUP)
     _staged_state: ContextStagedState | None = transient(
         default=None,
         working_default_factory=ContextStagedState,
         tx_group=PASS_TX_GROUP,
     )
-
-    def __init__(self, owner: ContextBase) -> None:
-        super().__init__(owner)
-        self._generation_tracker_key = owner._generation_tracker_key_const
-        self._render_context = owner.render_context
 
     def root_context(self) -> RenderContext:
         return self._render_context

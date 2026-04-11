@@ -266,7 +266,7 @@ def _walk_context_node(
         )
 
     next_render_owner = render_owner_slot_id
-    if context.kind == "container":
+    if context.kind is ContextKind.CONTAINER:
         next_render_owner = context.slot_id
 
     for child in context.children:
@@ -276,7 +276,7 @@ def _walk_context_node(
 
 def _logical_children(context: ContextBase) -> list[_LogicalContext]:
     children: list[_LogicalContext] = []
-    for child in context._children.values():
+    for child in context.iter_children():
         if isinstance(child, ComponentCallSlotContext) and child.child_context is not None:
             children.append(
                 _LogicalContext(
@@ -316,7 +316,7 @@ def _logical_children(context: ContextBase) -> list[_LogicalContext]:
 
 
 def _own_ui_records(context: ContextBase) -> tuple[CapturedUiElement, ...]:
-    committed_entries = getattr(context, "_own_committed_ui_entries", None)
+    committed_entries = context.own_committed_ui_entries()
     if committed_entries:
         return tuple(
             CapturedUiElement(
@@ -334,7 +334,7 @@ def _own_ui_records(context: ContextBase) -> tuple[CapturedUiElement, ...]:
             generation_id=context.current_generation_id(),
             element=element,
         )
-        for element in context._own_committed_ui
+        for element in context.own_committed_ui()
     )
 
 
@@ -365,7 +365,9 @@ def _flatten_ui(root: CapturedContext) -> dict[tuple[SlotIdPath, int], CapturedU
     return flattened
 
 
-def _context_identity(context: CapturedContext) -> tuple[str, SlotId | None, int]:
+def _context_identity(
+    context: CapturedContext,
+) -> tuple[ContextKind, SlotId | None, int, tuple[CapturedSiteMetadata, ...]]:
     return (context.kind, context.slot_id, context.generation_id, context.site_metadata)
 
 

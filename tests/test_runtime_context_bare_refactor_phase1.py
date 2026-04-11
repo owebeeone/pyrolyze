@@ -37,7 +37,7 @@ def test_slot_context_registers_with_parent_and_render_context() -> None:
     slot = SlotContext(render_context=root, parent=root, slot_id=_slot(1))
 
     assert root._slots_by_id[slot.slot_id] is slot
-    assert root._children[slot.slot_id] is slot
+    assert root.debug_children_of() == (slot.slot_id,)
     assert slot.current_slot_id() == slot.slot_id
 
 
@@ -59,7 +59,7 @@ def test_slot_context_deactivate_unlinks_from_parent_and_root() -> None:
     slot.deactivate()
 
     assert slot.slot_id not in root._slots_by_id
-    assert slot.slot_id not in root._children
+    assert slot.slot_id not in root.debug_children_of()
 
 
 def test_event_handler_slot_context_stages_commits_and_dispatches() -> None:
@@ -105,7 +105,7 @@ def test_leaf_slot_context_invoke_native_commits_scope_on_success() -> None:
     result = slot.invoke_native(lambda ctx, value: None, (1,), {}, context_param="ctx")
 
     assert result is None
-    assert slot._scope_active is False
+    assert slot._state_mgr.is_scope_active() is False
 
 
 def test_leaf_slot_context_invoke_native_rolls_back_scope_on_error() -> None:
@@ -118,16 +118,16 @@ def test_leaf_slot_context_invoke_native_rolls_back_scope_on_error() -> None:
     with pytest.raises(ValueError, match="boom"):
         slot.invoke_native(boom, (), {}, context_param="ctx")
 
-    assert slot._scope_active is False
+    assert slot._state_mgr.is_scope_active() is False
 
 
 def test_context_base_pass_scope_commits_on_clean_exit() -> None:
     root = RenderContext()
 
     with root.pass_scope():
-        assert root._scope_active is True
+        assert root._state_mgr.is_scope_active() is True
 
-    assert root._scope_active is False
+    assert root._state_mgr.is_scope_active() is False
 
 
 def test_context_base_pass_scope_rolls_back_on_exception() -> None:
@@ -137,7 +137,7 @@ def test_context_base_pass_scope_rolls_back_on_exception() -> None:
         with root.pass_scope():
             raise ValueError("boom")
 
-    assert root._scope_active is False
+    assert root._state_mgr.is_scope_active() is False
 
 
 def test_render_context_mount_runs_callback_and_debug_helpers_work() -> None:
@@ -257,7 +257,7 @@ def test_directive_slot_context_tracks_pending_children() -> None:
     root = RenderContext()
     slot = DirectiveSlotContext(render_context=root, parent=root, slot_id=_slot(16))
     child = ContainerSlotContext(render_context=root, parent=slot, slot_id=_slot(17))
-    child._committed_ui = (UIElement(kind="text", props={}, children=()),)
+    child._state_mgr._committed_ui = (UIElement(kind="text", props={}, children=()),)
 
     assert slot.has_pending_emitted_children() is True
 
@@ -280,7 +280,7 @@ def test_component_call_slot_context_creates_child_context_and_commits_handlers(
     event.dispatch()
 
     assert slot.child_context is not None
-    assert slot._committed_ui == slot.child_context._committed_ui
+    assert slot._state_mgr._committed_ui == slot.child_context._state_mgr._committed_ui
     assert seen == ["called"]
 
 
@@ -297,7 +297,7 @@ def test_component_call_slot_context_rollback_owned_handlers_and_deactivate() ->
     added.seen_in_pass = False
 
     slot.rollback_owned_event_handlers()
-    assert added.slot_id not in slot._children
+    assert added.slot_id not in slot._state_mgr._children
     assert kept.staged_callback is None
 
     def component(child_ctx: RenderContext) -> None:

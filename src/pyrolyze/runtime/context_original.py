@@ -457,6 +457,15 @@ class ContextBase(SlotExprLiteralContext):
     def get_kind(self) -> ContextKind:
         return type(self)._context_kind
 
+    def own_committed_ui(self) -> tuple[UIElement | MountDirective, ...]:
+        return self._own_committed_ui
+
+    def own_committed_ui_entries(self) -> tuple[_CommittedUiEntry, ...]:
+        return self._own_committed_ui_entries
+
+    def iter_children(self) -> tuple[ContextBase | SlotContext, ...]:
+        return tuple(self._children.values())
+
     def pass_scope(self) -> _PassScopeHandle:
         return _PassScopeHandle(context=self, activate=not self._scope_active)
 

@@ -29,6 +29,7 @@ from pyrolyze.runtime.slot_expr import (
 
 @dataclass
 class FakeSlotContext(SlotExprLiteralContext):
+
     def current_slot_id(self):
         return ("fake-slot",)
 
@@ -304,7 +305,7 @@ def test_slot_expr_rerender_clean_shape_for_tuple_result() -> None:
     ).apply_slot_context(initial_slot_ctx).apply_dirt_sink(dm)
 
     _ = expr.evaluate("result")
-    expr.apply_slot_context(FakeSlotContext(initial_render=False))
+    expr.apply_slot_context(FakeSlotContext())
     result = expr.evaluate("result")
 
     assert result[0] == 3
@@ -532,7 +533,7 @@ def test_slot_expr_replacement_does_not_retain_old_plain_value_result() -> None:
             self.value = value
 
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     func_dirty = {"value": False}
     counter = {"value": 0}
 
@@ -559,7 +560,7 @@ def test_slot_expr_replacement_does_not_retain_old_plain_value_result() -> None:
 
 def test_slot_expr_call_site_identity_uses_slot_id_not_parameter_name() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     calls = {"count": 0}
     module_id = ModuleId("slot_expr_identity")
     slot_id = SlotId(module_id=module_id, slot_index=1)
@@ -608,7 +609,7 @@ def test_slot_expr_call_site_identity_uses_slot_id_not_parameter_name() -> None:
 
 def test_slot_expr_changed_slot_id_replaces_previous_call_site() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     calls = {"count": 0}
     module_id = ModuleId("slot_expr_identity_replace")
     first_slot_id = SlotId(module_id=module_id, slot_index=1)
@@ -656,7 +657,7 @@ def test_slot_expr_changed_slot_id_replaces_previous_call_site() -> None:
 
 def test_slot_expr_host_factory_routes_external_store_invalidation_to_host() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     store = {"value": 1}
     listeners: list[Callable[[], None]] = []
     host = SpySlotCallHost()
@@ -682,7 +683,7 @@ def test_slot_expr_host_factory_routes_external_store_invalidation_to_host() -> 
 
 def test_slot_expr_host_factory_stages_post_commit_callbacks_through_host() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     host = SpySlotCallHost()
     events: list[str] = []
 
@@ -701,7 +702,7 @@ def test_slot_expr_host_factory_stages_post_commit_callbacks_through_host() -> N
 
 def test_slot_expr_host_factory_routes_mount_advert_publish_and_withdraw() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     host = SpySlotCallHost()
     gate = {"value": False}
     gate_dirty = {"value": False}
@@ -738,7 +739,7 @@ def test_slot_expr_host_factory_routes_mount_advert_publish_and_withdraw() -> No
 
 
 def test_slot_expr_host_factory_is_identical_between_single_call_and_general_slot_call() -> None:
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     fast_dm = DM()
     general_dm = DM()
     fast_host = SpySlotCallHost()
@@ -791,7 +792,7 @@ def test_slot_expr_external_store_ref_does_not_refresh_without_notification() ->
         )
 
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     expr = SlotExpr.single_call(
         LiteralFunctionProvider(source),
         lambda: slot_params(),
@@ -826,7 +827,7 @@ def test_slot_expr_external_store_ref_reinvokes_source_when_function_dirt_is_tru
         )
 
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     expr = SlotExpr.single_call(
         LambdaFunctionProvider(lambda: source, lambda: func_dirty["value"]),
         lambda: slot_params(),
@@ -869,7 +870,7 @@ def test_slot_expr_external_store_ref_refreshes_without_reinvoking_call() -> Non
     assert call_count["count"] == 1
     assert get_count["count"] == 1
 
-    expr.apply_slot_context(FakeSlotContext(initial_render=False))
+    expr.apply_slot_context(FakeSlotContext())
     store["value"] = 2
     for listener in tuple(listeners):
         listener()
@@ -902,7 +903,7 @@ def test_slot_expr_invoke_get_shortcuts_provider_and_builder_evaluation() -> Non
         )
 
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=True)
+    slot_ctx = FakeSlotContext()
     expr = SlotExpr.single_call(
         LambdaFunctionProvider(
             lambda: _count_provider(provider_count, source),
@@ -921,7 +922,7 @@ def test_slot_expr_invoke_get_shortcuts_provider_and_builder_evaluation() -> Non
     assert dirt_builder_count["count"] == 1
     assert get_count["count"] == 1
 
-    expr.apply_slot_context(FakeSlotContext(initial_render=False))
+    expr.apply_slot_context(FakeSlotContext())
     store["value"] = 2
     for listener in tuple(listeners):
         listener()
@@ -938,7 +939,7 @@ def test_slot_expr_invoke_get_shortcuts_provider_and_builder_evaluation() -> Non
 
 def test_slot_expr_short_circuit_unvisited_call_deactivates_after_commit() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     store = {"value": False}
     listeners: list[Callable[[], None]] = []
 
@@ -979,7 +980,7 @@ def test_slot_expr_short_circuit_unvisited_call_deactivates_after_commit() -> No
 
 def test_slot_expr_any_keeps_both_calls_reachable() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     flags = {"a": True}
 
     def left() -> bool:
@@ -1010,7 +1011,7 @@ def test_slot_expr_any_keeps_both_calls_reachable() -> None:
 
 def test_slot_expr_exception_rolls_back_unvisited_deactivation_and_dirty_bindings() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     store = {"value": False}
     listeners: list[Callable[[], None]] = []
 
@@ -1064,7 +1065,7 @@ def test_slot_expr_exception_rolls_back_unvisited_deactivation_and_dirty_binding
 
 def test_slot_expr_effect_like_results_expose_none_and_track_dirty() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=True)
+    slot_ctx = FakeSlotContext()
     expr = SlotExpr.single_call(
         LiteralFunctionProvider(lambda: UseEffectRequest(effect_fn=lambda: None, deps=("a",))),
         lambda: slot_params(),
@@ -1127,7 +1128,7 @@ def test_slot_expr_use_effect_runs_post_commit_and_cleans_up_on_deactivate() -> 
 
 def test_slot_expr_use_effect_reinvokes_source_when_function_dirt_is_true() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     calls = {"count": 0}
     func_dirty = {"value": False}
 
@@ -1149,7 +1150,7 @@ def test_slot_expr_use_effect_reinvokes_source_when_function_dirt_is_true() -> N
 
 def test_slot_expr_use_effect_async_cancels_on_deactivate() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     events: list[str] = []
     gate = {"value": False}
     gate_dirty = {"value": False}
@@ -1194,7 +1195,7 @@ def test_slot_expr_use_effect_async_cancels_on_deactivate() -> None:
 
 def test_slot_expr_use_effect_async_reinvokes_source_when_function_dirt_is_true() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     calls = {"count": 0}
     func_dirty = {"value": False}
 
@@ -1220,7 +1221,7 @@ def test_slot_expr_use_effect_async_reinvokes_source_when_function_dirt_is_true(
 
 def test_slot_expr_mount_advertisement_publishes_and_withdraws_on_deactivate() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     gate = {"value": False}
     gate_dirty = {"value": False}
     expr = (
@@ -1259,7 +1260,7 @@ def test_slot_expr_mount_advertisement_publishes_and_withdraws_on_deactivate() -
 
 def test_slot_expr_mount_advertisement_reinvokes_source_when_function_dirt_is_true() -> None:
     dm = DM()
-    slot_ctx = FakeSlotContext(initial_render=False)
+    slot_ctx = FakeSlotContext()
     calls = {"count": 0}
     func_dirty = {"value": False}
 
