@@ -1733,9 +1733,6 @@ class FieldSpec:
     state_factory: FieldStateFactory | None = None
     state_copy: StateCopyHelper | None = None
 
-    def default_value(self) -> Any:
-        return self.kind.default_value(self)
-
 
 class LifecycleField:
     __slots__ = (
@@ -2583,7 +2580,8 @@ class LifecycleContextState:
         if runner is not None:
             value = self._run_factory_runner("default_factory", name, runner)
         else:
-            value = type(self).__field_specs__[name].default_value()
+            spec = type(self).__field_specs__[name]
+            value = spec.kind.default_value(spec)
         return self._set_default_store_value(name, value)
 
     def resolve_working_default_field(self, name: str) -> Any:
