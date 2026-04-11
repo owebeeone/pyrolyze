@@ -198,6 +198,97 @@ class LCKind:
     def validate_spec(cls, spec: FieldSpec) -> None:
         return None
 
+    # Kinds must also own any special default-value semantics. This is required
+    # to eliminate the remaining kind-specific branches for:
+    # - static -> uninitialized sentinel
+    # - commit_order_key -> ()
+    # - commit_validator -> None
+    @classmethod
+    def default_value(cls, spec: FieldSpec) -> Any:
+        if spec.default is not MISSING:
+            return spec.default
+        if spec.default_factory is not MISSING:
+            return spec.default_factory()
+        raise TypeError(f"missing required lifecycle field {spec.name!r}")
+
+    # Constructor/default-store protocol. This is required to remove the
+    # remaining storage-routing branches for:
+    # - current_record-backed fields
+    # - local_store-backed fields
+    # - derived-backed fields
+    # - declaration-only hook fields
+    @classmethod
+    def initialize_constructor_value(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+        values: dict[str, Any],
+    ) -> None:
+        if name in values:
+            state.current_record.values[name] = values.pop(name)
+
+    @classmethod
+    def default_store_contains(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+    ) -> bool:
+        return name in state.current_record.values
+
+    @classmethod
+    def get_default_store_value(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+    ) -> Any:
+        return state.current_record.values[name]
+
+    @classmethod
+    def set_default_store_value(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+        value: Any,
+    ) -> Any:
+        state.current_record.values[name] = value
+        return value
+
+    @classmethod
+    def reset_default_store(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+    ) -> None:
+        state.current_record.values.pop(name, None)
+
+    # Registration protocol for the few remaining non-ftable dispatch points.
+    # These must also move onto kinds so the runtime does not retain any
+    # external kind-switch logic.
+    @classmethod
+    def register_hook_runner(
+        cls,
+        *,
+        name: str,
+        spec: FieldSpec,
+        hook_tables: HookRunnerTables,
+    ) -> None:
+        return None
+
+    @classmethod
+    def register_special_field(
+        cls,
+        *,
+        name: str,
+        spec: FieldSpec,
+        special_tables: SpecialFieldTables,
+    ) -> None:
+        return None
+
     # Operational protocol for field-table generation.
     # This is the important missing piece in the current stringly-typed design:
     # kinds must also own the getter/setter/hook table behavior.
@@ -414,6 +505,13 @@ class StaticOperationalKind(ImmutableOperationalKind):
         return _set_static_field
 
 
+class StoredDeclarationOperationalKind(ConstOperationalKind):
+    # Stored declarations such as commit_order_key / commit_validator behave
+    # like const operationally: current-only reads, read-only setters, and no
+    # commit-time publication.
+    pass
+
+
 class RetainedResourceOperationalKind(NoStateHelpersOperationalKind):
     # Binding and owned fields share the same table-building shape. Their
     # semantic distinction is ownership intent, not the ftable family.
@@ -521,7 +619,7 @@ class LocalStoreOperationalKind(
 class DerivedOperationalKind(
     SameGetterEverywhereOperationalKind,
     SameSetterEverywhereOperationalKind,
-    NoLifecycleHooksOperationalKind,
+    NoStateHelpersOperationalKind,
 ):
     # Derived declarative field behavior.
     @classmethod
@@ -531,6 +629,18 @@ class DerivedOperationalKind(
     @classmethod
     def build_shared_setter(cls, *, tx_index: int, spec: FieldSpec) -> FieldSetter:
         return _set_derived_field
+
+    @classmethod
+    def build_commit_hook(cls, *, tx_index: int, spec: FieldSpec) -> FieldHook:
+        return _reset_derived_field
+
+    @classmethod
+    def build_rollback_hook(cls, *, tx_index: int, spec: FieldSpec) -> FieldHook:
+        return _reset_derived_field
+
+    @classmethod
+    def build_close_hook(cls, *, tx_index: int, spec: FieldSpec) -> FieldHook:
+        return _reset_derived_field
 
 
 class HookOperationalKind(
@@ -644,14 +754,148 @@ class ForbidsCustomTxGroupKind(LCKind):
             raise TypeError(f"{cls.name!r} fields cannot override tx_group")
 
 
+# Registration/state-routing helpers.
+class HookRunnerTables:
+    before_commit: dict[Hashable, list[InjectedRunner]]
+    after_commit: dict[Hashable, list[InjectedRunner]]
+    after_rollback: dict[Hashable, list[InjectedRunner]]
+
+
+class SpecialFieldTables:
+    commit_order_key_by_group: dict[Hashable, str]
+    commit_validator_by_group: dict[Hashable, str]
+
+
+class CurrentRecordStorageKind(LCKind):
+    # Most stored fields live in current_record plus optional working overlays.
+    pass
+
+
+class LocalStoreStorageKind(LCKind):
+    @classmethod
+    def initialize_constructor_value(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+        values: dict[str, Any],
+    ) -> None:
+        if name in values:
+            state.local_store_values[name] = values.pop(name)
+
+    @classmethod
+    def default_store_contains(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+    ) -> bool:
+        return name in state.local_store_values
+
+    @classmethod
+    def get_default_store_value(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+    ) -> Any:
+        return state.local_store_values[name]
+
+    @classmethod
+    def set_default_store_value(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+        value: Any,
+    ) -> Any:
+        state.local_store_values[name] = value
+        return value
+
+    @classmethod
+    def reset_default_store(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+    ) -> None:
+        state.local_store_values.pop(name, None)
+
+
+class DerivedStoreStorageKind(LCKind):
+    @classmethod
+    def initialize_constructor_value(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+        values: dict[str, Any],
+    ) -> None:
+        if name in values:
+            state.derived_values[name] = values.pop(name)
+
+    @classmethod
+    def default_store_contains(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+    ) -> bool:
+        return name in state.derived_values
+
+    @classmethod
+    def get_default_store_value(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+    ) -> Any:
+        return state.derived_values[name]
+
+    @classmethod
+    def set_default_store_value(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+        value: Any,
+    ) -> Any:
+        state.derived_values[name] = value
+        return value
+
+    @classmethod
+    def reset_default_store(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+    ) -> None:
+        state.derived_values.pop(name, None)
+
+
+class DeclarationStorageKind(LCKind):
+    # Hook declaration fields are not readable stored values and should consume
+    # any constructor kwarg without publishing it into runtime field state.
+    @classmethod
+    def initialize_constructor_value(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+        values: dict[str, Any],
+    ) -> None:
+        del state
+        values.pop(name, None)
+
+
 # Family traits.
-class StoredKind(LCKind):
+class StoredKind(CurrentRecordStorageKind, LCKind):
     @classmethod
     def validate_spec(cls, spec: FieldSpec) -> None:
         return None
 
 
-class NonStoredHookKind(LCKind):
+class NonStoredHookKind(DeclarationStorageKind, LCKind):
     @classmethod
     def validate_spec(cls, spec: FieldSpec) -> None:
         # Hook declarations are not stored runtime fields. They require a
@@ -705,7 +949,7 @@ class SimpleStoredKind(
 
 class HookKind(
     NonStoredHookKind,
-    ValueCompareKind,
+    ValueOrIdentityCompareKind,
     HookOperationalKind,
     AllowsDefaultKind,
     ForbidsDefaultFactoryKind,
@@ -715,7 +959,19 @@ class HookKind(
     ForbidsStateCopyKind,
     AllowsTxGroupKind,
 ):
-    pass
+    # Phase 1A must preserve the current public helper surface. The existing
+    # hook helpers currently pass compare="identity", so hook kinds must accept
+    # both compare modes even though the compare value is operationally inert
+    # for non-stored hook declarations.
+    @classmethod
+    def register_hook_runner(
+        cls,
+        *,
+        name: str,
+        spec: FieldSpec,
+        hook_tables: HookRunnerTables,
+    ) -> None:
+        raise NotImplementedError
 
 
 # Intermediate descriptor classes for recurring semantic bundles.
@@ -747,7 +1003,7 @@ class StoredOnceKind(StaticOperationalKind):
     pass
 
 
-class ResourceKind(SimpleStoredKind):
+class ResourceKind(RetainedResourceOperationalKind, SimpleStoredKind):
     # Stored retained-resource kinds with plain stored semantics and no special
     # state-factory or working-default behavior.
     pass
@@ -755,8 +1011,8 @@ class ResourceKind(SimpleStoredKind):
 
 class StoredMetadataKind(
     StoredKind,
-    ValueCompareKind,
-    OverlayOperationalKind,
+    ValueOrIdentityCompareKind,
+    StoredDeclarationOperationalKind,
     AllowsDefaultKind,
     ForbidsDefaultFactoryKind,
     ForbidsWorkingDefaultFactoryKind,
@@ -766,6 +1022,9 @@ class StoredMetadataKind(
     AllowsTxGroupKind,
 ):
     # Stored metadata declarations such as commit order keys and validators.
+    # Phase 1A must preserve the current public helper surface. The existing
+    # commit_validator helper currently passes compare="identity", so metadata
+    # kinds must accept both compare modes during the refactor.
     pass
 
 
@@ -810,6 +1069,7 @@ class NonTransactionalHelperKind(
 
 class NonTransactionalLocalKind(
     LocalStoreOperationalKind,
+    LocalStoreStorageKind,
     NonTransactionalHelperKind,
 ):
     # Helper cache outside commit / rollback semantics.
@@ -818,6 +1078,7 @@ class NonTransactionalLocalKind(
 
 class DerivedHelperKind(
     DerivedOperationalKind,
+    DerivedStoreStorageKind,
     NonTransactionalHelperKind,
 ):
     # Declarative non-transactional helper value.
@@ -841,6 +1102,12 @@ class StaticKind(
 ):
     # Shared or lazily resolved non-transactional state.
     name = "static"
+
+    @classmethod
+    def default_value(cls, spec: FieldSpec) -> Any:
+        if spec.default is MISSING and spec.default_factory is MISSING:
+            return _SENTINEL
+        return super().default_value(spec)
 
 
 class BindingKind(ResourceKind):
@@ -873,23 +1140,116 @@ class CommitOrderKeyKind(StoredMetadataKind):
     # Stored declaration used only to order commits within a tx group.
     name = "commit_order_key"
 
+    @classmethod
+    def default_value(cls, spec: FieldSpec) -> Any:
+        if spec.default is not MISSING:
+            return spec.default
+        if spec.default_factory is not MISSING:
+            return spec.default_factory()
+        return ()
+
+    @classmethod
+    def register_special_field(
+        cls,
+        *,
+        name: str,
+        spec: FieldSpec,
+        special_tables: SpecialFieldTables,
+    ) -> None:
+        if spec.tx_group in special_tables.commit_order_key_by_group:
+            raise TypeError(
+                f"at most one commit_order_key field is allowed for group {spec.tx_group!r}"
+            )
+        special_tables.commit_order_key_by_group[spec.tx_group] = name
+
 
 class CommitValidatorKind(StoredMetadataKind):
     # Stored declaration used only to validate commit eligibility.
     name = "commit_validator"
+
+    @classmethod
+    def default_value(cls, spec: FieldSpec) -> Any:
+        if spec.default is not MISSING:
+            return spec.default
+        return None
+
+    @classmethod
+    def register_special_field(
+        cls,
+        *,
+        name: str,
+        spec: FieldSpec,
+        special_tables: SpecialFieldTables,
+    ) -> None:
+        if spec.tx_group in special_tables.commit_validator_by_group:
+            raise TypeError(
+                f"at most one commit_validator field is allowed for group {spec.tx_group!r}"
+            )
+        special_tables.commit_validator_by_group[spec.tx_group] = name
 
 
 # Hook kinds.
 class OnBeforeCommitKind(HookDeclarationKind):
     name = "on_before_commit"
 
+    @classmethod
+    def register_hook_runner(
+        cls,
+        *,
+        name: str,
+        spec: FieldSpec,
+        hook_tables: HookRunnerTables,
+    ) -> None:
+        hook_tables.before_commit.setdefault(spec.tx_group, []).append(
+            _compile_hook_runner(
+                field_name=name,
+                hook_name="on_before_commit",
+                hook=typing.cast(Callable[..., Any], spec.default),
+                allowed_params=_BEFORE_COMMIT_PARAMS,
+            )
+        )
+
 
 class OnAfterCommitKind(HookDeclarationKind):
     name = "on_after_commit"
 
+    @classmethod
+    def register_hook_runner(
+        cls,
+        *,
+        name: str,
+        spec: FieldSpec,
+        hook_tables: HookRunnerTables,
+    ) -> None:
+        hook_tables.after_commit.setdefault(spec.tx_group, []).append(
+            _compile_hook_runner(
+                field_name=name,
+                hook_name="on_after_commit",
+                hook=typing.cast(Callable[..., Any], spec.default),
+                allowed_params=_AFTER_COMMIT_PARAMS,
+            )
+        )
+
 
 class OnAfterRollbackKind(HookDeclarationKind):
     name = "on_after_rollback"
+
+    @classmethod
+    def register_hook_runner(
+        cls,
+        *,
+        name: str,
+        spec: FieldSpec,
+        hook_tables: HookRunnerTables,
+    ) -> None:
+        hook_tables.after_rollback.setdefault(spec.tx_group, []).append(
+            _compile_hook_runner(
+                field_name=name,
+                hook_name="on_after_rollback",
+                hook=typing.cast(Callable[..., Any], spec.default),
+                allowed_params=_AFTER_ROLLBACK_PARAMS,
+            )
+        )
 
 
 # Exported canonical names.
@@ -929,11 +1289,11 @@ Not:
 The hierarchy should divide responsibility like this:
 
 - root `LCKind`
-  - defines validation protocol
+  - defines validation, default-value, storage-routing, and registration protocol
 - facets / mixins
   - define capability-level validators
 - family bases
-  - define shared semantics for stored kinds, hook kinds, etc.
+  - define shared semantics for stored kinds, hook kinds, helper-store kinds, etc.
 - concrete kinds
   - name the kind and add only truly kind-specific rules
 
@@ -976,6 +1336,11 @@ themselves is an implementation choice. The important rule is:
    behavior.
 4. New lifecycle features must extend `LCKind`, not add new scattered
    string-switch logic.
+5. No runtime path may retain `kind == ...` or `kind in {...}` dispatch once
+   the `LCKind` refactor is complete.
+6. Constructor-value routing, default-store routing, hook registration, and
+   special-field registration must dispatch through `LCKind` methods too, not
+   helper-side special cases.
 
 ### Generated field helpers
 

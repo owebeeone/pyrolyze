@@ -493,7 +493,1097 @@ _SUPPORTED_FACTORY_PARAMS = frozenset({"self", "current", "working"})
 _BEFORE_COMMIT_PARAMS = frozenset({"self", "current", "working", "tx_group"})
 _AFTER_COMMIT_PARAMS = frozenset({"self", "previous", "current", "tx_group"})
 _AFTER_ROLLBACK_PARAMS = frozenset({"self", "current", "tx_group"})
-_NONSTORED_HOOK_KINDS = frozenset({"on_before_commit", "on_after_commit", "on_after_rollback"})
+
+
+@dataclass(slots=True)
+class HookRunnerTables:
+    before_commit: dict[Hashable, list[InjectedRunner]] = field(default_factory=dict)
+    after_commit: dict[Hashable, list[InjectedRunner]] = field(default_factory=dict)
+    after_rollback: dict[Hashable, list[InjectedRunner]] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class SpecialFieldTables:
+    commit_order_key_by_group: dict[Hashable, str] = field(default_factory=dict)
+    commit_validator_by_group: dict[Hashable, str] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class _FieldTables:
+    get_default: dict[str, FieldGetter] = field(default_factory=dict)
+    get_current: dict[str, FieldGetter] = field(default_factory=dict)
+    get_working: dict[str, FieldGetter] = field(default_factory=dict)
+    set_default: dict[str, FieldSetter] = field(default_factory=dict)
+    set_working: dict[str, FieldSetter] = field(default_factory=dict)
+    commit_field: dict[str, FieldHook] = field(default_factory=dict)
+    rollback_field: dict[str, FieldHook] = field(default_factory=dict)
+    close_field: dict[str, FieldHook] = field(default_factory=dict)
+    state_factory: dict[str, FieldStateFactory | None] = field(default_factory=dict)
+    state_copy: dict[str, StateCopyHelper | None] = field(default_factory=dict)
+    field_tx_index: dict[str, int] = field(default_factory=dict)
+    default_factory_runner: dict[str, FactoryRunner] = field(default_factory=dict)
+    working_default_factory_runner: dict[str, FactoryRunner] = field(default_factory=dict)
+
+
+class LCKind:
+    name: str = "<unset>"
+
+    @classmethod
+    def validate_compare(cls, compare: str) -> None:
+        raise NotImplementedError
+
+    @classmethod
+    def validate_default(cls, spec: FieldSpec) -> None:
+        return None
+
+    @classmethod
+    def validate_default_factory(cls, spec: FieldSpec) -> None:
+        return None
+
+    @classmethod
+    def validate_working_default_factory(cls, spec: FieldSpec) -> None:
+        return None
+
+    @classmethod
+    def validate_initial_working(cls, spec: FieldSpec) -> None:
+        return None
+
+    @classmethod
+    def validate_state_factory(cls, spec: FieldSpec) -> None:
+        return None
+
+    @classmethod
+    def validate_state_copy(cls, spec: FieldSpec) -> None:
+        return None
+
+    @classmethod
+    def validate_tx_group(cls, spec: FieldSpec) -> None:
+        return None
+
+    @classmethod
+    def validate_spec(cls, spec: FieldSpec) -> None:
+        return None
+
+    @classmethod
+    def validate_field_spec(cls, spec: FieldSpec) -> None:
+        cls.validate_compare(spec.compare)
+        cls.validate_default(spec)
+        cls.validate_default_factory(spec)
+        cls.validate_working_default_factory(spec)
+        cls.validate_initial_working(spec)
+        cls.validate_state_factory(spec)
+        cls.validate_state_copy(spec)
+        cls.validate_tx_group(spec)
+        cls.validate_spec(spec)
+
+    @classmethod
+    def validate_override(cls, base: FieldSpec, derived: FieldSpec) -> None:
+        if derived.kind is not cls:
+            raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
+        if base.compare != derived.compare:
+            raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
+        if base.tx_group != derived.tx_group:
+            raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
+        if base.initial_working != derived.initial_working and derived.initial_working is not MISSING:
+            raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
+        if base.freeze != derived.freeze and derived.freeze is not None:
+            raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
+        if base.thaw != derived.thaw and derived.thaw is not None:
+            raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
+        if base.state_factory != derived.state_factory and derived.state_factory is not None:
+            raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
+        if base.state_copy != derived.state_copy and derived.state_copy is not None:
+            raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
+
+    @classmethod
+    def default_value(cls, spec: FieldSpec) -> Any:
+        if spec.default is not MISSING:
+            return spec.default
+        if spec.default_factory is not MISSING:
+            return spec.default_factory()
+        raise TypeError(f"missing required lifecycle field {spec.name!r}")
+
+    @classmethod
+    def initialize_constructor_value(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+        values: dict[str, Any],
+    ) -> None:
+        if name in values:
+            state.current_record.values[name] = values.pop(name)
+
+    @classmethod
+    def default_store_contains(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+    ) -> bool:
+        return name in state.current_record.values
+
+    @classmethod
+    def get_default_store_value(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+    ) -> Any:
+        return state.current_record.values[name]
+
+    @classmethod
+    def set_default_store_value(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+        value: Any,
+    ) -> Any:
+        state.current_record.values[name] = value
+        return value
+
+    @classmethod
+    def reset_default_store(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+    ) -> None:
+        state.current_record.values.pop(name, None)
+
+    @classmethod
+    def register_hook_runner(
+        cls,
+        *,
+        name: str,
+        spec: FieldSpec,
+        hook_tables: HookRunnerTables,
+    ) -> None:
+        return None
+
+    @classmethod
+    def register_special_field(
+        cls,
+        *,
+        name: str,
+        spec: FieldSpec,
+        special_tables: SpecialFieldTables,
+    ) -> None:
+        return None
+
+    @classmethod
+    def build_default_getter(cls, *, tx_index: int, spec: FieldSpec) -> FieldGetter:
+        raise NotImplementedError
+
+    @classmethod
+    def build_current_getter(cls, *, tx_index: int, spec: FieldSpec) -> FieldGetter:
+        raise NotImplementedError
+
+    @classmethod
+    def build_working_getter(cls, *, tx_index: int, spec: FieldSpec) -> FieldGetter:
+        raise NotImplementedError
+
+    @classmethod
+    def build_default_setter(cls, *, tx_index: int, spec: FieldSpec) -> FieldSetter:
+        raise NotImplementedError
+
+    @classmethod
+    def build_working_setter(cls, *, tx_index: int, spec: FieldSpec) -> FieldSetter:
+        raise NotImplementedError
+
+    @classmethod
+    def build_commit_hook(cls, *, tx_index: int, spec: FieldSpec) -> FieldHook:
+        raise NotImplementedError
+
+    @classmethod
+    def build_rollback_hook(cls, *, tx_index: int, spec: FieldSpec) -> FieldHook:
+        raise NotImplementedError
+
+    @classmethod
+    def build_close_hook(cls, *, tx_index: int, spec: FieldSpec) -> FieldHook:
+        raise NotImplementedError
+
+    @classmethod
+    def build_state_factory(cls, spec: FieldSpec) -> FieldStateFactory | None:
+        raise NotImplementedError
+
+    @classmethod
+    def build_state_copy(cls, spec: FieldSpec) -> StateCopyHelper | None:
+        raise NotImplementedError
+
+    @classmethod
+    def install_field_tables(
+        cls,
+        *,
+        name: str,
+        spec: FieldSpec,
+        tx_index: int,
+        tables: _FieldTables,
+    ) -> None:
+        tables.get_default[name] = cls.build_default_getter(tx_index=tx_index, spec=spec)
+        tables.get_current[name] = cls.build_current_getter(tx_index=tx_index, spec=spec)
+        tables.get_working[name] = cls.build_working_getter(tx_index=tx_index, spec=spec)
+        tables.set_default[name] = cls.build_default_setter(tx_index=tx_index, spec=spec)
+        tables.set_working[name] = cls.build_working_setter(tx_index=tx_index, spec=spec)
+        tables.commit_field[name] = cls.build_commit_hook(tx_index=tx_index, spec=spec)
+        tables.rollback_field[name] = cls.build_rollback_hook(tx_index=tx_index, spec=spec)
+        tables.close_field[name] = cls.build_close_hook(tx_index=tx_index, spec=spec)
+        tables.state_factory[name] = cls.build_state_factory(spec)
+        tables.state_copy[name] = cls.build_state_copy(spec)
+
+
+class ValueCompareKind(LCKind):
+    @classmethod
+    def validate_compare(cls, compare: str) -> None:
+        if compare != "value":
+            raise TypeError(f"{cls.name!r} fields require compare='value'")
+
+
+class ValueOrIdentityCompareKind(LCKind):
+    @classmethod
+    def validate_compare(cls, compare: str) -> None:
+        if compare not in {"value", "identity"}:
+            raise TypeError(
+                f"{cls.name!r} fields require compare in {{'value', 'identity'}}"
+            )
+
+
+class NoStateHelpersOperationalKind(LCKind):
+    @classmethod
+    def build_state_factory(cls, spec: FieldSpec) -> FieldStateFactory | None:
+        return None
+
+    @classmethod
+    def build_state_copy(cls, spec: FieldSpec) -> StateCopyHelper | None:
+        return None
+
+
+class NoLifecycleHooksOperationalKind(NoStateHelpersOperationalKind):
+    @classmethod
+    def build_commit_hook(cls, *, tx_index: int, spec: FieldSpec) -> FieldHook:
+        return _close_noop
+
+    @classmethod
+    def build_rollback_hook(cls, *, tx_index: int, spec: FieldSpec) -> FieldHook:
+        return _close_noop
+
+    @classmethod
+    def build_close_hook(cls, *, tx_index: int, spec: FieldSpec) -> FieldHook:
+        return _close_noop
+
+
+class SameGetterEverywhereOperationalKind(LCKind):
+    @classmethod
+    def build_shared_getter(cls, *, tx_index: int, spec: FieldSpec) -> FieldGetter:
+        raise NotImplementedError
+
+    @classmethod
+    def build_default_getter(cls, *, tx_index: int, spec: FieldSpec) -> FieldGetter:
+        return cls.build_shared_getter(tx_index=tx_index, spec=spec)
+
+    @classmethod
+    def build_current_getter(cls, *, tx_index: int, spec: FieldSpec) -> FieldGetter:
+        return cls.build_shared_getter(tx_index=tx_index, spec=spec)
+
+    @classmethod
+    def build_working_getter(cls, *, tx_index: int, spec: FieldSpec) -> FieldGetter:
+        return cls.build_shared_getter(tx_index=tx_index, spec=spec)
+
+
+class SameSetterEverywhereOperationalKind(LCKind):
+    @classmethod
+    def build_shared_setter(cls, *, tx_index: int, spec: FieldSpec) -> FieldSetter:
+        raise NotImplementedError
+
+    @classmethod
+    def build_default_setter(cls, *, tx_index: int, spec: FieldSpec) -> FieldSetter:
+        return cls.build_shared_setter(tx_index=tx_index, spec=spec)
+
+    @classmethod
+    def build_working_setter(cls, *, tx_index: int, spec: FieldSpec) -> FieldSetter:
+        return cls.build_shared_setter(tx_index=tx_index, spec=spec)
+
+
+class OverlayOperationalKind(LCKind):
+    @classmethod
+    def build_default_getter(cls, *, tx_index: int, spec: FieldSpec) -> FieldGetter:
+        if spec.thaw is not None:
+            return _build_managed_thawed_getter(tx_index)
+        if spec.initial_working is not MISSING:
+            return _build_managed_initial_working_getter(tx_index)
+        return _build_default_overlay_getter(tx_index)
+
+    @classmethod
+    def build_current_getter(cls, *, tx_index: int, spec: FieldSpec) -> FieldGetter:
+        return _get_current_field
+
+    @classmethod
+    def build_working_getter(cls, *, tx_index: int, spec: FieldSpec) -> FieldGetter:
+        if spec.thaw is not None:
+            return _build_managed_thawed_getter(tx_index)
+        if spec.initial_working is not MISSING:
+            return _build_managed_initial_working_getter(tx_index)
+        return _build_working_overlay_getter(tx_index)
+
+    @classmethod
+    def build_default_setter(cls, *, tx_index: int, spec: FieldSpec) -> FieldSetter:
+        if spec.compare == "identity":
+            return _build_default_identity_setter(tx_index)
+        return _build_default_value_setter(tx_index)
+
+    @classmethod
+    def build_working_setter(cls, *, tx_index: int, spec: FieldSpec) -> FieldSetter:
+        if spec.compare == "identity":
+            return _build_working_identity_setter(tx_index)
+        return _build_working_value_setter(tx_index)
+
+    @classmethod
+    def build_commit_hook(cls, *, tx_index: int, spec: FieldSpec) -> FieldHook:
+        return _build_overlay_commit_hook(tx_index)
+
+    @classmethod
+    def build_rollback_hook(cls, *, tx_index: int, spec: FieldSpec) -> FieldHook:
+        return _rollback_overlay_field
+
+    @classmethod
+    def build_close_hook(cls, *, tx_index: int, spec: FieldSpec) -> FieldHook:
+        return _close_noop
+
+    @classmethod
+    def build_state_factory(cls, spec: FieldSpec) -> FieldStateFactory | None:
+        return spec.state_factory
+
+    @classmethod
+    def build_state_copy(cls, spec: FieldSpec) -> StateCopyHelper | None:
+        return spec.state_copy
+
+
+class ImmutableOperationalKind(
+    SameGetterEverywhereOperationalKind,
+    SameSetterEverywhereOperationalKind,
+    NoLifecycleHooksOperationalKind,
+):
+    pass
+
+
+class ConstOperationalKind(ImmutableOperationalKind):
+    @classmethod
+    def build_shared_getter(cls, *, tx_index: int, spec: FieldSpec) -> FieldGetter:
+        return _get_current_field
+
+    @classmethod
+    def build_shared_setter(cls, *, tx_index: int, spec: FieldSpec) -> FieldSetter:
+        return _set_const_field
+
+
+class StaticOperationalKind(ImmutableOperationalKind):
+    @classmethod
+    def build_shared_getter(cls, *, tx_index: int, spec: FieldSpec) -> FieldGetter:
+        return _get_static_field
+
+    @classmethod
+    def build_shared_setter(cls, *, tx_index: int, spec: FieldSpec) -> FieldSetter:
+        return _set_static_field
+
+
+class StoredDeclarationOperationalKind(ConstOperationalKind):
+    pass
+
+
+class RetainedResourceOperationalKind(NoStateHelpersOperationalKind):
+    @classmethod
+    def _is_mapping_field(cls, spec: FieldSpec) -> bool:
+        return typing.get_origin(spec.annotation) in {dict, typing.Dict}
+
+    @classmethod
+    def build_default_getter(cls, *, tx_index: int, spec: FieldSpec) -> FieldGetter:
+        return _build_default_overlay_getter(tx_index)
+
+    @classmethod
+    def build_current_getter(cls, *, tx_index: int, spec: FieldSpec) -> FieldGetter:
+        return _get_current_field
+
+    @classmethod
+    def build_working_getter(cls, *, tx_index: int, spec: FieldSpec) -> FieldGetter:
+        return _build_working_overlay_getter(tx_index)
+
+    @classmethod
+    def build_default_setter(cls, *, tx_index: int, spec: FieldSpec) -> FieldSetter:
+        if cls._is_mapping_field(spec):
+            return _build_default_binding_map_setter(tx_index)
+        return _build_default_binding_setter(tx_index)
+
+    @classmethod
+    def build_working_setter(cls, *, tx_index: int, spec: FieldSpec) -> FieldSetter:
+        if cls._is_mapping_field(spec):
+            return _build_working_binding_map_setter(tx_index)
+        return _build_working_binding_setter(tx_index)
+
+    @classmethod
+    def build_commit_hook(cls, *, tx_index: int, spec: FieldSpec) -> FieldHook:
+        if cls._is_mapping_field(spec):
+            return _build_binding_map_commit_hook(tx_index)
+        return _build_binding_commit_hook(tx_index)
+
+    @classmethod
+    def build_rollback_hook(cls, *, tx_index: int, spec: FieldSpec) -> FieldHook:
+        if cls._is_mapping_field(spec):
+            return _build_binding_map_rollback_hook(tx_index)
+        return _build_binding_rollback_hook(tx_index)
+
+    @classmethod
+    def build_close_hook(cls, *, tx_index: int, spec: FieldSpec) -> FieldHook:
+        if cls._is_mapping_field(spec):
+            return _close_binding_map_field
+        return _close_binding_field
+
+
+class TransientOperationalKind(NoLifecycleHooksOperationalKind):
+    @classmethod
+    def build_default_getter(cls, *, tx_index: int, spec: FieldSpec) -> FieldGetter:
+        if spec.working_default_factory is not MISSING:
+            return _build_transient_working_default_getter(tx_index)
+        return _build_default_overlay_getter(tx_index)
+
+    @classmethod
+    def build_current_getter(cls, *, tx_index: int, spec: FieldSpec) -> FieldGetter:
+        return _get_current_field
+
+    @classmethod
+    def build_working_getter(cls, *, tx_index: int, spec: FieldSpec) -> FieldGetter:
+        if spec.working_default_factory is not MISSING:
+            return _build_transient_working_default_getter(tx_index)
+        return _build_working_overlay_getter(tx_index)
+
+    @classmethod
+    def build_default_setter(cls, *, tx_index: int, spec: FieldSpec) -> FieldSetter:
+        return _build_default_value_setter(tx_index)
+
+    @classmethod
+    def build_working_setter(cls, *, tx_index: int, spec: FieldSpec) -> FieldSetter:
+        return _build_working_value_setter(tx_index)
+
+
+class LocalStoreOperationalKind(
+    SameGetterEverywhereOperationalKind,
+    SameSetterEverywhereOperationalKind,
+    NoStateHelpersOperationalKind,
+):
+    @classmethod
+    def build_shared_getter(cls, *, tx_index: int, spec: FieldSpec) -> FieldGetter:
+        return _get_local_store_field
+
+    @classmethod
+    def build_shared_setter(cls, *, tx_index: int, spec: FieldSpec) -> FieldSetter:
+        return _set_local_store_field
+
+    @classmethod
+    def build_commit_hook(cls, *, tx_index: int, spec: FieldSpec) -> FieldHook:
+        return _close_noop
+
+    @classmethod
+    def build_rollback_hook(cls, *, tx_index: int, spec: FieldSpec) -> FieldHook:
+        return _close_noop
+
+    @classmethod
+    def build_close_hook(cls, *, tx_index: int, spec: FieldSpec) -> FieldHook:
+        return _close_local_store_field
+
+
+class DerivedOperationalKind(
+    SameGetterEverywhereOperationalKind,
+    SameSetterEverywhereOperationalKind,
+    NoStateHelpersOperationalKind,
+):
+    @classmethod
+    def build_shared_getter(cls, *, tx_index: int, spec: FieldSpec) -> FieldGetter:
+        return _get_derived_field
+
+    @classmethod
+    def build_shared_setter(cls, *, tx_index: int, spec: FieldSpec) -> FieldSetter:
+        return _set_derived_field
+
+    @classmethod
+    def build_commit_hook(cls, *, tx_index: int, spec: FieldSpec) -> FieldHook:
+        return _reset_derived_field
+
+    @classmethod
+    def build_rollback_hook(cls, *, tx_index: int, spec: FieldSpec) -> FieldHook:
+        return _reset_derived_field
+
+    @classmethod
+    def build_close_hook(cls, *, tx_index: int, spec: FieldSpec) -> FieldHook:
+        return _reset_derived_field
+
+
+class HookOperationalKind(
+    SameGetterEverywhereOperationalKind,
+    SameSetterEverywhereOperationalKind,
+    NoLifecycleHooksOperationalKind,
+):
+    @classmethod
+    def build_shared_getter(cls, *, tx_index: int, spec: FieldSpec) -> FieldGetter:
+        return _get_hook_declaration_field
+
+    @classmethod
+    def build_shared_setter(cls, *, tx_index: int, spec: FieldSpec) -> FieldSetter:
+        return _set_hook_declaration_field
+
+
+class AllowsDefaultKind(LCKind):
+    @classmethod
+    def validate_default(cls, spec: FieldSpec) -> None:
+        return None
+
+
+class ForbidsDefaultKind(LCKind):
+    @classmethod
+    def validate_default(cls, spec: FieldSpec) -> None:
+        if spec.default is not MISSING:
+            raise TypeError(f"{cls.name!r} fields cannot define default")
+
+
+class AllowsDefaultFactoryKind(LCKind):
+    @classmethod
+    def validate_default_factory(cls, spec: FieldSpec) -> None:
+        return None
+
+
+class ForbidsDefaultFactoryKind(LCKind):
+    @classmethod
+    def validate_default_factory(cls, spec: FieldSpec) -> None:
+        if spec.default_factory is not MISSING:
+            raise TypeError(f"{cls.name!r} fields cannot define default_factory")
+
+
+class AllowsWorkingDefaultFactoryKind(LCKind):
+    @classmethod
+    def validate_working_default_factory(cls, spec: FieldSpec) -> None:
+        return None
+
+
+class ForbidsWorkingDefaultFactoryKind(LCKind):
+    @classmethod
+    def validate_working_default_factory(cls, spec: FieldSpec) -> None:
+        if spec.working_default_factory is not MISSING:
+            raise TypeError(
+                f"{cls.name!r} fields cannot define working_default_factory"
+            )
+
+
+class AllowsInitialWorkingKind(LCKind):
+    @classmethod
+    def validate_initial_working(cls, spec: FieldSpec) -> None:
+        return None
+
+
+class ForbidsInitialWorkingKind(LCKind):
+    @classmethod
+    def validate_initial_working(cls, spec: FieldSpec) -> None:
+        if spec.initial_working is not MISSING:
+            raise TypeError(f"{cls.name!r} fields cannot define initial_working")
+
+
+class AllowsStateFactoryKind(LCKind):
+    @classmethod
+    def validate_state_factory(cls, spec: FieldSpec) -> None:
+        return None
+
+
+class ForbidsStateFactoryKind(LCKind):
+    @classmethod
+    def validate_state_factory(cls, spec: FieldSpec) -> None:
+        if spec.state_factory is not None:
+            raise TypeError(f"{cls.name!r} fields cannot define state_factory")
+
+
+class AllowsStateCopyKind(LCKind):
+    @classmethod
+    def validate_state_copy(cls, spec: FieldSpec) -> None:
+        return None
+
+
+class ForbidsStateCopyKind(LCKind):
+    @classmethod
+    def validate_state_copy(cls, spec: FieldSpec) -> None:
+        if spec.state_copy is not None:
+            raise TypeError(f"{cls.name!r} fields cannot define state_copy")
+
+
+class AllowsTxGroupKind(LCKind):
+    @classmethod
+    def validate_tx_group(cls, spec: FieldSpec) -> None:
+        return None
+
+
+class ForbidsCustomTxGroupKind(LCKind):
+    @classmethod
+    def validate_tx_group(cls, spec: FieldSpec) -> None:
+        if spec.tx_group != DEFAULT_TRANSACTION:
+            raise TypeError(f"{cls.name!r} fields cannot override tx_group")
+
+
+class CurrentRecordStorageKind(LCKind):
+    pass
+
+
+class LocalStoreStorageKind(LCKind):
+    @classmethod
+    def initialize_constructor_value(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+        values: dict[str, Any],
+    ) -> None:
+        if name in values:
+            state.local_store_values[name] = values.pop(name)
+
+    @classmethod
+    def default_store_contains(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+    ) -> bool:
+        return name in state.local_store_values
+
+    @classmethod
+    def get_default_store_value(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+    ) -> Any:
+        return state.local_store_values[name]
+
+    @classmethod
+    def set_default_store_value(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+        value: Any,
+    ) -> Any:
+        state.local_store_values[name] = value
+        return value
+
+    @classmethod
+    def reset_default_store(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+    ) -> None:
+        state.local_store_values.pop(name, None)
+
+
+class DerivedStoreStorageKind(LCKind):
+    @classmethod
+    def initialize_constructor_value(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+        values: dict[str, Any],
+    ) -> None:
+        if name in values:
+            state.derived_values[name] = values.pop(name)
+
+    @classmethod
+    def default_store_contains(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+    ) -> bool:
+        return name in state.derived_values
+
+    @classmethod
+    def get_default_store_value(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+    ) -> Any:
+        return state.derived_values[name]
+
+    @classmethod
+    def set_default_store_value(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+        value: Any,
+    ) -> Any:
+        state.derived_values[name] = value
+        return value
+
+    @classmethod
+    def reset_default_store(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+    ) -> None:
+        state.derived_values.pop(name, None)
+
+
+class DeclarationStorageKind(LCKind):
+    @classmethod
+    def initialize_constructor_value(
+        cls,
+        *,
+        state: LifecycleContextState,
+        name: str,
+        values: dict[str, Any],
+    ) -> None:
+        del state
+        values.pop(name, None)
+
+
+class StoredKind(CurrentRecordStorageKind, LCKind):
+    @classmethod
+    def validate_spec(cls, spec: FieldSpec) -> None:
+        return None
+
+
+class NonStoredHookKind(DeclarationStorageKind, LCKind):
+    @classmethod
+    def validate_spec(cls, spec: FieldSpec) -> None:
+        if spec.default is MISSING:
+            raise TypeError(f"{cls.name!r} fields require default=callable")
+        if spec.default_factory is not MISSING:
+            raise TypeError(f"{cls.name!r} fields cannot define default_factory")
+        if spec.working_default_factory is not MISSING:
+            raise TypeError(
+                f"{cls.name!r} fields cannot define working_default_factory"
+            )
+        if spec.initial_working is not MISSING:
+            raise TypeError(f"{cls.name!r} fields cannot define initial_working")
+        if spec.state_factory is not None:
+            raise TypeError(f"{cls.name!r} fields cannot define state_factory")
+        if spec.state_copy is not None:
+            raise TypeError(f"{cls.name!r} fields cannot define state_copy")
+
+
+class DefaultStoredKind(
+    StoredKind,
+    ValueOrIdentityCompareKind,
+    OverlayOperationalKind,
+    AllowsDefaultKind,
+    AllowsDefaultFactoryKind,
+    ForbidsWorkingDefaultFactoryKind,
+    AllowsInitialWorkingKind,
+    AllowsStateFactoryKind,
+    AllowsStateCopyKind,
+    AllowsTxGroupKind,
+):
+    pass
+
+
+class SimpleStoredKind(
+    StoredKind,
+    ValueOrIdentityCompareKind,
+    OverlayOperationalKind,
+    AllowsDefaultKind,
+    AllowsDefaultFactoryKind,
+    ForbidsWorkingDefaultFactoryKind,
+    ForbidsInitialWorkingKind,
+    ForbidsStateFactoryKind,
+    ForbidsStateCopyKind,
+    AllowsTxGroupKind,
+):
+    pass
+
+
+class HookKind(
+    NonStoredHookKind,
+    ValueOrIdentityCompareKind,
+    HookOperationalKind,
+    AllowsDefaultKind,
+    ForbidsDefaultFactoryKind,
+    ForbidsWorkingDefaultFactoryKind,
+    ForbidsInitialWorkingKind,
+    ForbidsStateFactoryKind,
+    ForbidsStateCopyKind,
+    AllowsTxGroupKind,
+):
+    @classmethod
+    def register_hook_runner(
+        cls,
+        *,
+        name: str,
+        spec: FieldSpec,
+        hook_tables: HookRunnerTables,
+    ) -> None:
+        raise NotImplementedError
+
+
+class ImmutableConfigKind(
+    StoredKind,
+    ValueCompareKind,
+    AllowsDefaultKind,
+    AllowsDefaultFactoryKind,
+    ForbidsWorkingDefaultFactoryKind,
+    ForbidsInitialWorkingKind,
+    ForbidsStateFactoryKind,
+    ForbidsStateCopyKind,
+    ForbidsCustomTxGroupKind,
+):
+    pass
+
+
+class StoredNeverKind(ConstOperationalKind):
+    pass
+
+
+class StoredOnceKind(StaticOperationalKind):
+    pass
+
+
+class ResourceKind(RetainedResourceOperationalKind, SimpleStoredKind):
+    pass
+
+
+class StoredMetadataKind(
+    StoredKind,
+    ValueOrIdentityCompareKind,
+    StoredDeclarationOperationalKind,
+    AllowsDefaultKind,
+    ForbidsDefaultFactoryKind,
+    ForbidsWorkingDefaultFactoryKind,
+    ForbidsInitialWorkingKind,
+    ForbidsStateFactoryKind,
+    ForbidsStateCopyKind,
+    AllowsTxGroupKind,
+):
+    pass
+
+
+class HookDeclarationKind(HookKind):
+    pass
+
+
+class LocalLikeKind(
+    StoredKind,
+    ValueCompareKind,
+    AllowsDefaultKind,
+    AllowsDefaultFactoryKind,
+    ForbidsInitialWorkingKind,
+    ForbidsStateFactoryKind,
+    ForbidsStateCopyKind,
+):
+    pass
+
+
+class TxScopedScratchKind(
+    TransientOperationalKind,
+    AllowsWorkingDefaultFactoryKind,
+    AllowsTxGroupKind,
+    LocalLikeKind,
+):
+    pass
+
+
+class NonTransactionalHelperKind(
+    ForbidsWorkingDefaultFactoryKind,
+    ForbidsCustomTxGroupKind,
+    LocalLikeKind,
+):
+    pass
+
+
+class NonTransactionalLocalKind(
+    LocalStoreOperationalKind,
+    LocalStoreStorageKind,
+    NonTransactionalHelperKind,
+):
+    pass
+
+
+class DerivedHelperKind(
+    DerivedOperationalKind,
+    DerivedStoreStorageKind,
+    NonTransactionalHelperKind,
+):
+    pass
+
+
+class ManagedKind(DefaultStoredKind):
+    name = "managed"
+
+
+class ConstKind(StoredNeverKind, ImmutableConfigKind):
+    name = "const"
+
+
+class StaticKind(StoredOnceKind, ImmutableConfigKind):
+    name = "static"
+
+    @classmethod
+    def default_value(cls, spec: FieldSpec) -> Any:
+        if spec.default is MISSING and spec.default_factory is MISSING:
+            return _SENTINEL
+        return super().default_value(spec)
+
+
+class BindingKind(ResourceKind):
+    name = "binding"
+
+
+class OwnedKind(ResourceKind):
+    name = "owned"
+
+
+class TransientKind(TxScopedScratchKind):
+    name = "transient"
+
+
+class LocalStoreKind(NonTransactionalLocalKind):
+    name = "local_store"
+
+
+class DerivedKind(DerivedHelperKind):
+    name = "derived"
+
+
+class CommitOrderKeyKind(StoredMetadataKind):
+    name = "commit_order_key"
+
+    @classmethod
+    def default_value(cls, spec: FieldSpec) -> Any:
+        if spec.default is not MISSING:
+            return spec.default
+        if spec.default_factory is not MISSING:
+            return spec.default_factory()
+        return ()
+
+    @classmethod
+    def register_special_field(
+        cls,
+        *,
+        name: str,
+        spec: FieldSpec,
+        special_tables: SpecialFieldTables,
+    ) -> None:
+        if spec.tx_group in special_tables.commit_order_key_by_group:
+            raise TypeError(
+                f"at most one commit_order_key field is allowed for group {spec.tx_group!r}"
+            )
+        special_tables.commit_order_key_by_group[spec.tx_group] = name
+
+
+class CommitValidatorKind(StoredMetadataKind):
+    name = "commit_validator"
+
+    @classmethod
+    def default_value(cls, spec: FieldSpec) -> Any:
+        if spec.default is not MISSING:
+            return spec.default
+        return None
+
+    @classmethod
+    def register_special_field(
+        cls,
+        *,
+        name: str,
+        spec: FieldSpec,
+        special_tables: SpecialFieldTables,
+    ) -> None:
+        if spec.tx_group in special_tables.commit_validator_by_group:
+            raise TypeError(
+                f"at most one commit_validator field is allowed for group {spec.tx_group!r}"
+            )
+        special_tables.commit_validator_by_group[spec.tx_group] = name
+
+
+class OnBeforeCommitKind(HookDeclarationKind):
+    name = "on_before_commit"
+
+    @classmethod
+    def register_hook_runner(
+        cls,
+        *,
+        name: str,
+        spec: FieldSpec,
+        hook_tables: HookRunnerTables,
+    ) -> None:
+        hook = typing.cast(Callable[..., Any], spec.default)
+        if not callable(hook):
+            raise TypeError(f"{spec.kind.name} field {name!r} requires a callable default")
+        hook_tables.before_commit.setdefault(spec.tx_group, []).append(
+            _compile_hook_runner(
+                field_name=name,
+                hook_name="on_before_commit",
+                hook=hook,
+                allowed_params=_BEFORE_COMMIT_PARAMS,
+            )
+        )
+
+
+class OnAfterCommitKind(HookDeclarationKind):
+    name = "on_after_commit"
+
+    @classmethod
+    def register_hook_runner(
+        cls,
+        *,
+        name: str,
+        spec: FieldSpec,
+        hook_tables: HookRunnerTables,
+    ) -> None:
+        hook = typing.cast(Callable[..., Any], spec.default)
+        if not callable(hook):
+            raise TypeError(f"{spec.kind.name} field {name!r} requires a callable default")
+        hook_tables.after_commit.setdefault(spec.tx_group, []).append(
+            _compile_hook_runner(
+                field_name=name,
+                hook_name="on_after_commit",
+                hook=hook,
+                allowed_params=_AFTER_COMMIT_PARAMS,
+            )
+        )
+
+
+class OnAfterRollbackKind(HookDeclarationKind):
+    name = "on_after_rollback"
+
+    @classmethod
+    def register_hook_runner(
+        cls,
+        *,
+        name: str,
+        spec: FieldSpec,
+        hook_tables: HookRunnerTables,
+    ) -> None:
+        hook = typing.cast(Callable[..., Any], spec.default)
+        if not callable(hook):
+            raise TypeError(f"{spec.kind.name} field {name!r} requires a callable default")
+        hook_tables.after_rollback.setdefault(spec.tx_group, []).append(
+            _compile_hook_runner(
+                field_name=name,
+                hook_name="on_after_rollback",
+                hook=hook,
+                allowed_params=_AFTER_ROLLBACK_PARAMS,
+            )
+        )
+
+
+LC_MANAGED = ManagedKind
+LC_CONST = ConstKind
+LC_STATIC = StaticKind
+LC_BINDING = BindingKind
+LC_OWNED = OwnedKind
+LC_TRANSIENT = TransientKind
+LC_LOCAL_STORE = LocalStoreKind
+LC_DERIVED = DerivedKind
+LC_COMMIT_ORDER_KEY = CommitOrderKeyKind
+LC_COMMIT_VALIDATOR = CommitValidatorKind
+LC_ON_BEFORE_COMMIT = OnBeforeCommitKind
+LC_ON_AFTER_COMMIT = OnAfterCommitKind
+LC_ON_AFTER_ROLLBACK = OnAfterRollbackKind
 
 
 def _compile_injected_runner(
@@ -588,7 +1678,7 @@ def _compile_hook_runner(
 @dataclass(slots=True)
 class FieldSpec:
     name: str
-    kind: str
+    kind: type[LCKind]
     annotation: Any
     compare: str
     default: Any = MISSING
@@ -602,24 +1692,7 @@ class FieldSpec:
     state_copy: StateCopyHelper | None = None
 
     def default_value(self) -> Any:
-        if self.kind == "static":
-            if self.default is MISSING and self.default_factory is MISSING:
-                return _SENTINEL
-        if self.kind == "commit_order_key":
-            if self.default is not MISSING:
-                return self.default
-            if self.default_factory is not MISSING:
-                return self.default_factory()
-            return ()
-        if self.kind == "commit_validator":
-            if self.default is not MISSING:
-                return self.default
-            return None
-        if self.default is not MISSING:
-            return self.default
-        if self.default_factory is not MISSING:
-            return self.default_factory()
-        raise TypeError(f"missing required lifecycle field {self.name!r}")
+        return self.kind.default_value(self)
 
 
 class LifecycleField:
@@ -641,7 +1714,7 @@ class LifecycleField:
     def __init__(
         self,
         *,
-        kind: str = "managed",
+        kind: type[LCKind] = LC_MANAGED,
         compare: str = "value",
         tx_group: Hashable = DEFAULT_TRANSACTION,
         default: Any = MISSING,
@@ -653,61 +1726,10 @@ class LifecycleField:
         state_factory: Callable[[], Any] | None = None,
         state_copy: StateCopyHelper | None = None,
     ) -> None:
-        if kind not in {
-            "managed",
-            "const",
-            "static",
-            "binding",
-            "owned",
-            "transient",
-            "local_store",
-            "derived",
-            "commit_order_key",
-            "commit_validator",
-            "on_before_commit",
-            "on_after_commit",
-            "on_after_rollback",
-        }:
+        if not isinstance(kind, type) or not issubclass(kind, LCKind):
             raise TypeError(f"unsupported lifecycle field kind {kind!r}")
-        if compare not in {"value", "identity"}:
-            raise TypeError(f"unsupported compare mode {compare!r}")
         if default is not MISSING and default_factory is not MISSING:
             raise TypeError("lifecycle fields cannot define both default and default_factory")
-        if working_default_factory is not MISSING and kind != "transient":
-            raise TypeError("only transient fields can define working_default_factory")
-        if kind == "commit_validator":
-            if default_factory is not MISSING:
-                raise TypeError("commit_validator fields cannot define default_factory")
-            if initial_working is not MISSING:
-                raise TypeError("commit_validator fields cannot define initial_working")
-        if kind in _NONSTORED_HOOK_KINDS:
-            if default is MISSING:
-                raise TypeError(f"{kind} fields require default=callable")
-            if default_factory is not MISSING:
-                raise TypeError(f"{kind} fields cannot define default_factory")
-            if working_default_factory is not MISSING:
-                raise TypeError(f"{kind} fields cannot define working_default_factory")
-            if initial_working is not MISSING:
-                raise TypeError(f"{kind} fields cannot define initial_working")
-        if (
-            kind
-            in {
-                "const",
-                "static",
-                "binding",
-                "owned",
-                "transient",
-                "local_store",
-                "derived",
-                "commit_order_key",
-                "commit_validator",
-                "on_before_commit",
-                "on_after_commit",
-                "on_after_rollback",
-            }
-            and state_factory is not None
-        ):
-            raise TypeError(f"{kind} fields cannot define state_factory")
         self.compare = compare
         self.default = default
         self.default_factory = default_factory
@@ -716,10 +1738,26 @@ class LifecycleField:
         self.freeze = freeze
         self.kind = kind
         self.state_factory = state_factory
-        self.state_copy = state_copy or copy.copy
+        self.state_copy = state_copy
         self.thaw = thaw
         self.tx_group = tx_group
         self.name: str | None = None
+        temp_spec = FieldSpec(
+            name="<unbound>",
+            kind=kind,
+            annotation=Any,
+            compare=compare,
+            tx_group=tx_group,
+            default=default,
+            default_factory=default_factory,
+            working_default_factory=working_default_factory,
+            initial_working=initial_working,
+            freeze=freeze,
+            thaw=thaw,
+            state_factory=state_factory,
+            state_copy=state_copy,
+        )
+        kind.validate_field_spec(temp_spec)
 
     def __set_name__(self, owner: type[LifecycleContext], name: str) -> None:
         self.name = name
@@ -733,7 +1771,7 @@ class LifecycleField:
         instance.__set_field__(self.name_or_error(), value)
 
     def build_spec(self, annotation: Any) -> FieldSpec:
-        return FieldSpec(
+        spec = FieldSpec(
             name=self.name_or_error(),
             kind=self.kind,
             annotation=annotation,
@@ -748,6 +1786,8 @@ class LifecycleField:
             state_factory=self.state_factory,
             state_copy=self.state_copy,
         )
+        spec.kind.validate_field_spec(spec)
+        return spec
 
     def name_or_error(self) -> str:
         if self.name is None:
@@ -757,7 +1797,7 @@ class LifecycleField:
 
 def lifecycle_field(
     *,
-    kind: str = "managed",
+    kind: type[LCKind] = LC_MANAGED,
     compare: str = "value",
     tx_group: Hashable = DEFAULT_TRANSACTION,
     default: Any = MISSING,
@@ -790,7 +1830,7 @@ def const(
     default_factory: Callable[[], Any] | object = MISSING,
 ) -> Any:
     return lifecycle_field(
-        kind="const",
+        kind=LC_CONST,
         default=default,
         default_factory=default_factory,
     )
@@ -809,7 +1849,7 @@ def managed(
     state_copy: StateCopyHelper | None = None,
 ) -> Any:
     return lifecycle_field(
-        kind="managed",
+        kind=LC_MANAGED,
         compare=compare,
         tx_group=tx_group,
         default=default,
@@ -828,7 +1868,7 @@ def static(
     default_factory: Callable[[], Any] | object = MISSING,
 ) -> Any:
     return lifecycle_field(
-        kind="static",
+        kind=LC_STATIC,
         default=default,
         default_factory=default_factory,
     )
@@ -841,7 +1881,7 @@ def binding(
     default_factory: Callable[[], Any] | object = MISSING,
 ) -> Any:
     return lifecycle_field(
-        kind="binding",
+        kind=LC_BINDING,
         compare="identity",
         tx_group=tx_group,
         default=default,
@@ -856,7 +1896,7 @@ def owned(
     default_factory: Callable[[], Any] | object = MISSING,
 ) -> Any:
     return lifecycle_field(
-        kind="owned",
+        kind=LC_OWNED,
         compare="identity",
         tx_group=tx_group,
         default=default,
@@ -872,7 +1912,7 @@ def transient(
     working_default_factory: Callable[[], Any] | object = MISSING,
 ) -> Any:
     return lifecycle_field(
-        kind="transient",
+        kind=LC_TRANSIENT,
         compare="value",
         tx_group=tx_group,
         default=default,
@@ -887,7 +1927,7 @@ def local_store(
     default_factory: Callable[[], Any] | object = MISSING,
 ) -> Any:
     return lifecycle_field(
-        kind="local_store",
+        kind=LC_LOCAL_STORE,
         compare="value",
         default=default,
         default_factory=default_factory,
@@ -900,7 +1940,7 @@ def derived(
     default_factory: Callable[[], Any] | object = MISSING,
 ) -> Any:
     return lifecycle_field(
-        kind="derived",
+        kind=LC_DERIVED,
         compare="value",
         default=default,
         default_factory=default_factory,
@@ -914,7 +1954,7 @@ def commit_order_key(
     default_factory: Callable[[], Any] | object = MISSING,
 ) -> Any:
     return lifecycle_field(
-        kind="commit_order_key",
+        kind=LC_COMMIT_ORDER_KEY,
         compare="value",
         tx_group=tx_group,
         default=default,
@@ -928,7 +1968,7 @@ def commit_validator(
     default: Any = MISSING,
 ) -> Any:
     return lifecycle_field(
-        kind="commit_validator",
+        kind=LC_COMMIT_VALIDATOR,
         compare="identity",
         tx_group=tx_group,
         default=default,
@@ -941,7 +1981,7 @@ def on_before_commit(
     default: Any = MISSING,
 ) -> Any:
     return lifecycle_field(
-        kind="on_before_commit",
+        kind=LC_ON_BEFORE_COMMIT,
         compare="identity",
         tx_group=tx_group,
         default=default,
@@ -954,7 +1994,7 @@ def on_after_commit(
     default: Any = MISSING,
 ) -> Any:
     return lifecycle_field(
-        kind="on_after_commit",
+        kind=LC_ON_AFTER_COMMIT,
         compare="identity",
         tx_group=tx_group,
         default=default,
@@ -967,7 +2007,7 @@ def on_after_rollback(
     default: Any = MISSING,
 ) -> Any:
     return lifecycle_field(
-        kind="on_after_rollback",
+        kind=LC_ON_AFTER_ROLLBACK,
         compare="identity",
         tx_group=tx_group,
         default=default,
@@ -1528,25 +2568,14 @@ class LifecycleContextState:
         self._deferred_commit_cleanup: list[Callable[[], None]] | None = None
 
         for name, spec in type(self).__field_specs__.items():
-            if spec.kind in _NONSTORED_HOOK_KINDS:
-                continue
-            if spec.kind == "local_store":
-                if name in values:
-                    self.local_store_values[name] = values.pop(name)
-                continue
-            if spec.kind == "derived":
-                if name in values:
-                    self.derived_values[name] = values.pop(name)
-                continue
-            if name in values:
-                self.current_record.values[name] = values.pop(name)
+            spec.kind.initialize_constructor_value(state=self, name=name, values=values)
 
         if values:
             unexpected = ", ".join(sorted(values))
             raise TypeError(f"unexpected lifecycle constructor fields: {unexpected}")
 
-        for name in type(self).__field_specs__:
-            if type(self).__field_specs__[name].kind in _NONSTORED_HOOK_KINDS:
+        for name, spec in type(self).__field_specs__.items():
+            if issubclass(spec.kind, NonStoredHookKind):
                 continue
             self.resolve_default_field(name)
 
@@ -1666,30 +2695,17 @@ class LifecycleContextState:
         return _RecordSnapshot(self.current_record.values)
 
     def _default_store_contains(self, name: str) -> bool:
-        spec = type(self).__field_specs__[name]
-        if spec.kind == "local_store":
-            return name in self.local_store_values
-        if spec.kind == "derived":
-            return name in self.derived_values
-        return name in self.current_record.values
+        return type(self).__field_specs__[name].kind.default_store_contains(state=self, name=name)
 
     def _get_default_store_value(self, name: str) -> Any:
-        spec = type(self).__field_specs__[name]
-        if spec.kind == "local_store":
-            return self.local_store_values[name]
-        if spec.kind == "derived":
-            return self.derived_values[name]
-        return self.current_record.values[name]
+        return type(self).__field_specs__[name].kind.get_default_store_value(state=self, name=name)
 
     def _set_default_store_value(self, name: str, value: Any) -> Any:
-        spec = type(self).__field_specs__[name]
-        if spec.kind == "local_store":
-            self.local_store_values[name] = value
-        elif spec.kind == "derived":
-            self.derived_values[name] = value
-        else:
-            self.current_record.values[name] = value
-        return value
+        return type(self).__field_specs__[name].kind.set_default_store_value(
+            state=self,
+            name=name,
+            value=value,
+        )
 
     def _run_factory_runner(self, kind: str, name: str, runner: FactoryRunner) -> Any:
         key = (kind, name)
@@ -1795,13 +2811,7 @@ class LifecycleContextState:
             runner(self, injected)
 
     def reset_to_default(self, name: str) -> Any:
-        spec = type(self).__field_specs__[name]
-        if spec.kind == "local_store":
-            self.local_store_values.pop(name, None)
-        elif spec.kind == "derived":
-            self.derived_values.pop(name, None)
-        else:
-            self.current_record.values.pop(name, None)
+        type(self).__field_specs__[name].kind.reset_default_store(state=self, name=name)
         return self.resolve_default_field(name)
 
     def commit(self, tx_group: Hashable = DEFAULT_TRANSACTION) -> _ManagedContextBase:
@@ -2087,55 +3097,19 @@ LifecycleContext = _ManagedContextBase
 def _build_hook_runner_tables(
     specs: dict[str, FieldSpec],
 ) -> dict[str, dict[Hashable, tuple[InjectedRunner, ...]]]:
-    before_commit_runners: dict[Hashable, list[InjectedRunner]] = {}
-    after_commit_runners: dict[Hashable, list[InjectedRunner]] = {}
-    after_rollback_runners: dict[Hashable, list[InjectedRunner]] = {}
-
+    hook_tables = HookRunnerTables()
     for name, spec in specs.items():
-        if spec.kind not in _NONSTORED_HOOK_KINDS:
-            continue
-        hook = typing.cast(Callable[..., Any], spec.default)
-        if not callable(hook):
-            raise TypeError(f"{spec.kind} field {name!r} requires a callable default")
-        if spec.kind == "on_before_commit":
-            before_commit_runners.setdefault(spec.tx_group, []).append(
-                _compile_hook_runner(
-                    field_name=name,
-                    hook_name="on_before_commit",
-                    hook=hook,
-                    allowed_params=_BEFORE_COMMIT_PARAMS,
-                )
-            )
-        elif spec.kind == "on_after_commit":
-            after_commit_runners.setdefault(spec.tx_group, []).append(
-                _compile_hook_runner(
-                    field_name=name,
-                    hook_name="on_after_commit",
-                    hook=hook,
-                    allowed_params=_AFTER_COMMIT_PARAMS,
-                )
-            )
-        elif spec.kind == "on_after_rollback":
-            after_rollback_runners.setdefault(spec.tx_group, []).append(
-                _compile_hook_runner(
-                    field_name=name,
-                    hook_name="on_after_rollback",
-                    hook=hook,
-                    allowed_params=_AFTER_ROLLBACK_PARAMS,
-                )
-            )
-        else:
-            raise AssertionError(f"unexpected hook field kind {spec.kind!r}")
+        spec.kind.register_hook_runner(name=name, spec=spec, hook_tables=hook_tables)
 
     return {
         "__class_ftable_before_commit_runners__": {
-            tx_group: tuple(runners) for tx_group, runners in before_commit_runners.items()
+            tx_group: tuple(runners) for tx_group, runners in hook_tables.before_commit.items()
         },
         "__class_ftable_after_commit_runners__": {
-            tx_group: tuple(runners) for tx_group, runners in after_commit_runners.items()
+            tx_group: tuple(runners) for tx_group, runners in hook_tables.after_commit.items()
         },
         "__class_ftable_after_rollback_runners__": {
-            tx_group: tuple(runners) for tx_group, runners in after_rollback_runners.items()
+            tx_group: tuple(runners) for tx_group, runners in hook_tables.after_rollback.items()
         },
     }
 
@@ -2145,172 +3119,38 @@ def _build_class_tables(
     *,
     tx_group_to_index: dict[Hashable, int],
 ) -> dict[str, dict[str, Callable[..., Any]]]:
-    get_default: dict[str, FieldGetter] = {}
-    get_current: dict[str, FieldGetter] = {}
-    get_working: dict[str, FieldGetter] = {}
-    set_default: dict[str, FieldSetter] = {}
-    set_working: dict[str, FieldSetter] = {}
-    commit_field: dict[str, FieldHook] = {}
-    rollback_field: dict[str, FieldHook] = {}
-    close_field: dict[str, FieldHook] = {}
-    state_factory: dict[str, FieldStateFactory | None] = {}
-    state_copy: dict[str, StateCopyHelper | None] = {}
-    field_tx_index: dict[str, int] = {}
-    default_factory_runner: dict[str, FactoryRunner] = {}
-    working_default_factory_runner: dict[str, FactoryRunner] = {}
-
+    tables = _FieldTables()
     for name, spec in specs.items():
         tx_index = tx_group_to_index[spec.tx_group]
-        field_tx_index[name] = tx_index
+        tables.field_tx_index[name] = tx_index
         if spec.default_factory is not MISSING:
-            default_factory_runner[name] = _compile_factory_runner(
+            tables.default_factory_runner[name] = _compile_factory_runner(
                 field_name=name,
                 hook_name="default_factory",
                 factory=typing.cast(Callable[..., Any], spec.default_factory),
             )
         if spec.working_default_factory is not MISSING:
-            working_default_factory_runner[name] = _compile_factory_runner(
+            tables.working_default_factory_runner[name] = _compile_factory_runner(
                 field_name=name,
                 hook_name="working_default_factory",
                 factory=typing.cast(Callable[..., Any], spec.working_default_factory),
             )
-        if spec.kind == "managed":
-            if spec.thaw is not None:
-                get_default[name] = _build_managed_thawed_getter(tx_index)
-                get_current[name] = _get_current_field
-                get_working[name] = _build_managed_thawed_getter(tx_index)
-            elif spec.initial_working is not MISSING:
-                get_default[name] = _build_managed_initial_working_getter(tx_index)
-                get_current[name] = _get_current_field
-                get_working[name] = _build_managed_initial_working_getter(tx_index)
-            else:
-                get_default[name] = _build_default_overlay_getter(tx_index)
-                get_current[name] = _get_current_field
-                get_working[name] = _build_working_overlay_getter(tx_index)
-            if spec.compare == "identity":
-                set_default[name] = _build_default_identity_setter(tx_index)
-                set_working[name] = _build_working_identity_setter(tx_index)
-            else:
-                set_default[name] = _build_default_value_setter(tx_index)
-                set_working[name] = _build_working_value_setter(tx_index)
-            commit_field[name] = _build_overlay_commit_hook(tx_index)
-            rollback_field[name] = _rollback_overlay_field
-            state_factory[name] = spec.state_factory
-            state_copy[name] = spec.state_copy
-        elif spec.kind == "const":
-            get_default[name] = _get_current_field
-            get_current[name] = _get_current_field
-            get_working[name] = _get_current_field
-            set_default[name] = _set_const_field
-            set_working[name] = _set_const_field
-            commit_field[name] = _close_noop
-            rollback_field[name] = _close_noop
-            state_factory[name] = None
-            state_copy[name] = None
-        elif spec.kind == "static":
-            get_default[name] = _get_static_field
-            get_current[name] = _get_static_field
-            get_working[name] = _get_static_field
-            set_default[name] = _set_static_field
-            set_working[name] = _set_static_field
-            commit_field[name] = _close_noop
-            rollback_field[name] = _close_noop
-            state_factory[name] = None
-            state_copy[name] = None
-        elif spec.kind in {"binding", "owned"}:
-            get_default[name] = _build_default_overlay_getter(tx_index)
-            get_current[name] = _get_current_field
-            get_working[name] = _build_working_overlay_getter(tx_index)
-            if typing.get_origin(spec.annotation) in {dict, typing.Dict}:
-                set_default[name] = _build_default_binding_map_setter(tx_index)
-                set_working[name] = _build_working_binding_map_setter(tx_index)
-                commit_field[name] = _build_binding_map_commit_hook(tx_index)
-                rollback_field[name] = _build_binding_map_rollback_hook(tx_index)
-                close_field[name] = _close_binding_map_field
-            else:
-                set_default[name] = _build_default_binding_setter(tx_index)
-                set_working[name] = _build_working_binding_setter(tx_index)
-                commit_field[name] = _build_binding_commit_hook(tx_index)
-                rollback_field[name] = _build_binding_rollback_hook(tx_index)
-                close_field[name] = _close_binding_field
-            state_factory[name] = None
-            state_copy[name] = None
-        elif spec.kind == "transient":
-            if name in working_default_factory_runner:
-                get_default[name] = _build_transient_working_default_getter(tx_index)
-                get_working[name] = _build_transient_working_default_getter(tx_index)
-            else:
-                get_default[name] = _build_default_overlay_getter(tx_index)
-                get_working[name] = _build_working_overlay_getter(tx_index)
-            get_current[name] = _get_current_field
-            set_default[name] = _build_default_value_setter(tx_index)
-            set_working[name] = _build_working_value_setter(tx_index)
-            commit_field[name] = _close_noop
-            rollback_field[name] = _close_noop
-            state_factory[name] = None
-            state_copy[name] = None
-        elif spec.kind == "local_store":
-            get_default[name] = _get_local_store_field
-            get_current[name] = _get_local_store_field
-            get_working[name] = _get_local_store_field
-            set_default[name] = _set_local_store_field
-            set_working[name] = _set_local_store_field
-            commit_field[name] = _close_noop
-            rollback_field[name] = _close_noop
-            close_field[name] = _close_local_store_field
-            state_factory[name] = None
-            state_copy[name] = None
-        elif spec.kind == "derived":
-            get_default[name] = _get_derived_field
-            get_current[name] = _get_derived_field
-            get_working[name] = _get_derived_field
-            set_default[name] = _set_derived_field
-            set_working[name] = _set_derived_field
-            commit_field[name] = _reset_derived_field
-            rollback_field[name] = _reset_derived_field
-            close_field[name] = _reset_derived_field
-            state_factory[name] = None
-            state_copy[name] = None
-        elif spec.kind in {"commit_order_key", "commit_validator"}:
-            get_default[name] = _get_current_field
-            get_current[name] = _get_current_field
-            get_working[name] = _get_current_field
-            set_default[name] = _set_const_field
-            set_working[name] = _set_const_field
-            commit_field[name] = _close_noop
-            rollback_field[name] = _close_noop
-            state_factory[name] = None
-            state_copy[name] = None
-        elif spec.kind in _NONSTORED_HOOK_KINDS:
-            get_default[name] = _get_hook_declaration_field
-            get_current[name] = _get_hook_declaration_field
-            get_working[name] = _get_hook_declaration_field
-            set_default[name] = _set_hook_declaration_field
-            set_working[name] = _set_hook_declaration_field
-            commit_field[name] = _close_noop
-            rollback_field[name] = _close_noop
-            state_factory[name] = None
-            state_copy[name] = None
-        else:
-            raise TypeError(f"unsupported lifecycle field kind {spec.kind!r}")
-            close_field[name] = _close_noop
-        if name not in close_field:
-            close_field[name] = _close_noop
+        spec.kind.install_field_tables(name=name, spec=spec, tx_index=tx_index, tables=tables)
 
     return {
-        "__class_ftable_get_default__": get_default,
-        "__class_ftable_get_current__": get_current,
-        "__class_ftable_get_working__": get_working,
-        "__class_ftable_set_default__": set_default,
-        "__class_ftable_set_working__": set_working,
-        "__class_ftable_commit_field__": commit_field,
-        "__class_ftable_rollback_field__": rollback_field,
-        "__class_ftable_close_field__": close_field,
-        "__class_ftable_state_factory__": state_factory,
-        "__class_ftable_state_copy__": state_copy,
-        "__class_ftable_tx_index__": field_tx_index,
-        "__class_ftable_default_factory_runner__": default_factory_runner,
-        "__class_ftable_working_default_factory_runner__": working_default_factory_runner,
+        "__class_ftable_get_default__": tables.get_default,
+        "__class_ftable_get_current__": tables.get_current,
+        "__class_ftable_get_working__": tables.get_working,
+        "__class_ftable_set_default__": tables.set_default,
+        "__class_ftable_set_working__": tables.set_working,
+        "__class_ftable_commit_field__": tables.commit_field,
+        "__class_ftable_rollback_field__": tables.rollback_field,
+        "__class_ftable_close_field__": tables.close_field,
+        "__class_ftable_state_factory__": tables.state_factory,
+        "__class_ftable_state_copy__": tables.state_copy,
+        "__class_ftable_tx_index__": tables.field_tx_index,
+        "__class_ftable_default_factory_runner__": tables.default_factory_runner,
+        "__class_ftable_working_default_factory_runner__": tables.working_default_factory_runner,
     }
 
 
@@ -2339,22 +3179,7 @@ def _collect_own_field_specs(cls: type[Any]) -> dict[str, FieldSpec]:
 
 
 def _merge_field_specs(base: FieldSpec, derived: FieldSpec) -> FieldSpec:
-    if base.kind != derived.kind:
-        raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
-    if base.compare != derived.compare:
-        raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
-    if base.tx_group != derived.tx_group:
-        raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
-    if base.initial_working != derived.initial_working and derived.initial_working is not MISSING:
-        raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
-    if base.freeze != derived.freeze and derived.freeze is not None:
-        raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
-    if base.thaw != derived.thaw and derived.thaw is not None:
-        raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
-    if base.state_factory != derived.state_factory and derived.state_factory is not None:
-        raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
-    if base.state_copy != derived.state_copy and derived.state_copy != copy.copy:
-        raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
+    base.kind.validate_override(base, derived)
     if not is_annotation_narrower_or_equal(derived.annotation, base.annotation):
         raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
 
@@ -2373,14 +3198,14 @@ def _merge_field_specs(base: FieldSpec, derived: FieldSpec) -> FieldSpec:
         else base.working_default_factory
     )
     state_factory = derived.state_factory if derived.state_factory is not None else base.state_factory
-    state_copy = derived.state_copy if derived.state_copy != copy.copy else base.state_copy
+    state_copy = derived.state_copy if derived.state_copy is not None else base.state_copy
     initial_working = (
         derived.initial_working if derived.initial_working is not MISSING else base.initial_working
     )
     freeze = derived.freeze if derived.freeze is not None else base.freeze
     thaw = derived.thaw if derived.thaw is not None else base.thaw
 
-    return FieldSpec(
+    merged = FieldSpec(
         name=base.name,
         kind=base.kind,
         annotation=derived.annotation,
@@ -2395,6 +3220,8 @@ def _merge_field_specs(base: FieldSpec, derived: FieldSpec) -> FieldSpec:
         state_factory=state_factory,
         state_copy=state_copy,
     )
+    merged.kind.validate_field_spec(merged)
+    return merged
 
 
 def _merge_field_specs_from_mro(
@@ -2471,21 +3298,9 @@ def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
             tx_groups.append(spec.tx_group)
     tx_group_to_index = {tx_group: index for index, tx_group in enumerate(tx_groups)}
 
-    commit_order_key_by_group: dict[Hashable, str] = {}
-    commit_validator_by_group: dict[Hashable, str] = {}
+    special_tables = SpecialFieldTables()
     for name, spec in merged_specs.items():
-        if spec.kind == "commit_order_key":
-            if spec.tx_group in commit_order_key_by_group:
-                raise TypeError(
-                    f"at most one commit_order_key field is allowed for group {spec.tx_group!r}"
-                )
-            commit_order_key_by_group[spec.tx_group] = name
-        elif spec.kind == "commit_validator":
-            if spec.tx_group in commit_validator_by_group:
-                raise TypeError(
-                    f"at most one commit_validator field is allowed for group {spec.tx_group!r}"
-                )
-            commit_validator_by_group[spec.tx_group] = name
+        spec.kind.register_special_field(name=name, spec=spec, special_tables=special_tables)
 
     state_name = f"{wrapped.__name__}_State"
     state_namespace = {
@@ -2493,8 +3308,8 @@ def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
         "__field_specs__": merged_specs,
         "__class_tx_groups__": tuple(tx_groups),
         "__class_tx_group_to_index__": tx_group_to_index,
-        "__class_commit_order_key_by_group__": commit_order_key_by_group,
-        "__class_commit_validator_by_group__": commit_validator_by_group,
+        "__class_commit_order_key_by_group__": special_tables.commit_order_key_by_group,
+        "__class_commit_validator_by_group__": special_tables.commit_validator_by_group,
     }
     state_cls = type(state_name, (base_state_cls,), state_namespace)
     state_cls.__field_names__ = tuple(state_cls.__field_specs__)
@@ -2524,6 +3339,20 @@ __all__ = [
     "BindingBase",
     "DEFAULT_TRANSACTION",
     "GroupTransactionManager",
+    "LCKind",
+    "LC_BINDING",
+    "LC_COMMIT_ORDER_KEY",
+    "LC_COMMIT_VALIDATOR",
+    "LC_CONST",
+    "LC_DERIVED",
+    "LC_LOCAL_STORE",
+    "LC_MANAGED",
+    "LC_ON_AFTER_COMMIT",
+    "LC_ON_AFTER_ROLLBACK",
+    "LC_ON_BEFORE_COMMIT",
+    "LC_OWNED",
+    "LC_STATIC",
+    "LC_TRANSIENT",
     "LifecycleContext",
     "LifecycleTransaction",
     "LifecycleValidatorReturnedFalse",
