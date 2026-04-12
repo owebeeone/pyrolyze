@@ -16,6 +16,7 @@ from pyrolyze.lifecycle import (
     commit_validator,
     const,
     derived,
+    initvar,
     lifecycle_field,
     local_store,
     managed,
@@ -1771,6 +1772,64 @@ def test_commit_validator_rejects_disallowed_builtin_at_decoration() -> None:
         class _BadValidatorContext:
             v: int = managed(default=0)
             chk: object | None = commit_validator(default=lambda self, current: True)
+
+
+def test_initvar_feeds_const_default_factory() -> None:
+    @managed_context
+    class Ctx:
+        seed: int = initvar(default=1)
+        x: int = const(default_factory=lambda self, seed: seed * 2)
+
+    assert Ctx().x == 2
+    assert Ctx(seed=5).x == 10
+
+
+def test_initvar_dead_declaration_errors_at_decoration() -> None:
+    with pytest.raises(TypeError, match="unused lifecycle initvar"):
+        @managed_context
+        class _Dead:
+            orphan: int = initvar(default=0)
+            x: int = managed(default=0)
+
+
+def test_initvars_only_chained_without_consumer_errors_at_decoration() -> None:
+    with pytest.raises(TypeError, match="unused lifecycle initvar"):
+        @managed_context
+        class _DeadChain:
+            a: int = initvar(default=1)
+            b: int = initvar(default_factory=lambda cls, a: a + 1)
+            x: int = managed(default=0)
+
+
+def test_transitive_initvar_liveness_through_chain() -> None:
+    @managed_context
+    class Ctx:
+        a: int = initvar(default=1)
+        b: int = initvar(default_factory=lambda cls, a: a + 1)
+        x: int = const(default_factory=lambda self, b: b * 2)
+
+    assert Ctx().x == 4
+
+
+def test_initvar_init_false_rejects_constructor_kw() -> None:
+    @managed_context
+    class Ctx:
+        hidden: int = initvar(init=False, default_factory=lambda cls: 7)
+        x: int = const(default_factory=lambda self, hidden: hidden + 1)
+
+    assert Ctx().x == 8
+    with pytest.raises(TypeError, match="init=False"):
+        Ctx(hidden=1)
+
+
+def test_static_retains_initvar_for_lazy_default_factory() -> None:
+    @managed_context
+    class Ctx:
+        seed: int = initvar(default=10)
+        x: int = static(default_factory=lambda self, seed: seed + 1)
+
+    c = Ctx()
+    assert c.x == 11
 
 
 def test_compile_injected_runner_resolves_initvar_like_name_via_resolver() -> None:

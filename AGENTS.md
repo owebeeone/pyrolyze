@@ -57,6 +57,7 @@ Use a strict red/green/refactor workflow for all behavior changes.
 ## Roll-Build Method
 - When the user asks for a phased rollout using the roll-build method, start from a clean git tree and tag that point before implementation begins.
 - Use the requested start tag name when one is given. If none is given, ask or use a clearly scoped phase-start tag name.
+- An **unqualified** “roll-build” (no phase or stopping point named) means: run **all** phases for that plan **in sequence**, committing and tagging each completed phase as below, and **continue** into the next phase without stopping for chat. Pause or ask the user only when this section, **When To Push Back On Roll-Build**, or **Test-Led Semantics Guardrail** says to (e.g. no more phases, material ambiguity, design assumptions broken, a red test implies a real semantic change that needs a decision, or persistent bug cycles).
 - Implement one phase at a time.
 - After a phase is complete, only commit and tag it if:
   - the phase goal is actually met

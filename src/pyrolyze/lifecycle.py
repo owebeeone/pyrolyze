@@ -42,6 +42,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from collections.abc import Callable
 from collections.abc import Hashable
+import dataclasses
 from dataclasses import MISSING, dataclass, field
 import inspect
 import types
@@ -52,6 +53,25 @@ from pyrolyze.type_annotations import is_annotation_narrower_or_equal
 
 _SENTINEL = object()
 DEFAULT_TRANSACTION: Hashable = "default_transaction"
+
+LIFECYCLE_RESERVED_FIELD_NAMES: tuple[str, ...] = (
+    "self",
+    "cls",
+    "current",
+    "working",
+    "previous",
+    "tx_group",
+)
+
+
+def _is_stdlib_initvar_annotation(annotation: Any) -> bool:
+    origin = typing.get_origin(annotation)
+    return origin is dataclasses.InitVar
+
+
+def _is_stdlib_classvar_annotation(annotation: Any) -> bool:
+    origin = typing.get_origin(annotation)
+    return origin is typing.ClassVar
 
 
 class LifecycleValidatorReturnedFalse(RuntimeError):
@@ -515,21 +535,14 @@ def _allowed_commit_validator_params(initvar_names: tuple[str, ...]) -> frozense
     return frozenset({"self"}) | frozenset(initvar_names)
 
 
-def _initvar_resolve_unavailable(state: "LifecycleContextState", name: str) -> Any:
-    del state
-    raise RuntimeError(
-        f"initvar {name!r} is not available for injection in this lifecycle build phase",
-    )
-
-
-def _lifecycle_initvar_decoration_placeholders() -> dict[str, Any]:
-    """Scaffolding for initvar requestor metadata (Phase 3B+)."""
-    return {
-        "__initvar_names__": (),
-        "__class_requested_initvars__": frozenset(),
-        "__class_retained_initvars__": frozenset(),
-        "__class_has_late_initvar_consumers__": False,
-    }
+def _initvar_resolve_from_state(state: "LifecycleContextState", name: str) -> Any:
+    c = state._construction_initvars
+    if c is not None and name in c:
+        return c[name]
+    r = state._retained_initvars
+    if r is not None and name in r:
+        return r[name]
+    raise RuntimeError(f"initvar {name!r} is not available for injection")
 
 
 @dataclass(slots=True)
@@ -687,6 +700,8 @@ class LCKind:
     def validate_field_spec(cls, spec: FieldSpec) -> None:
         resolved = cls._resolved_params
         for kwarg, neutral in _LIFECYCLE_FIELD_NEUTRALS.items():
+            if kwarg == "init":
+                continue
             actual = getattr(spec, kwarg)
             param = resolved.get(kwarg)
             if param is None:
@@ -700,6 +715,8 @@ class LCKind:
                         f"{cls.name!r} fields require {kwarg} in "
                         f"{param.allowed_values}"
                     )
+        if spec.init is not MISSING and not isinstance(spec.init, bool):
+            raise TypeError(f"{cls.name!r} field init must be True or False")
         cls.validate_spec(spec)
 
     @classmethod
@@ -720,6 +737,9 @@ class LCKind:
             raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
         if base.state_copy != derived.state_copy and derived.state_copy is not None:
             raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
+        bi, di = base.init, derived.init
+        if di is not MISSING and bi is not MISSING and bi != di:
+            raise TypeError(f"incompatible lifecycle field init override for {base.name!r}")
 
     @classmethod
     def default_value(cls, spec: FieldSpec) -> Any:
@@ -1786,6 +1806,8 @@ class FieldSpec:
     kind: type[LCKind]
     annotation: Any
     compare: str
+    # Must precede defaulted fields: dataclasses treats `= MISSING` as "no default".
+    init: Any = MISSING
     default: Any = MISSING
     default_factory: Callable[[], Any] | object = MISSING
     working_default_factory: Callable[[], Any] | object = MISSING
@@ -1797,6 +1819,358 @@ class FieldSpec:
     state_copy: StateCopyHelper | None = None
 
 
+def _reject_mutable_instance_default(spec: FieldSpec) -> None:
+    if spec.default is MISSING:
+        return
+    if isinstance(spec.default, (list, dict, set)):
+        raise ValueError(
+            f"mutable default {type(spec.default).__name__} for field {spec.name!r} "
+            "is not allowed: use default_factory",
+        )
+
+
+_KIND_FIELD_INIT_FALSE = frozenset(
+    {
+        # commit_order_key participates in per-instance construction (ordering key)
+        "commit_validator",
+        "on_before_commit",
+        "on_after_commit",
+        "on_after_rollback",
+    },
+)
+
+
+def _default_init_for_field_kind(kind: type[LCKind]) -> bool:
+    return kind.name not in _KIND_FIELD_INIT_FALSE
+
+
+@dataclass(slots=True)
+class InitVarSpec:
+    name: str
+    annotation: Any
+    init: Any = MISSING
+    default: Any = MISSING
+    default_factory: Callable[..., Any] | object = MISSING
+
+
+def _validate_initvar_spec(spec: InitVarSpec) -> None:
+    if spec.default is not MISSING and spec.default_factory is not MISSING:
+        raise TypeError(f"initvar {spec.name!r} cannot define both default and default_factory")
+    if not isinstance(spec.init, bool):
+        raise TypeError(f"initvar {spec.name!r} init must be True or False")
+    if spec.name in LIFECYCLE_RESERVED_FIELD_NAMES:
+        raise TypeError(f"initvar name {spec.name!r} is reserved for lifecycle injection")
+
+
+def _validate_initvar_override(base: InitVarSpec, derived: InitVarSpec) -> None:
+    if not is_annotation_narrower_or_equal(derived.annotation, base.annotation):
+        raise TypeError(f"incompatible initvar override for {base.name!r}")
+    bi, di = base.init, derived.init
+    if di is not MISSING and bi is not MISSING and bi != di:
+        raise TypeError(f"incompatible initvar init override for {base.name!r}")
+
+
+def _merge_initvar_specs(base: InitVarSpec, derived: InitVarSpec) -> InitVarSpec:
+    _validate_initvar_override(base, derived)
+    if derived.default is not MISSING:
+        default = derived.default
+        default_factory = MISSING
+    elif derived.default_factory is not MISSING:
+        default = MISSING
+        default_factory = derived.default_factory
+    else:
+        default = base.default
+        default_factory = base.default_factory
+    merged_init = derived.init if derived.init is not MISSING else base.init
+    merged = InitVarSpec(
+        name=base.name,
+        annotation=derived.annotation,
+        init=merged_init,
+        default=default,
+        default_factory=default_factory,
+    )
+    if merged.init is MISSING:
+        merged = dataclasses.replace(merged, init=True)
+    _validate_initvar_spec(merged)
+    return merged
+
+
+def _merge_initvar_specs_from_mro(
+    cls: type[Any],
+    *,
+    attr_name: str,
+    own_items: dict[str, InitVarSpec],
+) -> dict[str, InitVarSpec]:
+    merged: dict[str, InitVarSpec] = {}
+    for mro_cls in reversed(cls.__mro__):
+        if mro_cls in {object, _ManagedContextBase}:
+            continue
+        source = own_items if mro_cls is cls else getattr(mro_cls, attr_name, None)
+        if not source:
+            continue
+        for name, value in source.items():
+            if name in merged:
+                merged[name] = _merge_initvar_specs(merged[name], value)
+            else:
+                v = value
+                if v.init is MISSING:
+                    v = dataclasses.replace(v, init=True)
+                merged[name] = v
+    return merged
+
+
+def _extract_explicit_parameter_names(function: Callable[..., Any]) -> tuple[str, ...]:
+    if inspect.isbuiltin(function) or inspect.isclass(function):
+        return ()
+    try:
+        signature = inspect.signature(function)
+    except (TypeError, ValueError):
+        return ()
+    if not signature.parameters:
+        return ()
+    names: list[str] = []
+    for parameter in signature.parameters.values():
+        if parameter.kind not in {
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        }:
+            raise TypeError(
+                f"{function!r} must use named parameters only (no *args/**kwargs injection)",
+            )
+        names.append(parameter.name)
+    return tuple(names)
+
+
+def _initvar_names_in_callable(
+    function: Callable[..., Any],
+    initvar_names: frozenset[str],
+) -> frozenset[str]:
+    try:
+        params = _extract_explicit_parameter_names(function)
+    except TypeError:
+        return frozenset()
+    return frozenset(p for p in params if p in initvar_names)
+
+
+def _scan_initvar_consumer_seeds(
+    merged_specs: dict[str, FieldSpec],
+    merged_initvars: dict[str, InitVarSpec],
+    special_tables: SpecialFieldTables,
+) -> tuple[frozenset[str], frozenset[str]]:
+    initvar_names = frozenset(merged_initvars)
+    all_seeds: set[str] = set()
+    late_seeds: set[str] = set()
+    for _fname, spec in merged_specs.items():
+        if spec.default_factory is not MISSING and callable(spec.default_factory):
+            refs = _initvar_names_in_callable(spec.default_factory, initvar_names)
+            all_seeds.update(refs)
+            if issubclass(spec.kind, StaticKind):
+                late_seeds.update(refs)
+        if spec.working_default_factory is not MISSING and callable(spec.working_default_factory):
+            refs = _initvar_names_in_callable(spec.working_default_factory, initvar_names)
+            all_seeds.update(refs)
+            late_seeds.update(refs)
+        if issubclass(spec.kind, HookDeclarationKind):
+            hook = spec.default
+            if callable(hook):
+                refs = _initvar_names_in_callable(hook, initvar_names)
+                all_seeds.update(refs)
+                late_seeds.update(refs)
+        if issubclass(spec.kind, CommitValidatorKind):
+            val = spec.default
+            if callable(val):
+                refs = _initvar_names_in_callable(val, initvar_names)
+                all_seeds.update(refs)
+                late_seeds.update(refs)
+    return frozenset(all_seeds), frozenset(late_seeds)
+
+
+def _initvar_prereq_initvars_from_specs(
+    merged_initvars: dict[str, InitVarSpec],
+) -> dict[str, frozenset[str]]:
+    names_set = frozenset(merged_initvars)
+    prereqs: dict[str, frozenset[str]] = {}
+    for name, spec in merged_initvars.items():
+        if spec.default_factory is MISSING:
+            prereqs[name] = frozenset()
+            continue
+        factory = typing.cast(Callable[..., Any], spec.default_factory)
+        try:
+            params = _extract_explicit_parameter_names(factory)
+        except TypeError:
+            prereqs[name] = frozenset()
+            continue
+        prereqs[name] = frozenset(p for p in params if p in names_set)
+    return prereqs
+
+
+def _transitive_initvar_closure(
+    merged_initvars: dict[str, InitVarSpec],
+    seeds: frozenset[str],
+    prereqs: Mapping[str, frozenset[str]],
+) -> frozenset[str]:
+    names_set = frozenset(merged_initvars)
+    needed = set(seeds) & names_set
+    changed = True
+    while changed:
+        changed = False
+        snapshot = tuple(needed)
+        for v in snapshot:
+            for u in prereqs.get(v, ()):
+                if u not in needed:
+                    needed.add(u)
+                    changed = True
+    return frozenset(needed)
+
+
+def _compile_initvar_default_factory_runner(
+    *,
+    initvar_name: str,
+    factory: Callable[..., Any],
+    allowed_params: frozenset[str],
+) -> Callable[[dict[str, Any], type[Any]], Any]:
+    if inspect.isbuiltin(factory) or inspect.isclass(factory):
+        return lambda _resolved, owner_cls: factory()
+    try:
+        signature = inspect.signature(factory)
+    except (TypeError, ValueError):
+        return lambda _resolved, owner_cls: factory()
+    parameter_names: tuple[str, ...] = ()
+    if signature.parameters:
+        names: list[str] = []
+        for parameter in signature.parameters.values():
+            if parameter.kind not in {
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                inspect.Parameter.KEYWORD_ONLY,
+            }:
+                raise TypeError(
+                    f"initvar {initvar_name!r} default_factory must use named parameters only",
+                )
+            if parameter.name not in allowed_params:
+                allowed = ", ".join(sorted(allowed_params))
+                raise TypeError(
+                    f"initvar {initvar_name!r} default_factory uses unsupported parameter "
+                    f"{parameter.name!r}; allowed: {allowed}",
+                )
+            names.append(parameter.name)
+        parameter_names = tuple(names)
+    if not parameter_names:
+        return lambda _resolved, owner_cls: factory()
+
+    def run(resolved: dict[str, Any], owner_cls: type[Any]) -> Any:
+        kwargs: dict[str, Any] = {}
+        for name in parameter_names:
+            if name == "cls":
+                kwargs["cls"] = owner_cls
+            else:
+                kwargs[name] = resolved[name]
+        return factory(**kwargs)
+
+    return run
+
+
+def _build_initvar_factory_runners(
+    merged_initvars: dict[str, InitVarSpec],
+) -> dict[str, Callable[[dict[str, Any], type[Any]], Any]]:
+    order = tuple(merged_initvars.keys())
+    result: dict[str, Callable[[dict[str, Any], type[Any]], Any]] = {}
+    for i, name in enumerate(order):
+        spec = merged_initvars[name]
+        if spec.default_factory is MISSING:
+            continue
+        allowed = frozenset({"cls"}) | frozenset(order[:i])
+        factory = typing.cast(Callable[..., Any], spec.default_factory)
+        result[name] = _compile_initvar_default_factory_runner(
+            initvar_name=name,
+            factory=factory,
+            allowed_params=allowed,
+        )
+    return result
+
+
+def _normalize_retained_initvar_value(value: Any) -> Any:
+    frozen = getattr(value, "to_frozen", None)
+    if callable(frozen):
+        return frozen()
+    return value
+
+
+def _resolve_initvar_values(
+    merged_initvars: dict[str, InitVarSpec],
+    *,
+    user_kw: dict[str, Any],
+    owner_cls: type[Any],
+    factory_runners: Mapping[str, Callable[[dict[str, Any], type[Any]], Any]],
+) -> dict[str, Any]:
+    resolved: dict[str, Any] = {}
+    order = tuple(merged_initvars.keys())
+    for name in order:
+        spec = merged_initvars[name]
+        if name in user_kw:
+            if not spec.init:
+                raise TypeError(f"constructor kw {name!r} is not accepted (initvar init=False)")
+            resolved[name] = user_kw[name]
+        elif spec.default is not MISSING:
+            resolved[name] = spec.default
+        elif spec.default_factory is not MISSING:
+            resolved[name] = factory_runners[name](resolved, owner_cls)
+        elif spec.init:
+            raise TypeError(f"missing required initvar {name!r}")
+        else:
+            raise TypeError(
+                f"initvar {name!r} with init=False requires default or default_factory",
+            )
+    return resolved
+
+
+class InitVarField:
+    __slots__ = ("default", "default_factory", "init", "name")
+
+    def __init__(
+        self,
+        *,
+        init: Any = MISSING,
+        default: Any = MISSING,
+        default_factory: Callable[..., Any] | object = MISSING,
+    ) -> None:
+        if default is not MISSING and default_factory is not MISSING:
+            raise TypeError("initvar cannot define both default and default_factory")
+        self.init = init
+        self.default = default
+        self.default_factory = default_factory
+        self.name: str | None = None
+
+    def __set_name__(self, owner: type[Any], name: str) -> None:
+        self.name = name
+
+    def build_spec(self, annotation: Any) -> InitVarSpec:
+        init_for_spec = self.init if self.init is not MISSING else MISSING
+        eff_init = True if init_for_spec is MISSING else bool(init_for_spec)
+        spec = InitVarSpec(
+            name=self.name_or_error(),
+            annotation=annotation,
+            init=init_for_spec,
+            default=self.default,
+            default_factory=self.default_factory,
+        )
+        _validate_initvar_spec(dataclasses.replace(spec, init=eff_init))
+        return dataclasses.replace(spec, init=eff_init)
+
+    def name_or_error(self) -> str:
+        if self.name is None:
+            raise RuntimeError("initvar name was not initialized")
+        return self.name
+
+
+def initvar(
+    *,
+    init: Any = MISSING,
+    default: Any = MISSING,
+    default_factory: Callable[..., Any] | object = MISSING,
+) -> Any:
+    return InitVarField(init=init, default=default, default_factory=default_factory)
+
+
 class LifecycleField:
     __slots__ = (
         "compare",
@@ -1804,6 +2178,7 @@ class LifecycleField:
         "default_factory",
         "freeze",
         "initial_working",
+        "init",
         "kind",
         "name",
         "state_copy",
@@ -1823,6 +2198,7 @@ class LifecycleField:
         default_factory: Callable[[], Any] | object = MISSING,
         working_default_factory: Callable[[], Any] | object = MISSING,
         initial_working: Any = MISSING,
+        init: Any = MISSING,
         freeze: Callable[[Any], Any] | None = None,
         thaw: Callable[[Any], Any] | None = None,
         state_factory: Callable[[], Any] | None = None,
@@ -1843,7 +2219,9 @@ class LifecycleField:
         self.state_copy = state_copy
         self.thaw = thaw
         self.tx_group = tx_group
+        self.init = init
         self.name: str | None = None
+        init_for_spec = init if init is not MISSING else MISSING
         temp_spec = FieldSpec(
             name="<unbound>",
             kind=kind,
@@ -1858,8 +2236,15 @@ class LifecycleField:
             thaw=thaw,
             state_factory=state_factory,
             state_copy=state_copy,
+            init=init_for_spec,
         )
-        kind.validate_field_spec(temp_spec)
+        eff_init = (
+            init_for_spec
+            if init_for_spec is not MISSING
+            else _default_init_for_field_kind(kind)
+        )
+        kind.validate_field_spec(dataclasses.replace(temp_spec, init=eff_init))
+        _reject_mutable_instance_default(dataclasses.replace(temp_spec, init=eff_init))
 
     def __set_name__(self, owner: type[LifecycleContext], name: str) -> None:
         self.name = name
@@ -1873,6 +2258,7 @@ class LifecycleField:
         instance.__set_field__(self.name_or_error(), value)
 
     def build_spec(self, annotation: Any) -> FieldSpec:
+        init_for_spec = self.init if self.init is not MISSING else MISSING
         spec = FieldSpec(
             name=self.name_or_error(),
             kind=self.kind,
@@ -1887,8 +2273,16 @@ class LifecycleField:
             thaw=self.thaw,
             state_factory=self.state_factory,
             state_copy=self.state_copy,
+            init=init_for_spec,
         )
-        spec.kind.validate_field_spec(spec)
+        eff_init = (
+            init_for_spec
+            if init_for_spec is not MISSING
+            else _default_init_for_field_kind(self.kind)
+        )
+        vs = dataclasses.replace(spec, init=eff_init)
+        spec.kind.validate_field_spec(vs)
+        _reject_mutable_instance_default(vs)
         return spec
 
     def name_or_error(self) -> str:
@@ -1906,6 +2300,7 @@ def lifecycle_field(
     default_factory: Callable[[], Any] | object = MISSING,
     working_default_factory: Callable[[], Any] | object = MISSING,
     initial_working: Any = MISSING,
+    init: Any = MISSING,
     freeze: Callable[[Any], Any] | None = None,
     thaw: Callable[[Any], Any] | None = None,
     state_factory: Callable[[], Any] | None = None,
@@ -1919,6 +2314,7 @@ def lifecycle_field(
         default_factory=default_factory,
         working_default_factory=working_default_factory,
         initial_working=initial_working,
+        init=init,
         freeze=freeze,
         state_factory=state_factory,
         state_copy=state_copy,
@@ -2422,6 +2818,7 @@ def _reset_derived_field(state: LifecycleContextState, name: str) -> None:
 
 class LifecycleContextState:
     __field_specs__: dict[str, FieldSpec] = {}
+    __initvar_specs__: dict[str, InitVarSpec] = {}
     __field_names__: tuple[str, ...] = ()
     __class_tx_groups__: tuple[Hashable, ...] = (DEFAULT_TRANSACTION,)
     __class_tx_group_to_index__: dict[Hashable, int] = {DEFAULT_TRANSACTION: 0}
@@ -2429,6 +2826,7 @@ class LifecycleContextState:
     __class_commit_validator_by_group__: dict[Hashable, str] = {}
     __class_ftable_commit_validator_runner_by_group__: dict[Hashable, InjectedRunner] = {}
     __initvar_names__: tuple[str, ...] = ()
+    __class_initvar_factory_runners__: dict[str, Callable[[dict[str, Any], type[Any]], Any]] = {}
     __class_requested_initvars__: frozenset[str] = frozenset()
     __class_retained_initvars__: frozenset[str] = frozenset()
     __class_has_late_initvar_consumers__: bool = False
@@ -2463,6 +2861,8 @@ class LifecycleContextState:
         "working_view",
         "_resolving_factories",
         "_deferred_commit_cleanup",
+        "_construction_initvars",
+        "_retained_initvars",
     )
 
     def __init__(
@@ -2471,6 +2871,8 @@ class LifecycleContextState:
         *,
         transaction_manager: TransactionManager | None,
         values: dict[str, Any],
+        construction_initvars: dict[str, Any] | None = None,
+        retained_initvars_frozen: dict[str, Any] | None = None,
     ) -> None:
         self.owner = owner
         object.__setattr__(owner, "_state", self)
@@ -2486,6 +2888,8 @@ class LifecycleContextState:
         self.working_view = type(owner).__working_view_cls__(_state=self, _owner=owner)
         self._resolving_factories: list[tuple[str, str]] = []
         self._deferred_commit_cleanup: list[Callable[[], None]] | None = None
+        self._construction_initvars = dict(construction_initvars) if construction_initvars else None
+        self._retained_initvars = dict(retained_initvars_frozen) if retained_initvars_frozen else None
 
         for name, spec in type(self).__field_specs__.items():
             spec.kind.initialize_constructor_value(state=self, name=name, values=values)
@@ -2503,6 +2907,8 @@ class LifecycleContextState:
             if issubclass(spec.kind, StaticKind):
                 continue
             self.resolve_default_field(name)
+
+        self._construction_initvars = None
 
     def get_field(self, name: str) -> Any:
         return type(self).__class_ftable_get_default__[name](self, name)
@@ -2848,11 +3254,61 @@ class _ManagedContextBase:
     __view_mode__ = "default"
 
     def __init__(self, **values: Any) -> None:
-        transaction_manager = values.pop("transaction_manager", None)
+        state_cls = type(self).__state_cls__
+        field_specs = state_cls.__field_specs__
+        initvar_specs: dict[str, InitVarSpec] = getattr(state_cls, "__initvar_specs__", {}) or {}
+        raw = dict(values)
+        transaction_manager = raw.pop("transaction_manager", None)
+
+        field_kw: dict[str, Any] = {}
+        init_kw: dict[str, Any] = {}
+        for name in list(raw):
+            if name in initvar_specs:
+                init_kw[name] = raw.pop(name)
+            elif name in field_specs:
+                field_kw[name] = raw.pop(name)
+            else:
+                raise TypeError(f"unexpected keyword argument {name!r}")
+        if raw:
+            unexpected = ", ".join(sorted(raw))
+            raise TypeError(f"unexpected keyword argument(s): {unexpected}")
+
+        for fname, val in field_kw.items():
+            if not field_specs[fname].init:
+                raise TypeError(f"constructor kw {fname!r} is not accepted (field init=False)")
+
+        factory_runners: Mapping[str, Callable[[dict[str, Any], type[Any]], Any]] = (
+            getattr(state_cls, "__class_initvar_factory_runners__", {}) or {}
+        )
+        resolved_initvars: dict[str, Any] = {}
+        if initvar_specs:
+            resolved_initvars = _resolve_initvar_values(
+                initvar_specs,
+                user_kw=init_kw,
+                owner_cls=type(self),
+                factory_runners=factory_runners,
+            )
+
+        retained_names: frozenset[str] = getattr(
+            state_cls, "__class_retained_initvars__", frozenset(),
+        )
+        retained_frozen: dict[str, Any] | None = None
+        if retained_names:
+            retained_frozen = {
+                n: _normalize_retained_initvar_value(resolved_initvars[n]) for n in retained_names
+            }
+
+        construction = resolved_initvars if resolved_initvars else None
         object.__setattr__(
             self,
             "_state",
-            type(self).__state_cls__(self, transaction_manager=transaction_manager, values=values),
+            state_cls(
+                self,
+                transaction_manager=transaction_manager,
+                values=field_kw,
+                construction_initvars=construction,
+                retained_initvars_frozen=retained_frozen,
+            ),
         )
 
     def __getattr__(self, name: str) -> Any:
@@ -3127,7 +3583,9 @@ def _build_class_tables(
     }
 
 
-def _collect_own_field_specs(cls: type[Any]) -> dict[str, FieldSpec]:
+def _collect_own_declarations(
+    cls: type[Any],
+) -> tuple[dict[str, FieldSpec], dict[str, InitVarSpec]]:
     own_annotation_names = dict(getattr(cls, "__annotations__", {}))
     try:
         resolved_annotations = typing.get_type_hints(cls, include_extras=True)
@@ -3138,17 +3596,34 @@ def _collect_own_field_specs(cls: type[Any]) -> dict[str, FieldSpec]:
         for name, annotation in own_annotation_names.items()
     }
     own_specs: dict[str, FieldSpec] = {}
+    own_initvars: dict[str, InitVarSpec] = {}
     for name, annotation in annotations.items():
+        if name.startswith("_"):
+            continue
+        if name in LIFECYCLE_RESERVED_FIELD_NAMES:
+            raise TypeError(f"lifecycle declaration name {name!r} is reserved for injection")
         candidate = cls.__dict__.get(name, _SENTINEL)
+        if _is_stdlib_initvar_annotation(annotation) or _is_stdlib_classvar_annotation(annotation):
+            continue
         if isinstance(candidate, LifecycleField):
             own_specs[name] = candidate.build_spec(annotation)
             continue
-        if name.startswith("_"):
+        if isinstance(candidate, InitVarField):
+            own_initvars[name] = candidate.build_spec(annotation)
             continue
         raise TypeError(
-            f"annotated lifecycle field {name!r} must use lifecycle_field(...)"
+            f"annotated lifecycle declaration {name!r} must use lifecycle_field(...) or initvar(...)",
         )
-    return own_specs
+    overlap = set(own_specs) & set(own_initvars)
+    if overlap:
+        bad = ", ".join(sorted(overlap))
+        raise TypeError(f"names cannot be both lifecycle fields and initvars: {bad}")
+    return own_specs, own_initvars
+
+
+def _collect_own_field_specs(cls: type[Any]) -> dict[str, FieldSpec]:
+    fields, _initvars = _collect_own_declarations(cls)
+    return fields
 
 
 def _merge_field_specs(base: FieldSpec, derived: FieldSpec) -> FieldSpec:
@@ -3178,6 +3653,11 @@ def _merge_field_specs(base: FieldSpec, derived: FieldSpec) -> FieldSpec:
     freeze = derived.freeze if derived.freeze is not None else base.freeze
     thaw = derived.thaw if derived.thaw is not None else base.thaw
 
+    if derived.init is not MISSING:
+        merged_init = derived.init
+    else:
+        merged_init = base.init
+
     merged = FieldSpec(
         name=base.name,
         kind=base.kind,
@@ -3192,8 +3672,12 @@ def _merge_field_specs(base: FieldSpec, derived: FieldSpec) -> FieldSpec:
         thaw=thaw,
         state_factory=state_factory,
         state_copy=state_copy,
+        init=merged_init,
     )
+    if merged.init is MISSING:
+        merged = dataclasses.replace(merged, init=_default_init_for_field_kind(merged.kind))
     merged.kind.validate_field_spec(merged)
+    _reject_mutable_instance_default(merged)
     return merged
 
 
@@ -3214,7 +3698,10 @@ def _merge_field_specs_from_mro(
             if name in merged:
                 merged[name] = _merge_field_specs(merged[name], value)
             else:
-                merged[name] = value
+                v = value
+                if v.init is MISSING:
+                    v = dataclasses.replace(v, init=_default_init_for_field_kind(v.kind))
+                merged[name] = v
     return merged
 
 
@@ -3250,8 +3737,9 @@ def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
         )
         wrapped.__qualname__ = cls.__qualname__
 
-    own_specs = _collect_own_field_specs(cls)
+    own_specs, own_initvars = _collect_own_declarations(cls)
     wrapped.__managed_own_field_specs__ = own_specs
+    wrapped.__managed_own_initvar_specs__ = own_initvars
 
     base_state_cls = LifecycleContextState
     for base in wrapped.__mro__[1:]:
@@ -3264,6 +3752,13 @@ def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
         attr_name="__managed_own_field_specs__",
         own_items=own_specs,
     )
+    merged_initvars = _merge_initvar_specs_from_mro(
+        wrapped,
+        attr_name="__managed_own_initvar_specs__",
+        own_items=own_initvars,
+    )
+    initvar_names_tuple = tuple(merged_initvars.keys())
+    initvar_factory_runners = _build_initvar_factory_runners(merged_initvars)
 
     tx_groups: list[Hashable] = [DEFAULT_TRANSACTION]
     for spec in merged_specs.values():
@@ -3275,12 +3770,36 @@ def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
     for name, spec in merged_specs.items():
         spec.kind.register_special_field(name=name, spec=spec, special_tables=special_tables)
 
-    initvar_names: tuple[str, ...] = ()
-    initvar_resolve: Callable[[LifecycleContextState, str], Any] | None = None
+    if merged_initvars:
+        all_seeds, late_seeds = _scan_initvar_consumer_seeds(
+            merged_specs, merged_initvars, special_tables
+        )
+        iv_prereqs = _initvar_prereq_initvars_from_specs(merged_initvars)
+        requested_live = _transitive_initvar_closure(
+            merged_initvars, all_seeds, iv_prereqs
+        )
+        dead = frozenset(merged_initvars) - requested_live
+        if dead:
+            raise TypeError(
+                "unused lifecycle initvar declarations (no lifecycle consumer request): "
+                + ", ".join(sorted(dead)),
+            )
+        retained_live = _transitive_initvar_closure(
+            merged_initvars, late_seeds, iv_prereqs
+        )
+    else:
+        requested_live = frozenset()
+        retained_live = frozenset()
+
+    initvar_resolve: Callable[[LifecycleContextState, str], Any] | None
+    if initvar_names_tuple:
+        initvar_resolve = _initvar_resolve_from_state
+    else:
+        initvar_resolve = None
     validator_runners = _build_commit_validator_runner_table(
         merged_specs,
         special_tables=special_tables,
-        initvar_names=initvar_names,
+        initvar_names=initvar_names_tuple,
         initvar_resolve=initvar_resolve,
     )
 
@@ -3288,25 +3807,30 @@ def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
     state_namespace = {
         "__module__": wrapped.__module__,
         "__field_specs__": merged_specs,
+        "__initvar_specs__": merged_initvars,
+        "__initvar_names__": initvar_names_tuple,
+        "__class_initvar_factory_runners__": initvar_factory_runners,
+        "__class_requested_initvars__": requested_live,
+        "__class_retained_initvars__": retained_live,
+        "__class_has_late_initvar_consumers__": bool(retained_live),
         "__class_tx_groups__": tuple(tx_groups),
         "__class_tx_group_to_index__": tx_group_to_index,
         "__class_commit_order_key_by_group__": special_tables.commit_order_key_by_group,
         "__class_commit_validator_by_group__": special_tables.commit_validator_by_group,
         "__class_ftable_commit_validator_runner_by_group__": validator_runners,
-        **_lifecycle_initvar_decoration_placeholders(),
     }
     state_cls = type(state_name, (base_state_cls,), state_namespace)
     state_cls.__field_names__ = tuple(state_cls.__field_specs__)
     for table_name, table in _build_class_tables(
         state_cls.__field_specs__,
         tx_group_to_index=state_cls.__class_tx_group_to_index__,
-        initvar_names=initvar_names,
+        initvar_names=initvar_names_tuple,
         initvar_resolve=initvar_resolve,
     ).items():
         setattr(state_cls, table_name, table)
     for table_name, table in _build_hook_runner_tables(
         state_cls.__field_specs__,
-        initvar_names=initvar_names,
+        initvar_names=initvar_names_tuple,
         initvar_resolve=initvar_resolve,
     ).items():
         setattr(state_cls, table_name, table)
@@ -3326,15 +3850,18 @@ def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
 
 __all__ = [
     "FieldSpec",
+    "InitVarSpec",
     "BindingBase",
     "DEFAULT_TRANSACTION",
     "GroupTransactionManager",
     "LCKind",
+    "LIFECYCLE_RESERVED_FIELD_NAMES",
     "LifecycleContext",
     "LifecycleTransaction",
     "LifecycleValidatorReturnedFalse",
     "Record",
     "TransactionManager",
+    "initvar",
     "lifecycle_field",
     "managed_context",
 ]
