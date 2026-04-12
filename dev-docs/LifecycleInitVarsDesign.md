@@ -19,27 +19,22 @@ The goals are:
 - constructor-only inputs can be expressed declaratively
 - immutable initialization context can be retained when requested
 
-## Implementation phases and v1 scope
+## Scope
 
-**v1 (Phases 3A–3C)** ships **initvar**, **`FieldSpec.init`**, generalized injection
-/ requestor scan, **mutable-`default` validation** for **instance** fields, and
-**retained initvar** behavior — without **`classvar`**.
+This document defines lifecycle semantics for:
 
-**Phase 4 (follow-up)** is a **separate design and implementation** for
-**`classvar`**. Reason: today every terminal kind flows through `FieldSpec` →
-`_build_class_tables` → `LifecycleContextState.__field_specs__` and ftables
-(`lifecycle.py`). **`classvar` must never enter that pipeline.** It belongs in a
-**parallel metadata path** (e.g. `__classvar_specs__` + class-object
-attributes), not as a special-cased `FieldSpec` filtered out late. Documenting it
-here as **future** avoids the “terminal `LCKind` but not in `__field_specs__`”
-contradiction during v1.
+- `initvar(...)`
+- `InitVarSpec`
+- `FieldSpec.init`
+- `InitVarSpec.init`
+- generalized explicit initvar-name injection
+- dead-initvar / transitive-liveness rules
+- private retained initvar storage for late consumers
+- dataclass-aligned mutable `default=` validation for instance fields
 
-| Phase | Deliverables |
-| --- | --- |
-| **3A** | Per-runner allowed-name sets; extend `_compile_injected_runner` (or shared helper); **requestor scan**; tests for plumbing only |
-| **3B** | `initvar(...)` / `InitVarSpec`; `__initvar_specs__` merged on MRO; constructor split; private retained snapshot when required; **`FieldSpec.init`** |
-| **3C** | Mutable-`default` rejection; inheritance edge tests; lazy **`static`** + initvar retention tests |
-| **4** | **`classvar`**: collector, class decoration materialization, merge rules, `cls`-only factories — **no `FieldSpec` / no state ftables** |
+`classvar` remains part of the intended lifecycle surface, but it is a
+follow-up on a parallel metadata path and is described here only at the semantic
+level, not as part of the instance `FieldSpec` pipeline.
 
 ## Stdlib `InitVar` and `ClassVar` (typing)
 
@@ -52,7 +47,8 @@ contradiction during v1.
 
 - **`typing.ClassVar[...]`** — lifecycle **ignores** it for **instance** field
   collection (no error when the default value is a `classvar(...)` marker or
-  plain class attribute in v1; Phase 4 defines `classvar` fully).
+  plain class attribute; `classvar` itself is defined below as a separate
+  semantic path).
 
 **Required collector redesign:** Today `_collect_own_field_specs` raises if an
 annotated name is not a `LifecycleField` (unless `_`-prefixed). Initvars require
@@ -80,13 +76,14 @@ first-class **`InitVarSpec`** (exact runtime class name TBD), **separate from**
 | Lifecycle kind | `kind: type[LCKind]` | none (not an `LCKind`) |
 | Stored in `current` / `working` | yes | no |
 | `compare`, `tx_group`, `freeze` / `thaw`, … | per kind | not applicable |
-| Constructor kw | when `init=True` | always (initvars *are* constructor parameters) |
+| Constructor kw | when `init=True` | when `init=True` |
 | Consumed by factories / hooks | via injection | via injection (direct names only) |
 
 **Fields on `InitVarSpec` (proposed):**
 
 - `name: str` — attribute name on the managed context class
 - `annotation: Any` — resolved type hint (same spirit as `FieldSpec.annotation`)
+- `init: bool = True` — whether this initvar is accepted as a constructor kw
 - `default: Any` — optional; mutually exclusive with `default_factory` where the same `MISSING` conventions apply
 - `default_factory: Callable[..., Any] | object` — optional; see contract below
 
@@ -99,8 +96,8 @@ are **not** available and **must not** appear in the signature.
 
 - **Earlier initvars** — parameters whose names match initvars **already
   resolved** in **merged declaration order** (see [Field order](#field-order-and-mro-merge)).
-- Optionally **`cls`** — the managed context **class** (same reserved name as
-  Phase 4 `classvar` factories).
+- Optionally **`cls`** — the managed context **class** (same reserved name used
+  by `classvar` factories).
 
 **Ordering:** Resolve initvar values in merged order; each `default_factory` may
 only depend on initvars **earlier** in that order. **Cycle detection:** if
@@ -143,7 +140,7 @@ For **initvar `default_factory`**, use this merged order as the **dependency
 order**; tie-break or secondary ordering is only needed if explicit topological
 sort is added later.
 
-## Future: `classvar` (Phase 4 — **not** `FieldSpec` / **not** state ftables)
+## Future: `classvar` (**not** `FieldSpec` / **not** state ftables)
 
 Class-level values are **out of v1** to avoid mixing two incompatible models.
 When implemented, **`classvar` must use a parallel path only:**
@@ -158,7 +155,7 @@ A small **`classvar(...)`** helper and optional internal “kind” metadata for
 validation/docs may still exist, but that is **not** the same as registering a
 terminal `LCKind` through today’s instance pipeline.
 
-**Planned semantics (Phase 4 sketch):**
+**Planned semantics:**
 
 - `default` / `default_factory` materialize at **class decoration** time.
 - **`default_factory`** injection: **`cls` only** (or zero-arg), same
@@ -198,7 +195,7 @@ for ordinary (`_FIELD`) fields:
 - **Callable** defaults (e.g. hook callables) are not `list`/`dict`/`set` as
   types — unchanged.
 
-**Exemption (Phase 4 only):** When **`classvar`** ships, it **skips** this check
+**Exemption:** When **`classvar`** ships, it **skips** this check
 for classvar metadata (mutable class-level defaults allowed). **v1** has **no**
 exemption — all collected specs are instance `FieldSpec` rows.
 
@@ -213,7 +210,7 @@ exemption — all collected specs are instance `FieldSpec` rows.
 CPython version** pyrolyze supports (re-check current `dataclasses.py` when
 bumping that floor — e.g. whether `bytearray` or other types are included).
 
-**Recommendation:** For shared class-level mutables after Phase 4, use
+**Recommendation:** For shared class-level mutables after `classvar` lands, use
 **`classvar`**; until then, avoid mutable shared `default=` on instance kinds.
 
 ## Initvar retention (single rule)
@@ -321,13 +318,14 @@ Reason:
 ### Declaration helper
 
 ```python
-def initvar(*, default=MISSING, default_factory=MISSING) -> Any: ...
+def initvar(*, init=True, default=MISSING, default_factory=MISSING) -> Any: ...
 ```
 
 Rules:
 
 - not a lifecycle field kind
 - constructor metadata only
+- supports `init`
 - supports `default`
 - supports `default_factory`
 - does not support `tx_group`
@@ -356,7 +354,7 @@ This tuple should be used to reject:
 - initvar names
 
 (`cls` is reserved as an **injection** parameter name for **initvar**
-`default_factory` (v1) and Phase 4 **`classvar` `default_factory`**; **declared**
+`default_factory` and future **`classvar` `default_factory`**; **declared**
 field and initvar **names** must not collide with this tuple.)
 
 Reason:
@@ -373,9 +371,9 @@ Separate policy:
 - `_`-prefix rejection is a namespace/style rule, not part of the semantic
   reserved injected-name set
 
-### `FieldSpec.init`
+### `FieldSpec.init` and `InitVarSpec.init`
 
-`FieldSpec` also needs:
+Both `FieldSpec` and `InitVarSpec` need:
 
 ```python
 init: bool = True
@@ -384,15 +382,19 @@ init: bool = True
 Meaning:
 
 - `init=True`: the generated managed-context constructor accepts this lifecycle
-  field as a keyword-only parameter
-- `init=False`: the field is not accepted as a constructor parameter and must
-  come from declaration-time defaults or other initialization logic
+  field or initvar as a keyword-only parameter
+- `init=False`: the field or initvar is not accepted as a constructor parameter
+  and must come from declaration-time defaults or other initialization logic
 
 Rules:
 
 - all lifecycle field constructor parameters are keyword-only
 - no lifecycle field constructor parameters are positional
 - initvars are also keyword-only
+- `initvar(init=False, default_factory=...)` is in scope and acts like a
+  constructor-time local declaration: it can participate in initvar dependency
+  resolution and later factory injection semantics, but it is not a legal user
+  constructor kw
 
 **Default `init` per kind (v1 proposal):**
 
@@ -412,6 +414,12 @@ Rules:
   **omit** `init` to inherit the merged value from bases, or **repeat** the same
   value explicitly. **Specifying a different `init` than the merged parent value
   fails decoration.**
+
+The same agreement rule applies to merged initvars:
+
+- `_merge_initvar_specs` / initvar override validation must enforce that
+  `InitVarSpec.init` contributions along the MRO either agree or omit `init` to
+  inherit the merged value; a mismatched explicit `init` fails decoration.
 
 `_merge_field_specs` must enforce **`init`** compatibility with the same clarity as
 existing `default` / `compare` / `tx_group` checks.
@@ -479,15 +487,15 @@ It is not:
 The generated constructor for `@managed_context` accepts:
 
 - lifecycle field names where `FieldSpec.init is True`
-- declared initvar names
+- declared initvar names where `InitVarSpec.init is True`
 
 Unknown names still fail.
 
 Initialization order should be:
 
 1. collect constructor args
-2. separate lifecycle fields from initvars, using `FieldSpec.init` to decide
-   which lifecycle fields are legal constructor kwargs
+2. separate lifecycle fields from initvars, using `FieldSpec.init` and
+   `InitVarSpec.init` to decide which names are legal constructor kwargs
 3. apply initvar **`default=`** values and resolve **`default_factory`** in merged
    initvar order (each factory sees only **earlier** initvars + optional **`cls`**)
 4. **Retained snapshot only:** if the class was marked at **decoration time** as
@@ -559,6 +567,7 @@ Rules:
 **Initvar constructor inputs (no separate “omission” addendum):**
 
 - Every **declared** initvar must receive a value from the constructor **or**
+  (when `InitVarSpec.init is True`)
   from its **`InitVarSpec.default`** / **`default_factory`** (same `MISSING`
   conventions as fields). If still missing after that, **`TypeError`** at
   instance construction (mirror missing required field kwargs).
@@ -582,9 +591,9 @@ in addition to existing injected names such as:
 - `working`
 - `tx_group` where applicable
 
-**Phase 4:** **`classvar` `default_factory`** uses **`cls`** only (see [Future:
-`classvar`](#future-classvar-phase-4-not-fieldspec-not-state-ftables)); it is
-**out of v1** requestor / initvar work.
+**`classvar` `default_factory`** uses **`cls`** only (see [Future:
+`classvar`](#future-classvar-not-fieldspec-not-state-ftables)); it is outside
+the initvar requestor / retention work described here.
 
 ### Important semantic change
 
@@ -652,7 +661,8 @@ Extend `@managed_context` processing to collect:
 - lifecycle fields (existing `FieldSpec` path)
 - initvars (`__initvar_specs__`, **not** `FieldSpec`)
 
-**Phase 4:** `classvar` via a **separate** parallel collector — **not** in v1.
+`classvar` uses a **separate** parallel collector and is not part of the
+instance `FieldSpec` path described here.
 
 Store initvars separately from merged `__field_specs__`.
 
@@ -662,6 +672,11 @@ distinguish:
 - fields that may be seeded explicitly
 - fields that are declaration-only and must not appear in `__init__`
 
+Initvars retain `InitVarSpec.init` so constructor generation can distinguish:
+
+- initvars that may be provided explicitly
+- initvars that are constructor-time local declarations only
+
 Also compute whether any consumer requests direct initvar names.
 
 ### Generated constructor
@@ -670,12 +685,13 @@ Update `_ManagedContextBase.__init__` to:
 
 - accept initvar values
 - accept only lifecycle field values whose `FieldSpec.init` is `True`
+- accept only initvar values whose `InitVarSpec.init` is `True`
 - apply defaults
 - materialize retained private initvar storage only when requested by late runners
 - build `_state`
 - resolve lifecycle fields as usual
 
-### Factory runners (Phase 3A)
+### Factory runners
 
 Replace **fixed** `_SUPPORTED_FACTORY_PARAMS`-only binding with **per-runner
 allowed-name sets**: existing builtins per hook/factory kind **plus** all
@@ -693,14 +709,14 @@ Reject:
 - declared initvars with no consumers
 - constructor kwargs for lifecycle fields with `init=False`
 - **mutable `default`** on instance field kinds: `list` / `dict` / `set` (dataclass
-  rule); **no exemption in v1** (Phase 4 exempts `classvar` metadata only)
+  rule); `classvar` metadata is exempt on its separate path
 - re-validate merged specs after inheritance merge for mutable `default`
 
 ### Mutable-default helper
 
 Call `_reject_mutable_instance_default` (or equivalent) from the central field-spec
-validator for all **`FieldSpec`** rows. **Phase 4:** add an early-return (or
-parallel type) for **`classvar`** metadata only.
+validator for all **`FieldSpec`** rows. `classvar` metadata uses its own
+parallel validation path.
 
 ## Testing
 
@@ -717,13 +733,15 @@ Add tests for:
 9. **`commit_validator`** can request explicit initvar names and is counted as
     an initvar requestor
 10. lifecycle fields with `init=False` are rejected from constructor kwargs
-11. lifecycle fields with `init=True` are accepted only as keyword arguments
-12. subclass redeclaration with mismatched `init` vs merged parent fails at
+11. initvars with `init=False` are rejected from constructor kwargs but remain
+    usable through initvar dependency resolution
+12. lifecycle fields with `init=True` are accepted only as keyword arguments
+13. subclass redeclaration with mismatched `init` vs merged parent fails at
     decoration
-13. `managed(default=[])` (and `dict` / `set`) raises
-14. merged derived spec cannot introduce mutable `default` without
+14. `managed(default=[])` (and `dict` / `set`) raises
+15. merged derived spec cannot introduce mutable `default` without
     `default_factory`
-15. **Phase 4:** `classvar` mutable `default` and `default_factory(cls=...)`
+16. future `classvar` mutable `default` and `default_factory(cls=...)`
 
 ## Short Version
 
@@ -744,8 +762,8 @@ Add tests for:
 - **Collector** redesign: skip stdlib **`InitVar` / `ClassVar`** without error;
   recognize **`initvar`**
 
-**Phase 4 (follow-up):** **`classvar`** on a **parallel** path (**not**
-`FieldSpec` / not state ftables); mutable `default` exemption there only.
+Future `classvar`: **`classvar`** on a **parallel** path (**not** `FieldSpec` /
+not state ftables); mutable `default` exemption there only.
 
 That removes the need for handwritten constructors while keeping lifecycle
 field declarations focused on real state semantics.

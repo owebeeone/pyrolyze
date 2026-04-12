@@ -11,6 +11,7 @@ This plan follows one non-negotiable implementation rule:
 Examples:
 
 - “Can this field appear in the generated constructor?” is a **field / kind semantic** and should be answered by a stable field property such as `FieldSpec.init` together with `LCKind.validate_field_spec()` / override rules.
+- “Can this initvar appear in the generated constructor?” is an **initvar declaration semantic** and should be answered by `InitVarSpec.init`, not by identity-style declaration checks.
 - “Does this callable accept explicit initvar-name injection?” is a **runner semantic** and should be answered by a runner policy / allowed-name builder, not by checking concrete kinds ad hoc.
 - “Does this declaration create an instance field table entry?” is a **declaration-category semantic**. `initvar` is not a field kind at all, so it must live outside the `LCKind` / `FieldSpec` field pipeline.
 - “Does this declaration retain instance state?” is answered by storage / state construction logic, not by comparing against a list of concrete kinds.
@@ -30,6 +31,7 @@ This plan implements the v1 design in [LifecycleInitVarsDesign.md](LifecycleInit
 - `initvar(...)`
 - `InitVarSpec`
 - `FieldSpec.init`
+- `InitVarSpec.init`
 - generalized explicit initvar-name injection
 - requestor scan and dead-initvar validation
 - private retained initvar storage for late consumers
@@ -37,6 +39,22 @@ This plan implements the v1 design in [LifecycleInitVarsDesign.md](LifecycleInit
 
 This plan also includes the follow-up `Phase 4` work for `classvar` on its
 separate parallel metadata path.
+
+## Phase-boundary alignment with the design doc
+
+This plan is aligned with [LifecycleInitVarsDesign.md](LifecycleInitVarsDesign.md)
+and uses the same intended phase boundaries:
+
+- **3A**: runner-policy and explicit-name injection groundwork
+- **3B**: initvar declaration, collection, merge, constructor split, and
+  dead-initvar / transitive-liveness semantics
+- **3C**: retained private storage, `to_frozen()` normalization, `FieldSpec.init`,
+  and mutable-default validation
+- **3D**: semantic hardening and edge-case coverage
+- **4**: `classvar` on its parallel metadata path
+
+If implementation reveals that a phase boundary is wrong, update this plan and
+the design doc together rather than silently widening or narrowing a phase.
 
 ## Current code map
 
@@ -69,24 +87,32 @@ Add new declaration metadata and descriptor types near `FieldSpec` / `LifecycleF
 - `InitVarField`
 - `initvar(...)`
 
-Planned shape:
+Public helper shape:
+
+```python
+def initvar(*, init: bool = True, default: Any = MISSING, default_factory: Callable[..., Any] | object = MISSING) -> Any: ...
+```
+
+Spec / descriptor shape:
 
 ```python
 @dataclass(slots=True)
 class InitVarSpec:
     name: str
     annotation: Any
+    init: bool = True
     default: Any = MISSING
     default_factory: Callable[..., Any] | object = MISSING
 ```
 
 ```python
 class InitVarField:
-    __slots__ = ("default", "default_factory", "name")
+    __slots__ = ("init", "default", "default_factory", "name")
 ```
 
 `InitVarField` mirrors `LifecycleField` structurally:
 
+- validates `init`
 - validates `default` vs `default_factory`
 - captures its name via `__set_name__`
 - builds an `InitVarSpec`
@@ -239,6 +265,7 @@ Semantics:
 - same-name override keeps position
 - derived annotation must be narrower-or-equal
 - `default` / `default_factory` replacement semantics mirror fields
+- `init` merge uses the same locked agreement rule described in §18
 
 Initvar merge validation must remain about initvar semantics, not field-kind identity.
 
@@ -425,7 +452,7 @@ Suggested decomposition:
 
 This is needed because initvars are not field kinds and therefore must not be consumed by `spec.kind.initialize_constructor_value(...)`.
 
-### 13. Enforce `FieldSpec.init`
+### 13. Enforce `FieldSpec.init` and `InitVarSpec.init`
 
 Current field constructor acceptance is effectively “all field names are accepted if present.”
 
@@ -434,7 +461,16 @@ Change this by filtering field kwargs before state construction:
 - `init=True` field names are legal constructor kwargs
 - `init=False` field names raise `TypeError` if provided
 
-Do not implement this by asking whether a field “looks like a hook kind.” The legality must come from `FieldSpec.init`.
+Do the same for initvars:
+
+- `init=True` initvar names are legal constructor kwargs
+- `init=False` initvar names raise `TypeError` if provided
+- `init=False` initvars still participate in initvar dependency resolution and
+  may behave like constructor-time locals
+
+Do not implement this by asking whether a declaration “looks like a hook kind”
+or local temporary. The legality must come from `FieldSpec.init` /
+`InitVarSpec.init`.
 
 ### 14. Retained initvar storage
 
@@ -452,6 +488,23 @@ Suggested helpers:
 - `_get_retained_initvar(state, name)`
 
 No public `initvars` object, no aggregate injected parameter, no public attribute.
+
+### 14B. Hard 3B ↔ 3C invariant
+
+The rollout must preserve this invariant:
+
+- **No late initvar use may ship as supported behavior until retained private
+  storage exists to satisfy it.**
+
+Concretely:
+
+- Phase 3B may classify late consumers and build the dependency/requestor model
+- but Phase 3B must not be treated as a complete semantic checkpoint for any
+  late-use path (`static`, `working_default_factory`, or any other post-init
+  runner) unless Phase 3C retention is also present
+
+This prevents an invalid checkpoint where decoration succeeds and signatures
+appear supported, but runtime has no retained initvar data for late injection.
 
 ## Field-table and state-class build changes
 
@@ -497,6 +550,8 @@ Add:
 Validation includes:
 
 - `default` vs `default_factory`
+- `init` compatibility across the MRO using the same “must agree or inherit”
+  rule as field `init`
 - reserved names
 - duplicate names vs fields
 - signature rules for `InitVarSpec.default_factory`
@@ -545,6 +600,11 @@ Exit caveats:
   phase. Phase 3A is complete only when the plumbing is internally coherent,
   decoration-time validation is reliable, and focused tests cover acceptance and
   rejection paths.
+- If 3A stalls because the runner-policy work and requestor-graph work are too
+  tightly coupled, split it into two tagged substeps:
+  - injection / validator plumbing
+  - requestor / liveness graph
+  while preserving the `14B` invariant.
 
 ### Phase 3B: initvar declaration and constructor path
 
@@ -554,6 +614,7 @@ Code changes:
 - add collector split and MRO merge for initvars
 - add constructor split and initvar resolution
 - add dead-initvar validation using transitive liveness
+- add `InitVarSpec.init`
 
 Tests:
 
@@ -561,6 +622,7 @@ Tests:
 - initvar default factories depending on earlier initvars
 - transitive liveness
 - dead isolated initvar chains fail
+- `initvar(init=False, default_factory=...)` constructor-time local behavior
 
 Exit caveats:
 
@@ -569,6 +631,9 @@ Exit caveats:
 - In particular, do **not** tag the phase complete if direct initvar usage works
   but transitive liveness through initvar-to-initvar dependencies is still
   missing or incorrect.
+- Do **not** treat late initvar-use paths as complete in 3B. If any such path
+  is accepted by signatures or requestor analysis but retention is not yet in
+  place, the phase is still incomplete.
 
 ### Phase 3C: retained storage, `FieldSpec.init`, mutable defaults
 
@@ -585,7 +650,7 @@ Tests:
 - late `static` / `working_default_factory` use retained initvars
 - eager-only initvars are not retained
 - `init=False` constructor rejection
-- mismatched `init` across inheritance fails
+- mismatched `init` across inheritance fails for both fields and initvars
 - mutable `default=` rejection
 
 Exit caveats:
@@ -593,8 +658,9 @@ Exit caveats:
 - Do **not** mark Phase 3C complete if retained private storage exists but late
   runner behavior (`static`, `working_default_factory`, validator, hooks) is not
   actually covered by tests.
-- Do **not** claim `FieldSpec.init` is done until constructor filtering,
-  inheritance compatibility, and helper-surface validation all agree.
+- Do **not** claim `FieldSpec.init` / `InitVarSpec.init` are done until
+  constructor filtering, inheritance compatibility, and helper-surface
+  validation all agree for both fields and initvars.
 
 ### Phase 3D: edge cases and semantic hardening
 
@@ -608,8 +674,8 @@ Code changes:
 
 Tests:
 
-- `initvar(init=False, default_factory=...)` pattern coverage where the value is
-  usable during initialization but not exposed as a constructor parameter
+- coverage for `initvar(init=False, default_factory=...)` as a constructor-time
+  local declaration
 - additional transitive-liveness edge cases
 - additional inheritance edge cases for merged initvars and fields
 - regression coverage for combinations of:
@@ -698,6 +764,7 @@ Modify:
 Add red/green coverage for:
 
 - initvar declaration and constructor behavior
+- `InitVarSpec.init` / `initvar(init=False, ...)` constructor filtering behavior
 - initvar default factory dependency order
 - explicit initvar-name injection into:
   - field factories
@@ -807,6 +874,10 @@ following edge scenarios.
   - base and derived redeclarations disagree on `init`
   - decoration fails
 
+- **`InitVarSpec.init` inheritance mismatch**
+  - base and derived initvar redeclarations disagree on `init`
+  - decoration fails
+
 - **Init local variable pattern**
   - constructor-only temporary used only to compute a real lifecycle field
   - not retained after eager initialization
@@ -850,7 +921,8 @@ The implementation is done when all of the following are true:
 - late consumers get retained private initvar values by explicit name
 - eager-only initvars are not retained
 - validator injection works with explicit initvar names
-- `FieldSpec.init` controls constructor exposure
+- `FieldSpec.init` and `InitVarSpec.init` control constructor exposure for
+  fields and initvars respectively
 - mutable `default=` on instance fields is rejected
 - `classvar` is collected and materialized on a parallel metadata path without
   entering instance field/state tables
