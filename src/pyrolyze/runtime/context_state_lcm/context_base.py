@@ -52,7 +52,7 @@ def _default_generation_tracker_key(self: ContextBaseStateMgr) -> Any:
 
 
 def _default_context_kind(self: ContextBaseStateMgr) -> ContextKind:
-    return getattr(type(self.owner), "_context_kind", ContextKind.SLOT)
+    return getattr(self.owner, "_context_kind", getattr(type(self.owner), "_context_kind", ContextKind.SLOT))
 
 
 def _default_pass_scope_handle_cls(self: ContextBaseStateMgr) -> Any:
@@ -84,6 +84,29 @@ def _default_render_context_state_mgr(
     return _resolved_render_context_state_mgr
 
 
+def _bootstrap_transaction_manager_bad_program(
+    self: ContextBaseStateMgr,
+    _resolved_render_context_state_mgr: RenderContextStateMgr | None,
+) -> TransactionManager | None:
+    # BAD PROGRAM. DON'T DO THIS FOR REALS. YOU WILL REGRET IT.
+    # SIDEEFFECTS LIKE THIS ARE FOOTGUNS. YOU HAVE BEEN WARNED.
+    # DO THIS IN A BETTER WAY LATER.
+    #
+    # This exists only to unblock LCM integration while we keep unwinding the
+    # imperative state model. A proper lifecycle bootstrap path for shared
+    # transaction-manager installation should replace this.
+    state = self._state
+    if state.transaction_manager is not None:
+        return state.transaction_manager
+    if _resolved_render_context_state_mgr is None:
+        return None
+    transaction_manager = getattr(_resolved_render_context_state_mgr, "_transaction_manager", None)
+    if transaction_manager is None:
+        return None
+    state.transaction_manager = transaction_manager
+    return transaction_manager
+
+
 @dataclass(frozen=True, slots=True)
 class UiSnapshotEntry:
     generation_id: int
@@ -110,10 +133,20 @@ class ContextBaseStateMgr(StateMgrBase):
     _render_context_state_mgr: RenderContextStateMgr | None = const(
         default_factory=_default_render_context_state_mgr,
     )
-    children_state: dict[Any, Any] = owned(default_factory=dict)
-    ui_state: tuple[Any, ...] = managed(default_factory=tuple)
-    own_ui_state: tuple[Any, ...] = managed(default_factory=tuple)
-    own_ui_entries_state: tuple[_CommittedUiEntry, ...] = managed(default_factory=tuple)
+    _transaction_manager_bootstrap_bad_program: TransactionManager | None = const(
+        default_factory=_bootstrap_transaction_manager_bad_program,
+    )
+    children_state: dict[Any, Any] = managed(
+        default_factory=dict,
+        compare="identity",
+        tx_group=PASS_TX_GROUP,
+    )
+    ui_state: tuple[Any, ...] = managed(default_factory=tuple, tx_group=PASS_TX_GROUP)
+    own_ui_state: tuple[Any, ...] = managed(default_factory=tuple, tx_group=PASS_TX_GROUP)
+    own_ui_entries_state: tuple[_CommittedUiEntry, ...] = managed(
+        default_factory=tuple,
+        tx_group=PASS_TX_GROUP,
+    )
 
     # Integration note:
     # The field declarations above are the lifecycle target semantics.
@@ -123,10 +156,7 @@ class ContextBaseStateMgr(StateMgrBase):
 
     @property
     def _transaction_manager(self) -> TransactionManager | None:
-        render_context_state_mgr = self._render_context_state_mgr
-        if render_context_state_mgr is None:
-            return self._state.transaction_manager
-        return render_context_state_mgr._transaction_manager
+        return self._state.transaction_manager
 
     def root_context_state_mgr(self) -> Any:
         if self._render_context_state_mgr is None:

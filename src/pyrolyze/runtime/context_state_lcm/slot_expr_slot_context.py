@@ -1,20 +1,26 @@
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any, Callable, Hashable
 
+from pyrolyze.lifecycle import local_store, managed_context, transient
 from pyrolyze.runtime.call_site_context import CallSiteContextManager
 from pyrolyze.runtime.slot_call_semantics import PyrolyzeMountAdvertisementBinding
+from .context_base import PASS_TX_GROUP
 from .rerunnable_slot_context import RerunnableSlotContextStateMgr
 
 
+@managed_context
 class SlotExprSlotContextStateMgr(RerunnableSlotContextStateMgr):
-    def __init__(self, owner: object, **kwargs: object) -> None:
-        super().__init__(owner=owner, **kwargs)
-        self._call_site_context_manager = CallSiteContextManager()
-        self._runtime_locals_by_slot_id: dict[Any, dict[str, Any]] = {}
-        self._staged_call_site_ids: tuple[Any, ...] = ()
-        self._staged_post_commit_callbacks: tuple[Callable[[], None], ...] = ()
-        self._mount_advertisement_binding_type = PyrolyzeMountAdvertisementBinding
+    _call_site_context_manager: CallSiteContextManager = local_store(
+        default_factory=CallSiteContextManager,
+    )
+    _runtime_locals_by_slot_id: dict[Hashable, dict[str, Any]] = local_store(default_factory=dict)
+    _staged_call_site_ids: tuple[Hashable, ...] = transient(default_factory=tuple, tx_group=PASS_TX_GROUP)
+    _staged_post_commit_callbacks: tuple[Callable[[], None], ...] = transient(
+        default_factory=tuple,
+        tx_group=PASS_TX_GROUP,
+    )
+    _mount_advertisement_binding_type = PyrolyzeMountAdvertisementBinding
 
     def runtime_locals(self, slot_id: Any) -> dict[str, Any]:
         return self._runtime_locals_by_slot_id.setdefault(slot_id, {})

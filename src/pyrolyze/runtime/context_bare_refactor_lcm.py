@@ -932,6 +932,9 @@ class RenderContext(ContextBase):
         app_context_store: AppContextStore | None = None,
         authored_app_context_lookup: AppContextLookup | None = None,
     ) -> None:
+        self._context_kind = (
+            ContextKind.RENDER_ROOT if owner_slot is None else ContextKind.COMPONENT_RENDER
+        )
         self._init_state_mgr(
             owner_slot_state_mgr=(None if owner_slot is None else owner_slot._state_mgr),
             scheduler_root_state_mgr=(None if scheduler_root is None else scheduler_root._state_mgr),
