@@ -22,7 +22,7 @@ from .rerunnable_slot_context import RerunnableSlotContextStateMgr
 
 class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
     def __init__(self, owner: object, **kwargs: object) -> None:
-        super().__init__(owner, **kwargs)
+        super().__init__(owner=owner, **kwargs)
         self._component_identity: Any = None
         self._schema: tuple[int, tuple[str, ...]] = (0, ())
         self._child_context_state_mgr: Any = None

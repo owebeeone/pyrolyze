@@ -28,7 +28,7 @@ class DirectiveSlotContextStateMgr(SlotCallSlotContextStateMgr):
     # of depending on inherited ContextBase mechanics plus slot-call binding
     # behavior lining up by accident.
     def __init__(self, owner: object, **kwargs: object) -> None:
-        super().__init__(owner, **kwargs)
+        super().__init__(owner=owner, **kwargs)
         self._committed_selectors: tuple[Any, ...] = ()
         self._pass_committed_selectors: tuple[Any, ...] = ()
 

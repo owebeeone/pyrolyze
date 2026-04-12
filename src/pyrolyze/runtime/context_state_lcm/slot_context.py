@@ -22,13 +22,12 @@ class SlotContextStateMgr(StateMgrBase):
         if isinstance(self, ContextBaseStateMgr):
             ContextBaseStateMgr.__init__(
                 self,
-                owner,
+                owner=owner,
                 render_context_state_mgr=render_context_state_mgr,
-                context_kind=type(owner)._context_kind,
                 **kwargs,
             )
         else:
-            StateMgrBase.__init__(self, owner)
+            StateMgrBase.__init__(self, owner=owner)
             self._render_context_state_mgr = render_context_state_mgr
             self._context_kind = type(owner)._context_kind
         self._parent_state_mgr = parent_state_mgr

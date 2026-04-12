@@ -21,7 +21,7 @@ T = TypeVar("T")
 
 class SlotCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
     def __init__(self, owner: object, **kwargs: object) -> None:
-        super().__init__(owner, **kwargs)
+        super().__init__(owner=owner, **kwargs)
         self._slot_call_result_cls = type(owner)._slot_call_result_cls
         self._slot_runtime_context_cls = type(owner)._slot_runtime_context_cls
         self._function_identity: Any = None

@@ -2102,6 +2102,33 @@ def test_instance_sees_classvar_via_normal_class_attribute_lookup() -> None:
     assert type(c).FLAG is True
 
 
+def test_underscore_prefixed_lifecycle_declarations_are_collected_when_explicit() -> None:
+    @managed_context
+    class Ctx:
+        _seed: int = initvar(default=3)
+        _x: int = managed(default_factory=lambda self, _seed: _seed * 2)
+        _TAG: str = classvar(default="tag")
+
+    c = Ctx()
+    assert c._x == 6
+    assert type(c)._TAG == "tag"
+    assert "_x" in Ctx.__state_cls__.__field_specs__
+    assert "_seed" in Ctx.__state_cls__.__initvar_specs__
+    assert "_TAG" not in Ctx.__state_cls__.__field_specs__
+
+
+def test_private_plain_annotations_remain_ignored() -> None:
+    @managed_context
+    class Ctx:
+        _plain: int
+        x: int = managed(default=1)
+
+    c = Ctx()
+    assert c.x == 1
+    assert "_plain" not in Ctx.__state_cls__.__field_specs__
+    assert "_plain" not in Ctx.__state_cls__.__initvar_specs__
+
+
 def test_compile_injected_runner_resolves_initvar_like_name_via_resolver() -> None:
     from pyrolyze.lifecycle import _compile_injected_runner
 

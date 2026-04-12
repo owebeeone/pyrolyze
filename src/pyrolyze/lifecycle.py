@@ -3820,13 +3820,11 @@ def _collect_own_declarations(
     own_initvars: dict[str, InitVarSpec] = {}
     own_classvars: dict[str, ClassVarSpec] = {}
     for name, annotation in annotations.items():
-        if name.startswith("_"):
-            continue
-        if name in LIFECYCLE_RESERVED_FIELD_NAMES:
-            raise TypeError(f"lifecycle declaration name {name!r} is reserved for injection")
         candidate = cls.__dict__.get(name, _SENTINEL)
         if _is_stdlib_initvar_annotation(annotation) or _is_stdlib_classvar_annotation(annotation):
             continue
+        if name in LIFECYCLE_RESERVED_FIELD_NAMES:
+            raise TypeError(f"lifecycle declaration name {name!r} is reserved for injection")
         if isinstance(candidate, LifecycleField):
             own_specs[name] = candidate.build_spec(annotation)
             continue
@@ -3835,6 +3833,8 @@ def _collect_own_declarations(
             continue
         if isinstance(candidate, ClassVarField):
             own_classvars[name] = candidate.build_spec(annotation)
+            continue
+        if name.startswith("_"):
             continue
         raise TypeError(
             f"annotated lifecycle declaration {name!r} must use lifecycle_field(...), "

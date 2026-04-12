@@ -9,7 +9,7 @@ from ._base import unavailable
 
 class LeafSlotContextStateMgr(RerunnableSlotContextStateMgr):
     def __init__(self, owner: object, **kwargs: object) -> None:
-        super().__init__(owner, **kwargs)
+        super().__init__(owner=owner, **kwargs)
         self._last_args: tuple[Any, ...] = ()
         self._last_kwargs: tuple[tuple[str, Any], ...] = ()
 

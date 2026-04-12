@@ -8,7 +8,7 @@ from ._support import _SlotCallResult, _structured_dirty_projection
 
 class LoopItemSlotContextStateMgr(RerunnableSlotContextStateMgr):
     def __init__(self, owner: object, **kwargs: object) -> None:
-        super().__init__(owner, **kwargs)
+        super().__init__(owner=owner, **kwargs)
         self._current_value = None
         self._current_dirty = True
         self._current_initialized = False

@@ -79,7 +79,7 @@ class _CommittedAppContextOverrideKeyState:
 
 class AppContextOverrideSlotContextStateMgr(RerunnableSlotContextStateMgr):
     def __init__(self, owner: object, **kwargs: object) -> None:
-        super().__init__(owner, **kwargs)
+        super().__init__(owner=owner, **kwargs)
         self._structure_error_cls = type(owner)._structure_error_cls
         self._declared_keys: tuple[Any, ...] = ()
         self._committed_values: tuple[Any, ...] = ()

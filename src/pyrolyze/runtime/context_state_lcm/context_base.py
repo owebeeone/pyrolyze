@@ -6,7 +6,7 @@ from typing import Any, Callable, TYPE_CHECKING, TypeVar
 
 from pyrolyze.api import MountDirective, UIElement
 from pyrolyze.freezable import freezable_dataclass, frozen_dataclass
-from pyrolyze.lifecycle import const, managed, managed_context, transient
+from pyrolyze.lifecycle import const, initvar, managed, managed_context, transient
 from pyrolyze.runtime.app_context import APP_CONTEXT_MISSING, EMPTY_APP_CONTEXT_LOOKUP
 from pyrolyze.runtime.slot_kinds import ContextKind
 from pyrolyze.runtime.slot_call_semantics import ExternalStoreRef
@@ -64,13 +64,25 @@ def _default_owner_type_name(self: ContextBaseStateMgr) -> str:
     return type(self.owner).__name__
 
 
-def _default_render_context_state_mgr(self: ContextBaseStateMgr) -> Any | None:
-    if self._render_context_state_mgr_seed is not None:
-        return self._render_context_state_mgr_seed
-    render_context = self._render_context_seed
+def _resolve_render_context_state_mgr_initvar(
+    cls: type[ContextBaseStateMgr],
+    render_context_state_mgr: Any | None,
+    render_context: Any | None,
+) -> Any | None:
+    del cls
+    if render_context_state_mgr is not None:
+        return render_context_state_mgr
     if render_context is not None and hasattr(render_context, "_state_mgr"):
         return render_context._state_mgr
     return None
+
+
+def _default_render_context_state_mgr(
+    self: ContextBaseStateMgr,
+    _resolved_render_context_state_mgr: Any | None,
+) -> Any | None:
+    del self
+    return _resolved_render_context_state_mgr
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,11 +116,14 @@ class ContextStagedState:
 
 @managed_context
 class ContextBaseStateMgr(StateMgrBase):
-    # Constructor-only seeds for values that cannot yet be derived from owner at
-    # initialization time. The semantic fields below should depend on these, not
-    # on constructor plumbing.
-    _render_context_state_mgr_seed: Any | None = const(default=None)
-    _render_context_seed: Any | None = const(default=None)
+    # Constructor-only inputs for values that cannot yet be derived from owner at
+    # initialization time. Keep them out of steady-state lifecycle fields.
+    render_context_state_mgr: Any | None = initvar(default=None)
+    render_context: Any | None = initvar(default=None)
+    _resolved_render_context_state_mgr: Any | None = initvar(
+        init=False,
+        default_factory=_resolve_render_context_state_mgr_initvar,
+    )
 
     _generation_tracker_key: AppContextKey[GenerationTracker] = const(
         default_factory=_default_generation_tracker_key

@@ -31,13 +31,8 @@ class RenderContextStateMgr(ContextBaseStateMgr):
         **kwargs: Any,
     ) -> None:
         super().__init__(
-            owner,
+            owner=owner,
             render_context_state_mgr=None,
-            context_kind=(
-                ContextKind.RENDER_ROOT
-                if owner_slot_state_mgr is None
-                else ContextKind.COMPONENT_RENDER
-            ),
             **kwargs,
         )
         self._slots_by_id: dict[Any, Any] = {}
@@ -63,6 +58,11 @@ class RenderContextStateMgr(ContextBaseStateMgr):
                 if authored_app_context_lookup is None
                 else authored_app_context_lookup
             )
+        self._context_kind = (
+            ContextKind.RENDER_ROOT
+            if owner_slot_state_mgr is None
+            else ContextKind.COMPONENT_RENDER
+        )
 
     def context_kind(self) -> Any:
         return self._context_kind

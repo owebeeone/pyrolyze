@@ -9,7 +9,7 @@ from ._base import unavailable
 
 class EventHandlerSlotContextStateMgr(SlotContextStateMgr):
     def __init__(self, owner: Any, **kwargs: Any) -> None:
-        super().__init__(owner, **kwargs)
+        super().__init__(owner=owner, **kwargs)
         self._committed_callback: Callable[..., Any] | None = None
         self._committed_key: object | None = None
         self._staged_callback: Callable[..., Any] | None = None
