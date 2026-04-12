@@ -32,9 +32,9 @@ This document defines lifecycle semantics for:
 - private retained initvar storage for late consumers
 - dataclass-aligned mutable `default=` validation for instance fields
 
-`classvar` remains part of the intended lifecycle surface, but it is a
-follow-up on a parallel metadata path and is described here only at the semantic
-level, not as part of the instance `FieldSpec` pipeline.
+`classvar` is implemented on a **parallel metadata path** (see
+[`classvar` (parallel path)](#classvar-parallel-path--not-fieldspec--not-state-ftables));
+it is not part of the instance `FieldSpec` pipeline.
 
 ## Stdlib `InitVar` and `ClassVar` (typing)
 
@@ -140,33 +140,27 @@ For **initvar `default_factory`**, use this merged order as the **dependency
 order**; tie-break or secondary ordering is only needed if explicit topological
 sort is added later.
 
-## Future: `classvar` (**not** `FieldSpec` / **not** state ftables)
+## `classvar` (parallel path — **not** `FieldSpec` / **not** state ftables)
 
-Class-level values are **out of v1** to avoid mixing two incompatible models.
-When implemented, **`classvar` must use a parallel path only:**
+**Implemented:** `classvar(...)` / `ClassVarField` / `ClassVarSpec` live outside the
+instance field pipeline:
 
-- Collected into something like **`__classvar_specs__`** (and/or written directly
-  as attributes on the managed **class** object).
+- Collected as **`__managed_own_classvar_specs__`**, merged to **`__classvar_specs__`**
+  on the managed class, and materialized as **plain class attributes** on the
+  wrapped type at decoration time.
 - **Never** wrapped in `FieldSpec`, **never** passed to `_build_class_tables`,
   **never** listed in `LifecycleContextState.__field_specs__` or instance
   getter/setter ftables.
 
-A small **`classvar(...)`** helper and optional internal “kind” metadata for
-validation/docs may still exist, but that is **not** the same as registering a
-terminal `LCKind` through today’s instance pipeline.
-
-**Planned semantics:**
+**Semantics:**
 
 - `default` / `default_factory` materialize at **class decoration** time.
 - **`default_factory`** injection: **`cls` only** (or zero-arg), same
   named-parameter-only rule as other lifecycle callables.
-- **Mutable `default`** (`list` / `dict` / `set`) **allowed** on classvar only
-  (then **`_reject_mutable_instance_default`** exempts classvar specs).
-- **Instance access:** In plain Python, attributes set on the class are visible on
-  instances via normal lookup unless an instance **descriptor** shadows the
-  name. Lifecycle does not add instance descriptors for `classvar` names unless
-  explicitly specified later; default expectation is **read through the class**
-  (`type(self).attr` or class attribute visible on instances if not shadowed).
+- **Mutable `default`** (`list` / `dict` / `set`) **allowed** on classvar;
+  **`_reject_mutable_instance_default`** applies only to **`FieldSpec`** rows.
+- **Instance access:** Attributes live on the managed class object; instances
+  resolve them via normal Python class attribute lookup unless shadowed.
 
 **Distinction from `static`:** `static` is per-instance lifecycle state;
 **`classvar`** is per-class data outside the state record.
@@ -195,9 +189,8 @@ for ordinary (`_FIELD`) fields:
 - **Callable** defaults (e.g. hook callables) are not `list`/`dict`/`set` as
   types — unchanged.
 
-**Exemption:** When **`classvar`** ships, it **skips** this check
-for classvar metadata (mutable class-level defaults allowed). **v1** has **no**
-exemption — all collected specs are instance `FieldSpec` rows.
+**Exemption:** **`classvar`** metadata **skips** this check (mutable class-level
+defaults allowed). The check applies only to collected **`FieldSpec`** rows.
 
 **Merge / inheritance:** After `_merge_field_specs` produces the effective spec,
 **re-run** this validation so a derived class cannot override with a mutable
@@ -210,8 +203,8 @@ exemption — all collected specs are instance `FieldSpec` rows.
 CPython version** pyrolyze supports (re-check current `dataclasses.py` when
 bumping that floor — e.g. whether `bytearray` or other types are included).
 
-**Recommendation:** For shared class-level mutables after `classvar` lands, use
-**`classvar`**; until then, avoid mutable shared `default=` on instance kinds.
+**Recommendation:** For shared class-level mutables, use **`classvar`**; avoid
+mutable shared `default=` on instance **`FieldSpec`** rows.
 
 ## Initvar retention (single rule)
 
@@ -401,7 +394,8 @@ Rules:
 | Kind | Default `init` |
 | --- | --- |
 | `managed`, `const`, `static`, `binding`, `owned`, `transient`, `local_store`, `derived` | `True` |
-| `commit_order_key`, `commit_validator` | `False` |
+| `commit_order_key` | `True` (per-instance ordering key is constructor-driven) |
+| `commit_validator` | `False` |
 | `on_before_commit`, `on_after_commit`, `on_after_rollback` | `False` |
 
 **Merge / inheritance (v1 — locked policy):**
@@ -591,9 +585,9 @@ in addition to existing injected names such as:
 - `working`
 - `tx_group` where applicable
 
-**`classvar` `default_factory`** uses **`cls`** only (see [Future:
-`classvar`](#future-classvar-not-fieldspec-not-state-ftables)); it is outside
-the initvar requestor / retention work described here.
+**`classvar` `default_factory`** uses **`cls`** only (see
+[`classvar` (parallel path)](#classvar-parallel-path--not-fieldspec--not-state-ftables));
+it is outside the initvar requestor / retention work described here.
 
 ### Important semantic change
 
@@ -741,7 +735,7 @@ Add tests for:
 14. `managed(default=[])` (and `dict` / `set`) raises
 15. merged derived spec cannot introduce mutable `default` without
     `default_factory`
-16. future `classvar` mutable `default` and `default_factory(cls=...)`
+16. **`classvar`** mutable `default` and `default_factory(cls=...)` on the parallel path
 
 ## Short Version
 
@@ -760,10 +754,9 @@ Add tests for:
   initvar names; **`to_frozen()`** protocol for normalization (**no**
   `freezable` import)
 - **Collector** redesign: skip stdlib **`InitVar` / `ClassVar`** without error;
-  recognize **`initvar`**
-
-Future `classvar`: **`classvar`** on a **parallel** path (**not** `FieldSpec` /
-not state ftables); mutable `default` exemption there only.
+  recognize **`initvar`** and **`classvar`**
+- **`classvar`**: parallel path (**not** `FieldSpec` / not state ftables); mutable
+  `default` allowed there
 
 That removes the need for handwritten constructors while keeping lifecycle
 field declarations focused on real state semantics.

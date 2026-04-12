@@ -234,7 +234,7 @@ Replace `_collect_own_field_specs(...)` with a collector layer that can classify
 
 Suggested decomposition:
 
-- `_collect_own_declarations(cls) -> tuple[dict[str, FieldSpec], dict[str, InitVarSpec]]`
+- `_collect_own_declarations(cls) -> tuple[dict[str, FieldSpec], dict[str, InitVarSpec], dict[str, ClassVarSpec]]`
 - `_collect_own_field_specs(...)` retained as a small helper if still useful
 - `_collect_own_initvar_specs(...)`
 

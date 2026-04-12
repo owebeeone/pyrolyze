@@ -32,6 +32,7 @@ Only the restarted Phase 1.1/1.10 surface is implemented here:
 - ``on_after_commit``
 - ``on_after_rollback``
 - ``managed_context``
+- ``initvar`` / ``classvar`` (parallel declaration paths)
 - ``LifecycleContext``
 - ``TransactionManager``
 """
@@ -2171,6 +2172,178 @@ def initvar(
     return InitVarField(init=init, default=default, default_factory=default_factory)
 
 
+@dataclass(slots=True)
+class ClassVarSpec:
+    name: str
+    annotation: Any
+    default: Any = MISSING
+    default_factory: Callable[..., Any] | object = MISSING
+
+
+def _validate_classvar_spec(spec: ClassVarSpec) -> None:
+    if spec.default is not MISSING and spec.default_factory is not MISSING:
+        raise TypeError(f"classvar {spec.name!r} cannot define both default and default_factory")
+    if spec.default is MISSING and spec.default_factory is MISSING:
+        raise TypeError(f"classvar {spec.name!r} requires default or default_factory")
+    if spec.name in LIFECYCLE_RESERVED_FIELD_NAMES:
+        raise TypeError(f"classvar name {spec.name!r} is reserved for lifecycle injection")
+
+
+def _validate_classvar_override(base: ClassVarSpec, derived: ClassVarSpec) -> None:
+    if not is_annotation_narrower_or_equal(derived.annotation, base.annotation):
+        raise TypeError(f"incompatible classvar override for {base.name!r}")
+
+
+def _merge_classvar_specs(base: ClassVarSpec, derived: ClassVarSpec) -> ClassVarSpec:
+    _validate_classvar_override(base, derived)
+    if derived.default is not MISSING:
+        default = derived.default
+        default_factory = MISSING
+    elif derived.default_factory is not MISSING:
+        default = MISSING
+        default_factory = derived.default_factory
+    else:
+        default = base.default
+        default_factory = base.default_factory
+    merged = ClassVarSpec(
+        name=base.name,
+        annotation=derived.annotation,
+        default=default,
+        default_factory=default_factory,
+    )
+    _validate_classvar_spec(merged)
+    return merged
+
+
+def _merge_classvar_specs_from_mro(
+    cls: type[Any],
+    *,
+    attr_name: str,
+    own_items: dict[str, ClassVarSpec],
+) -> dict[str, ClassVarSpec]:
+    merged: dict[str, ClassVarSpec] = {}
+    for mro_cls in reversed(cls.__mro__):
+        if mro_cls in {object, _ManagedContextBase}:
+            continue
+        source = own_items if mro_cls is cls else getattr(mro_cls, attr_name, None)
+        if not source:
+            continue
+        for name, value in source.items():
+            if name in merged:
+                merged[name] = _merge_classvar_specs(merged[name], value)
+            else:
+                merged[name] = value
+    return merged
+
+
+def _compile_classvar_factory_runner(
+    *,
+    classvar_name: str,
+    factory: Callable[..., Any],
+) -> Callable[[type[Any]], Any]:
+    if inspect.isbuiltin(factory) or inspect.isclass(factory):
+        return lambda owner_cls: factory()
+    try:
+        signature = inspect.signature(factory)
+    except (TypeError, ValueError):
+        return lambda owner_cls: factory()
+    parameter_names: tuple[str, ...] = ()
+    if signature.parameters:
+        names: list[str] = []
+        for parameter in signature.parameters.values():
+            if parameter.kind not in {
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                inspect.Parameter.KEYWORD_ONLY,
+            }:
+                raise TypeError(
+                    f"classvar {classvar_name!r} default_factory must use named parameters only",
+                )
+            if parameter.name != "cls":
+                raise TypeError(
+                    f"classvar {classvar_name!r} default_factory uses unsupported parameter "
+                    f"{parameter.name!r}; allowed: cls",
+                )
+            names.append(parameter.name)
+        parameter_names = tuple(names)
+    if not parameter_names:
+        return lambda owner_cls: factory()
+
+    def run(owner_cls: type[Any]) -> Any:
+        return factory(cls=owner_cls)
+
+    return run
+
+
+def _build_classvar_factory_runners(
+    merged_classvars: dict[str, ClassVarSpec],
+) -> dict[str, Callable[[type[Any]], Any]]:
+    result: dict[str, Callable[[type[Any]], Any]] = {}
+    for name, spec in merged_classvars.items():
+        if spec.default_factory is MISSING:
+            continue
+        factory = typing.cast(Callable[..., Any], spec.default_factory)
+        result[name] = _compile_classvar_factory_runner(
+            classvar_name=name,
+            factory=factory,
+        )
+    return result
+
+
+def _materialize_classvars_on_managed_class(
+    wrapped: type[Any],
+    merged: dict[str, ClassVarSpec],
+    *,
+    factory_runners: Mapping[str, Callable[[type[Any]], Any]],
+) -> None:
+    for cv_name, spec in merged.items():
+        if spec.default is not MISSING:
+            setattr(wrapped, cv_name, spec.default)
+        else:
+            setattr(wrapped, cv_name, factory_runners[cv_name](wrapped))
+
+
+class ClassVarField:
+    __slots__ = ("default", "default_factory", "name")
+
+    def __init__(
+        self,
+        *,
+        default: Any = MISSING,
+        default_factory: Callable[..., Any] | object = MISSING,
+    ) -> None:
+        if default is not MISSING and default_factory is not MISSING:
+            raise TypeError("classvar cannot define both default and default_factory")
+        self.default = default
+        self.default_factory = default_factory
+        self.name: str | None = None
+
+    def __set_name__(self, owner: type[Any], name: str) -> None:
+        self.name = name
+
+    def build_spec(self, annotation: Any) -> ClassVarSpec:
+        spec = ClassVarSpec(
+            name=self.name_or_error(),
+            annotation=annotation,
+            default=self.default,
+            default_factory=self.default_factory,
+        )
+        _validate_classvar_spec(spec)
+        return spec
+
+    def name_or_error(self) -> str:
+        if self.name is None:
+            raise RuntimeError("classvar name was not initialized")
+        return self.name
+
+
+def classvar(
+    *,
+    default: Any = MISSING,
+    default_factory: Callable[..., Any] | object = MISSING,
+) -> Any:
+    return ClassVarField(default=default, default_factory=default_factory)
+
+
 class LifecycleField:
     __slots__ = (
         "compare",
@@ -3585,7 +3758,7 @@ def _build_class_tables(
 
 def _collect_own_declarations(
     cls: type[Any],
-) -> tuple[dict[str, FieldSpec], dict[str, InitVarSpec]]:
+) -> tuple[dict[str, FieldSpec], dict[str, InitVarSpec], dict[str, ClassVarSpec]]:
     own_annotation_names = dict(getattr(cls, "__annotations__", {}))
     try:
         resolved_annotations = typing.get_type_hints(cls, include_extras=True)
@@ -3597,6 +3770,7 @@ def _collect_own_declarations(
     }
     own_specs: dict[str, FieldSpec] = {}
     own_initvars: dict[str, InitVarSpec] = {}
+    own_classvars: dict[str, ClassVarSpec] = {}
     for name, annotation in annotations.items():
         if name.startswith("_"):
             continue
@@ -3611,18 +3785,30 @@ def _collect_own_declarations(
         if isinstance(candidate, InitVarField):
             own_initvars[name] = candidate.build_spec(annotation)
             continue
+        if isinstance(candidate, ClassVarField):
+            own_classvars[name] = candidate.build_spec(annotation)
+            continue
         raise TypeError(
-            f"annotated lifecycle declaration {name!r} must use lifecycle_field(...) or initvar(...)",
+            f"annotated lifecycle declaration {name!r} must use lifecycle_field(...), "
+            "initvar(...), or classvar(...)",
         )
     overlap = set(own_specs) & set(own_initvars)
     if overlap:
         bad = ", ".join(sorted(overlap))
         raise TypeError(f"names cannot be both lifecycle fields and initvars: {bad}")
-    return own_specs, own_initvars
+    overlap_fc = set(own_specs) & set(own_classvars)
+    if overlap_fc:
+        bad = ", ".join(sorted(overlap_fc))
+        raise TypeError(f"names cannot be both lifecycle fields and classvars: {bad}")
+    overlap_ic = set(own_initvars) & set(own_classvars)
+    if overlap_ic:
+        bad = ", ".join(sorted(overlap_ic))
+        raise TypeError(f"names cannot be both initvars and classvars: {bad}")
+    return own_specs, own_initvars, own_classvars
 
 
 def _collect_own_field_specs(cls: type[Any]) -> dict[str, FieldSpec]:
-    fields, _initvars = _collect_own_declarations(cls)
+    fields, _initvars, _classvars = _collect_own_declarations(cls)
     return fields
 
 
@@ -3737,9 +3923,10 @@ def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
         )
         wrapped.__qualname__ = cls.__qualname__
 
-    own_specs, own_initvars = _collect_own_declarations(cls)
+    own_specs, own_initvars, own_classvars = _collect_own_declarations(cls)
     wrapped.__managed_own_field_specs__ = own_specs
     wrapped.__managed_own_initvar_specs__ = own_initvars
+    wrapped.__managed_own_classvar_specs__ = own_classvars
 
     base_state_cls = LifecycleContextState
     for base in wrapped.__mro__[1:]:
@@ -3757,6 +3944,12 @@ def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
         attr_name="__managed_own_initvar_specs__",
         own_items=own_initvars,
     )
+    merged_classvars = _merge_classvar_specs_from_mro(
+        wrapped,
+        attr_name="__managed_own_classvar_specs__",
+        own_items=own_classvars,
+    )
+    classvar_factory_runners = _build_classvar_factory_runners(merged_classvars)
     initvar_names_tuple = tuple(merged_initvars.keys())
     initvar_factory_runners = _build_initvar_factory_runners(merged_initvars)
 
@@ -3845,12 +4038,19 @@ def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
         wrapped,
         mode="working",
     )
+    wrapped.__classvar_specs__ = dict(merged_classvars)
+    _materialize_classvars_on_managed_class(
+        wrapped,
+        merged_classvars,
+        factory_runners=classvar_factory_runners,
+    )
     return wrapped
 
 
 __all__ = [
     "FieldSpec",
     "InitVarSpec",
+    "ClassVarSpec",
     "BindingBase",
     "DEFAULT_TRANSACTION",
     "GroupTransactionManager",
@@ -3861,6 +4061,7 @@ __all__ = [
     "LifecycleValidatorReturnedFalse",
     "Record",
     "TransactionManager",
+    "classvar",
     "initvar",
     "lifecycle_field",
     "managed_context",

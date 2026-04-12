@@ -3,6 +3,8 @@ from __future__ import annotations
 import types
 import pytest
 
+import pyrolyze.lifecycle as _lifecycle
+
 from pyrolyze.lifecycle import (
     BindingBase,
     DEFAULT_TRANSACTION,
@@ -12,6 +14,7 @@ from pyrolyze.lifecycle import (
     LifecycleValidatorReturnedFalse,
     TransactionManager,
     binding,
+    classvar,
     commit_order_key,
     commit_validator,
     const,
@@ -417,6 +420,37 @@ with pytest.raises(TypeError, match="incompatible lifecycle field override"):
     @managed_context
     class CompareMismatch(CompareBase):
         points: list[Point | None] | None = lifecycle_field(default=None, compare="identity")
+
+
+with pytest.raises(TypeError, match="incompatible lifecycle field init override"):
+
+    @managed_context
+    class FieldInitBase:
+        x: int = lifecycle_field(kind=_lifecycle.ManagedKind, default=0, init=False)
+
+    @managed_context
+    class FieldInitChild(FieldInitBase):
+        x: int = lifecycle_field(kind=_lifecycle.ManagedKind, default=0, init=True)
+
+
+with pytest.raises(TypeError, match="incompatible initvar init override"):
+
+    @managed_context
+    class IVInitBase:
+        s: int = initvar(init=False, default_factory=lambda cls: 3)
+        v: int = const(default_factory=lambda self, s: s)
+
+    @managed_context
+    class IVInitChild(IVInitBase):
+        s: int = initvar(init=True, default=1)
+        v: int = const(default_factory=lambda self, s: s)
+
+
+with pytest.raises(ValueError, match="mutable default"):
+
+    @managed_context
+    class MutableDefaultInst:
+        items: list[int] = const(default=[1])
 
 
 def test_field_specs_bind_handler_matrix_at_decoration_time() -> None:
@@ -1830,6 +1864,161 @@ def test_static_retains_initvar_for_lazy_default_factory() -> None:
 
     c = Ctx()
     assert c.x == 11
+
+
+def test_eager_only_initvar_is_not_retained_on_state_class() -> None:
+    @managed_context
+    class Ctx:
+        seed: int = initvar(default=1)
+        x: int = const(default_factory=lambda self, seed: seed + 5)
+
+    assert Ctx.__state_cls__.__class_retained_initvars__ == frozenset()
+    assert Ctx().x == 6
+
+
+def test_commit_validator_receives_explicit_initvar() -> None:
+    def check(self: LifecycleContext, cap: int) -> bool:
+        return self.x < cap
+
+    @managed_context
+    class Ctx:
+        cap: int = initvar(default=100)
+        x: int = managed(default=0)
+        chk: object | None = commit_validator(default=check)
+
+    manager = TransactionManager()
+    c = Ctx(transaction_manager=manager)
+    manager.begin()
+    c.x = 50
+    manager.commit()
+    manager.begin()
+    c.x = 99
+    manager.commit()
+
+
+def test_on_before_commit_receives_explicit_initvar() -> None:
+    seen: list[int] = []
+
+    def hook(
+        self: LifecycleContext,
+        current: LifecycleContext,
+        working: LifecycleContext,
+        seed: int,
+    ) -> None:
+        del self, current, working
+        seen.append(seed)
+
+    @managed_context
+    class Ctx:
+        seed: int = initvar(default=42)
+        x: int = managed(default=0)
+        h: object | None = on_before_commit(default=hook)
+
+    manager = TransactionManager()
+    c = Ctx(transaction_manager=manager)
+    manager.begin()
+    c.x = 1
+    manager.commit()
+    assert seen == [42]
+
+
+def test_transient_working_default_factory_receives_initvar() -> None:
+    def wf(self: LifecycleContext, working: LifecycleContext, seed: int) -> list[int]:
+        del working
+        return [seed, self.x]
+
+    @managed_context
+    class Ctx:
+        seed: int = initvar(default=7)
+        x: int = managed(default=0)
+        items: list[int] | None = transient(default=None, working_default_factory=wf)
+
+    manager = TransactionManager()
+    c = Ctx(transaction_manager=manager)
+    manager.begin()
+    c.x = 3
+    assert c.working.items == [7, 3]
+
+
+def test_classvar_default_materializes_on_managed_class() -> None:
+    @managed_context
+    class Ctx:
+        SYMBOL: str = classvar(default="sym")
+        x: int = managed(default=0)
+
+    assert Ctx.SYMBOL == "sym"
+    assert "SYMBOL" not in Ctx.__state_cls__.__field_specs__
+
+
+def test_classvar_default_factory_zero_arg_and_cls_form() -> None:
+    @managed_context
+    class CtxA:
+        n: int = classvar(default_factory=lambda: 11)
+        x: int = managed(default=0)
+
+    @managed_context
+    class CtxB:
+        name: str = classvar(default_factory=lambda cls: cls.__name__)
+        x: int = managed(default=0)
+
+    assert CtxA.n == 11
+    assert CtxB.name == "CtxB"
+
+
+def test_classvar_factory_rejects_non_cls_parameter() -> None:
+    with pytest.raises(TypeError, match="unsupported parameter"):
+        @managed_context
+        class _Bad:
+            n: int = classvar(default_factory=lambda self: 1)
+            x: int = managed(default=0)
+
+
+def test_classvar_mutable_default_allowed() -> None:
+    @managed_context
+    class Ctx:
+        bucket: list[int] = classvar(default=[1, 2])
+        x: int = managed(default=0)
+
+    assert Ctx.bucket == [1, 2]
+    Ctx.bucket.append(3)
+    assert Ctx.bucket == [1, 2, 3]
+
+
+def test_classvar_not_accepted_as_constructor_kw() -> None:
+    @managed_context
+    class Ctx:
+        TAG: str = classvar(default="t")
+        x: int = managed(default=0)
+
+    manager = TransactionManager()
+    with pytest.raises(TypeError, match="unexpected keyword"):
+        Ctx(transaction_manager=manager, TAG="no")
+
+
+def test_classvar_subclass_override_merges() -> None:
+    @managed_context
+    class BaseCV:
+        n: int = classvar(default=1)
+        x: int = managed(default=0)
+
+    @managed_context
+    class ChildCV(BaseCV):
+        n: int = classvar(default=2)
+
+    assert BaseCV.n == 1
+    assert ChildCV.n == 2
+
+
+def test_instance_sees_classvar_via_normal_class_attribute_lookup() -> None:
+    @managed_context
+    class Ctx:
+        FLAG: bool = classvar(default=True)
+        x: int = managed(default=0)
+
+    manager = TransactionManager()
+    c = Ctx(transaction_manager=manager)
+    assert c.FLAG is True
+    assert type(c).FLAG is True
 
 
 def test_compile_injected_runner_resolves_initvar_like_name_via_resolver() -> None:
