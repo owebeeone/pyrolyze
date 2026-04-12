@@ -1940,6 +1940,87 @@ def test_transient_working_default_factory_receives_initvar() -> None:
     assert c.working.items == [7, 3]
 
 
+def test_bad_commit_validator_signature_not_masked_as_unused_initvar() -> None:
+    """Strict scan must fail before dead-initvar analysis (bugfix: no false 'unused' errors)."""
+    with pytest.raises(TypeError, match="named parameters only"):
+        @managed_context
+        class _BadValidatorSig:
+            seed: int = initvar(default=1)
+            x: int = const(default_factory=lambda self, seed: seed)
+            chk: object | None = commit_validator(default=lambda self, **kwargs: True)
+
+
+def test_bad_hook_signature_not_masked_as_unused_initvar() -> None:
+    with pytest.raises(TypeError, match="named parameters only"):
+        @managed_context
+        class _BadHookSig:
+            seed: int = initvar(default=1)
+            x: int = const(default_factory=lambda self, seed: seed)
+            h: object | None = on_before_commit(default=lambda *a: None)
+
+
+def test_bad_field_default_factory_signature_at_decoration() -> None:
+    with pytest.raises(TypeError, match=r"default_factory for field 'x'"):
+        @managed_context
+        class _BadFactory:
+            seed: int = initvar(default=0)
+            x: int = managed(default_factory=lambda **kwargs: 1)
+
+
+def test_bad_working_default_factory_signature_at_decoration() -> None:
+    with pytest.raises(TypeError, match=r"working_default_factory for field 'items'"):
+        @managed_context
+        class _BadWf:
+            seed: int = initvar(default=0)
+            x: int = managed(default=0)
+            items: list[int] | None = transient(
+                default=None,
+                working_default_factory=lambda *args: [],
+            )
+
+
+def test_bad_initvar_default_factory_signature_at_decoration() -> None:
+    with pytest.raises(TypeError, match=r"initvar 'b' default_factory"):
+        @managed_context
+        class _BadInitvarFactory:
+            a: int = initvar(default=1)
+            b: int = initvar(default_factory=lambda **kwargs: 2)
+            x: int = const(default_factory=lambda self, a, b: a + b)
+
+
+def test_retained_initvar_value_uses_to_frozen_when_present() -> None:
+    class _Seed:
+        __slots__ = ("tag",)
+
+        def __init__(self) -> None:
+            self.tag = "mutable"
+
+        def to_frozen(self) -> str:
+            return "frozen-snapshot"
+
+    @managed_context
+    class Ctx:
+        seed: _Seed = initvar(default_factory=lambda cls: _Seed())
+        x: object = static(default_factory=lambda self, seed: seed)
+
+    c = Ctx()
+    assert c.x == "frozen-snapshot"
+
+
+def test_retained_initvar_to_frozen_failure_aborts_context_construction() -> None:
+    class _BadSeed:
+        def to_frozen(self) -> None:
+            raise ValueError("freeze failed")
+
+    with pytest.raises(ValueError, match="freeze failed"):
+        @managed_context
+        class Ctx:
+            seed: _BadSeed = initvar(default_factory=lambda cls: _BadSeed())
+            x: int = static(default_factory=lambda self, seed: 0)
+
+        Ctx()
+
+
 def test_classvar_default_materializes_on_managed_class() -> None:
     @managed_context
     class Ctx:

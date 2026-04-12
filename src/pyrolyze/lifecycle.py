@@ -743,6 +743,31 @@ class LCKind:
             raise TypeError(f"incompatible lifecycle field init override for {base.name!r}")
 
     @classmethod
+    def default_factory_may_run_after_initialization(cls, spec: FieldSpec) -> bool:
+        """If True, ``default_factory`` may run after ``LifecycleContextState.__init__``.
+
+        Initvar names referenced in that factory then require **retained** storage.
+        """
+        return False
+
+    @classmethod
+    def eagerly_resolve_default_field_in_constructor(cls, spec: FieldSpec) -> bool:
+        """If True, ``LifecycleContextState.__init__`` calls ``resolve_default_field``."""
+        return True
+
+    @classmethod
+    def default_field_init(cls, spec: FieldSpec) -> bool:
+        """Default ``FieldSpec.init`` when the descriptor omits ``init``."""
+        return True
+
+    @classmethod
+    def initvar_requestor_callables(
+        cls, spec: FieldSpec
+    ) -> list[tuple[str, Callable[..., Any]]]:
+        """(label, fn) pairs to scan for explicit initvar parameters (strict rules)."""
+        return []
+
+    @classmethod
     def default_value(cls, spec: FieldSpec) -> Any:
         if spec.default is not MISSING:
             return spec.default
@@ -1296,6 +1321,14 @@ class NonStoredHookKind(DeclarationStorageKind, LCKind):
         if spec.default is MISSING:
             raise TypeError(f"{cls.name!r} fields require default=callable")
 
+    @classmethod
+    def eagerly_resolve_default_field_in_constructor(cls, spec: FieldSpec) -> bool:
+        return False
+
+    @classmethod
+    def default_field_init(cls, spec: FieldSpec) -> bool:
+        return False
+
 
 class DefaultStoredKind(StoredKind, OverlayOperationalKind):
     helper_params = (
@@ -1319,6 +1352,15 @@ class HookKind(NonStoredHookKind, HookOperationalKind):
         _fixed("compare", '"identity"')
         .param("tx_group").param("default")
     )
+
+    @classmethod
+    def initvar_requestor_callables(
+        cls, spec: FieldSpec
+    ) -> list[tuple[str, Callable[..., Any]]]:
+        hook = spec.default
+        if callable(hook):
+            return [(cls.name, typing.cast(Callable[..., Any], hook))]
+        return []
 
     @classmethod
     def register_hook_runner(
@@ -1354,6 +1396,23 @@ class StoredMetadataKind(StoredKind, StoredDeclarationOperationalKind):
     helper_params = (
         _param("compare").param("tx_group").param("default")
     )
+
+
+class CommitValidatorDeclarationKind(StoredMetadataKind):
+    """Shared metadata row shape for ``commit_validator`` (not a hook kind)."""
+
+    @classmethod
+    def default_field_init(cls, spec: FieldSpec) -> bool:
+        return False
+
+    @classmethod
+    def initvar_requestor_callables(
+        cls, spec: FieldSpec
+    ) -> list[tuple[str, Callable[..., Any]]]:
+        val = spec.default
+        if callable(val):
+            return [("commit_validator", typing.cast(Callable[..., Any], val))]
+        return []
 
 
 class HookDeclarationKind(HookKind):
@@ -1519,6 +1578,14 @@ class StaticKind(StoredOnceKind, ImmutableConfigKind):
     )
 
     @classmethod
+    def default_factory_may_run_after_initialization(cls, spec: FieldSpec) -> bool:
+        return spec.default_factory is not MISSING
+
+    @classmethod
+    def eagerly_resolve_default_field_in_constructor(cls, spec: FieldSpec) -> bool:
+        return False
+
+    @classmethod
     def default_value(cls, spec: FieldSpec) -> Any:
         if spec.default is MISSING and spec.default_factory is MISSING:
             return _SENTINEL
@@ -1587,7 +1654,7 @@ class CommitOrderKeyKind(StoredMetadataKind):
 
 
 @define_kind
-class CommitValidatorKind(StoredMetadataKind):
+class CommitValidatorKind(CommitValidatorDeclarationKind):
     name = "commit_validator"
     helper_doc = "Callable that validates state before commit is finalized."
     helper_params = _fixed("compare", '"identity"')
@@ -1705,33 +1772,13 @@ def _compile_injected_runner(
     allowed_params: frozenset[str],
     initvar_resolve: Callable[[LifecycleContextState, str], Any] | None = None,
 ) -> InjectedRunner:
-    if inspect.isbuiltin(function) or inspect.isclass(function):
+    ctx = f"{hook_name} for field {field_name!r}"
+    parameter_names = _explicit_parameter_names_for_runner_compile(function, context=ctx)
+    if parameter_names is None or not parameter_names:
         return lambda state, injected, function=function: function()
-    try:
-        signature = inspect.signature(function)
-    except (TypeError, ValueError):
-        return lambda state, injected, function=function: function()
-    parameter_names: tuple[str, ...] = ()
-    if signature.parameters:
-        names: list[str] = []
-        for parameter in signature.parameters.values():
-            if parameter.kind not in {
-                inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                inspect.Parameter.KEYWORD_ONLY,
-            }:
-                raise TypeError(
-                    f"{hook_name} for field {field_name!r} must use named parameters only",
-                )
-            if parameter.name not in allowed_params:
-                allowed = ", ".join(sorted(allowed_params))
-                raise TypeError(
-                    f"{hook_name} for field {field_name!r} uses unsupported parameter "
-                    f"{parameter.name!r}; allowed: {allowed}",
-                )
-            names.append(parameter.name)
-        parameter_names = tuple(names)
-    if not parameter_names:
-        return lambda state, injected, function=function: function()
+    _require_explicit_params_allowed(
+        parameter_names, allowed=allowed_params, context=ctx
+    )
 
     def _resolve_kwarg(
         state: LifecycleContextState,
@@ -1830,19 +1877,8 @@ def _reject_mutable_instance_default(spec: FieldSpec) -> None:
         )
 
 
-_KIND_FIELD_INIT_FALSE = frozenset(
-    {
-        # commit_order_key participates in per-instance construction (ordering key)
-        "commit_validator",
-        "on_before_commit",
-        "on_after_commit",
-        "on_after_rollback",
-    },
-)
-
-
-def _default_init_for_field_kind(kind: type[LCKind]) -> bool:
-    return kind.name not in _KIND_FIELD_INIT_FALSE
+def _default_field_init_for_spec(spec: FieldSpec) -> bool:
+    return spec.kind.default_field_init(spec)
 
 
 @dataclass(slots=True)
@@ -1920,13 +1956,12 @@ def _merge_initvar_specs_from_mro(
     return merged
 
 
-def _extract_explicit_parameter_names(function: Callable[..., Any]) -> tuple[str, ...]:
-    if inspect.isbuiltin(function) or inspect.isclass(function):
-        return ()
-    try:
-        signature = inspect.signature(function)
-    except (TypeError, ValueError):
-        return ()
+def _explicit_named_only_parameter_names_from_signature(
+    signature: inspect.Signature,
+    function: Callable[..., Any],
+    *,
+    context: str,
+) -> tuple[str, ...]:
     if not signature.parameters:
         return ()
     names: list[str] = []
@@ -1936,53 +1971,111 @@ def _extract_explicit_parameter_names(function: Callable[..., Any]) -> tuple[str
             inspect.Parameter.KEYWORD_ONLY,
         }:
             raise TypeError(
-                f"{function!r} must use named parameters only (no *args/**kwargs injection)",
+                f"{context}: {function!r} must use named parameters only "
+                "(no *args/**kwargs injection)",
             )
         names.append(parameter.name)
     return tuple(names)
 
 
-def _initvar_names_in_callable(
+def _explicit_parameter_names_strict(
+    function: Callable[..., Any],
+    *,
+    context: str,
+) -> tuple[str, ...]:
+    """Parse explicit (named-only) parameter names; used at decoration for scans and prereqs."""
+    if inspect.isbuiltin(function) or inspect.isclass(function):
+        return ()
+    try:
+        signature = inspect.signature(function)
+    except (TypeError, ValueError) as exc:
+        raise TypeError(f"{context}: cannot inspect signature of {function!r}") from exc
+    return _explicit_named_only_parameter_names_from_signature(
+        signature, function, context=context
+    )
+
+
+def _extract_explicit_parameter_names_or_raise(
+    function: Callable[..., Any],
+    *,
+    context: str,
+) -> tuple[str, ...]:
+    return _explicit_parameter_names_strict(function, context=context)
+
+
+def _explicit_parameter_names_for_runner_compile(
+    function: Callable[..., Any],
+    *,
+    context: str,
+) -> tuple[str, ...] | None:
+    """Like strict parsing, but returns None when the compiled runner should call ``function()`` with no kwargs.
+
+    Used for hook/validator/factory runners: builtins, classes, and uninspectable callables keep
+    historical zero-arg behavior.
+    """
+    if inspect.isbuiltin(function) or inspect.isclass(function):
+        return None
+    try:
+        signature = inspect.signature(function)
+    except (TypeError, ValueError):
+        return None
+    return _explicit_named_only_parameter_names_from_signature(
+        signature, function, context=context
+    )
+
+
+def _require_explicit_params_allowed(
+    names: tuple[str, ...],
+    *,
+    allowed: frozenset[str],
+    context: str,
+) -> None:
+    for name in names:
+        if name not in allowed:
+            allowed_txt = ", ".join(sorted(allowed))
+            raise TypeError(
+                f"{context} uses unsupported parameter {name!r}; allowed: {allowed_txt}",
+            )
+
+
+def _initvar_names_in_callable_strict(
     function: Callable[..., Any],
     initvar_names: frozenset[str],
+    *,
+    context: str,
 ) -> frozenset[str]:
-    try:
-        params = _extract_explicit_parameter_names(function)
-    except TypeError:
-        return frozenset()
+    params = _extract_explicit_parameter_names_or_raise(function, context=context)
     return frozenset(p for p in params if p in initvar_names)
 
 
 def _scan_initvar_consumer_seeds(
     merged_specs: dict[str, FieldSpec],
     merged_initvars: dict[str, InitVarSpec],
-    special_tables: SpecialFieldTables,
 ) -> tuple[frozenset[str], frozenset[str]]:
     initvar_names = frozenset(merged_initvars)
     all_seeds: set[str] = set()
     late_seeds: set[str] = set()
-    for _fname, spec in merged_specs.items():
+    for fname, spec in merged_specs.items():
         if spec.default_factory is not MISSING and callable(spec.default_factory):
-            refs = _initvar_names_in_callable(spec.default_factory, initvar_names)
+            ctx = f"default_factory for field {fname!r}"
+            refs = _initvar_names_in_callable_strict(
+                spec.default_factory, initvar_names, context=ctx
+            )
             all_seeds.update(refs)
-            if issubclass(spec.kind, StaticKind):
+            if spec.kind.default_factory_may_run_after_initialization(spec):
                 late_seeds.update(refs)
         if spec.working_default_factory is not MISSING and callable(spec.working_default_factory):
-            refs = _initvar_names_in_callable(spec.working_default_factory, initvar_names)
+            ctx = f"working_default_factory for field {fname!r}"
+            refs = _initvar_names_in_callable_strict(
+                spec.working_default_factory, initvar_names, context=ctx
+            )
             all_seeds.update(refs)
             late_seeds.update(refs)
-        if issubclass(spec.kind, HookDeclarationKind):
-            hook = spec.default
-            if callable(hook):
-                refs = _initvar_names_in_callable(hook, initvar_names)
-                all_seeds.update(refs)
-                late_seeds.update(refs)
-        if issubclass(spec.kind, CommitValidatorKind):
-            val = spec.default
-            if callable(val):
-                refs = _initvar_names_in_callable(val, initvar_names)
-                all_seeds.update(refs)
-                late_seeds.update(refs)
+        for label, fn in spec.kind.initvar_requestor_callables(spec):
+            ctx = f"{label} for field {fname!r}"
+            refs = _initvar_names_in_callable_strict(fn, initvar_names, context=ctx)
+            all_seeds.update(refs)
+            late_seeds.update(refs)
     return frozenset(all_seeds), frozenset(late_seeds)
 
 
@@ -1996,11 +2089,10 @@ def _initvar_prereq_initvars_from_specs(
             prereqs[name] = frozenset()
             continue
         factory = typing.cast(Callable[..., Any], spec.default_factory)
-        try:
-            params = _extract_explicit_parameter_names(factory)
-        except TypeError:
-            prereqs[name] = frozenset()
-            continue
+        params = _extract_explicit_parameter_names_or_raise(
+            factory,
+            context=f"initvar {name!r} default_factory",
+        )
         prereqs[name] = frozenset(p for p in params if p in names_set)
     return prereqs
 
@@ -2030,33 +2122,13 @@ def _compile_initvar_default_factory_runner(
     factory: Callable[..., Any],
     allowed_params: frozenset[str],
 ) -> Callable[[dict[str, Any], type[Any]], Any]:
-    if inspect.isbuiltin(factory) or inspect.isclass(factory):
+    ctx = f"initvar {initvar_name!r} default_factory"
+    parameter_names = _explicit_parameter_names_for_runner_compile(factory, context=ctx)
+    if parameter_names is None or not parameter_names:
         return lambda _resolved, owner_cls: factory()
-    try:
-        signature = inspect.signature(factory)
-    except (TypeError, ValueError):
-        return lambda _resolved, owner_cls: factory()
-    parameter_names: tuple[str, ...] = ()
-    if signature.parameters:
-        names: list[str] = []
-        for parameter in signature.parameters.values():
-            if parameter.kind not in {
-                inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                inspect.Parameter.KEYWORD_ONLY,
-            }:
-                raise TypeError(
-                    f"initvar {initvar_name!r} default_factory must use named parameters only",
-                )
-            if parameter.name not in allowed_params:
-                allowed = ", ".join(sorted(allowed_params))
-                raise TypeError(
-                    f"initvar {initvar_name!r} default_factory uses unsupported parameter "
-                    f"{parameter.name!r}; allowed: {allowed}",
-                )
-            names.append(parameter.name)
-        parameter_names = tuple(names)
-    if not parameter_names:
-        return lambda _resolved, owner_cls: factory()
+    _require_explicit_params_allowed(
+        parameter_names, allowed=allowed_params, context=ctx
+    )
 
     def run(resolved: dict[str, Any], owner_cls: type[Any]) -> Any:
         kwargs: dict[str, Any] = {}
@@ -2241,32 +2313,13 @@ def _compile_classvar_factory_runner(
     classvar_name: str,
     factory: Callable[..., Any],
 ) -> Callable[[type[Any]], Any]:
-    if inspect.isbuiltin(factory) or inspect.isclass(factory):
+    ctx = f"classvar {classvar_name!r} default_factory"
+    parameter_names = _explicit_parameter_names_for_runner_compile(factory, context=ctx)
+    if parameter_names is None or not parameter_names:
         return lambda owner_cls: factory()
-    try:
-        signature = inspect.signature(factory)
-    except (TypeError, ValueError):
-        return lambda owner_cls: factory()
-    parameter_names: tuple[str, ...] = ()
-    if signature.parameters:
-        names: list[str] = []
-        for parameter in signature.parameters.values():
-            if parameter.kind not in {
-                inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                inspect.Parameter.KEYWORD_ONLY,
-            }:
-                raise TypeError(
-                    f"classvar {classvar_name!r} default_factory must use named parameters only",
-                )
-            if parameter.name != "cls":
-                raise TypeError(
-                    f"classvar {classvar_name!r} default_factory uses unsupported parameter "
-                    f"{parameter.name!r}; allowed: cls",
-                )
-            names.append(parameter.name)
-        parameter_names = tuple(names)
-    if not parameter_names:
-        return lambda owner_cls: factory()
+    _require_explicit_params_allowed(
+        parameter_names, allowed=frozenset({"cls"}), context=ctx
+    )
 
     def run(owner_cls: type[Any]) -> Any:
         return factory(cls=owner_cls)
@@ -2414,7 +2467,7 @@ class LifecycleField:
         eff_init = (
             init_for_spec
             if init_for_spec is not MISSING
-            else _default_init_for_field_kind(kind)
+            else kind.default_field_init(temp_spec)
         )
         kind.validate_field_spec(dataclasses.replace(temp_spec, init=eff_init))
         _reject_mutable_instance_default(dataclasses.replace(temp_spec, init=eff_init))
@@ -2451,7 +2504,7 @@ class LifecycleField:
         eff_init = (
             init_for_spec
             if init_for_spec is not MISSING
-            else _default_init_for_field_kind(self.kind)
+            else self.kind.default_field_init(spec)
         )
         vs = dataclasses.replace(spec, init=eff_init)
         spec.kind.validate_field_spec(vs)
@@ -3072,12 +3125,7 @@ class LifecycleContextState:
             raise TypeError(f"unexpected lifecycle constructor fields: {unexpected}")
 
         for name, spec in type(self).__field_specs__.items():
-            if issubclass(spec.kind, NonStoredHookKind):
-                continue
-            # StaticKind resolves defaults on first read (or defers to a single
-            # user assignment when there is no default/default_factory), so eager
-            # resolution here would consume the one-shot slot before user code.
-            if issubclass(spec.kind, StaticKind):
+            if not spec.kind.eagerly_resolve_default_field_in_constructor(spec):
                 continue
             self.resolve_default_field(name)
 
@@ -3861,7 +3909,7 @@ def _merge_field_specs(base: FieldSpec, derived: FieldSpec) -> FieldSpec:
         init=merged_init,
     )
     if merged.init is MISSING:
-        merged = dataclasses.replace(merged, init=_default_init_for_field_kind(merged.kind))
+        merged = dataclasses.replace(merged, init=_default_field_init_for_spec(merged))
     merged.kind.validate_field_spec(merged)
     _reject_mutable_instance_default(merged)
     return merged
@@ -3886,7 +3934,7 @@ def _merge_field_specs_from_mro(
             else:
                 v = value
                 if v.init is MISSING:
-                    v = dataclasses.replace(v, init=_default_init_for_field_kind(v.kind))
+                    v = dataclasses.replace(v, init=_default_field_init_for_spec(v))
                 merged[name] = v
     return merged
 
@@ -3964,10 +4012,8 @@ def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
         spec.kind.register_special_field(name=name, spec=spec, special_tables=special_tables)
 
     if merged_initvars:
-        all_seeds, late_seeds = _scan_initvar_consumer_seeds(
-            merged_specs, merged_initvars, special_tables
-        )
         iv_prereqs = _initvar_prereq_initvars_from_specs(merged_initvars)
+        all_seeds, late_seeds = _scan_initvar_consumer_seeds(merged_specs, merged_initvars)
         requested_live = _transitive_initvar_closure(
             merged_initvars, all_seeds, iv_prereqs
         )
