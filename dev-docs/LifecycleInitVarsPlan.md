@@ -37,8 +37,8 @@ This plan implements the v1 design in [LifecycleInitVarsDesign.md](LifecycleInit
 - private retained initvar storage for late consumers
 - dataclass-aligned mutable `default=` rejection for instance fields
 
-This plan also includes the follow-up `Phase 4` work for `classvar` on its
-separate parallel metadata path.
+Phase **4** (`classvar`) is implemented on the same parallel-metadata path
+described below; see **Rollout status**.
 
 ## Phase-boundary alignment with the design doc
 
@@ -56,26 +56,37 @@ and uses the same intended phase boundaries:
 If implementation reveals that a phase boundary is wrong, update this plan and
 the design doc together rather than silently widening or narrowing a phase.
 
+## Rollout status
+
+Phases **3A–4** are complete in `pyrolyze` `main`. Annotated tags mark phase
+boundaries (use `git show <tag>` for the exact commit):
+
+| Phase | Tag | Notes |
+| --- | --- | --- |
+| 3A | `lifecycle-initvars-3a-done` | Injection / validator plumbing, explicit initvar names |
+| 3B + 3C | `lifecycle-initvars-3bc-done` | Initvar pipeline, retention, `FieldSpec.init`, constructor split |
+| 3D | `lifecycle-initvars-3d-done` | Extra edge tests (hooks, validator, transient, inheritance, eager vs retained) |
+| 4 | `lifecycle-initvars-4-done` | `classvar` collection, MRO merge, class materialization (same commit as 3D) |
+
+There is no separate `lifecycle-initvars-3b-done` / `3c-done`: **3B and 3C**
+shipped together as **`lifecycle-initvars-3bc-done`**.
+
 ## Current code map
 
-The implementation will extend these current structures in `src/pyrolyze/lifecycle.py`:
+The live implementation lives in `src/pyrolyze/lifecycle.py` and
+`tests/test_api_lifecycle.py`. Central pieces include:
 
 - `LCKind` and its validation hooks
-- `FieldSpec`
-- `LifecycleField`
-- `lifecycle_field(...)`
-- `_compile_injected_runner(...)`
-- `_compile_factory_runner(...)`
-- `LifecycleContextState`
-- `_ManagedContextBase.__init__(...)`
-- `_build_hook_runner_tables(...)`
-- `_build_class_tables(...)`
-- `_collect_own_field_specs(...)`
-- `_merge_field_specs(...)`
-- `_merge_field_specs_from_mro(...)`
-- `managed_context(...)`
-
-The tests will primarily extend `tests/test_api_lifecycle.py`.
+- `FieldSpec`, `InitVarSpec`, `ClassVarSpec`
+- `LifecycleField`, `InitVarField`, `ClassVarField`, `lifecycle_field`, `initvar`, `classvar`
+- `_compile_injected_runner(...)`, `_compile_factory_runner(...)`
+- `_collect_own_declarations(...)`, `_collect_own_field_specs(...)`
+- `_merge_field_specs(...)`, `_merge_field_specs_from_mro(...)`
+- `_merge_initvar_specs(...)`, `_merge_initvar_specs_from_mro(...)`
+- `_merge_classvar_specs(...)`, `_merge_classvar_specs_from_mro(...)`
+- requestor / liveness helpers and `_materialize_classvars_on_managed_class(...)`
+- `LifecycleContextState`, `_ManagedContextBase.__init__(...)`
+- `_build_hook_runner_tables(...)`, `_build_class_tables(...)`, `managed_context(...)`
 
 ## Design translation into code
 
@@ -90,8 +101,10 @@ Add new declaration metadata and descriptor types near `FieldSpec` / `LifecycleF
 Public helper shape:
 
 ```python
-def initvar(*, init: bool = True, default: Any = MISSING, default_factory: Callable[..., Any] | object = MISSING) -> Any: ...
+def initvar(*, init: Any = MISSING, default: Any = MISSING, default_factory: Callable[..., Any] | object = MISSING) -> Any: ...
 ```
+
+(`init` omitted means inherit on override; effective default is `True` for a fresh declaration.)
 
 Spec / descriptor shape:
 
@@ -192,7 +205,7 @@ Suggested names:
 
 These remain private implementation details and are not part of the user API.
 
-### 4B. Add class-level `classvar` metadata for Phase 4
+### 4B. Add class-level `classvar` metadata for Phase 4 *(implemented)*
 
 `classvar` must remain outside the instance field pipeline.
 
@@ -235,8 +248,7 @@ Replace `_collect_own_field_specs(...)` with a collector layer that can classify
 Suggested decomposition:
 
 - `_collect_own_declarations(cls) -> tuple[dict[str, FieldSpec], dict[str, InitVarSpec], dict[str, ClassVarSpec]]`
-- `_collect_own_field_specs(...)` retained as a small helper if still useful
-- `_collect_own_initvar_specs(...)`
+- `_collect_own_field_specs(...)` retained as a thin wrapper over the field slice
 
 Rules:
 
@@ -247,7 +259,7 @@ Rules:
 
 This collector must also enforce:
 
-- duplicate names between fields and initvars rejected
+- duplicate names across fields, initvars, and classvars rejected
 - names in `LIFECYCLE_RESERVED_FIELD_NAMES` rejected
 
 ### 6. Merge initvar metadata across MRO
@@ -269,7 +281,7 @@ Semantics:
 
 Initvar merge validation must remain about initvar semantics, not field-kind identity.
 
-### 6B. Merge `classvar` metadata across MRO for Phase 4
+### 6B. Merge `classvar` metadata across MRO for Phase 4 *(implemented)*
 
 Add:
 
@@ -557,7 +569,7 @@ Validation includes:
 - signature rules for `InitVarSpec.default_factory`
 - dependency order / cycle rules
 
-### 18B. Add `classvar`-specific validation for Phase 4
+### 18B. Add `classvar`-specific validation for Phase 4 *(implemented)*
 
 Add:
 
@@ -729,6 +741,9 @@ Exit caveats:
   state tables, constructor acceptance, and transaction behavior.
 
 ## Concrete file-level edit plan
+
+This section is the original target checklist; the corresponding behavior is
+implemented in the tree unless an item is explicitly called out as deferred.
 
 ### `src/pyrolyze/lifecycle.py`
 
@@ -912,7 +927,7 @@ This plan does not implement:
 
 ## Acceptance criteria
 
-The implementation is done when all of the following are true:
+The following are **satisfied** for the shipped rollout (phases 3A–4):
 
 - initvars are collected and merged independently of `FieldSpec`
 - no field-kind identity comparisons were introduced to implement initvar semantics
