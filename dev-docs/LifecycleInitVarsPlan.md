@@ -40,6 +40,11 @@ This plan implements the v1 design in [LifecycleInitVarsDesign.md](LifecycleInit
 Phase **4** (`classvar`) is implemented on the same parallel-metadata path
 described below; see **Rollout status**.
 
+**Spec repair:** [LifecycleInitVarsPlan-bugfix.md](LifecycleInitVarsPlan-bugfix.md)
+tracks review findings (semantic dispatch, requestor-scan error ordering, tests) for
+phases **3A–3C** on top of the shipped code. Read **Rollout status** below for how
+git tags relate to that work.
+
 ## Phase-boundary alignment with the design doc
 
 This plan is aligned with [LifecycleInitVarsDesign.md](LifecycleInitVarsDesign.md)
@@ -58,18 +63,26 @@ the design doc together rather than silently widening or narrowing a phase.
 
 ## Rollout status
 
-Phases **3A–4** are complete in `pyrolyze` `main`. Annotated tags mark phase
-boundaries (use `git show <tag>` for the exact commit):
+Annotated tags on `pyrolyze` `main` are **historical checkpoints** (use
+`git show <tag>` for the exact commit). They record **what merged when**, not an
+assertion that every **plan exit criterion** was met at that tag—especially the
+**semantic dispatch rule** and **decoration-time error ordering** for initvars.
 
-| Phase | Tag | Notes |
+| Phase | Tag | What the tag marks |
 | --- | --- | --- |
-| 3A | `lifecycle-initvars-3a-done` | Injection / validator plumbing, explicit initvar names |
-| 3B + 3C | `lifecycle-initvars-3bc-done` | Initvar pipeline, retention, `FieldSpec.init`, constructor split |
-| 3D | `lifecycle-initvars-3d-done` | Extra edge tests (hooks, validator, transient, inheritance, eager vs retained) |
-| 4 | `lifecycle-initvars-4-done` | `classvar` collection, MRO merge, class materialization (same commit as 3D) |
+| 3A | `lifecycle-initvars-3a-done` | Injection / validator plumbing, explicit initvar names landed |
+| 3B + 3C | `lifecycle-initvars-3bc-done` | Initvar pipeline, retention, `FieldSpec.init`, constructor split landed (**not** a claim of “done to spec” for 3A–3C; see bugfix plan) |
+| 3D | `lifecycle-initvars-3d-done` | Extra edge tests and related coverage landed |
+| 4 | `lifecycle-initvars-4-done` | `classvar` path landed (same commit as 3D tag) |
 
-There is no separate `lifecycle-initvars-3b-done` / `3c-done`: **3B and 3C**
+There is no separate `lifecycle-initvars-3b-done` / `3c-done`: **3B and 3C** were
 shipped together as **`lifecycle-initvars-3bc-done`**.
+
+**Open (spec-level):** [LifecycleInitVarsPlan-bugfix.md](LifecycleInitVarsPlan-bugfix.md)
+— replace concrete-kind checks with `LCKind` semantic hooks, validate consumer
+signatures **before** dead-initvar analysis, strict initvar-dependency extraction,
+and the listed tests. When that work is complete, update this section (and tags if
+you add e.g. `lifecycle-initvars-spec-done`).
 
 ## Current code map
 
@@ -927,7 +940,11 @@ This plan does not implement:
 
 ## Acceptance criteria
 
-The following are **satisfied** for the shipped rollout (phases 3A–4):
+These are the **design targets** for a fully compliant rollout. **Current `main`**
+implements the feature set end-to-end (through phase 4), but **not every bullet is
+fully met to spec** until the repairs in
+[LifecycleInitVarsPlan-bugfix.md](LifecycleInitVarsPlan-bugfix.md) land (notably
+semantic dispatch and scan/error ordering).
 
 - initvars are collected and merged independently of `FieldSpec`
 - no field-kind identity comparisons were introduced to implement initvar semantics
