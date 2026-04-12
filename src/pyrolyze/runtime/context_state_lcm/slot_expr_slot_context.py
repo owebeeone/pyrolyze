@@ -79,12 +79,12 @@ class SlotExprSlotContextStateMgr(RerunnableSlotContextStateMgr):
             advertisement = wrapped_binding.retained_advertisement()
             if advertisement is not None:
                 advertisements.append(advertisement)
-        self._committed_ui = tuple(advertisements)
+        self.ui_state = tuple(advertisements)
 
     def deactivate(self) -> None:
         self._staged_call_site_ids = ()
         self._staged_post_commit_callbacks = ()
         self._call_site_context_manager.close_all()
         self._runtime_locals_by_slot_id.clear()
-        self._committed_ui = ()
+        self.ui_state = ()
         super().deactivate()

@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from pyrolyze.lifecycle import TransactionManager
 from pyrolyze.runtime.slot_kinds import ContextKind
 from pyrolyze.runtime.slot_call_semantics import PyrolyzeMountAdvertisementBinding
 from pyrolyze.runtime.trace import TraceChannel, emit_trace, trace_enabled
 
 from ._base import USE_OWNER
 from .context_base import ContextBaseStateMgr
+from .context_base import PASS_TX_GROUP
 from ._support import (
     DuplicateMountAdvertisementError,
     MountAdvertisementContextError,
@@ -32,6 +34,7 @@ class RenderContextStateMgr(ContextBaseStateMgr):
     ) -> None:
         super().__init__(
             owner=owner,
+            transaction_manager=TransactionManager(tx_groups={PASS_TX_GROUP}),
             render_context_state_mgr=None,
             **kwargs,
         )
@@ -186,7 +189,7 @@ class RenderContextStateMgr(ContextBaseStateMgr):
 
     def debug_children_of(self, slot_id: Any = None) -> tuple[Any, ...]:
         if slot_id is None:
-            children = self._children
+            children = self.children_state
         else:
             slot = self.get_registered_slot(slot_id)
             if slot is None:
@@ -206,7 +209,7 @@ class RenderContextStateMgr(ContextBaseStateMgr):
 
     def debug_ui(self, slot_id: Any = None) -> tuple[Any, ...]:
         if slot_id is None:
-            return self._committed_ui
+            return self.ui_state
         else:
             slot = self.get_registered_slot(slot_id)
             if slot is None:
@@ -214,14 +217,14 @@ class RenderContextStateMgr(ContextBaseStateMgr):
             return slot._state_mgr.committed_ui()
 
     def committed_ui(self) -> tuple[Any, ...]:
-        return self._committed_ui
+        return self.ui_state
 
     def refresh_committed_ui_from_children(self) -> None:
-        self._committed_ui = self.build_committed_ui()
+        self.ui_state = self.build_committed_ui()
         owner_slot_state_mgr = self._owner_slot_state_mgr
         if owner_slot_state_mgr is None:
             return
-        owner_slot_state_mgr._committed_ui = self._committed_ui
+        owner_slot_state_mgr.ui_state = self.ui_state
         owner_slot_state_mgr._parent_state_mgr.refresh_committed_ui_from_children()
 
     def walk_context_graph(self, boundary_facade: Any = USE_OWNER, listener: object | None = None) -> None:

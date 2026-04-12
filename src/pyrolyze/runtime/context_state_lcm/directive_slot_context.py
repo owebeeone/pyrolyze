@@ -65,9 +65,9 @@ class DirectiveSlotContextStateMgr(SlotCallSlotContextStateMgr):
         return selectors
 
     def has_pending_emitted_children(self) -> bool:
-        if self._staged_ui_entries:
+        if self.own_ui_entries_state:
             return True
-        return any(bool(child_state_mgr.committed_ui()) for child_state_mgr in self._children.values())
+        return any(bool(child_state_mgr.committed_ui()) for child_state_mgr in self.children_state.values())
 
     def begin_scope_pass(self) -> None:
         self._pass_committed_selectors = self._committed_selectors
@@ -86,11 +86,11 @@ class DirectiveSlotContextStateMgr(SlotCallSlotContextStateMgr):
     def build_committed_ui(self) -> tuple[Any, ...]:
         own_children = tuple(
             entry.element
-            for entry in self._staged_ui_entries + []
+            for entry in self.own_ui_entries_state
         )
         nested_children = tuple(
             element
-            for child in self._children.values()
+            for child in self.children_state.values()
             for element in child.committed_ui()
         )
         return (

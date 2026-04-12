@@ -147,26 +147,26 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
         except BaseException:
             self.rollback_owned_event_handlers()
             raise
-        self._committed_ui = self._child_context_state_mgr._committed_ui
+        self.ui_state = self._child_context_state_mgr.ui_state
         return None
 
     def commit_owned_event_handlers(self) -> None:
         if not self._pass_owned_event_handler_order and not any(
             child.context_kind() == ContextKind.EVENT_HANDLER and child._seen_in_pass
-            for child in self._children.values()
+            for child in self.children_state.values()
         ):
             return
         unseen_slots = [
             slot_id
-            for slot_id, child in self._children.items()
+            for slot_id, child in self.children_state.items()
             if child.context_kind() == ContextKind.EVENT_HANDLER and not child._seen_in_pass
         ]
         for slot_id in unseen_slots:
-            child = self._children.get(slot_id)
+            child = self.children_state.get(slot_id)
             if child is not None:
                 child.deactivate()
 
-        for child in self._children.values():
+        for child in self.children_state.values():
             if child.context_kind() == ContextKind.EVENT_HANDLER:
                 child.commit_handler()
 
@@ -175,11 +175,11 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
     def rollback_owned_event_handlers(self) -> None:
         if not self._pass_owned_event_handler_order and not any(
             child.context_kind() == ContextKind.EVENT_HANDLER and child._seen_in_pass
-            for child in self._children.values()
+            for child in self.children_state.values()
         ):
             return
         committed_ids = set(self._pass_owned_event_handler_order)
-        for slot_id, child in list(self._children.items()):
+        for slot_id, child in list(self.children_state.items()):
             if child.context_kind() != ContextKind.EVENT_HANDLER:
                 continue
             if slot_id not in committed_ids:
@@ -196,10 +196,10 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
     def _begin_owned_event_handler_pass(self) -> None:
         self._pass_owned_event_handler_order = tuple(
             slot_id
-            for slot_id, child in self._children.items()
+            for slot_id, child in self.children_state.items()
             if child.context_kind() == ContextKind.EVENT_HANDLER
         )
-        for child in self._children.values():
+        for child in self.children_state.values():
             if child.context_kind() == ContextKind.EVENT_HANDLER:
                 child._seen_in_pass = False
 
@@ -248,7 +248,7 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
             runtime_func(child_context, *self._last_args, **self._last_kwargs)
         else:
             runtime_func(self._last_bound_receiver, child_context, *self._last_args, **self._last_kwargs)
-        self._committed_ui = child_context._state_mgr._committed_ui
+        self.ui_state = child_context._state_mgr.ui_state
         if not self._parent_state_mgr.is_scope_active():
             self._parent_state_mgr.refresh_committed_ui_from_children()
 
@@ -257,11 +257,11 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
         if child_context is None:
             return
         child_context._remove_from_scheduler()
-        for child in list(child_context._state_mgr._children.values()):
+        for child in list(child_context._state_mgr.children_state.values()):
             child.deactivate()
-        child_context._state_mgr._children.clear()
+        child_context._state_mgr.children_state = {}
         child_context._state_mgr.clear_registered_slots()
         child_context._state_mgr._mounted_callback = None
         self._child_context_state_mgr = None
         self._pending_dirty_state = None
-        self._committed_ui = ()
+        self.ui_state = ()

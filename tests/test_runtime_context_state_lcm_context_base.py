@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import pytest
+
+from pyrolyze.lifecycle import TransactionManager
 from pyrolyze.runtime.context_state_lcm.context_base import ContextBaseStateMgr
+from pyrolyze.runtime.context_state_lcm.context_base import PASS_TX_GROUP
+from pyrolyze.runtime.context_state_lcm.rerunnable_slot_context import RerunnableSlotContextStateMgr
 
 
 class _DummyPassScope:
@@ -17,6 +22,23 @@ class _DummyOwner:
 class _RenderContextWithStateMgr:
     def __init__(self, state_mgr: object) -> None:
         self._state_mgr = state_mgr
+
+
+class _RenderContextStateMgrStub:
+    def __init__(self, transaction_manager: TransactionManager | None) -> None:
+        self._transaction_manager = transaction_manager
+        self.slots: dict[object, object] = {}
+
+    def register_slot_state_mgr(self, slot_state_mgr: object) -> None:
+        self.slots[getattr(slot_state_mgr, "_slot_id")] = slot_state_mgr
+
+
+class _ParentStateMgrStub:
+    def __init__(self) -> None:
+        self.children: dict[object, object] = {}
+
+    def register_child_state_mgr(self, slot_id: object, child_state_mgr: object) -> None:
+        self.children[slot_id] = child_state_mgr
 
 
 class _DerivedContextBaseStateMgr(ContextBaseStateMgr):
@@ -60,3 +82,73 @@ def test_context_base_subclass_can_forward_owner_keyword_to_managed_constructor(
     )
 
     assert mgr._render_context_state_mgr is explicit_state_mgr
+
+
+def test_context_base_reads_transaction_manager_from_render_context_state_mgr() -> None:
+    txm = TransactionManager(tx_groups={PASS_TX_GROUP})
+    render_context_state_mgr = _RenderContextStateMgrStub(transaction_manager=txm)
+
+    mgr = ContextBaseStateMgr(
+        owner=_DummyOwner(),
+        render_context_state_mgr=render_context_state_mgr,
+    )
+
+    assert mgr._transaction_manager is txm
+
+
+def test_rerunnable_slot_context_inherits_transaction_manager_from_render_context_state_mgr() -> None:
+    txm = TransactionManager(tx_groups={PASS_TX_GROUP})
+    render_context_state_mgr = _RenderContextStateMgrStub(transaction_manager=txm)
+    parent_state_mgr = _ParentStateMgrStub()
+
+    mgr = RerunnableSlotContextStateMgr(
+        owner=_DummyOwner(),
+        parent_state_mgr=parent_state_mgr,
+        slot_id="slot-1",
+        invoke_dirty=False,
+        seen_in_pass=False,
+        render_context_state_mgr=render_context_state_mgr,
+    )
+
+    assert mgr._transaction_manager is txm
+
+
+def test_scope_activity_tracks_transaction_state() -> None:
+    txm = TransactionManager(tx_groups={PASS_TX_GROUP})
+    render_context_state_mgr = _RenderContextStateMgrStub(transaction_manager=txm)
+    mgr = ContextBaseStateMgr(
+        owner=_DummyOwner(),
+        render_context_state_mgr=render_context_state_mgr,
+    )
+
+    assert mgr.is_scope_active() is False
+    with pytest.raises(RuntimeError, match="scope is not active"):
+        mgr.require_active_scope()
+
+    txm.begin(PASS_TX_GROUP)
+
+    assert mgr.is_scope_active() is True
+    mgr.require_active_scope()
+
+    txm.rollback(PASS_TX_GROUP)
+    assert mgr.is_scope_active() is False
+
+
+def test_begin_end_and_rollback_pass_are_no_ops() -> None:
+    txm = TransactionManager(tx_groups={PASS_TX_GROUP})
+    render_context_state_mgr = _RenderContextStateMgrStub(transaction_manager=txm)
+    mgr = ContextBaseStateMgr(
+        owner=_DummyOwner(),
+        render_context_state_mgr=render_context_state_mgr,
+    )
+
+    mgr.begin_pass()
+    assert txm.active_transaction_for(PASS_TX_GROUP) is None
+
+    txm.begin(PASS_TX_GROUP)
+    active = txm.active_transaction_for(PASS_TX_GROUP)
+    mgr.end_pass()
+    assert txm.active_transaction_for(PASS_TX_GROUP) is active
+    mgr.rollback_pass()
+    assert txm.active_transaction_for(PASS_TX_GROUP) is active
+    txm.rollback(PASS_TX_GROUP)

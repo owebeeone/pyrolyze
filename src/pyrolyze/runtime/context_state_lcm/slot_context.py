@@ -57,9 +57,10 @@ class SlotContextStateMgr(StateMgrBase):
     def deactivate(self) -> None:
         for child_state_mgr in list(self.children_by_slot_id().values()):
             child_state_mgr.deactivate()
-        self.children_by_slot_id().clear()
+        self.children_state = {}
 
         self._render_context_state_mgr.unregister_slot(self._slot_id)
-        parent_children = self._parent_state_mgr.children_by_slot_id()
+        parent_children = dict(self._parent_state_mgr.children_by_slot_id())
         if parent_children.get(self._slot_id) is self:
             parent_children.pop(self._slot_id, None)
+            self._parent_state_mgr.children_state = parent_children

@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import os
 from typing import Any, Callable, TYPE_CHECKING, TypeVar
 
 from pyrolyze.api import MountDirective, UIElement
-from pyrolyze.freezable import freezable_dataclass, frozen_dataclass
-from pyrolyze.lifecycle import const, initvar, managed, managed_context, transient
+from pyrolyze.lifecycle import TransactionManager, const, initvar, managed, managed_context, owned
 from pyrolyze.runtime.app_context import APP_CONTEXT_MISSING, EMPTY_APP_CONTEXT_LOOKUP
 from pyrolyze.runtime.slot_kinds import ContextKind
 from pyrolyze.runtime.slot_call_semantics import ExternalStoreRef
@@ -40,8 +39,8 @@ from ._support import (
 T = TypeVar("T")
 if TYPE_CHECKING:
     from pyrolyze.runtime.app_context import AppContextKey, GenerationTracker
-    from pyrolyze.runtime.context_bare_refactor_lcm import RenderContext, SlotContext
-    from pyrolyze.runtime.slot_identity import SlotId
+    from pyrolyze.runtime.context_bare_refactor_lcm import RenderContext
+    from pyrolyze.runtime.context_state_lcm.render_context import RenderContextStateMgr
 
 
 PASS_TX_GROUP = "context_pass"
@@ -66,9 +65,9 @@ def _default_owner_type_name(self: ContextBaseStateMgr) -> str:
 
 def _resolve_render_context_state_mgr_initvar(
     cls: type[ContextBaseStateMgr],
-    render_context_state_mgr: Any | None,
-    render_context: Any | None,
-) -> Any | None:
+    render_context_state_mgr: RenderContextStateMgr | None,
+    render_context: RenderContext | None,
+) -> RenderContextStateMgr | None:
     del cls
     if render_context_state_mgr is not None:
         return render_context_state_mgr
@@ -79,8 +78,8 @@ def _resolve_render_context_state_mgr_initvar(
 
 def _default_render_context_state_mgr(
     self: ContextBaseStateMgr,
-    _resolved_render_context_state_mgr: Any | None,
-) -> Any | None:
+    _resolved_render_context_state_mgr: RenderContextStateMgr | None,
+) -> RenderContextStateMgr | None:
     del self
     return _resolved_render_context_state_mgr
 
@@ -91,36 +90,13 @@ class UiSnapshotEntry:
     element: UiNode
 
 
-@freezable_dataclass(frozen_type="FrozenContextSubtreeState")
-class ContextSubtreeState:
-    children: list[tuple["SlotId", "SlotContext"]] = field(default_factory=list)
-    own_ui: list[UiNode] = field(default_factory=list)
-    own_ui_entries: list[UiSnapshotEntry] = field(default_factory=list)
-    ui: list[UiNode] = field(default_factory=list)
-    # Field-semantics target only.
-    # Keep this as the published subtree state unit while the methods below are
-    # still in legacy imperative form. The later rewrite should move commit and
-    # rollback to snapshot replacement rather than field-by-field mutation.
-
-
-@frozen_dataclass(mutable_type=ContextSubtreeState)
-class FrozenContextSubtreeState:
-    pass
-
-
-@dataclass(slots=True)
-class ContextStagedState:
-    ui: list[UiNode] = field(default_factory=list)
-    ui_entries: list[UiSnapshotEntry] = field(default_factory=list)
-
-
 @managed_context
 class ContextBaseStateMgr(StateMgrBase):
     # Constructor-only inputs for values that cannot yet be derived from owner at
     # initialization time. Keep them out of steady-state lifecycle fields.
-    render_context_state_mgr: Any | None = initvar(default=None)
-    render_context: Any | None = initvar(default=None)
-    _resolved_render_context_state_mgr: Any | None = initvar(
+    render_context_state_mgr: RenderContextStateMgr | None = initvar(default=None)
+    render_context: RenderContext | None = initvar(default=None)
+    _resolved_render_context_state_mgr: RenderContextStateMgr | None = initvar(
         init=False,
         default_factory=_resolve_render_context_state_mgr_initvar,
     )
@@ -131,21 +107,13 @@ class ContextBaseStateMgr(StateMgrBase):
     _context_kind: ContextKind = const(default_factory=_default_context_kind)
     _pass_scope_handle_cls: Any = const(default_factory=_default_pass_scope_handle_cls)
     _owner_type_name: str = const(default_factory=_default_owner_type_name)
-    _render_context_state_mgr: Any | None = const(default_factory=_default_render_context_state_mgr)
-
-    _subtree: FrozenContextSubtreeState = managed(default=FrozenContextSubtreeState())
-    _scope_active: bool = transient(default=False, tx_group=PASS_TX_GROUP)
-    _pass_child_order: tuple[Any, ...] = transient(default=(), tx_group=PASS_TX_GROUP)
-    _pass_child_dirty: dict[Any, bool] = transient(default_factory=dict, tx_group=PASS_TX_GROUP)
-    _pass_committed_ui: tuple[Any, ...] = transient(default=(), tx_group=PASS_TX_GROUP)
-    _pass_own_committed_ui: tuple[Any, ...] = transient(default=(), tx_group=PASS_TX_GROUP)
-    _pass_own_committed_ui_entries: tuple[Any, ...] = transient(default=(), tx_group=PASS_TX_GROUP)
-    _staged_state: ContextStagedState | None = transient(
-        default=None,
-        working_default_factory=ContextStagedState,
-        tx_group=PASS_TX_GROUP,
+    _render_context_state_mgr: RenderContextStateMgr | None = const(
+        default_factory=_default_render_context_state_mgr,
     )
-    _pass_committed_native_root: bool = transient(default=False, tx_group=PASS_TX_GROUP)
+    children_state: dict[Any, Any] = owned(default_factory=dict)
+    ui_state: tuple[Any, ...] = managed(default_factory=tuple)
+    own_ui_state: tuple[Any, ...] = managed(default_factory=tuple)
+    own_ui_entries_state: tuple[_CommittedUiEntry, ...] = managed(default_factory=tuple)
 
     # Integration note:
     # The field declarations above are the lifecycle target semantics.
@@ -153,25 +121,32 @@ class ContextBaseStateMgr(StateMgrBase):
     # not yet respect these state units. That mismatch is intentional in this
     # step: lock the field model first, then rewrite the methods against it.
 
+    @property
+    def _transaction_manager(self) -> TransactionManager | None:
+        render_context_state_mgr = self._render_context_state_mgr
+        if render_context_state_mgr is None:
+            return self._state.transaction_manager
+        return render_context_state_mgr._transaction_manager
+
     def root_context_state_mgr(self) -> Any:
         if self._render_context_state_mgr is None:
             return self
         return self._render_context_state_mgr
 
     def children_by_slot_id(self) -> dict[Any, Any]:
-        return self._children
+        return self.children_state
 
     def iter_children(self) -> tuple[Any, ...]:
-        return tuple(child_state_mgr.owner for child_state_mgr in self._children.values())
+        return tuple(child_state_mgr.owner for child_state_mgr in self.children_state.values())
 
     def committed_ui(self) -> tuple[Any, ...]:
-        return self._committed_ui
+        return self.ui_state
 
     def own_committed_ui(self) -> tuple[Any, ...]:
-        return self._own_committed_ui
+        return self.own_ui_state
 
     def own_committed_ui_entries(self) -> tuple[Any, ...]:
-        return self._own_committed_ui_entries
+        return self.own_ui_entries_state
 
     def parent_context(self) -> Any | None:
         parent_state_mgr = getattr(self, "_parent_state_mgr", None)
@@ -234,136 +209,36 @@ class ContextBaseStateMgr(StateMgrBase):
         return self._context_kind
 
     def pass_scope(self) -> Any:
-        return self._pass_scope_handle_cls(context=self, activate=not self._scope_active)
+        return self._pass_scope_handle_cls(context=self, activate=not self.is_scope_active())
 
     def require_active_scope(self) -> None:
-        if not self._scope_active:
+        if not self.is_scope_active():
             raise RuntimeError("scope is not active")
 
     def is_scope_active(self) -> bool:
-        return self._scope_active
+        return self._transaction_manager.active_transaction_for(PASS_TX_GROUP) is not None
 
     def register_child(self, slot_id: Any, child: Any) -> None:
-        self._children[slot_id] = child._state_mgr
+        next_children = dict(self.children_state)
+        next_children[slot_id] = child._state_mgr
+        self.children_state = next_children
 
     def register_child_state_mgr(self, slot_id: Any, child_state_mgr: Any) -> None:
-        self._children[slot_id] = child_state_mgr
+        next_children = dict(self.children_state)
+        next_children[slot_id] = child_state_mgr
+        self.children_state = next_children
 
     def staged_ui_len(self) -> int:
-        staged_ui = self._staged_ui
-        return 0 if staged_ui is None else len(staged_ui)
+        return len(self.own_ui_state)
 
     def begin_pass(self) -> None:
-        if self._scope_active:
-            raise RuntimeError("scope already active")
-        self._transaction_manager.begin(PASS_TX_GROUP)
-        self._scope_active = True
-        self._pass_child_order = tuple(self._children.keys())
-        self._pass_child_dirty = {
-            slot_id: child_state_mgr._invoke_dirty for slot_id, child_state_mgr in self._children.items()
-        }
-        self._pass_committed_ui = self._committed_ui
-        self._pass_own_committed_ui = self._own_committed_ui
-        self._pass_own_committed_ui_entries = self._own_committed_ui_entries
-        if hasattr(self, "_committed_native_root"):
-            self._pass_committed_native_root = self._committed_native_root
-        self._staged_ui = []
-        self._staged_ui_entries = []
-        for child_state_mgr in self._children.values():
-            child_state_mgr._seen_in_pass = False
+        return None
 
     def end_pass(self) -> None:
-        if not self._scope_active:
-            raise RuntimeError("scope is not active")
-        try:
-            unseen_slots = [
-                slot_id
-                for slot_id, child_state_mgr in self._children.items()
-                if not child_state_mgr._seen_in_pass
-            ]
-            for slot_id in unseen_slots:
-                child_state_mgr = self._children.get(slot_id)
-                if child_state_mgr is not None:
-                    child_state_mgr.deactivate()
-
-            for child_state_mgr in self._children.values():
-                child_type = type(child_state_mgr.owner).__name__
-                if child_type in {"SlotCallSlotContext", "SlotExprSlotContext"}:
-                    child_state_mgr.commit_binding()
-                elif child_type == "EventHandlerSlotContext":
-                    child_state_mgr.commit_handler()
-                elif child_type == "ComponentCallSlotContext":
-                    child_state_mgr.commit_owned_event_handlers()
-
-            staged_ui_entries = self._staged_ui_entries
-            if staged_ui_entries is None:
-                staged_ui_entries = []
-            self._own_committed_ui_entries = tuple(staged_ui_entries)
-            self._own_committed_ui = tuple(entry.element for entry in self._own_committed_ui_entries)
-            self._committed_ui = self.build_committed_ui()
-            if hasattr(self, "_committed_native_root") and hasattr(self, "_expects_native_root"):
-                self._committed_native_root = self._expects_native_root
-
-            for child_state_mgr in self._children.values():
-                child_state_mgr._invoke_dirty = False
-
-            self._scope_active = False
-            self._pass_child_order = ()
-            self._pass_child_dirty = {}
-            self._pass_committed_ui = ()
-            self._pass_own_committed_ui = ()
-            self._pass_own_committed_ui_entries = ()
-            self._staged_ui = []
-            self._staged_ui_entries = []
-            self._transaction_manager.commit(PASS_TX_GROUP)
-        except BaseException:
-            self._transaction_manager.rollback(PASS_TX_GROUP)
-            raise
+        return None
 
     def rollback_pass(self) -> None:
-        if not self._scope_active:
-            raise RuntimeError("scope is not active")
-        try:
-            committed_ids = set(self._pass_child_order)
-            for slot_id, child_state_mgr in list(self._children.items()):
-                if slot_id not in committed_ids:
-                    child_state_mgr.deactivate()
-                    continue
-                child_type = type(child_state_mgr.owner).__name__
-                if child_type in {"SlotCallSlotContext", "SlotExprSlotContext"}:
-                    child_state_mgr.rollback_binding()
-                elif child_type == "EventHandlerSlotContext":
-                    child_state_mgr.rollback_handler()
-                elif child_type == "ComponentCallSlotContext":
-                    child_state_mgr.rollback_owned_event_handlers()
-                child_state_mgr._invoke_dirty = self._pass_child_dirty.get(
-                    slot_id,
-                    child_state_mgr._invoke_dirty,
-                )
-                child_state_mgr._seen_in_pass = True
-
-            restored_children: dict[Any, Any] = {}
-            for slot_id in self._pass_child_order:
-                child_state_mgr = self._children.get(slot_id)
-                if child_state_mgr is not None:
-                    restored_children[slot_id] = child_state_mgr
-            self._children = restored_children
-            self._committed_ui = self._pass_committed_ui
-            self._own_committed_ui = self._pass_own_committed_ui
-            self._own_committed_ui_entries = self._pass_own_committed_ui_entries
-            if hasattr(self, "_committed_native_root"):
-                self._committed_native_root = self._pass_committed_native_root
-
-            self._scope_active = False
-            self._pass_child_order = ()
-            self._pass_child_dirty = {}
-            self._pass_committed_ui = ()
-            self._pass_own_committed_ui = ()
-            self._pass_own_committed_ui_entries = ()
-            self._staged_ui = []
-            self._staged_ui_entries = []
-        finally:
-            self._transaction_manager.rollback(PASS_TX_GROUP)
+        return None
 
     def runtime_key_path(self) -> tuple[Any, ...]:
         owner_kind = self.context_kind()
@@ -400,23 +275,23 @@ class ContextBaseStateMgr(StateMgrBase):
         parent_facade: Any = USE_OWNER,
     ) -> T:
         parent_facade = self._resolve_owner_arg(parent_facade)
-        resolved_slot_id = slot_id
         root_context_state_mgr = self.root_context_state_mgr()
         root_context = root_context_state_mgr.owner
-        existing = root_context_state_mgr.get_registered_slot(resolved_slot_id)
+        existing = root_context_state_mgr.get_registered_slot(slot_id)
         if existing is not None and existing._state_mgr._parent_state_mgr is not self:
             raise SlotOwnershipError(
-                f"slot {resolved_slot_id!r} is owned by {type(existing._state_mgr._parent_state_mgr.owner).__name__}, "
+                f"slot {slot_id!r} is owned by {type(existing._state_mgr._parent_state_mgr.owner).__name__}, "
                 f"not {self._owner_type_name}"
             )
         if existing is not None and not isinstance(existing, slot_type):
             existing.deactivate()
             existing = None
         if existing is None:
-            slot = slot_type(render_context=root_context, parent=parent_facade, slot_id=resolved_slot_id)
+            slot = slot_type(render_context=root_context, parent=parent_facade, slot_id=slot_id)
             existing = slot
-        self._children.pop(resolved_slot_id, None)
-        self._children[resolved_slot_id] = existing._state_mgr
+        next_children = dict(self.children_state)
+        next_children[slot_id] = existing._state_mgr
+        self.children_state = next_children
         existing._state_mgr._seen_in_pass = True
         return existing
 
@@ -437,11 +312,11 @@ class ContextBaseStateMgr(StateMgrBase):
         return slot.stage_callback(callback=binding.callback, dirty=binding.dirty)
 
     def build_committed_ui(self) -> tuple[Any, ...]:
-        own_elements = self._own_committed_ui
+        own_elements = self.own_ui_state
         child_elements = tuple(
             element
-            for child_state_mgr in self._children.values()
-            for element in child_state_mgr.committed_ui()
+            for child_state_mgr in self.children_state.values()
+            for element in child_state_mgr.ui_state
         )
         if hasattr(self, "_expects_native_root") and (
             self._expects_native_root or self._committed_native_root
@@ -463,7 +338,7 @@ class ContextBaseStateMgr(StateMgrBase):
         return child_elements
 
     def refresh_committed_ui_from_children(self) -> None:
-        self._committed_ui = self.build_committed_ui()
+        self.ui_state = self.build_committed_ui()
         parent_state_mgr = getattr(self, "_parent_state_mgr", None)
         if parent_state_mgr is not None:
             parent_state_mgr.refresh_committed_ui_from_children()
@@ -722,13 +597,15 @@ class ContextBaseStateMgr(StateMgrBase):
                     call_site_id=normalized_call_site_id,
                     slot_id=normalized_slot_id,
                 )
-            self._staged_ui.append(result)
-            self._staged_ui_entries.append(
+            next_entries = self.own_ui_entries_state + (
                 _CommittedUiEntry(
                     generation_id=self.current_generation_id(),
                     element=result,
-                )
+                ),
             )
+            self.own_ui_entries_state = next_entries
+            self.own_ui_state = tuple(entry.element for entry in next_entries)
+            self.ui_state = self.build_committed_ui()
             return None
         if os.environ.get("PYROLYZE_ENV") == "prod":
             return None

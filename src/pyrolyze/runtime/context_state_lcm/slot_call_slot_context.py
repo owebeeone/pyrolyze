@@ -166,7 +166,7 @@ class SlotCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
         return ()
 
     def sync_binding_committed_ui(self) -> None:
-        self._committed_ui = self.build_committed_ui()
+        self.ui_state = self.build_committed_ui()
 
     def queue_slot_call_invalidation(self, host: Any = USE_OWNER) -> None:
         host = self._resolve_owner_arg(host)
@@ -205,5 +205,5 @@ class SlotCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
         self._binding = None
         if binding is not None:
             binding.deactivate()
-        self._committed_ui = ()
+        self.ui_state = ()
         super().deactivate()
