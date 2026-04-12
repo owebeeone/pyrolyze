@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import types
 import pytest
 
@@ -426,11 +427,11 @@ with pytest.raises(TypeError, match="incompatible lifecycle field init override"
 
     @managed_context
     class FieldInitBase:
-        x: int = lifecycle_field(kind=_lifecycle.ManagedKind, default=0, init=False)
+        x: int = const(default=0, init=False)
 
     @managed_context
     class FieldInitChild(FieldInitBase):
-        x: int = lifecycle_field(kind=_lifecycle.ManagedKind, default=0, init=True)
+        x: int = const(default=0, init=True)
 
 
 with pytest.raises(TypeError, match="incompatible initvar init override"):
@@ -697,6 +698,36 @@ def test_context_aware_default_factory_can_resolve_other_fields_and_views() -> N
 def test_context_aware_default_factory_cycle_is_detected() -> None:
     with pytest.raises(RuntimeError, match="lifecycle factory cycle detected"):
         DefaultFactoryCycleContext()
+
+
+def test_lifecycle_field_fills_compare_from_kind_resolved_params() -> None:
+    d = lifecycle_field(kind=_lifecycle.BindingKind, default=None)
+    assert d.compare == "identity"
+
+
+def test_lifecycle_field_rejects_mismatched_fixed_compare() -> None:
+    with pytest.raises(TypeError, match="binding.*compare"):
+        lifecycle_field(kind=_lifecycle.BindingKind, default=None, compare="value")
+
+
+def test_transient_rejects_disallowed_compare() -> None:
+    with pytest.raises(TypeError, match="transient.*compare"):
+        lifecycle_field(
+            kind=_lifecycle.TransientKind,
+            compare="identity",
+            working_default_factory=list,
+        )
+
+
+def test_managed_init_is_fixed_via_resolved_params_not_helper_signature() -> None:
+    assert "init" not in inspect.signature(managed).parameters
+    ip = _lifecycle.LC_MANAGED._resolved_params["init"]
+    assert isinstance(ip, _lifecycle.FixedParam)
+
+
+def test_lifecycle_field_rejects_managed_init_override() -> None:
+    with pytest.raises(TypeError, match="managed.*init"):
+        lifecycle_field(kind=_lifecycle.ManagedKind, default=0, init=True)
 
 
 def test_binding_base_closes_once_and_uses_accepted_state() -> None:
@@ -1986,6 +2017,22 @@ def test_bad_initvar_default_factory_signature_at_decoration() -> None:
             a: int = initvar(default=1)
             b: int = initvar(default_factory=lambda **kwargs: 2)
             x: int = const(default_factory=lambda self, a, b: a + b)
+
+
+def test_scrubbed_helper_params_are_omitted_from_repr() -> None:
+    init_decl = initvar(init=False)
+    class_decl = classvar(default="sym")
+
+    init_repr = repr(init_decl)
+    class_repr = repr(class_decl)
+
+    assert "compare=" not in init_repr
+    assert "tx_group=" not in init_repr
+    assert "init=False" in init_repr
+
+    assert "compare=" not in class_repr
+    assert "tx_group=" not in class_repr
+    assert "init=" not in class_repr
 
 
 def test_retained_initvar_value_uses_to_frozen_when_present() -> None:
