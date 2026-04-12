@@ -495,11 +495,50 @@ _AFTER_COMMIT_PARAMS = frozenset({"self", "previous", "current", "tx_group"})
 _AFTER_ROLLBACK_PARAMS = frozenset({"self", "current", "tx_group"})
 
 
+def _allowed_factory_params(initvar_names: tuple[str, ...]) -> frozenset[str]:
+    return _SUPPORTED_FACTORY_PARAMS | frozenset(initvar_names)
+
+
+def _allowed_before_commit_params(initvar_names: tuple[str, ...]) -> frozenset[str]:
+    return _BEFORE_COMMIT_PARAMS | frozenset(initvar_names)
+
+
+def _allowed_after_commit_params(initvar_names: tuple[str, ...]) -> frozenset[str]:
+    return _AFTER_COMMIT_PARAMS | frozenset(initvar_names)
+
+
+def _allowed_after_rollback_params(initvar_names: tuple[str, ...]) -> frozenset[str]:
+    return _AFTER_ROLLBACK_PARAMS | frozenset(initvar_names)
+
+
+def _allowed_commit_validator_params(initvar_names: tuple[str, ...]) -> frozenset[str]:
+    return frozenset({"self"}) | frozenset(initvar_names)
+
+
+def _initvar_resolve_unavailable(state: "LifecycleContextState", name: str) -> Any:
+    del state
+    raise RuntimeError(
+        f"initvar {name!r} is not available for injection in this lifecycle build phase",
+    )
+
+
+def _lifecycle_initvar_decoration_placeholders() -> dict[str, Any]:
+    """Scaffolding for initvar requestor metadata (Phase 3B+)."""
+    return {
+        "__initvar_names__": (),
+        "__class_requested_initvars__": frozenset(),
+        "__class_retained_initvars__": frozenset(),
+        "__class_has_late_initvar_consumers__": False,
+    }
+
+
 @dataclass(slots=True)
 class HookRunnerTables:
     before_commit: dict[Hashable, list[InjectedRunner]] = field(default_factory=dict)
     after_commit: dict[Hashable, list[InjectedRunner]] = field(default_factory=dict)
     after_rollback: dict[Hashable, list[InjectedRunner]] = field(default_factory=dict)
+    initvar_names: tuple[str, ...] = ()
+    initvar_resolve: Callable[[Any, str], Any] | None = None
 
 
 @dataclass(slots=True)
@@ -1569,12 +1608,14 @@ class OnBeforeCommitKind(HookDeclarationKind):
         hook = typing.cast(Callable[..., Any], spec.default)
         if not callable(hook):
             raise TypeError(f"{spec.kind.name} field {name!r} requires a callable default")
+        allowed = _allowed_before_commit_params(hook_tables.initvar_names)
         hook_tables.before_commit.setdefault(spec.tx_group, []).append(
             _compile_hook_runner(
                 field_name=name,
                 hook_name="on_before_commit",
                 hook=hook,
-                allowed_params=_BEFORE_COMMIT_PARAMS,
+                allowed_params=allowed,
+                initvar_resolve=hook_tables.initvar_resolve,
             )
         )
 
@@ -1595,12 +1636,14 @@ class OnAfterCommitKind(HookDeclarationKind):
         hook = typing.cast(Callable[..., Any], spec.default)
         if not callable(hook):
             raise TypeError(f"{spec.kind.name} field {name!r} requires a callable default")
+        allowed = _allowed_after_commit_params(hook_tables.initvar_names)
         hook_tables.after_commit.setdefault(spec.tx_group, []).append(
             _compile_hook_runner(
                 field_name=name,
                 hook_name="on_after_commit",
                 hook=hook,
-                allowed_params=_AFTER_COMMIT_PARAMS,
+                allowed_params=allowed,
+                initvar_resolve=hook_tables.initvar_resolve,
             )
         )
 
@@ -1621,12 +1664,14 @@ class OnAfterRollbackKind(HookDeclarationKind):
         hook = typing.cast(Callable[..., Any], spec.default)
         if not callable(hook):
             raise TypeError(f"{spec.kind.name} field {name!r} requires a callable default")
+        allowed = _allowed_after_rollback_params(hook_tables.initvar_names)
         hook_tables.after_rollback.setdefault(spec.tx_group, []).append(
             _compile_hook_runner(
                 field_name=name,
                 hook_name="on_after_rollback",
                 hook=hook,
-                allowed_params=_AFTER_ROLLBACK_PARAMS,
+                allowed_params=allowed,
+                initvar_resolve=hook_tables.initvar_resolve,
             )
         )
 
@@ -1637,6 +1682,7 @@ def _compile_injected_runner(
     hook_name: str,
     function: Callable[..., Any],
     allowed_params: frozenset[str],
+    initvar_resolve: Callable[[LifecycleContextState, str], Any] | None = None,
 ) -> InjectedRunner:
     if inspect.isbuiltin(function) or inspect.isclass(function):
         return lambda state, injected, function=function: function()
@@ -1666,6 +1712,25 @@ def _compile_injected_runner(
     if not parameter_names:
         return lambda state, injected, function=function: function()
 
+    def _resolve_kwarg(
+        state: LifecycleContextState,
+        injected: dict[str, Any],
+        name: str,
+    ) -> Any:
+        if name == "self":
+            return state.owner
+        if name == "current":
+            return injected.get("current", state.current_view)
+        if name == "working":
+            return injected.get("working", state.working_view)
+        if name == "previous":
+            return injected["previous"]
+        if name == "tx_group":
+            return injected["tx_group"]
+        if initvar_resolve is not None:
+            return initvar_resolve(state, name)
+        raise AssertionError(f"unexpected compiled lifecycle parameter {name!r}")
+
     def run(
         state: LifecycleContextState,
         injected: dict[str, Any],
@@ -1673,18 +1738,7 @@ def _compile_injected_runner(
     ) -> Any:
         kwargs: dict[str, Any] = {}
         for name in parameter_names:
-            if name == "self":
-                kwargs[name] = state.owner
-            elif name == "current":
-                kwargs[name] = injected.get("current", state.current_view)
-            elif name == "working":
-                kwargs[name] = injected.get("working", state.working_view)
-            elif name == "previous":
-                kwargs[name] = injected["previous"]
-            elif name == "tx_group":
-                kwargs[name] = injected["tx_group"]
-            else:
-                raise AssertionError(f"unexpected compiled lifecycle parameter {name!r}")
+            kwargs[name] = _resolve_kwarg(state, injected, name)
         return function(**kwargs)
 
     return run
@@ -1695,12 +1749,16 @@ def _compile_factory_runner(
     field_name: str,
     hook_name: str,
     factory: Callable[..., Any],
+    allowed_params: frozenset[str] | None = None,
+    initvar_resolve: Callable[[LifecycleContextState, str], Any] | None = None,
 ) -> FactoryRunner:
+    allowed = allowed_params if allowed_params is not None else _SUPPORTED_FACTORY_PARAMS
     injected_runner = _compile_injected_runner(
         field_name=field_name,
         hook_name=hook_name,
         function=factory,
-        allowed_params=_SUPPORTED_FACTORY_PARAMS,
+        allowed_params=allowed,
+        initvar_resolve=initvar_resolve,
     )
     return lambda state, injected_runner=injected_runner: injected_runner(state, {})
 
@@ -1711,12 +1769,14 @@ def _compile_hook_runner(
     hook_name: str,
     hook: Callable[..., Any],
     allowed_params: frozenset[str],
+    initvar_resolve: Callable[[LifecycleContextState, str], Any] | None = None,
 ) -> InjectedRunner:
     return _compile_injected_runner(
         field_name=field_name,
         hook_name=hook_name,
         function=hook,
         allowed_params=allowed_params,
+        initvar_resolve=initvar_resolve,
     )
 
 
@@ -2367,6 +2427,11 @@ class LifecycleContextState:
     __class_tx_group_to_index__: dict[Hashable, int] = {DEFAULT_TRANSACTION: 0}
     __class_commit_order_key_by_group__: dict[Hashable, str] = {}
     __class_commit_validator_by_group__: dict[Hashable, str] = {}
+    __class_ftable_commit_validator_runner_by_group__: dict[Hashable, InjectedRunner] = {}
+    __initvar_names__: tuple[str, ...] = ()
+    __class_requested_initvars__: frozenset[str] = frozenset()
+    __class_retained_initvars__: frozenset[str] = frozenset()
+    __class_has_late_initvar_consumers__: bool = False
     __class_ftable_get_default__: dict[str, FieldGetter] = {}
     __class_ftable_get_current__: dict[str, FieldGetter] = {}
     __class_ftable_get_working__: dict[str, FieldGetter] = {}
@@ -2619,6 +2684,12 @@ class LifecycleContextState:
             return None
         return self.current_record.values[field_name]
 
+    def commit_validator_runner_for(
+        self,
+        tx_group: Hashable = DEFAULT_TRANSACTION,
+    ) -> InjectedRunner | None:
+        return type(self).__class_ftable_commit_validator_runner_by_group__.get(tx_group)
+
     def defer_commit_cleanup(self, callback: Callable[[], None]) -> None:
         if self._deferred_commit_cleanup is None:
             callback()
@@ -2860,22 +2931,22 @@ class _ManagedContextBase:
     
     def requires_validation(self) -> bool:
         """Return True if the context requires validation before commit, False otherwise."""
-        return self._state.commit_validator_for() is not None
+        return self._state.commit_validator_runner_for() is not None
 
     def requires_validation_for(self, tx_group: Hashable = DEFAULT_TRANSACTION) -> bool:
-        return self._state.commit_validator_for(tx_group) is not None
+        return self._state.commit_validator_runner_for(tx_group) is not None
 
     def validate_commit(self) -> bool:
         """Return True if the context is valid and can be committed, False otherwise."""
-        validator = self._state.commit_validator_for()
-        if validator is not None:
-            return validator(self)
+        runner = self._state.commit_validator_runner_for()
+        if runner is not None:
+            return bool(runner(self._state, {}))
         return True
 
     def validate_commit_for(self, tx_group: Hashable = DEFAULT_TRANSACTION) -> bool:
-        validator = self._state.commit_validator_for(tx_group)
-        if validator is not None:
-            return validator(self)
+        runner = self._state.commit_validator_runner_for(tx_group)
+        if runner is not None:
+            return bool(runner(self._state, {}))
         return True
 
     def close(self, *, was_committed: bool = True) -> None:
@@ -2955,10 +3026,43 @@ class _ManagedContextBase:
 LifecycleContext = _ManagedContextBase
 
 
+def _build_commit_validator_runner_table(
+    merged_specs: dict[str, FieldSpec],
+    *,
+    special_tables: SpecialFieldTables,
+    initvar_names: tuple[str, ...],
+    initvar_resolve: Callable[[LifecycleContextState, str], Any] | None,
+) -> dict[Hashable, InjectedRunner]:
+    result: dict[Hashable, InjectedRunner] = {}
+    allowed = _allowed_commit_validator_params(initvar_names)
+    resolve = initvar_resolve if initvar_names else None
+    for tx_group, field_name in special_tables.commit_validator_by_group.items():
+        spec = merged_specs[field_name]
+        hook = spec.default
+        if hook is MISSING or not callable(hook):
+            raise TypeError(
+                f"commit_validator field {field_name!r} requires a callable default",
+            )
+        result[tx_group] = _compile_injected_runner(
+            field_name=field_name,
+            hook_name="commit_validator",
+            function=typing.cast(Callable[..., Any], hook),
+            allowed_params=allowed,
+            initvar_resolve=resolve,
+        )
+    return result
+
+
 def _build_hook_runner_tables(
     specs: dict[str, FieldSpec],
+    *,
+    initvar_names: tuple[str, ...] = (),
+    initvar_resolve: Callable[[LifecycleContextState, str], Any] | None = None,
 ) -> dict[str, dict[Hashable, tuple[InjectedRunner, ...]]]:
-    hook_tables = HookRunnerTables()
+    hook_tables = HookRunnerTables(
+        initvar_names=initvar_names,
+        initvar_resolve=initvar_resolve,
+    )
     for name, spec in specs.items():
         spec.kind.register_hook_runner(name=name, spec=spec, hook_tables=hook_tables)
 
@@ -2979,8 +3083,12 @@ def _build_class_tables(
     specs: dict[str, FieldSpec],
     *,
     tx_group_to_index: dict[Hashable, int],
+    initvar_names: tuple[str, ...] = (),
+    initvar_resolve: Callable[[LifecycleContextState, str], Any] | None = None,
 ) -> dict[str, dict[str, Callable[..., Any]]]:
     tables = _FieldTables()
+    factory_allowed = _allowed_factory_params(initvar_names)
+    factory_resolve = initvar_resolve if initvar_names else None
     for name, spec in specs.items():
         tx_index = tx_group_to_index[spec.tx_group]
         tables.field_tx_index[name] = tx_index
@@ -2989,12 +3097,16 @@ def _build_class_tables(
                 field_name=name,
                 hook_name="default_factory",
                 factory=typing.cast(Callable[..., Any], spec.default_factory),
+                allowed_params=factory_allowed,
+                initvar_resolve=factory_resolve,
             )
         if spec.working_default_factory is not MISSING:
             tables.working_default_factory_runner[name] = _compile_factory_runner(
                 field_name=name,
                 hook_name="working_default_factory",
                 factory=typing.cast(Callable[..., Any], spec.working_default_factory),
+                allowed_params=factory_allowed,
+                initvar_resolve=factory_resolve,
             )
         spec.kind.install_field_tables(name=name, spec=spec, tx_index=tx_index, tables=tables)
 
@@ -3163,6 +3275,15 @@ def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
     for name, spec in merged_specs.items():
         spec.kind.register_special_field(name=name, spec=spec, special_tables=special_tables)
 
+    initvar_names: tuple[str, ...] = ()
+    initvar_resolve: Callable[[LifecycleContextState, str], Any] | None = None
+    validator_runners = _build_commit_validator_runner_table(
+        merged_specs,
+        special_tables=special_tables,
+        initvar_names=initvar_names,
+        initvar_resolve=initvar_resolve,
+    )
+
     state_name = f"{wrapped.__name__}_State"
     state_namespace = {
         "__module__": wrapped.__module__,
@@ -3171,15 +3292,23 @@ def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
         "__class_tx_group_to_index__": tx_group_to_index,
         "__class_commit_order_key_by_group__": special_tables.commit_order_key_by_group,
         "__class_commit_validator_by_group__": special_tables.commit_validator_by_group,
+        "__class_ftable_commit_validator_runner_by_group__": validator_runners,
+        **_lifecycle_initvar_decoration_placeholders(),
     }
     state_cls = type(state_name, (base_state_cls,), state_namespace)
     state_cls.__field_names__ = tuple(state_cls.__field_specs__)
     for table_name, table in _build_class_tables(
         state_cls.__field_specs__,
         tx_group_to_index=state_cls.__class_tx_group_to_index__,
+        initvar_names=initvar_names,
+        initvar_resolve=initvar_resolve,
     ).items():
         setattr(state_cls, table_name, table)
-    for table_name, table in _build_hook_runner_tables(state_cls.__field_specs__).items():
+    for table_name, table in _build_hook_runner_tables(
+        state_cls.__field_specs__,
+        initvar_names=initvar_names,
+        initvar_resolve=initvar_resolve,
+    ).items():
         setattr(state_cls, table_name, table)
     wrapped.__state_cls__ = state_cls
     wrapped.__current_view_cls__ = _build_view_class(

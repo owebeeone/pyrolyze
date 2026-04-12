@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import types
 import pytest
 
 from pyrolyze.lifecycle import (
@@ -79,7 +80,7 @@ def build_working_cycle(self: LifecycleContext) -> list[object] | None:
     return self.items
 
 
-def reject_commit(_ctx: LifecycleContext) -> bool:
+def reject_commit(self: LifecycleContext) -> bool:
     return False
 
 
@@ -259,7 +260,7 @@ class GroupedFieldContext:
     scratch: bool = transient(default=False, tx_group=GROUP_BETA)
     handle: SpyBinding | None = binding(default=None, tx_group=GROUP_ALPHA)
     child: SpyBinding | None = owned(default=None, tx_group=GROUP_BETA)
-    validator: object | None = commit_validator(default=lambda _ctx: True, tx_group=GROUP_ALPHA)
+    validator: object | None = commit_validator(default=lambda self: True, tx_group=GROUP_ALPHA)
     order_key: tuple[int, ...] = commit_order_key(default=(1,), tx_group=GROUP_BETA)
 
 
@@ -283,7 +284,7 @@ with pytest.raises(TypeError, match="incompatible lifecycle field override"):
 @managed_context
 class DefaultGroupedMetadataContext:
     value: int = managed(default=0)
-    validator: object | None = commit_validator(default=lambda _ctx: True)
+    validator: object | None = commit_validator(default=lambda self: True)
     order_key: tuple[int, ...] = commit_order_key(default=(2,))
 
 
@@ -1312,8 +1313,8 @@ def test_transaction_manager_rejects_unknown_group() -> None:
 def test_transaction_manager_validate_then_commit_only_skips_second_validation() -> None:
     validations: list[str] = []
 
-    def check(ctx: LifecycleContext) -> bool:
-        validations.append(type(ctx).__name__)
+    def check(self: LifecycleContext) -> bool:
+        validations.append(type(self).__name__)
         return True
 
     @managed_context
@@ -1588,8 +1589,8 @@ def test_commit_validator_runs_before_context_commits() -> None:
     manager = TransactionManager()
     validated: list[str] = []
 
-    def check(ctx: LifecycleContext) -> bool:
-        validated.append(type(ctx).__name__)
+    def check(self: LifecycleContext) -> bool:
+        validated.append(type(self).__name__)
         return True
 
     @managed_context
@@ -1609,7 +1610,7 @@ def test_commit_validator_failure_aborts_transaction() -> None:
     manager = TransactionManager()
     validation_allowed = {"ok": False}
 
-    def guard(_ctx: LifecycleContext) -> bool:
+    def guard(self: LifecycleContext) -> bool:
         return validation_allowed["ok"]
 
     @managed_context
@@ -1642,7 +1643,7 @@ def test_commit_validator_failure_aborts_transaction() -> None:
 def test_commit_validator_failure_on_outermost_nested_begin_rollbacks_and_resets_manager() -> None:
     manager = TransactionManager()
 
-    def reject(_ctx: LifecycleContext) -> bool:
+    def reject(self: LifecycleContext) -> bool:
         return False
 
     @managed_context
@@ -1675,10 +1676,10 @@ def test_commit_validator_failure_on_outermost_nested_begin_rollbacks_and_resets
 def test_commit_validation_runs_all_validators_and_raises_exception_group() -> None:
     manager = TransactionManager()
 
-    def boom_value(_ctx: LifecycleContext) -> bool:
+    def boom_value(self: LifecycleContext) -> bool:
         raise ValueError("first problem")
 
-    def boom_type(_ctx: LifecycleContext) -> bool:
+    def boom_type(self: LifecycleContext) -> bool:
         raise TypeError("second problem")
 
     @managed_context
@@ -1711,10 +1712,10 @@ def test_commit_validation_runs_all_validators_and_raises_exception_group() -> N
 def test_commit_validation_collects_false_and_raised_errors_together() -> None:
     manager = TransactionManager()
 
-    def returns_false(_ctx: LifecycleContext) -> bool:
+    def returns_false(self: LifecycleContext) -> bool:
         return False
 
-    def raises_exc(_ctx: LifecycleContext) -> bool:
+    def raises_exc(self: LifecycleContext) -> bool:
         raise RuntimeError("validator blew up")
 
     @managed_context
@@ -1741,3 +1742,54 @@ def test_commit_validation_collects_false_and_raised_errors_together() -> None:
     assert isinstance(excs[0], LifecycleValidatorReturnedFalse)
     assert excs[0].context is quiet
     assert isinstance(excs[1], RuntimeError) and str(excs[1]) == "validator blew up"
+
+
+def test_default_factory_rejects_unknown_injected_name_at_decoration() -> None:
+    with pytest.raises(TypeError, match="unsupported parameter"):
+        @managed_context
+        class _BadFactoryContext:
+            x: int = managed(default_factory=lambda self, typo_name: 1)
+
+
+def test_default_factory_rejects_varargs_at_decoration() -> None:
+    with pytest.raises(TypeError, match="named parameters only"):
+        @managed_context
+        class _BadVarargsContext:
+            x: int = managed(default_factory=lambda self, *args: 1)
+
+
+def test_default_factory_rejects_kwargs_only_at_decoration() -> None:
+    with pytest.raises(TypeError, match="named parameters only"):
+        @managed_context
+        class _BadKwargsContext:
+            x: int = managed(default_factory=lambda **kwargs: 1)
+
+
+def test_commit_validator_rejects_disallowed_builtin_at_decoration() -> None:
+    with pytest.raises(TypeError, match="unsupported parameter"):
+        @managed_context
+        class _BadValidatorContext:
+            v: int = managed(default=0)
+            chk: object | None = commit_validator(default=lambda self, current: True)
+
+
+def test_compile_injected_runner_resolves_initvar_like_name_via_resolver() -> None:
+    from pyrolyze.lifecycle import _compile_injected_runner
+
+    def factory(self: types.SimpleNamespace, seed: int) -> int:
+        return self.label + seed
+
+    runner = _compile_injected_runner(
+        field_name="f",
+        hook_name="default_factory",
+        function=factory,
+        allowed_params=frozenset({"self", "seed"}),
+        initvar_resolve=lambda _state, name: {"seed": 40}[name],
+    )
+    owner = types.SimpleNamespace(label=2)
+    state = types.SimpleNamespace(
+        owner=owner,
+        current_view=None,
+        working_view=None,
+    )
+    assert runner(state, {}) == 42
