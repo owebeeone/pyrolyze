@@ -351,7 +351,7 @@ Important: `initvar.default_factory` is **not** a normal field runner. It needs 
 
 - before `_state`
 - allowed params = earlier initvar names plus optional `cls`
-- no `self`, `current`, `working`, `previous`, `tx_group`
+- no `self`, `current`, `working`, `previous`, `tx_key`
 
 ### 8. Generalize `_compile_injected_runner(...)`
 

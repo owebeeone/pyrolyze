@@ -31,7 +31,7 @@ It is organized by reader and task:
 - [reference/Lifecycle_And_Freezable.md](reference/Lifecycle_And_Freezable.md)
   - declarative state lifecycle
   - frozen/mutable model pairing
-  - transaction groups, bindings, and rollback patterns
+  - transaction keys, bindings, and rollback patterns
 
 Recommended reading order:
 

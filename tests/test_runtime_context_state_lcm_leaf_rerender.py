@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pyrolyze.api import UIElement
 from pyrolyze.runtime.context_bare_refactor_lcm import LeafSlotContext, ModuleId, RenderContext, SlotId
-from pyrolyze.runtime.context_state_lcm.context_base import PASS_TX_GROUP
+from pyrolyze.runtime.context_state_lcm.context_base import PASS_TX_KEY
 
 
 def _slot(index: int) -> SlotId:
@@ -20,7 +20,7 @@ def _emit_text(ctx: LeafSlotContext, value: str) -> None:
 
 def _run_leaf_pass(root: RenderContext, slot_order: tuple[int, ...]) -> None:
     txm = root._state_mgr._transaction_manager
-    with txm.begin(PASS_TX_GROUP):
+    with txm.begin(PASS_TX_KEY):
         root._state_mgr.children_state = {}
         root._state_mgr.ui_state = ()
         for slot_index in slot_order:

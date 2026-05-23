@@ -10,7 +10,7 @@ discussion.
 2. Introduce new top-level `TransactionManager`
 3. Implement:
    - lazy `GroupTransactionManager` creation
-   - explicit manager `tx_groups`
+   - explicit manager `tx_keys`
    - group-based `begin`, `validate`, `commit_only`, `commit`, `rollback`,
      `enlist`, `drop`
    - no-argument `begin`, `commit`, `rollback` for “all groups”
@@ -22,9 +22,9 @@ discussion.
 
 This phase should be almost entirely mechanical.
 
-## Phase 2: Add `tx_group` to Field Specs
+## Phase 2: Add `tx_key` to Field Specs
 
-1. Add `tx_group` to:
+1. Add `tx_key` to:
    - `LifecycleField`
    - `FieldSpec`
    - field constructors (`managed`, `binding`, `owned`, `transient`)
@@ -44,10 +44,10 @@ if runtime behavior still defaults to one group in many places.
    - `working_tx_id`
 
 with per-group working state
-2. Route reads/writes through the field’s `tx_group`
+2. Route reads/writes through the field’s `tx_key`
 3. Keep current/published storage shared
 4. Keep one unified public `working` view
-5. Preserve hot-path performance by compiling `tx_group` into getter/setter
+5. Preserve hot-path performance by compiling `tx_key` into getter/setter
    dispatch tables rather than looking it up dynamically from `FieldSpec` on
    every access
 6. Prefer class-local compiled `tx_index` slots and per-instance indexed
@@ -83,7 +83,7 @@ Implement:
    - `current`
    - `working`
    - `previous`
-   - `tx_group`
+   - `tx_key`
 5. Deferred release bookkeeping for old `binding` / `owned` values so
    `previous` remains valid until all `on_after_commit` handlers for that group
    have completed
@@ -91,7 +91,7 @@ Implement:
    post-commit handlers raise
 7. Inheritance / aggregation rules for commit-hook declarations:
    - aggregate by distinct field name
-   - same-name override may not change `tx_group`
+   - same-name override may not change `tx_key`
    - execution order follows merged MRO field order
 
 This phase is the missing dependency boundary that the original plan did not
@@ -109,7 +109,7 @@ Add tests for:
 - rollback/commit affect only the named groups
 - `self.working` reads per-field working state across all active groups
 - validator/order metadata uses default group when unspecified
-- unknown groups fail immediately against manager `tx_groups`
+- unknown groups fail immediately against manager `tx_keys`
 - context-manager `begin(...)` commits on clean exit and rolls back on exception
 - multi-group `begin/commit/rollback` remain ordered independent operations
   rather than atomic coupled operations
@@ -131,4 +131,4 @@ Add tests for:
   current/working fields
 - commit-specific hooks aggregate by distinct field name and run in MRO-derived
   merged field order
-- same-name commit-specific hook overrides may not change `tx_group`
+- same-name commit-specific hook overrides may not change `tx_key`

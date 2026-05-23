@@ -43,7 +43,7 @@ if TYPE_CHECKING:
     from pyrolyze.runtime.context_state_lcm.render_context import RenderContextStateMgr
 
 
-PASS_TX_GROUP = "context_pass"
+PASS_TX_KEY = "context_pass"
 UiNode = UIElement | MountDirective
 
 
@@ -139,13 +139,13 @@ class ContextBaseStateMgr(StateMgrBase):
     children_state: dict[Any, Any] = managed(
         default_factory=dict,
         compare="identity",
-        tx_group=PASS_TX_GROUP,
+        tx_key=PASS_TX_KEY,
     )
-    ui_state: tuple[Any, ...] = managed(default_factory=tuple, tx_group=PASS_TX_GROUP)
-    own_ui_state: tuple[Any, ...] = managed(default_factory=tuple, tx_group=PASS_TX_GROUP)
+    ui_state: tuple[Any, ...] = managed(default_factory=tuple, tx_key=PASS_TX_KEY)
+    own_ui_state: tuple[Any, ...] = managed(default_factory=tuple, tx_key=PASS_TX_KEY)
     own_ui_entries_state: tuple[_CommittedUiEntry, ...] = managed(
         default_factory=tuple,
-        tx_group=PASS_TX_GROUP,
+        tx_key=PASS_TX_KEY,
     )
 
     # Integration note:
@@ -246,7 +246,7 @@ class ContextBaseStateMgr(StateMgrBase):
             raise RuntimeError("scope is not active")
 
     def is_scope_active(self) -> bool:
-        return self._transaction_manager.active_transaction_for(PASS_TX_GROUP) is not None
+        return self._transaction_manager.active_transaction_for(PASS_TX_KEY) is not None
 
     def register_child(self, slot_id: Any, child: Any) -> None:
         next_children = dict(self.children_state)

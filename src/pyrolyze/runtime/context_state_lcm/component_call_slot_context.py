@@ -21,6 +21,7 @@ from ._support import (
 )
 from pyrolyze.runtime.function_arg_helpers import build_function_arg_dirty_map, pack_function_args
 
+from .context_base import PASS_TX_KEY
 from .rerunnable_slot_context import RerunnableSlotContextStateMgr
 
 
@@ -50,7 +51,7 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
     _call_state: FrozenComponentCallInvocationState = managed(
         default_factory=FrozenComponentCallInvocationState,
         init=False,
-        tx_group=PASS_TX_GROUP,
+        tx_key=PASS_TX_KEY,
     )
 
     def __init__(self, owner: object, **kwargs: object) -> None:

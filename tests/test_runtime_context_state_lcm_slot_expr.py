@@ -3,7 +3,7 @@ from __future__ import annotations
 from pyrolyze.runtime.context_state_lcm.slot_expr_slot_context import SlotExprSlotContextStateMgr
 from pyrolyze.runtime.slot_call_semantics import PyrolyzeMountAdvertisementBinding
 from pyrolyze.runtime.slot_kinds import ContextKind
-from pyrolyze.runtime.context_state_lcm.context_base import PASS_TX_GROUP
+from pyrolyze.runtime.context_state_lcm.context_base import PASS_TX_KEY
 from pyrolyze.lifecycle import TransactionManager
 
 
@@ -21,7 +21,7 @@ class _DummyOwner:
 
 class _RenderContextStateMgrStub:
     def __init__(self) -> None:
-        self._transaction_manager = TransactionManager(tx_groups={PASS_TX_GROUP})
+        self._transaction_manager = TransactionManager(tx_keys={PASS_TX_KEY})
         self.slots: dict[object, object] = {}
 
     def register_slot_state_mgr(self, slot_state_mgr: object) -> None:
@@ -60,7 +60,7 @@ def test_slot_expr_runtime_locals_reuse_per_slot() -> None:
 def test_slot_expr_stage_slot_expr_pass_merges_ids_and_callbacks() -> None:
     mgr = _mgr()
     callback = lambda: None
-    mgr._transaction_manager.begin(PASS_TX_GROUP)
+    mgr._transaction_manager.begin(PASS_TX_KEY)
 
     mgr.stage_slot_expr_pass(
         visited_call_site_ids=("one", "two"),
@@ -73,13 +73,13 @@ def test_slot_expr_stage_slot_expr_pass_merges_ids_and_callbacks() -> None:
 
     assert mgr._staged_call_site_ids == ("one", "two", "three")
     assert mgr._staged_post_commit_callbacks == (callback,)
-    mgr._transaction_manager.rollback(PASS_TX_GROUP)
+    mgr._transaction_manager.rollback(PASS_TX_KEY)
 
 
 def test_slot_expr_commit_and_rollback_binding_clear_staged_state() -> None:
     mgr = _mgr()
     callback = lambda: None
-    mgr._transaction_manager.begin(PASS_TX_GROUP)
+    mgr._transaction_manager.begin(PASS_TX_KEY)
     mgr._staged_call_site_ids = ("one",)
     mgr._staged_post_commit_callbacks = (callback,)
 
@@ -87,14 +87,14 @@ def test_slot_expr_commit_and_rollback_binding_clear_staged_state() -> None:
     assert mgr._staged_call_site_ids == ()
     assert mgr._staged_post_commit_callbacks == ()
 
-    mgr._transaction_manager.rollback(PASS_TX_GROUP)
-    mgr._transaction_manager.begin(PASS_TX_GROUP)
+    mgr._transaction_manager.rollback(PASS_TX_KEY)
+    mgr._transaction_manager.begin(PASS_TX_KEY)
     mgr._staged_call_site_ids = ("one",)
     mgr._staged_post_commit_callbacks = (callback,)
     mgr.rollback_binding()
     assert mgr._staged_call_site_ids == ()
     assert mgr._staged_post_commit_callbacks == ()
-    mgr._transaction_manager.rollback(PASS_TX_GROUP)
+    mgr._transaction_manager.rollback(PASS_TX_KEY)
 
 
 def test_slot_expr_mount_binding_type_remains_pyrolyze_advert_binding() -> None:

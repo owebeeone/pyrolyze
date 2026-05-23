@@ -75,7 +75,7 @@ first-class **`InitVarSpec`** (exact runtime class name TBD), **separate from**
 | --- | --- | --- |
 | Lifecycle kind | `kind: type[LCKind]` | none (not an `LCKind`) |
 | Stored in `current` / `working` | yes | no |
-| `compare`, `tx_group`, `freeze` / `thaw`, … | per kind | not applicable |
+| `compare`, `tx_key`, `freeze` / `thaw`, … | per kind | not applicable |
 | Constructor kw | when `init=True` | when `init=True` |
 | Consumed by factories / hooks | via injection | via injection (direct names only) |
 
@@ -104,7 +104,7 @@ only depend on initvars **earlier** in that order. **Cycle detection:** if
 statically detectable, **fail at class decoration time**; otherwise fail at
 construction with an error in the same style as existing factory-cycle reporting.
 
-**Not allowed:** `self`, `current`, `working`, `previous`, `tx_group`, bare
+**Not allowed:** `self`, `current`, `working`, `previous`, `tx_key`, bare
 `*args` / `**kwargs` as the sole way to receive lifecycle-provided values.
 
 **Collection and validation:**
@@ -321,7 +321,7 @@ Rules:
 - supports `init`
 - supports `default`
 - supports `default_factory`
-- does not support `tx_group`
+- does not support `tx_key`
 - does not support `compare`
 - does not support `freeze` / `thaw`
 - does not support `working_default_factory`
@@ -337,7 +337,7 @@ LIFECYCLE_RESERVED_FIELD_NAMES: tuple[str, ...] = (
     "current",
     "working",
     "previous",
-    "tx_group",
+    "tx_key",
 )
 ```
 
@@ -403,7 +403,7 @@ Rules:
 - **`init` is not independently overridable.** For a given field name, every
   `FieldSpec` contribution along the MRO that sets `init` **must agree** on the
   value. **Decoration fails** on mismatch (same spirit as forbidding incompatible
-  `kind` / `compare` / `tx_group` changes).
+  `kind` / `compare` / `tx_key` changes).
 - If a subclass redeclares the name only to adjust other attributes, it may
   **omit** `init` to inherit the merged value from bases, or **repeat** the same
   value explicitly. **Specifying a different `init` than the merged parent value
@@ -416,7 +416,7 @@ The same agreement rule applies to merged initvars:
   inherit the merged value; a mismatched explicit `init` fails decoration.
 
 `_merge_field_specs` must enforce **`init`** compatibility with the same clarity as
-existing `default` / `compare` / `tx_group` checks.
+existing `default` / `compare` / `tx_key` checks.
 
 ### Example
 
@@ -583,7 +583,7 @@ in addition to existing injected names such as:
 - `self`
 - `current`
 - `working`
-- `tx_group` where applicable
+- `tx_key` where applicable
 
 **`classvar` `default_factory`** uses **`cls`** only (see
 [`classvar` (parallel path)](#classvar-parallel-path--not-fieldspec--not-state-ftables));

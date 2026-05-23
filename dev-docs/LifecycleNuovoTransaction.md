@@ -20,7 +20,7 @@ In other words, we need to be able to say:
 - these fields participate in the publication transaction
 - these other fields participate in a pass/scratch transaction
 
-and then choose which transaction groups are active for a given operation.
+and then choose which transaction keys are active for a given operation.
 
 This lets us support:
 
@@ -32,18 +32,18 @@ without hardcoding those semantics into every field kind.
 
 ## Core Idea
 
-Add a `tx_group` field-spec attribute.
+Add a `tx_key` field-spec attribute.
 
-Every transactional field belongs to a transaction group.
+Every transactional field belongs to a transaction key.
 
 Default:
 
-- `tx_group=DEFAULT_TRANSACTION`
+- `tx_key=DEFAULT_TRANSACTION`
 
 That keeps existing lifecycle declarations simple. Only fields that need
 different transaction behavior need to specify another group.
 
-`tx_group` should be any `Hashable`, not just `str`.
+`tx_key` should be any `Hashable`, not just `str`.
 
 Why:
 
@@ -54,7 +54,7 @@ Why:
 
 So the effective contract is:
 
-- `tx_group: Hashable`
+- `tx_key: Hashable`
 
 with lifecycle default:
 
@@ -73,7 +73,7 @@ from collections.abc import Hashable
 
 DEFAULT_TRANSACTION: Hashable = "default_transaction"
 
-value: int = managed(default=0, tx_group=DEFAULT_TRANSACTION)
+value: int = managed(default=0, tx_key=DEFAULT_TRANSACTION)
 ```
 
 and application code can define semantic aliases:
@@ -84,10 +84,10 @@ from collections.abc import Hashable
 PUBLISH_TRANSACTION: Hashable = "publish_transaction"
 
 
-def publish_transient(*, tx_group: Hashable | None = None, **kwds):
-    if tx_group is None:
-        tx_group = PUBLISH_TRANSACTION
-    return transient(tx_group=tx_group, **kwds)
+def publish_transient(*, tx_key: Hashable | None = None, **kwds):
+    if tx_key is None:
+        tx_key = PUBLISH_TRANSACTION
+    return transient(tx_key=tx_key, **kwds)
 ```
 
 Then:
@@ -105,14 +105,14 @@ The current single-group `TransactionManager` should be renamed:
 
 - `GroupTransactionManager`
 
-It remains the transaction engine for one transaction group.
+It remains the transaction engine for one transaction key.
 
 Then introduce a new top-level:
 
 - `TransactionManager`
 
 This new `TransactionManager` owns a map of group managers and routes lifecycle
-operations by `tx_group`.
+operations by `tx_key`.
 
 ## Manager Split
 
@@ -137,20 +137,20 @@ This becomes the top-level multi-group coordinator.
 Responsibilities:
 
 - maintain `dict[Hashable, GroupTransactionManager]`
-- maintain the allowed `tx_groups` universe for that manager
+- maintain the allowed `tx_keys` universe for that manager
 - create group managers on demand, but only for allowed groups
 - route begin/commit/rollback/enlist/drop by group
 
 Constructor shape:
 
 ```python
-TransactionManager(tx_groups={PUBLISH_TRANSACTION, PASS_TRANSACTION})
+TransactionManager(tx_keys={PUBLISH_TRANSACTION, PASS_TRANSACTION})
 ```
 
 Semantics:
 
 - `DEFAULT_TRANSACTION` is always implicitly supported
-- so `tx_groups={PUBLISH_TRANSACTION, PASS_TRANSACTION}` means the full set:
+- so `tx_keys={PUBLISH_TRANSACTION, PASS_TRANSACTION}` means the full set:
   - `{DEFAULT_TRANSACTION, PUBLISH_TRANSACTION, PASS_TRANSACTION}`
 - asking the manager to operate on an unknown group is an error
 
@@ -163,7 +163,7 @@ avoiding boilerplate repetition of `DEFAULT_TRANSACTION`.
 
 Add:
 
-- `tx_group: Hashable = DEFAULT_TRANSACTION`
+- `tx_key: Hashable = DEFAULT_TRANSACTION`
 
 to transactional lifecycle fields:
 
@@ -213,7 +213,7 @@ So the API supports both:
 - explicit group control
 - convenient “all groups” operation
 
-If an explicit group is not in the manager's supported `tx_groups` set, the
+If an explicit group is not in the manager's supported `tx_keys` set, the
 operation must fail immediately.
 
 Importantly, multi-group operations are **not** atomic coupled operations.
@@ -273,15 +273,15 @@ and if `commit(B)` succeeds but `commit(A)` later fails:
 - `A` fails according to its own group semantics
 - no automatic rollback of `B` occurs
 
-## Manager `tx_groups`
+## Manager `tx_keys`
 
-Each `TransactionManager` has an explicit `tx_groups` set.
+Each `TransactionManager` has an explicit `tx_keys` set.
 
-This is the set of supported non-default transaction groups for that manager.
+This is the set of supported non-default transaction keys for that manager.
 
 Effective supported group universe:
 
-- `{DEFAULT_TRANSACTION} ∪ tx_groups`
+- `{DEFAULT_TRANSACTION} ∪ tx_keys`
 
 This gives us:
 
@@ -295,10 +295,10 @@ registry.
 
 ## Why `begin()` Should Mean "All Groups"
 
-Once the manager has an explicit `tx_groups` set, `begin()` with no
+Once the manager has an explicit `tx_keys` set, `begin()` with no
 parameters becomes well-defined:
 
-- begin all groups in `{DEFAULT_TRANSACTION} ∪ tx_groups`
+- begin all groups in `{DEFAULT_TRANSACTION} ∪ tx_keys`
 
 That is worth supporting because it matches the common “start the full lifecycle
 transaction envelope” use case while still allowing more selective calls where
@@ -389,7 +389,7 @@ Rules:
   - otherwise `self.working.f` returns the current value
 - writing `self.working.f = ...` still requires group `G` to be active
 - thaw / working initialization for frozen or transient state still only occurs
-  when the field's own transaction group is active
+  when the field's own transaction key is active
 
 So the public semantics stay familiar:
 
@@ -401,7 +401,7 @@ The only change is that "active transaction" is now resolved per field group.
 ## Working State Routing
 
 Each transactional field must resolve its working state through the manager for
-its own `tx_group`.
+its own `tx_key`.
 
 That means lifecycle state accessors need to stop assuming one global:
 
@@ -433,7 +433,7 @@ Old model:
 
 New model:
 
-- a context is enlisted once per active transaction group
+- a context is enlisted once per active transaction key
 
 That means the unit of enlistment is:
 
@@ -445,7 +445,7 @@ not:
 - one enlistment per field
 
 This is important because multiple fields on the same context may belong to the
-same transaction group. We only want to enlist that context once for that
+same transaction key. We only want to enlist that context once for that
 group’s transaction.
 
 So:
@@ -486,13 +486,13 @@ Grouped transaction routing affects the hottest lifecycle paths, especially:
 - default-view reads/writes that promote to working state
 
 So the implementation must avoid per-access dynamic `FieldSpec` lookups for
-`tx_group`.
+`tx_key`.
 
 Required approach:
 
-- compile `tx_group` into the field getter/setter tables at decoration time
+- compile `tx_key` into the field getter/setter tables at decoration time
 - field accessors should already know the field's group when invoked
-- do **not** fetch `spec = __field_specs__[name]` and then read `spec.tx_group`
+- do **not** fetch `spec = __field_specs__[name]` and then read `spec.tx_key`
   on every hot-path access
 
 That means the grouped version of lifecycle should preserve the current style:
@@ -508,15 +508,15 @@ state lookup, for example:
 
 Preferred implementation:
 
-- assign each used `tx_group` a stable class-local slot index at
+- assign each used `tx_key` a stable class-local slot index at
   `managed_context` decoration time
 - compile field dispatch tables with that `tx_index`
 - store per-group transaction state in indexable per-instance storage
 
 Conceptually, the generated lifecycle state class would carry:
 
-- `__class_tx_groups__: tuple[Hashable, ...]`
-- `__class_tx_group_to_index__: dict[Hashable, int]`
+- `__class_tx_keys__: tuple[Hashable, ...]`
+- `__class_tx_key_to_index__: dict[Hashable, int]`
 
 and each context state instance would carry something like:
 
@@ -596,13 +596,13 @@ when needed.
 For example, conceptually:
 
 ```python
-must_pass = commit_validator(default=validate_publish, tx_group=PUBLISH_TRANSACTION)
-rank = commit_order_key(default=(0,), tx_group=PUBLISH_TRANSACTION)
+must_pass = commit_validator(default=validate_publish, tx_key=PUBLISH_TRANSACTION)
+rank = commit_order_key(default=(0,), tx_key=PUBLISH_TRANSACTION)
 ```
 
 This means:
 
-- validator/order metadata is evaluated against the specified transaction group
+- validator/order metadata is evaluated against the specified transaction key
 - unspecified group means default-group behavior
 
 ### Commit-Specific Function Lifetime Rule
@@ -674,16 +674,16 @@ Recommended injected parameters:
   - `self`
   - `current`
   - `working`
-  - `tx_group`
+  - `tx_key`
 - `on_after_commit`
   - `self`
   - `previous`
   - `current`
-  - `tx_group`
+  - `tx_key`
 - `on_after_rollback`
   - `self`
   - `current`
-  - `tx_group`
+  - `tx_key`
 
 For `on_after_rollback`, `current` is just the ordinary current view after the
 rollback for that group, which is also the current state that existed before and
@@ -733,8 +733,8 @@ Effective execution order is the MRO-merged field order with:
 - `publish_b` retained from the base
 - `publish_c` added by the child
 
-Same-name overrides must not change `tx_group`. If a derived hook field reuses
-the same name with a different `tx_group`, that should be an error.
+Same-name overrides must not change `tx_key`. If a derived hook field reuses
+the same name with a different `tx_key`, that should be an error.
 
 ## Initial Implementation Plan
 
@@ -744,7 +744,7 @@ the same name with a different `tx_group`, that should be an error.
 2. Introduce new top-level `TransactionManager`
 3. Implement:
    - lazy `GroupTransactionManager` creation
-   - explicit manager `tx_groups`
+   - explicit manager `tx_keys`
    - group-based `begin`, `commit`, `rollback`, `enlist`, `drop`
    - no-argument `begin`, `commit`, `rollback` for “all groups”
    - context-manager form for `begin(...)`
@@ -753,9 +753,9 @@ the same name with a different `tx_group`, that should be an error.
 
 This phase should be almost entirely mechanical.
 
-### Phase 2: Add `tx_group` to Field Specs
+### Phase 2: Add `tx_key` to Field Specs
 
-1. Add `tx_group` to:
+1. Add `tx_key` to:
    - `LifecycleField`
    - `FieldSpec`
    - field constructors (`managed`, `binding`, `owned`, `transient`)
@@ -775,7 +775,7 @@ if runtime behavior still defaults to one group in many places.
    - `working_tx_id`
 
 with per-group working state
-2. Route reads/writes through the field’s `tx_group`
+2. Route reads/writes through the field’s `tx_key`
 3. Keep current/published storage shared
 4. Keep one unified public `working` view
 
@@ -808,7 +808,7 @@ Implement:
    - `current`
    - `working`
    - `previous`
-   - `tx_group`
+   - `tx_key`
 5. Deferred release bookkeeping for old `binding` / `owned` values so
    `previous` remains valid until all `on_after_commit` handlers for that group
    complete
@@ -816,7 +816,7 @@ Implement:
    exactly once even if post-commit handlers raise
 7. Inheritance / aggregation behavior:
    - aggregate by distinct field name
-   - same-name overrides may not change `tx_group`
+   - same-name overrides may not change `tx_key`
    - run in merged MRO field order
 
 This is the missing dependency boundary that the original plan failed to make
@@ -834,7 +834,7 @@ Add tests for:
 - rollback/commit affect only the named groups
 - `self.working` reads per-field working state across all active groups
 - validator/order metadata uses default group when unspecified
-- unknown groups fail immediately against manager `tx_groups`
+- unknown groups fail immediately against manager `tx_keys`
 - context-manager `begin(...)` commits on clean exit and rolls back on exception
 - multi-group `begin/commit/rollback` remain ordered independent operations
   rather than atomic coupled operations
@@ -854,7 +854,7 @@ Add tests for:
   current/working fields
 - commit-specific hooks aggregate by distinct field name and run in MRO-derived
   merged field order
-- same-name commit-specific hook overrides may not change `tx_group`
+- same-name commit-specific hook overrides may not change `tx_key`
 
 ## Immediate Application Use Case
 

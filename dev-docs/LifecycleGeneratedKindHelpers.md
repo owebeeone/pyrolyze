@@ -42,7 +42,7 @@ This replaces:
   `ForbidsWorkingDefaultFactoryKind`, `AllowsInitialWorkingKind`,
   `ForbidsInitialWorkingKind`, `AllowsStateFactoryKind`,
   `ForbidsStateFactoryKind`, `AllowsStateCopyKind`, `ForbidsStateCopyKind`,
-  `AllowsTxGroupKind`, `ForbidsCustomTxGroupKind` mixin classes
+  `AllowsTxKeyKind`, `ForbidsCustomTxKeyKind` mixin classes
 - the 2 `ValueCompareKind`, `ValueOrIdentityCompareKind` mixin classes
 - all individual `validate_compare`, `validate_default`, etc. methods
 - the per-kind handwritten helper functions (`const`, `managed`, etc.)
@@ -123,7 +123,7 @@ drawn from the `lifecycle_field` signature itself:
 ```python
 _PARAM_PRESETS = {
     "compare":                 ExposedParam("str",                            '"value"',              allowed_values=frozenset({"value", "identity"})),
-    "tx_group":                ExposedParam("Hashable",                       "DEFAULT_TRANSACTION"),
+    "tx_key":                ExposedParam("Hashable",                       "DEFAULT_TRANSACTION"),
     "default":                 ExposedParam("Any",                            "MISSING"),
     "default_factory":         ExposedParam("Callable[[], Any] | object",     "MISSING"),
     "working_default_factory": ExposedParam("Callable[[], Any] | object",     "MISSING"),
@@ -187,7 +187,7 @@ The generic validator replaces `validate_field_spec` and all per-dimension
 ```python
 _LIFECYCLE_FIELD_NEUTRALS = {
     "compare":                 "value",
-    "tx_group":                DEFAULT_TRANSACTION,
+    "tx_key":                DEFAULT_TRANSACTION,
     "default":                 MISSING,
     "default_factory":         MISSING,
     "working_default_factory": MISSING,
@@ -231,7 +231,7 @@ are unchanged.
 ```python
 class DefaultStoredKind(StoredKind, OverlayOperationalKind):
     helper_params = (
-        _param("compare").param("tx_group")
+        _param("compare").param("tx_key")
         .param("default").param("default_factory")
         .param("initial_working")
         .param("freeze").param("thaw")
@@ -241,7 +241,7 @@ class DefaultStoredKind(StoredKind, OverlayOperationalKind):
 
 class SimpleStoredKind(StoredKind, OverlayOperationalKind):
     helper_params = (
-        _param("compare").param("tx_group")
+        _param("compare").param("tx_key")
         .param("default").param("default_factory")
     )
 
@@ -256,13 +256,13 @@ class ImmutableConfigKind(StoredKind):
 class HookKind(NonStoredHookKind, HookOperationalKind):
     helper_params = (
         _fixed("compare", '"identity"')
-        .param("tx_group").param("default")
+        .param("tx_key").param("default")
     )
 
 
 class StoredMetadataKind(StoredKind, StoredDeclarationOperationalKind):
     helper_params = (
-        _param("compare").param("tx_group").param("default")
+        _param("compare").param("tx_key").param("default")
     )
 
 
@@ -275,7 +275,7 @@ class LocalLikeKind(StoredKind):
 
 class TxScopedScratchKind(TransientOperationalKind, LocalLikeKind):
     helper_params = (
-        _param("working_default_factory").param("tx_group")
+        _param("working_default_factory").param("tx_key")
     )
 
 
@@ -368,19 +368,19 @@ class CommitValidatorKind(StoredMetadataKind):
 @define_kind
 class OnBeforeCommitKind(HookDeclarationKind):
     name = "on_before_commit"
-    helper_doc = "Hook invoked before a transaction group commits."
+    helper_doc = "Hook invoked before a transaction key commits."
 
 
 @define_kind
 class OnAfterCommitKind(HookDeclarationKind):
     name = "on_after_commit"
-    helper_doc = "Hook invoked after a transaction group commits."
+    helper_doc = "Hook invoked after a transaction key commits."
 
 
 @define_kind
 class OnAfterRollbackKind(HookDeclarationKind):
     name = "on_after_rollback"
-    helper_doc = "Hook invoked after a transaction group rolls back."
+    helper_doc = "Hook invoked after a transaction key rolls back."
 ```
 
 Note: `BindingKind` and `OwnedKind` inherit `compare` as an exposed param from
@@ -461,7 +461,7 @@ which was correct for `CommitValidatorKind` but too restrictive for
 - 16 Allows/Forbids/Compare mixin classes
 - all individual `validate_compare`, `validate_default`, `validate_default_factory`,
   `validate_working_default_factory`, `validate_initial_working`,
-  `validate_state_factory`, `validate_state_copy`, `validate_tx_group` methods
+  `validate_state_factory`, `validate_state_copy`, `validate_tx_key` methods
 - 13 handwritten helper functions
 - 13 handwritten `LC_*` constant assignments
 - handwritten `__all__` entries for helpers and `LC_*` constants
@@ -667,7 +667,7 @@ class LCKind:
         return None
 
     @classmethod
-    def validate_tx_group(cls, spec: FieldSpec) -> None:
+    def validate_tx_key(cls, spec: FieldSpec) -> None:
         return None
 
     # Catch-all validation for rules that do not fit a smaller capability facet.
@@ -1218,17 +1218,17 @@ class ForbidsStateCopyKind(LCKind):
 
 
 # Transaction-group traits.
-class AllowsTxGroupKind(LCKind):
+class AllowsTxKeyKind(LCKind):
     @classmethod
-    def validate_tx_group(cls, spec: FieldSpec) -> None:
+    def validate_tx_key(cls, spec: FieldSpec) -> None:
         return None
 
 
-class ForbidsCustomTxGroupKind(LCKind):
+class ForbidsCustomTxKeyKind(LCKind):
     @classmethod
-    def validate_tx_group(cls, spec: FieldSpec) -> None:
-        if spec.tx_group != DEFAULT_TRANSACTION:
-            raise TypeError(f"{cls.name!r} fields cannot override tx_group")
+    def validate_tx_key(cls, spec: FieldSpec) -> None:
+        if spec.tx_key != DEFAULT_TRANSACTION:
+            raise TypeError(f"{cls.name!r} fields cannot override tx_key")
 
 
 # Registration/state-routing helpers.
@@ -1404,7 +1404,7 @@ class DefaultStoredKind(
     AllowsInitialWorkingKind,
     AllowsStateFactoryKind,
     AllowsStateCopyKind,
-    AllowsTxGroupKind,
+    AllowsTxKeyKind,
 ):
     pass
 
@@ -1419,7 +1419,7 @@ class SimpleStoredKind(
     ForbidsInitialWorkingKind,
     ForbidsStateFactoryKind,
     ForbidsStateCopyKind,
-    AllowsTxGroupKind,
+    AllowsTxKeyKind,
 ):
     pass
 
@@ -1434,7 +1434,7 @@ class HookKind(
     ForbidsInitialWorkingKind,
     ForbidsStateFactoryKind,
     ForbidsStateCopyKind,
-    AllowsTxGroupKind,
+    AllowsTxKeyKind,
 ):
     # Phase 1A must preserve the current public helper surface. The existing
     # hook helpers currently pass compare="identity", so hook kinds must accept
@@ -1461,7 +1461,7 @@ class ImmutableConfigKind(
     ForbidsInitialWorkingKind,
     ForbidsStateFactoryKind,
     ForbidsStateCopyKind,
-    ForbidsCustomTxGroupKind,
+    ForbidsCustomTxKeyKind,
 ):
     # Immutable-style configuration restrictions shared by const and static.
     # This class describes validation policy only; the write/read operational
@@ -1496,7 +1496,7 @@ class StoredMetadataKind(
     ForbidsInitialWorkingKind,
     ForbidsStateFactoryKind,
     ForbidsStateCopyKind,
-    AllowsTxGroupKind,
+    AllowsTxKeyKind,
 ):
     # Stored metadata declarations such as commit order keys and validators.
     # Phase 1A must preserve the current public helper surface. The existing
@@ -1528,16 +1528,16 @@ class LocalLikeKind(
 class TxScopedScratchKind(
     TransientOperationalKind,
     AllowsWorkingDefaultFactoryKind,
-    AllowsTxGroupKind,
+    AllowsTxKeyKind,
     LocalLikeKind,
 ):
-    # Scratch scoped to an open transaction group.
+    # Scratch scoped to an open transaction key.
     pass
 
 
 class NonTransactionalHelperKind(
     ForbidsWorkingDefaultFactoryKind,
-    ForbidsCustomTxGroupKind,
+    ForbidsCustomTxKeyKind,
     LocalLikeKind,
 ):
     # Helper-like fields outside commit / rollback semantics.
@@ -1598,7 +1598,7 @@ class OwnedKind(ResourceKind):
 
 
 class TransientKind(TxScopedScratchKind):
-    # Pass-local scratch that exists only while a transaction group is open.
+    # Pass-local scratch that exists only while a transaction key is open.
     name = "transient"
 
 
@@ -1614,7 +1614,7 @@ class DerivedKind(DerivedHelperKind):
 
 # Special stored metadata kinds.
 class CommitOrderKeyKind(StoredMetadataKind):
-    # Stored declaration used only to order commits within a tx group.
+    # Stored declaration used only to order commits within a tx key.
     name = "commit_order_key"
 
     @classmethod
@@ -1633,11 +1633,11 @@ class CommitOrderKeyKind(StoredMetadataKind):
         spec: FieldSpec,
         special_tables: SpecialFieldTables,
     ) -> None:
-        if spec.tx_group in special_tables.commit_order_key_by_group:
+        if spec.tx_key in special_tables.commit_order_key_by_group:
             raise TypeError(
-                f"at most one commit_order_key field is allowed for group {spec.tx_group!r}"
+                f"at most one commit_order_key field is allowed for group {spec.tx_key!r}"
             )
-        special_tables.commit_order_key_by_group[spec.tx_group] = name
+        special_tables.commit_order_key_by_group[spec.tx_key] = name
 
 
 class CommitValidatorKind(StoredMetadataKind):
@@ -1658,11 +1658,11 @@ class CommitValidatorKind(StoredMetadataKind):
         spec: FieldSpec,
         special_tables: SpecialFieldTables,
     ) -> None:
-        if spec.tx_group in special_tables.commit_validator_by_group:
+        if spec.tx_key in special_tables.commit_validator_by_group:
             raise TypeError(
-                f"at most one commit_validator field is allowed for group {spec.tx_group!r}"
+                f"at most one commit_validator field is allowed for group {spec.tx_key!r}"
             )
-        special_tables.commit_validator_by_group[spec.tx_group] = name
+        special_tables.commit_validator_by_group[spec.tx_key] = name
 
 
 # Hook kinds.
@@ -1677,7 +1677,7 @@ class OnBeforeCommitKind(HookDeclarationKind):
         spec: FieldSpec,
         hook_tables: HookRunnerTables,
     ) -> None:
-        hook_tables.before_commit.setdefault(spec.tx_group, []).append(
+        hook_tables.before_commit.setdefault(spec.tx_key, []).append(
             _compile_hook_runner(
                 field_name=name,
                 hook_name="on_before_commit",
@@ -1698,7 +1698,7 @@ class OnAfterCommitKind(HookDeclarationKind):
         spec: FieldSpec,
         hook_tables: HookRunnerTables,
     ) -> None:
-        hook_tables.after_commit.setdefault(spec.tx_group, []).append(
+        hook_tables.after_commit.setdefault(spec.tx_key, []).append(
             _compile_hook_runner(
                 field_name=name,
                 hook_name="on_after_commit",
@@ -1719,7 +1719,7 @@ class OnAfterRollbackKind(HookDeclarationKind):
         spec: FieldSpec,
         hook_tables: HookRunnerTables,
     ) -> None:
-        hook_tables.after_rollback.setdefault(spec.tx_group, []).append(
+        hook_tables.after_rollback.setdefault(spec.tx_key, []).append(
             _compile_hook_runner(
                 field_name=name,
                 hook_name="on_after_rollback",

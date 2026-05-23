@@ -93,16 +93,16 @@ def record_before_commit(
     self: LifecycleContext,
     current: LifecycleContext,
     working: LifecycleContext,
-    tx_group: str,
+    tx_key: str,
 ) -> None:
-    self.events.append(("before", current.value, working.value, tx_group))
+    self.events.append(("before", current.value, working.value, tx_key))
 
 
 def record_after_commit(
     self: LifecycleContext,
     previous: object,
     current: LifecycleContext,
-    tx_group: str,
+    tx_key: str,
 ) -> None:
     previous_handle = getattr(previous, "handle", None)
     self.events.append(
@@ -111,7 +111,7 @@ def record_after_commit(
             getattr(previous, "value", None),
             current.value,
             None if previous_handle is None else previous_handle.is_closed,
-            tx_group,
+            tx_key,
         )
     )
 
@@ -119,16 +119,16 @@ def record_after_commit(
 def record_after_rollback(
     self: LifecycleContext,
     current: LifecycleContext,
-    tx_group: str,
+    tx_key: str,
 ) -> None:
-    self.events.append(("rollback", current.value, tx_group))
+    self.events.append(("rollback", current.value, tx_key))
 
 
 def raise_after_commit(
     self: LifecycleContext,
     previous: object,
     current: LifecycleContext,
-    tx_group: str,
+    tx_key: str,
 ) -> None:
     if not getattr(self, "raise_hook", False):
         return
@@ -138,7 +138,7 @@ def raise_after_commit(
             "after_raise",
             None if previous_handle is None else previous_handle.is_closed,
             None if current.handle is None else current.handle.label,
-            tx_group,
+            tx_key,
         )
     )
     raise RuntimeError("hook boom")
@@ -148,9 +148,9 @@ def record_base_after_commit(
     self: LifecycleContext,
     previous: object,
     current: LifecycleContext,
-    tx_group: str,
+    tx_key: str,
 ) -> None:
-    del previous, current, tx_group
+    del previous, current, tx_key
     self.events.append("base")
 
 
@@ -158,9 +158,9 @@ def record_derived_after_commit(
     self: LifecycleContext,
     previous: object,
     current: LifecycleContext,
-    tx_group: str,
+    tx_key: str,
 ) -> None:
-    del previous, current, tx_group
+    del previous, current, tx_key
     self.events.append("derived")
 
 
@@ -261,29 +261,29 @@ GROUP_BETA = "group_beta"
 
 @managed_context
 class GroupedFieldContext:
-    value: int = managed(default=0, tx_group=GROUP_ALPHA)
-    scratch: bool = transient(default=False, tx_group=GROUP_BETA)
-    handle: SpyBinding | None = binding(default=None, tx_group=GROUP_ALPHA)
-    child: SpyBinding | None = owned(default=None, tx_group=GROUP_BETA)
-    validator: object | None = commit_validator(default=lambda self: True, tx_group=GROUP_ALPHA)
-    order_key: tuple[int, ...] = commit_order_key(default=(1,), tx_group=GROUP_BETA)
+    value: int = managed(default=0, tx_key=GROUP_ALPHA)
+    scratch: bool = transient(default=False, tx_key=GROUP_BETA)
+    handle: SpyBinding | None = binding(default=None, tx_key=GROUP_ALPHA)
+    child: SpyBinding | None = owned(default=None, tx_key=GROUP_BETA)
+    validator: object | None = commit_validator(default=lambda self: True, tx_key=GROUP_ALPHA)
+    order_key: tuple[int, ...] = commit_order_key(default=(1,), tx_key=GROUP_BETA)
 
 
 @managed_context
 class GroupedBaseContext:
-    value: int = managed(default=0, tx_group=GROUP_ALPHA)
+    value: int = managed(default=0, tx_key=GROUP_ALPHA)
 
 
 @managed_context
 class GroupedDerivedContext(GroupedBaseContext):
-    value: int = managed(default=1, tx_group=GROUP_ALPHA)
+    value: int = managed(default=1, tx_key=GROUP_ALPHA)
 
 
 with pytest.raises(TypeError, match="incompatible lifecycle field override"):
 
     @managed_context
     class GroupedMismatchContext(GroupedBaseContext):
-        value: int = managed(default=1, tx_group=GROUP_BETA)
+        value: int = managed(default=1, tx_key=GROUP_BETA)
 
 
 @managed_context
@@ -295,25 +295,25 @@ class DefaultGroupedMetadataContext:
 
 @managed_context
 class GroupedScratchFactoryContext:
-    value: int = managed(default=0, tx_group=GROUP_ALPHA)
+    value: int = managed(default=0, tx_key=GROUP_ALPHA)
     scratch: list[int] | None = transient(
         default=None,
         working_default_factory=list,
-        tx_group=GROUP_BETA,
+        tx_key=GROUP_BETA,
     )
 
 
 @managed_context
 class GroupedManagedContext:
-    left: int = managed(default=0, tx_group=GROUP_ALPHA)
-    right: int = managed(default=0, tx_group=GROUP_BETA)
+    left: int = managed(default=0, tx_key=GROUP_ALPHA)
+    right: int = managed(default=0, tx_key=GROUP_BETA)
 
 
 @managed_context
 class GroupedIndependentCommitContext:
-    left: int = managed(default=0, tx_group=GROUP_ALPHA)
-    right: int = managed(default=0, tx_group=GROUP_BETA)
-    left_ok: object | None = commit_validator(default=reject_commit, tx_group=GROUP_ALPHA)
+    left: int = managed(default=0, tx_key=GROUP_ALPHA)
+    right: int = managed(default=0, tx_key=GROUP_BETA)
+    left_ok: object | None = commit_validator(default=reject_commit, tx_key=GROUP_ALPHA)
 
 
 @managed_context
@@ -348,7 +348,7 @@ with pytest.raises(TypeError, match="incompatible lifecycle field override"):
     class CommitHookOverrideMismatchContext(CommitHookBaseContext):
         base_after_hook: object | None = on_after_commit(
             default=record_derived_after_commit,
-            tx_group=GROUP_ALPHA,
+            tx_key=GROUP_ALPHA,
         )
 
 
@@ -499,19 +499,19 @@ def test_field_specs_bind_handler_matrix_at_decoration_time() -> None:
     )
 
 
-def test_tx_group_defaults_to_default_transaction() -> None:
+def test_tx_key_defaults_to_default_transaction() -> None:
     specs = MatrixContext.__state_cls__.__field_specs__
 
-    assert specs["value"].tx_group == DEFAULT_TRANSACTION
-    assert specs["ref"].tx_group == DEFAULT_TRANSACTION
-    assert specs["tracked"].tx_group == DEFAULT_TRANSACTION
+    assert specs["value"].tx_key == DEFAULT_TRANSACTION
+    assert specs["ref"].tx_key == DEFAULT_TRANSACTION
+    assert specs["tracked"].tx_key == DEFAULT_TRANSACTION
 
 
 def test_validator_and_order_key_default_to_default_transaction() -> None:
     specs = DefaultGroupedMetadataContext.__state_cls__.__field_specs__
 
-    assert specs["validator"].tx_group == DEFAULT_TRANSACTION
-    assert specs["order_key"].tx_group == DEFAULT_TRANSACTION
+    assert specs["validator"].tx_key == DEFAULT_TRANSACTION
+    assert specs["order_key"].tx_key == DEFAULT_TRANSACTION
 
 
 def test_commit_hook_fields_compile_to_runner_tables_and_not_stored_values() -> None:
@@ -530,21 +530,21 @@ def test_commit_hook_fields_compile_to_runner_tables_and_not_stored_values() -> 
     assert "rollback_hook" not in context.state.current_record.values
 
 
-def test_tx_group_metadata_is_recorded_for_grouped_fields() -> None:
+def test_tx_key_metadata_is_recorded_for_grouped_fields() -> None:
     specs = GroupedFieldContext.__state_cls__.__field_specs__
 
-    assert specs["value"].tx_group == GROUP_ALPHA
-    assert specs["scratch"].tx_group == GROUP_BETA
-    assert specs["handle"].tx_group == GROUP_ALPHA
-    assert specs["child"].tx_group == GROUP_BETA
-    assert specs["validator"].tx_group == GROUP_ALPHA
-    assert specs["order_key"].tx_group == GROUP_BETA
+    assert specs["value"].tx_key == GROUP_ALPHA
+    assert specs["scratch"].tx_key == GROUP_BETA
+    assert specs["handle"].tx_key == GROUP_ALPHA
+    assert specs["child"].tx_key == GROUP_BETA
+    assert specs["validator"].tx_key == GROUP_ALPHA
+    assert specs["order_key"].tx_key == GROUP_BETA
 
 
-def test_same_name_override_may_keep_same_tx_group() -> None:
+def test_same_name_override_may_keep_same_tx_key() -> None:
     spec = GroupedDerivedContext.__state_cls__.__field_specs__["value"]
 
-    assert spec.tx_group == GROUP_ALPHA
+    assert spec.tx_key == GROUP_ALPHA
     assert GroupedDerivedContext().value == 1
 
 
@@ -1370,9 +1370,9 @@ def test_transaction_manager_context_manager_rolls_back_on_exception() -> None:
 
 
 def test_transaction_manager_rejects_unknown_group() -> None:
-    manager = TransactionManager(tx_groups={"known"})
+    manager = TransactionManager(tx_keys={"known"})
 
-    with pytest.raises(RuntimeError, match="unknown lifecycle transaction group"):
+    with pytest.raises(RuntimeError, match="unknown lifecycle transaction key"):
         manager.begin("unknown")
 
 
@@ -1402,7 +1402,7 @@ def test_transaction_manager_validate_then_commit_only_skips_second_validation()
 
 
 def test_grouped_field_write_requires_its_own_transaction_group() -> None:
-    manager = TransactionManager(tx_groups={GROUP_ALPHA, GROUP_BETA})
+    manager = TransactionManager(tx_keys={GROUP_ALPHA, GROUP_BETA})
     context = GroupedFieldContext(transaction_manager=manager)
 
     manager.begin(GROUP_ALPHA)
@@ -1418,7 +1418,7 @@ def test_grouped_field_write_requires_its_own_transaction_group() -> None:
 
 
 def test_default_group_field_does_not_use_non_default_transaction_groups() -> None:
-    manager = TransactionManager(tx_groups={GROUP_ALPHA})
+    manager = TransactionManager(tx_keys={GROUP_ALPHA})
     context = MatrixContext(transaction_manager=manager)
 
     manager.begin(GROUP_ALPHA)
@@ -1434,7 +1434,7 @@ def test_default_group_field_does_not_use_non_default_transaction_groups() -> No
 
 
 def test_unified_working_view_reflects_all_active_group_working_state() -> None:
-    manager = TransactionManager(tx_groups={GROUP_ALPHA, GROUP_BETA})
+    manager = TransactionManager(tx_keys={GROUP_ALPHA, GROUP_BETA})
     context = GroupedFieldContext(transaction_manager=manager)
 
     manager.begin(GROUP_ALPHA)
@@ -1462,7 +1462,7 @@ def test_unified_working_view_reflects_all_active_group_working_state() -> None:
 
 
 def test_publish_only_group_does_not_activate_pass_group_working_default() -> None:
-    manager = TransactionManager(tx_groups={GROUP_ALPHA, GROUP_BETA})
+    manager = TransactionManager(tx_keys={GROUP_ALPHA, GROUP_BETA})
     context = GroupedScratchFactoryContext(transaction_manager=manager)
 
     manager.begin(GROUP_ALPHA)
@@ -1481,7 +1481,7 @@ def test_publish_only_group_does_not_activate_pass_group_working_default() -> No
 
 
 def test_group_begin_counts_are_tracked_independently() -> None:
-    manager = TransactionManager(tx_groups={GROUP_ALPHA, GROUP_BETA})
+    manager = TransactionManager(tx_keys={GROUP_ALPHA, GROUP_BETA})
     context = GroupedManagedContext(transaction_manager=manager)
 
     manager.begin(GROUP_ALPHA)
@@ -1502,7 +1502,7 @@ def test_group_begin_counts_are_tracked_independently() -> None:
 
 
 def test_multi_group_context_manager_commits_each_group() -> None:
-    manager = TransactionManager(tx_groups={GROUP_ALPHA, GROUP_BETA})
+    manager = TransactionManager(tx_keys={GROUP_ALPHA, GROUP_BETA})
     context = GroupedManagedContext(transaction_manager=manager)
 
     with manager.begin(GROUP_ALPHA, GROUP_BETA):
@@ -1518,7 +1518,7 @@ def test_multi_group_context_manager_commits_each_group() -> None:
 
 
 def test_multi_group_commit_is_ordered_independent_not_coupled() -> None:
-    manager = TransactionManager(tx_groups={GROUP_ALPHA, GROUP_BETA})
+    manager = TransactionManager(tx_keys={GROUP_ALPHA, GROUP_BETA})
     context = GroupedIndependentCommitContext(transaction_manager=manager)
 
     manager.begin(GROUP_ALPHA)
@@ -2027,11 +2027,11 @@ def test_scrubbed_helper_params_are_omitted_from_repr() -> None:
     class_repr = repr(class_decl)
 
     assert "compare=" not in init_repr
-    assert "tx_group=" not in init_repr
+    assert "tx_key=" not in init_repr
     assert "init=False" in init_repr
 
     assert "compare=" not in class_repr
-    assert "tx_group=" not in class_repr
+    assert "tx_key=" not in class_repr
     assert "init=" not in class_repr
 
 

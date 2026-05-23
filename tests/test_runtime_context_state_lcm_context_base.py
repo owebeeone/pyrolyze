@@ -4,7 +4,7 @@ import pytest
 
 from pyrolyze.lifecycle import TransactionManager
 from pyrolyze.runtime.context_state_lcm.context_base import ContextBaseStateMgr
-from pyrolyze.runtime.context_state_lcm.context_base import PASS_TX_GROUP
+from pyrolyze.runtime.context_state_lcm.context_base import PASS_TX_KEY
 from pyrolyze.runtime.context_state_lcm.rerunnable_slot_context import RerunnableSlotContextStateMgr
 
 
@@ -85,7 +85,7 @@ def test_context_base_subclass_can_forward_owner_keyword_to_managed_constructor(
 
 
 def test_context_base_reads_transaction_manager_from_render_context_state_mgr() -> None:
-    txm = TransactionManager(tx_groups={PASS_TX_GROUP})
+    txm = TransactionManager(tx_keys={PASS_TX_KEY})
     render_context_state_mgr = _RenderContextStateMgrStub(transaction_manager=txm)
 
     mgr = ContextBaseStateMgr(
@@ -97,7 +97,7 @@ def test_context_base_reads_transaction_manager_from_render_context_state_mgr() 
 
 
 def test_rerunnable_slot_context_inherits_transaction_manager_from_render_context_state_mgr() -> None:
-    txm = TransactionManager(tx_groups={PASS_TX_GROUP})
+    txm = TransactionManager(tx_keys={PASS_TX_KEY})
     render_context_state_mgr = _RenderContextStateMgrStub(transaction_manager=txm)
     parent_state_mgr = _ParentStateMgrStub()
 
@@ -114,7 +114,7 @@ def test_rerunnable_slot_context_inherits_transaction_manager_from_render_contex
 
 
 def test_scope_activity_tracks_transaction_state() -> None:
-    txm = TransactionManager(tx_groups={PASS_TX_GROUP})
+    txm = TransactionManager(tx_keys={PASS_TX_KEY})
     render_context_state_mgr = _RenderContextStateMgrStub(transaction_manager=txm)
     mgr = ContextBaseStateMgr(
         owner=_DummyOwner(),
@@ -125,17 +125,17 @@ def test_scope_activity_tracks_transaction_state() -> None:
     with pytest.raises(RuntimeError, match="scope is not active"):
         mgr.require_active_scope()
 
-    txm.begin(PASS_TX_GROUP)
+    txm.begin(PASS_TX_KEY)
 
     assert mgr.is_scope_active() is True
     mgr.require_active_scope()
 
-    txm.rollback(PASS_TX_GROUP)
+    txm.rollback(PASS_TX_KEY)
     assert mgr.is_scope_active() is False
 
 
 def test_begin_end_and_rollback_pass_are_no_ops() -> None:
-    txm = TransactionManager(tx_groups={PASS_TX_GROUP})
+    txm = TransactionManager(tx_keys={PASS_TX_KEY})
     render_context_state_mgr = _RenderContextStateMgrStub(transaction_manager=txm)
     mgr = ContextBaseStateMgr(
         owner=_DummyOwner(),
@@ -143,12 +143,12 @@ def test_begin_end_and_rollback_pass_are_no_ops() -> None:
     )
 
     mgr.begin_pass()
-    assert txm.active_transaction_for(PASS_TX_GROUP) is None
+    assert txm.active_transaction_for(PASS_TX_KEY) is None
 
-    txm.begin(PASS_TX_GROUP)
-    active = txm.active_transaction_for(PASS_TX_GROUP)
+    txm.begin(PASS_TX_KEY)
+    active = txm.active_transaction_for(PASS_TX_KEY)
     mgr.end_pass()
-    assert txm.active_transaction_for(PASS_TX_GROUP) is active
+    assert txm.active_transaction_for(PASS_TX_KEY) is active
     mgr.rollback_pass()
-    assert txm.active_transaction_for(PASS_TX_GROUP) is active
-    txm.rollback(PASS_TX_GROUP)
+    assert txm.active_transaction_for(PASS_TX_KEY) is active
+    txm.rollback(PASS_TX_KEY)

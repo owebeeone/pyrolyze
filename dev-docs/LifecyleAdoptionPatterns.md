@@ -146,7 +146,7 @@ Rules:
 ### `transient`
 
 Use `transient` for pass-local scratch that exists only while a transaction in
-that field's transaction group is active.
+that field's transaction key is active.
 
 Use it when:
 
@@ -162,12 +162,12 @@ Use it when:
 Patterns:
 
 ```python
-_scope_active: bool = transient(default=False, tx_group=PASS_TX_GROUP)
+_scope_active: bool = transient(default=False, tx_key=PASS_TX_KEY)
 
 _staged_state: ContextStagedState | None = transient(
     default=None,
     working_default_factory=ContextStagedState,
-    tx_group=PASS_TX_GROUP,
+    tx_key=PASS_TX_KEY,
 )
 ```
 
@@ -317,7 +317,7 @@ only valid when it preserves the field semantics:
 
 - same kind
 - same compare semantics
-- same `tx_group`
+- same `tx_key`
 - compatible freeze/thaw/state semantics
 - annotation narrowed or equal
 
@@ -356,16 +356,16 @@ Everything else should come from field defaults or default factories.
 
 ## Transaction Group Rules
 
-Do not assign a non-default transaction group casually. Use a named group only
+Do not assign a non-default transaction key casually. Use a named group only
 when the field truly participates in a different transaction lifecycle.
 
 `ContextBaseStateMgr` example:
 
 ```python
-PASS_TX_GROUP = "context_pass"
+PASS_TX_KEY = "context_pass"
 ```
 
-Use `PASS_TX_GROUP` for pass-local transient state because:
+Use `PASS_TX_KEY` for pass-local transient state because:
 
 - pass scratch should exist only during the pass
 - published subtree state should remain in managed published state
@@ -373,8 +373,8 @@ Use `PASS_TX_GROUP` for pass-local transient state because:
 
 Rules:
 
-- published authoritative state usually stays in the default transaction group
-- pass-local scratch uses the pass transaction group
+- published authoritative state usually stays in the default transaction key
+- pass-local scratch uses the pass transaction key
 - name the constant for the group and keep the name stable
 
 ## Worked Example: `ContextBaseStateMgr`
@@ -410,7 +410,7 @@ Lifecycle redesign decisions:
   - grouped into one managed freezable snapshot
   - one published subtree state
 - `_scope_active`
-  - direct transient scalar in `PASS_TX_GROUP`
+  - direct transient scalar in `PASS_TX_KEY`
   - not authoritative, not worth a struct
 - `_staged_ui`, `_staged_ui_entries`
   - grouped transient scratch in `ContextStagedState`
@@ -459,7 +459,7 @@ For each state manager class:
    freezable record or a nested managed-context class depending on whether the
    unit is better modeled as a snapshot or a modular lifecycle object.
 6. Replace pass-local scratch with `transient`, and use a non-default
-   `tx_group` only when the lifetime truly differs.
+   `tx_key` only when the lifetime truly differs.
 7. Eliminate one-field wrapper dataclasses.
 8. Eliminate explicit rollback copies of values that should come from
    `self.current`.

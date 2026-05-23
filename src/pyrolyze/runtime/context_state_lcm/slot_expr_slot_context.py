@@ -5,7 +5,7 @@ from typing import Any, Callable, Hashable
 from pyrolyze.lifecycle import local_store, managed_context, transient
 from pyrolyze.runtime.call_site_context import CallSiteContextManager
 from pyrolyze.runtime.slot_call_semantics import PyrolyzeMountAdvertisementBinding
-from .context_base import PASS_TX_GROUP
+from .context_base import PASS_TX_KEY
 from .rerunnable_slot_context import RerunnableSlotContextStateMgr
 
 
@@ -15,10 +15,10 @@ class SlotExprSlotContextStateMgr(RerunnableSlotContextStateMgr):
         default_factory=CallSiteContextManager,
     )
     _runtime_locals_by_slot_id: dict[Hashable, dict[str, Any]] = local_store(default_factory=dict)
-    _staged_call_site_ids: tuple[Hashable, ...] = transient(default_factory=tuple, tx_group=PASS_TX_GROUP)
+    _staged_call_site_ids: tuple[Hashable, ...] = transient(default_factory=tuple, tx_key=PASS_TX_KEY)
     _staged_post_commit_callbacks: tuple[Callable[[], None], ...] = transient(
         default_factory=tuple,
-        tx_group=PASS_TX_GROUP,
+        tx_key=PASS_TX_KEY,
     )
     _mount_advertisement_binding_type = PyrolyzeMountAdvertisementBinding
 

@@ -9,7 +9,7 @@ from pyrolyze.runtime.trace import TraceChannel, emit_trace, trace_enabled
 
 from ._base import USE_OWNER
 from .context_base import ContextBaseStateMgr
-from .context_base import PASS_TX_GROUP
+from .context_base import PASS_TX_KEY
 from ._support import (
     DuplicateMountAdvertisementError,
     MountAdvertisementContextError,
@@ -34,7 +34,7 @@ class RenderContextStateMgr(ContextBaseStateMgr):
     ) -> None:
         super().__init__(
             owner=owner,
-            transaction_manager=TransactionManager(tx_groups={PASS_TX_GROUP}),
+            transaction_manager=TransactionManager(tx_keys={PASS_TX_KEY}),
             render_context_state_mgr=None,
             **kwargs,
         )

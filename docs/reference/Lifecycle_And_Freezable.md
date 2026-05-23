@@ -24,7 +24,7 @@ This document is a reference for the current public surface of:
 It also includes practical design patterns for:
 
 - pass scratch vs published state
-- multiple transaction groups
+- multiple transaction keys
 - storing models as frozen snapshots
 - transactional file persistence
 - binding and owned resource management
@@ -67,7 +67,7 @@ That works for a while, but it becomes hard to answer simple questions:
 
 That is especially useful when you want transient behavior decoupled from mutable behavior:
 
-- transient state should exist only while a transaction group is active
+- transient state should exist only while a transaction key is active
 - mutable model editing should happen in a thawed working value
 - published model storage should remain frozen and stable until commit
 
@@ -105,7 +105,7 @@ Then think in terms of views:
 - `self.working`: working view for transactional reads and writes
 - `self`: default view that reads current state unless a working overlay exists
 
-Finally, think in terms of transaction groups:
+Finally, think in terms of transaction keys:
 
 - fields can belong to different groups
 - groups can be started, committed, and rolled back independently
@@ -392,7 +392,7 @@ Use for authoritative published state.
 Important parameters:
 
 - `compare="value"` or `compare="identity"`
-- `tx_group=...`
+- `tx_key=...`
 - `default=...`
 - `default_factory=...`
 - `initial_working=...`
@@ -404,7 +404,7 @@ Important parameters:
 Key behavior:
 
 - published value lives in the current record
-- writes stage into the working record for the field's transaction group
+- writes stage into the working record for the field's transaction key
 - commit publishes the working value
 - rollback discards it
 
@@ -459,7 +459,7 @@ Use for transaction-scoped scratch or pass state.
 
 Important parameters:
 
-- `tx_group=...`
+- `tx_key=...`
 - `default=...`
 - `default_factory=...`
 - `working_default_factory=...`
@@ -480,7 +480,7 @@ class RenderPassState:
     visited: set[str] | None = transient(
         default=None,
         working_default_factory=set,
-        tx_group=PASS,
+        tx_key=PASS,
     )
 ```
 
@@ -558,7 +558,7 @@ Supported injected parameters are:
 - `self`
 - `current`
 - `working`
-- `tx_group`
+- `tx_key`
 
 Use this when you want declarative hook registration rather than overriding the
 instance method.
@@ -576,7 +576,7 @@ Supported injected parameters are:
 - `self`
 - `previous`
 - `current`
-- `tx_group`
+- `tx_key`
 
 Important retained-resource rule:
 
@@ -594,7 +594,7 @@ Supported injected parameters are:
 
 - `self`
 - `current`
-- `tx_group`
+- `tx_key`
 
 ### Views: Default, Current, and Working
 
@@ -691,7 +691,7 @@ Responsibilities:
 
 This is the normal entry point.
 
-It coordinates multiple named transaction groups.
+It coordinates multiple named transaction keys.
 
 Example:
 
@@ -699,14 +699,14 @@ Example:
 PUBLISH = "publish"
 PASS = "pass"
 
-txm = TransactionManager(tx_groups={PUBLISH, PASS})
+txm = TransactionManager(tx_keys={PUBLISH, PASS})
 ```
 
-The default transaction group is always present:
+The default transaction key is always present:
 
 - `DEFAULT_TRANSACTION`
 
-So `tx_groups={PUBLISH, PASS}` means the manager knows:
+So `tx_keys={PUBLISH, PASS}` means the manager knows:
 
 - `DEFAULT_TRANSACTION`
 - `PUBLISH`
@@ -731,12 +731,12 @@ class DocumentState:
         default_factory=lambda: FrozenDocument(title="", items=()),
         thaw=lambda frozen: frozen.to_thawed(),
         freeze=lambda thawed: thawed.to_frozen(),
-        tx_group=PUBLISH,
+        tx_key=PUBLISH,
     )
     visited_ids: set[str] | None = transient(
         default=None,
         working_default_factory=set,
-        tx_group=PASS,
+        tx_key=PASS,
     )
 ```
 
@@ -846,9 +846,9 @@ def can_publish(ctx) -> bool:
 
 @managed_context
 class OrderedContext:
-    path: str = managed(default="", tx_group=PUBLISH)
-    order_key: tuple[int, ...] = commit_order_key(default=(10,), tx_group=PUBLISH)
-    validator: object | None = commit_validator(default=can_publish, tx_group=PUBLISH)
+    path: str = managed(default="", tx_key=PUBLISH)
+    order_key: tuple[int, ...] = commit_order_key(default=(10,), tx_key=PUBLISH)
+    validator: object | None = commit_validator(default=can_publish, tx_key=PUBLISH)
 ```
 
 Commit flow for a group is:
@@ -915,7 +915,7 @@ Hook field parameter injection supports:
 - `current`
 - `working`
 - `previous`
-- `tx_group`
+- `tx_key`
 
 For `on_after_commit(...)`, replaced retained values from `binding(...)` and
 `owned(...)` fields are released only after the post-commit hook runners for
@@ -999,12 +999,12 @@ class AnalyzerState:
         default_factory=lambda: FrozenDoc(title="", items=()),
         thaw=lambda value: value.to_thawed(),
         freeze=lambda value: value.to_frozen(),
-        tx_group=PUBLISH,
+        tx_key=PUBLISH,
     )
     seen_ids: set[str] | None = transient(
         default=None,
         working_default_factory=set,
-        tx_group=PASS,
+        tx_key=PASS,
     )
 ```
 
@@ -1159,7 +1159,7 @@ If you are building new declarative state with these modules:
 - store authoritative models as frozen values
 - thaw only on working access
 - freeze on commit
-- keep pass scratch in a separate transaction group
+- keep pass scratch in a separate transaction key
 - use `local_store` only for truly non-transactional helpers
 - use `binding` for staged external side effects and retained resources
 - use `owned` to make ownership intent explicit

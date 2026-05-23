@@ -62,7 +62,7 @@ LIFECYCLE_RESERVED_FIELD_NAMES: tuple[str, ...] = (
     "current",
     "working",
     "previous",
-    "tx_group",
+    "tx_key",
 )
 
 
@@ -119,7 +119,7 @@ def _view_init(self, *, _state: LifecycleContextState, _owner: _ManagedContextBa
 @dataclass(slots=True)
 class LifecycleTransaction:
     tx_id: int
-    tx_group: Hashable = DEFAULT_TRANSACTION
+    tx_key: Hashable = DEFAULT_TRANSACTION
     dirty_contexts: dict[int, LifecycleContext] = field(default_factory=dict)
     validator_contexts: dict[int, LifecycleContext] = field(default_factory=dict)
     _scope_commit: Callable[[], Any] | None = field(default=None, init=False, repr=False, compare=False)
@@ -127,18 +127,18 @@ class LifecycleTransaction:
 
     def commit_order(self) -> tuple[LifecycleContext, ...]:
         contexts = list(self.dirty_contexts.values())
-        contexts.sort(key=lambda context: context.commit_order_key_for(self.tx_group), reverse=True)
+        contexts.sort(key=lambda context: context.commit_order_key_for(self.tx_key), reverse=True)
         return tuple(contexts)
 
     def rollback_dirty(self) -> None:
         for ctx in list(self.dirty_contexts.values()):
-            ctx._rollback_transaction(self.tx_id, self.tx_group)
+            ctx._rollback_transaction(self.tx_id, self.tx_key)
 
     def validate_commit(self) -> None:
         failures: list[BaseException] = []
         for context in self.validator_contexts.values():
             try:
-                ok = context.validate_commit_for(self.tx_group)
+                ok = context.validate_commit_for(self.tx_key)
             except BaseException as exc:
                 failures.append(exc)
                 continue
@@ -149,7 +149,7 @@ class LifecycleTransaction:
 
     def apply_commits(self) -> None:
         for context in self.commit_order():
-            context._commit_transaction(self.tx_id, self.tx_group)
+            context._commit_transaction(self.tx_id, self.tx_key)
 
     def bind_scope(
         self,
@@ -182,35 +182,35 @@ class LifecycleTransaction:
 
 @dataclass(slots=True)
 class GroupTransactionManager:
-    tx_group: Hashable = DEFAULT_TRANSACTION
+    tx_key: Hashable = DEFAULT_TRANSACTION
     _next_tx_id: int = field(default=1, init=False, repr=False)
     active_transaction: LifecycleTransaction | None = field(default=None, init=False, repr=False)
     begin_count: int = field(default=0, init=False, repr=False)
 
-    def active_transaction_for(self, tx_group: Hashable = DEFAULT_TRANSACTION) -> LifecycleTransaction | None:
-        if tx_group != self.tx_group:
-            raise RuntimeError(f"unknown lifecycle transaction group {tx_group!r}")
+    def active_transaction_for(self, tx_key: Hashable = DEFAULT_TRANSACTION) -> LifecycleTransaction | None:
+        if tx_key != self.tx_key:
+            raise RuntimeError(f"unknown lifecycle transaction key {tx_key!r}")
         return self.active_transaction
 
-    def begin(self, tx_group: Hashable = DEFAULT_TRANSACTION) -> LifecycleTransaction:
-        if tx_group != self.tx_group:
-            raise RuntimeError(f"unknown lifecycle transaction group {tx_group!r}")
+    def begin(self, tx_key: Hashable = DEFAULT_TRANSACTION) -> LifecycleTransaction:
+        if tx_key != self.tx_key:
+            raise RuntimeError(f"unknown lifecycle transaction key {tx_key!r}")
         if self.begin_count == 0:
             if self.active_transaction is not None:
                 raise RuntimeError("lifecycle transaction manager state is corrupted")
-            self.active_transaction = LifecycleTransaction(tx_id=self._next_tx_id, tx_group=self.tx_group)
+            self.active_transaction = LifecycleTransaction(tx_id=self._next_tx_id, tx_key=self.tx_key)
             self._next_tx_id += 1
         self.begin_count += 1
         transaction = self.active_transaction
         assert transaction is not None
         return transaction.bind_scope(
-            commit=lambda: self.commit(self.tx_group),
-            rollback=lambda: self.rollback(self.tx_group),
+            commit=lambda: self.commit(self.tx_key),
+            rollback=lambda: self.rollback(self.tx_key),
         )
 
-    def validate(self, tx_group: Hashable = DEFAULT_TRANSACTION) -> None:
-        if tx_group != self.tx_group:
-            raise RuntimeError(f"unknown lifecycle transaction group {tx_group!r}")
+    def validate(self, tx_key: Hashable = DEFAULT_TRANSACTION) -> None:
+        if tx_key != self.tx_key:
+            raise RuntimeError(f"unknown lifecycle transaction key {tx_key!r}")
         if self.begin_count <= 0:
             raise RuntimeError("no active lifecycle transaction")
         transaction = self.active_transaction
@@ -218,9 +218,9 @@ class GroupTransactionManager:
             raise RuntimeError("lifecycle transaction manager state is corrupted")
         transaction.validate_commit()
 
-    def commit_only(self, tx_group: Hashable = DEFAULT_TRANSACTION) -> int | None:
-        if tx_group != self.tx_group:
-            raise RuntimeError(f"unknown lifecycle transaction group {tx_group!r}")
+    def commit_only(self, tx_key: Hashable = DEFAULT_TRANSACTION) -> int | None:
+        if tx_key != self.tx_key:
+            raise RuntimeError(f"unknown lifecycle transaction key {tx_key!r}")
         if self.begin_count <= 0:
             raise RuntimeError("no active lifecycle transaction")
         if self.begin_count > 1:
@@ -237,24 +237,24 @@ class GroupTransactionManager:
             self.begin_count = 0
         return tx_id
 
-    def commit(self, tx_group: Hashable = DEFAULT_TRANSACTION) -> int | None:
-        if tx_group != self.tx_group:
-            raise RuntimeError(f"unknown lifecycle transaction group {tx_group!r}")
+    def commit(self, tx_key: Hashable = DEFAULT_TRANSACTION) -> int | None:
+        if tx_key != self.tx_key:
+            raise RuntimeError(f"unknown lifecycle transaction key {tx_key!r}")
         if self.begin_count <= 0:
             raise RuntimeError("no active lifecycle transaction")
         if self.begin_count > 1:
             self.begin_count -= 1
             return None
         try:
-            self.validate(tx_group)
+            self.validate(tx_key)
         except BaseExceptionGroup as exc_group:
-            self.rollback(tx_group)
+            self.rollback(tx_key)
             raise exc_group
-        return self.commit_only(tx_group)
+        return self.commit_only(tx_key)
 
-    def rollback(self, tx_group: Hashable = DEFAULT_TRANSACTION) -> int | None:
-        if tx_group != self.tx_group:
-            raise RuntimeError(f"unknown lifecycle transaction group {tx_group!r}")
+    def rollback(self, tx_key: Hashable = DEFAULT_TRANSACTION) -> int | None:
+        if tx_key != self.tx_key:
+            raise RuntimeError(f"unknown lifecycle transaction key {tx_key!r}")
         if self.begin_count <= 0 or self.active_transaction is None:
             raise RuntimeError("no active lifecycle transaction")
         transaction = self.active_transaction
@@ -264,14 +264,14 @@ class GroupTransactionManager:
         self.begin_count = 0
         return tx_id
 
-    def enlist(self, context: LifecycleContext, tx_group: Hashable = DEFAULT_TRANSACTION) -> int:
-        if tx_group != self.tx_group:
-            raise RuntimeError(f"unknown lifecycle transaction group {tx_group!r}")
+    def enlist(self, context: LifecycleContext, tx_key: Hashable = DEFAULT_TRANSACTION) -> int:
+        if tx_key != self.tx_key:
+            raise RuntimeError(f"unknown lifecycle transaction key {tx_key!r}")
         transaction = self.active_transaction
         if transaction is None:
             raise RuntimeError("no active lifecycle transaction")
         transaction.dirty_contexts[id(context)] = context
-        if context.requires_validation_for(tx_group):
+        if context.requires_validation_for(tx_key):
             transaction.validator_contexts[id(context)] = context
         return transaction.tx_id
 
@@ -279,10 +279,10 @@ class GroupTransactionManager:
         self,
         context: LifecycleContext,
         tx_id: int | None = None,
-        tx_group: Hashable = DEFAULT_TRANSACTION,
+        tx_key: Hashable = DEFAULT_TRANSACTION,
     ) -> None:
-        if tx_group != self.tx_group:
-            raise RuntimeError(f"unknown lifecycle transaction group {tx_group!r}")
+        if tx_key != self.tx_key:
+            raise RuntimeError(f"unknown lifecycle transaction key {tx_key!r}")
         transaction = self.active_transaction
         if transaction is None:
             return
@@ -315,23 +315,23 @@ class _MultiGroupTransactionScope:
 
 
 class TransactionManager:
-    __slots__ = ("_tx_groups", "_tx_group_set", "_group_managers")
+    __slots__ = ("_tx_keys", "_tx_key_set", "_group_managers")
 
-    def __init__(self, *, tx_groups: typing.Iterable[Hashable] = ()) -> None:
+    def __init__(self, *, tx_keys: typing.Iterable[Hashable] = ()) -> None:
         normalized_groups: list[Hashable] = []
         seen = {DEFAULT_TRANSACTION}
-        for group in tx_groups:
+        for group in tx_keys:
             if group in seen:
                 continue
             seen.add(group)
             normalized_groups.append(group)
-        self._tx_groups = tuple(normalized_groups)
-        self._tx_group_set = frozenset((DEFAULT_TRANSACTION, *self._tx_groups))
+        self._tx_keys = tuple(normalized_groups)
+        self._tx_key_set = frozenset((DEFAULT_TRANSACTION, *self._tx_keys))
         self._group_managers: dict[Hashable, GroupTransactionManager] = {}
 
     @property
-    def tx_groups(self) -> tuple[Hashable, ...]:
-        return self._tx_groups
+    def tx_keys(self) -> tuple[Hashable, ...]:
+        return self._tx_keys
 
     @property
     def active_transaction(self) -> LifecycleTransaction | None:
@@ -345,12 +345,12 @@ class TransactionManager:
     def begin_count(self) -> int:
         return self._get_group_manager(DEFAULT_TRANSACTION).begin_count
 
-    def active_transaction_for(self, tx_group: Hashable = DEFAULT_TRANSACTION) -> LifecycleTransaction | None:
-        return self._get_group_manager(tx_group).active_transaction
+    def active_transaction_for(self, tx_key: Hashable = DEFAULT_TRANSACTION) -> LifecycleTransaction | None:
+        return self._get_group_manager(tx_key).active_transaction
 
     def _normalize_groups(self, groups: tuple[Hashable, ...]) -> tuple[Hashable, ...]:
         if not groups:
-            return (DEFAULT_TRANSACTION, *self._tx_groups)
+            return (DEFAULT_TRANSACTION, *self._tx_keys)
         normalized: list[Hashable] = []
         seen: set[Hashable] = set()
         for group in groups:
@@ -362,14 +362,14 @@ class TransactionManager:
         return tuple(normalized)
 
     def _require_known_group(self, group: Hashable) -> None:
-        if group not in self._tx_group_set:
-            raise RuntimeError(f"unknown lifecycle transaction group {group!r}")
+        if group not in self._tx_key_set:
+            raise RuntimeError(f"unknown lifecycle transaction key {group!r}")
 
     def _get_group_manager(self, group: Hashable) -> GroupTransactionManager:
         self._require_known_group(group)
         manager = self._group_managers.get(group)
         if manager is None:
-            manager = GroupTransactionManager(tx_group=group)
+            manager = GroupTransactionManager(tx_key=group)
             self._group_managers[group] = manager
         return manager
 
@@ -393,7 +393,7 @@ class TransactionManager:
             return
         if len(failures) == 1:
             raise failures[0]
-        raise ExceptionGroup("lifecycle transaction group validation failed", failures)
+        raise ExceptionGroup("lifecycle transaction key validation failed", failures)
 
     def commit_only(self, *groups: Hashable) -> int | tuple[int | None, ...] | None:
         normalized_groups = self._normalize_groups(groups)
@@ -409,7 +409,7 @@ class TransactionManager:
         if failures:
             if len(failures) == 1:
                 raise failures[0]
-            raise ExceptionGroup("lifecycle transaction group commit_only failed", failures)
+            raise ExceptionGroup("lifecycle transaction key commit_only failed", failures)
         return tuple(results)
 
     def commit(self, *groups: Hashable) -> int | tuple[int | None, ...] | None:
@@ -426,7 +426,7 @@ class TransactionManager:
         if failures:
             if len(failures) == 1:
                 raise failures[0]
-            raise ExceptionGroup("lifecycle transaction group commit failed", failures)
+            raise ExceptionGroup("lifecycle transaction key commit failed", failures)
         return tuple(results)
 
     def rollback(self, *groups: Hashable) -> int | tuple[int | None, ...] | None:
@@ -443,19 +443,19 @@ class TransactionManager:
         if failures:
             if len(failures) == 1:
                 raise failures[0]
-            raise ExceptionGroup("lifecycle transaction group rollback failed", failures)
+            raise ExceptionGroup("lifecycle transaction key rollback failed", failures)
         return tuple(results)
 
-    def enlist(self, context: LifecycleContext, tx_group: Hashable = DEFAULT_TRANSACTION) -> int:
-        return self._get_group_manager(tx_group).enlist(context, tx_group)
+    def enlist(self, context: LifecycleContext, tx_key: Hashable = DEFAULT_TRANSACTION) -> int:
+        return self._get_group_manager(tx_key).enlist(context, tx_key)
 
     def drop(
         self,
         context: LifecycleContext,
         tx_id: int | None = None,
-        tx_group: Hashable = DEFAULT_TRANSACTION,
+        tx_key: Hashable = DEFAULT_TRANSACTION,
     ) -> None:
-        self._get_group_manager(tx_group).drop(context, tx_id, tx_group)
+        self._get_group_manager(tx_key).drop(context, tx_id, tx_key)
 
 
 @dataclass(eq=False, slots=True)
@@ -509,9 +509,9 @@ FactoryRunner = Callable[["LifecycleContextState"], Any]
 InjectedRunner = Callable[["LifecycleContextState", dict[str, Any]], Any]
 
 _SUPPORTED_FACTORY_PARAMS = frozenset({"self", "current", "working"})
-_BEFORE_COMMIT_PARAMS = frozenset({"self", "current", "working", "tx_group"})
-_AFTER_COMMIT_PARAMS = frozenset({"self", "previous", "current", "tx_group"})
-_AFTER_ROLLBACK_PARAMS = frozenset({"self", "current", "tx_group"})
+_BEFORE_COMMIT_PARAMS = frozenset({"self", "current", "working", "tx_key"})
+_AFTER_COMMIT_PARAMS = frozenset({"self", "previous", "current", "tx_key"})
+_AFTER_ROLLBACK_PARAMS = frozenset({"self", "current", "tx_key"})
 
 
 def _allowed_factory_params(initvar_names: tuple[str, ...]) -> frozenset[str]:
@@ -642,7 +642,7 @@ def _scrub(name: str) -> HelperParams:
 
 _PARAM_PRESETS: dict[str, ExposedParam] = {
     "compare":                 ExposedParam("str",                        '"value"',            allowed_values=frozenset({"value", "identity"})),
-    "tx_group":                ExposedParam("Hashable",                   "DEFAULT_TRANSACTION"),
+    "tx_key":                ExposedParam("Hashable",                   "DEFAULT_TRANSACTION"),
     "default":                 ExposedParam("Any",                        "MISSING"),
     "default_factory":         ExposedParam("Callable[[], Any] | object", "MISSING"),
     "working_default_factory": ExposedParam("Callable[[], Any] | object", "MISSING"),
@@ -657,7 +657,7 @@ _PARAM_PRESETS: dict[str, ExposedParam] = {
 
 _LIFECYCLE_FIELD_NEUTRALS: dict[str, Any] = {
     "compare":                 "value",
-    "tx_group":                DEFAULT_TRANSACTION,
+    "tx_key":                DEFAULT_TRANSACTION,
     "default":                 MISSING,
     "default_factory":         MISSING,
     "working_default_factory": MISSING,
@@ -755,7 +755,7 @@ class LCKind:
             kind=cls,
             annotation=annotation,
             compare=descriptor.compare,
-            tx_group=descriptor.tx_group,
+            tx_key=descriptor.tx_key,
             default=descriptor.default,
             default_factory=descriptor.default_factory,
             working_default_factory=descriptor.working_default_factory,
@@ -803,7 +803,7 @@ class LCKind:
             raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
         if base.compare != derived.compare:
             raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
-        if base.tx_group != derived.tx_group:
+        if base.tx_key != derived.tx_key:
             raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
         if base.initial_working != derived.initial_working and derived.initial_working is not MISSING:
             raise TypeError(f"incompatible lifecycle field override for {base.name!r}")
@@ -1400,7 +1400,7 @@ class NonStoredHookKind(DeclarationStorageKind, LCKind):
 
 class DefaultStoredKind(StoredKind, OverlayOperationalKind):
     helper_params = (
-        _param("compare").param("tx_group")
+        _param("compare").param("tx_key")
         .param("default").param("default_factory")
         .param("initial_working")
         .param("freeze").param("thaw")
@@ -1410,7 +1410,7 @@ class DefaultStoredKind(StoredKind, OverlayOperationalKind):
 
 class SimpleStoredKind(StoredKind, OverlayOperationalKind):
     helper_params = (
-        _param("compare").param("tx_group")
+        _param("compare").param("tx_key")
         .param("default").param("default_factory")
     )
 
@@ -1418,7 +1418,7 @@ class SimpleStoredKind(StoredKind, OverlayOperationalKind):
 class HookKind(NonStoredHookKind, HookOperationalKind):
     helper_params = (
         _fixed("compare", '"identity"')
-        .param("tx_group").param("default")
+        .param("tx_key").param("default")
         .fixed("init", "False")
     )
 
@@ -1463,7 +1463,7 @@ class ResourceKind(RetainedResourceOperationalKind, SimpleStoredKind):
 
 class StoredMetadataKind(StoredKind, StoredDeclarationOperationalKind):
     helper_params = (
-        _param("compare").param("tx_group").param("default")
+        _param("compare").param("tx_key").param("default")
     )
 
 
@@ -1484,7 +1484,7 @@ class CommitValidatorDeclarationKind(StoredMetadataKind):
 
 class InitVarDeclarationKind(LCKind):
     helper_params = (
-        _scrub("compare").scrub("tx_group")
+        _scrub("compare").scrub("tx_key")
         .param("init").param("default").param("default_factory")
     )
 
@@ -1521,7 +1521,7 @@ class LocalLikeKind(StoredKind):
 
 class TxScopedScratchKind(TransientOperationalKind, LocalLikeKind):
     helper_params = (
-        _param("working_default_factory").param("tx_group")
+        _param("working_default_factory").param("tx_key")
     )
 
 
@@ -1579,7 +1579,7 @@ class ClassVarDeclarationKind(LCKind):
             default_factory=descriptor.default_factory,
             working_default_factory=descriptor.working_default_factory,
             initial_working=descriptor.initial_working,
-            tx_group=descriptor.tx_group,
+            tx_key=descriptor.tx_key,
         )
         _validate_classvar_spec(spec)
 
@@ -1601,7 +1601,7 @@ class ClassVarDeclarationKind(LCKind):
             default_factory=descriptor.default_factory,
             working_default_factory=descriptor.working_default_factory,
             initial_working=descriptor.initial_working,
-            tx_group=descriptor.tx_group,
+            tx_key=descriptor.tx_key,
         )
         _validate_classvar_spec(spec)
         return spec
@@ -1820,11 +1820,11 @@ class CommitOrderKeyKind(StoredMetadataKind):
         spec: FieldSpec,
         special_tables: SpecialFieldTables,
     ) -> None:
-        if spec.tx_group in special_tables.commit_order_key_by_group:
+        if spec.tx_key in special_tables.commit_order_key_by_group:
             raise TypeError(
-                f"at most one commit_order_key field is allowed for group {spec.tx_group!r}"
+                f"at most one commit_order_key field is allowed for group {spec.tx_key!r}"
             )
-        special_tables.commit_order_key_by_group[spec.tx_group] = name
+        special_tables.commit_order_key_by_group[spec.tx_key] = name
 
 
 @define_kind
@@ -1847,17 +1847,17 @@ class CommitValidatorKind(CommitValidatorDeclarationKind):
         spec: FieldSpec,
         special_tables: SpecialFieldTables,
     ) -> None:
-        if spec.tx_group in special_tables.commit_validator_by_group:
+        if spec.tx_key in special_tables.commit_validator_by_group:
             raise TypeError(
-                f"at most one commit_validator field is allowed for group {spec.tx_group!r}"
+                f"at most one commit_validator field is allowed for group {spec.tx_key!r}"
             )
-        special_tables.commit_validator_by_group[spec.tx_group] = name
+        special_tables.commit_validator_by_group[spec.tx_key] = name
 
 
 @define_kind
 class OnBeforeCommitKind(HookDeclarationKind):
     name = "on_before_commit"
-    helper_doc = "Hook invoked before a transaction group commits."
+    helper_doc = "Hook invoked before a transaction key commits."
 
     @classmethod
     def register_hook_runner(
@@ -1871,7 +1871,7 @@ class OnBeforeCommitKind(HookDeclarationKind):
         if not callable(hook):
             raise TypeError(f"{spec.kind.name} field {name!r} requires a callable default")
         allowed = _allowed_before_commit_params(hook_tables.initvar_names)
-        hook_tables.before_commit.setdefault(spec.tx_group, []).append(
+        hook_tables.before_commit.setdefault(spec.tx_key, []).append(
             _compile_hook_runner(
                 field_name=name,
                 hook_name="on_before_commit",
@@ -1885,7 +1885,7 @@ class OnBeforeCommitKind(HookDeclarationKind):
 @define_kind
 class OnAfterCommitKind(HookDeclarationKind):
     name = "on_after_commit"
-    helper_doc = "Hook invoked after a transaction group commits."
+    helper_doc = "Hook invoked after a transaction key commits."
 
     @classmethod
     def register_hook_runner(
@@ -1899,7 +1899,7 @@ class OnAfterCommitKind(HookDeclarationKind):
         if not callable(hook):
             raise TypeError(f"{spec.kind.name} field {name!r} requires a callable default")
         allowed = _allowed_after_commit_params(hook_tables.initvar_names)
-        hook_tables.after_commit.setdefault(spec.tx_group, []).append(
+        hook_tables.after_commit.setdefault(spec.tx_key, []).append(
             _compile_hook_runner(
                 field_name=name,
                 hook_name="on_after_commit",
@@ -1913,7 +1913,7 @@ class OnAfterCommitKind(HookDeclarationKind):
 @define_kind
 class OnAfterRollbackKind(HookDeclarationKind):
     name = "on_after_rollback"
-    helper_doc = "Hook invoked after a transaction group rolls back."
+    helper_doc = "Hook invoked after a transaction key rolls back."
 
     @classmethod
     def register_hook_runner(
@@ -1927,7 +1927,7 @@ class OnAfterRollbackKind(HookDeclarationKind):
         if not callable(hook):
             raise TypeError(f"{spec.kind.name} field {name!r} requires a callable default")
         allowed = _allowed_after_rollback_params(hook_tables.initvar_names)
-        hook_tables.after_rollback.setdefault(spec.tx_group, []).append(
+        hook_tables.after_rollback.setdefault(spec.tx_key, []).append(
             _compile_hook_runner(
                 field_name=name,
                 hook_name="on_after_rollback",
@@ -1967,8 +1967,8 @@ def _compile_injected_runner(
             return injected.get("working", state.working_view)
         if name == "previous":
             return injected["previous"]
-        if name == "tx_group":
-            return injected["tx_group"]
+        if name == "tx_key":
+            return injected["tx_key"]
         if initvar_resolve is not None:
             return initvar_resolve(state, name)
         raise AssertionError(f"unexpected compiled lifecycle parameter {name!r}")
@@ -2034,7 +2034,7 @@ class FieldSpec:
     default_factory: Callable[[], Any] | object = MISSING
     working_default_factory: Callable[[], Any] | object = MISSING
     initial_working: Any = MISSING
-    tx_group: Hashable = DEFAULT_TRANSACTION
+    tx_key: Hashable = DEFAULT_TRANSACTION
     freeze: Callable[[Any], Any] | None = None
     thaw: Callable[[Any], Any] | None = None
     state_factory: FieldStateFactory | None = None
@@ -2389,7 +2389,7 @@ def _materialize_class_declarations_on_managed_class(
 class LifecycleField:
     kind: type[LCKind] = ManagedKind
     compare: Any = MISSING
-    tx_group: Any = MISSING
+    tx_key: Any = MISSING
     default: Any = MISSING
     default_factory: Callable[[], Any] | object = MISSING
     working_default_factory: Callable[[], Any] | object = MISSING
@@ -2420,8 +2420,8 @@ class LifecycleField:
             parts.append(f"name={self.name!r}")
         if "compare" in resolved:
             parts.append(f"compare={self.compare!r}")
-        if "tx_group" in resolved:
-            parts.append(f"tx_group={self.tx_group!r}")
+        if "tx_key" in resolved:
+            parts.append(f"tx_key={self.tx_key!r}")
         if "default" in resolved and self.default is not MISSING:
             parts.append(f"default={self.default!r}")
         if "default_factory" in resolved and self.default_factory is not MISSING:
@@ -2470,7 +2470,7 @@ def lifecycle_field(
     *,
     kind: type[LCKind] = ManagedKind,
     compare: Any = MISSING,
-    tx_group: Any = MISSING,
+    tx_key: Any = MISSING,
     default: Any = MISSING,
     default_factory: Callable[[], Any] | object = MISSING,
     working_default_factory: Callable[[], Any] | object = MISSING,
@@ -2484,7 +2484,7 @@ def lifecycle_field(
     return LifecycleField(
         kind=kind,
         compare=compare,
-        tx_group=tx_group,
+        tx_key=tx_key,
         default=default,
         default_factory=default_factory,
         working_default_factory=working_default_factory,
@@ -2502,7 +2502,7 @@ def lifecycle_field_from_field_spec(spec: FieldSpec) -> LifecycleField:
     return LifecycleField(
         kind=spec.kind,
         compare=spec.compare,
-        tx_group=spec.tx_group,
+        tx_key=spec.tx_key,
         default=spec.default,
         default_factory=spec.default_factory,
         working_default_factory=spec.working_default_factory,
@@ -2572,9 +2572,9 @@ def _get_managed_initial_working_field_for_index(
     working = state.working_record_for_index(tx_index)
     if working is not None and name in working.values:
         return working.values[name]
-    tx_group = type(state).__class_tx_groups__[tx_index]
+    tx_key = type(state).__class_tx_keys__[tx_index]
     transaction = (
-        state.transaction_manager.active_transaction_for(tx_group)
+        state.transaction_manager.active_transaction_for(tx_key)
         if state.transaction_manager is not None
         else None
     )
@@ -2599,9 +2599,9 @@ def _get_managed_thawed_field_for_index(
     working = state.working_record_for_index(tx_index)
     if working is not None and name in working.values:
         return working.values[name]
-    tx_group = type(state).__class_tx_groups__[tx_index]
+    tx_key = type(state).__class_tx_keys__[tx_index]
     transaction = (
-        state.transaction_manager.active_transaction_for(tx_group)
+        state.transaction_manager.active_transaction_for(tx_key)
         if state.transaction_manager is not None
         else None
     )
@@ -2627,9 +2627,9 @@ def _get_transient_working_default_field_for_index(
     working = state.working_record_for_index(tx_index)
     if working is not None and name in working.values:
         return working.values[name]
-    tx_group = type(state).__class_tx_groups__[tx_index]
+    tx_key = type(state).__class_tx_keys__[tx_index]
     transaction = (
-        state.transaction_manager.active_transaction_for(tx_group)
+        state.transaction_manager.active_transaction_for(tx_key)
         if state.transaction_manager is not None
         else None
     )
@@ -3013,8 +3013,8 @@ class LifecycleContextState:
     __field_specs__: dict[str, FieldSpec] = {}
     __class_constructor_only_specs__: dict[str, FieldSpec] = {}
     __field_names__: tuple[str, ...] = ()
-    __class_tx_groups__: tuple[Hashable, ...] = (DEFAULT_TRANSACTION,)
-    __class_tx_group_to_index__: dict[Hashable, int] = {DEFAULT_TRANSACTION: 0}
+    __class_tx_keys__: tuple[Hashable, ...] = (DEFAULT_TRANSACTION,)
+    __class_tx_key_to_index__: dict[Hashable, int] = {DEFAULT_TRANSACTION: 0}
     __class_commit_order_key_by_group__: dict[Hashable, str] = {}
     __class_commit_validator_by_group__: dict[Hashable, str] = {}
     __class_ftable_commit_validator_runner_by_group__: dict[Hashable, InjectedRunner] = {}
@@ -3071,7 +3071,7 @@ class LifecycleContextState:
         object.__setattr__(owner, "_state", self)
         self.transaction_manager = transaction_manager
         self.current_record = Record()
-        self._tx_state_by_index = [_LifecycleTxState() for _ in type(self).__class_tx_groups__]
+        self._tx_state_by_index = [_LifecycleTxState() for _ in type(self).__class_tx_keys__]
         self.ever_committed = False
         self.local_store_values: dict[str, Any] = {}
         self.derived_values: dict[str, Any] = {}
@@ -3138,11 +3138,11 @@ class LifecycleContextState:
     def working_tx_id_for_index(self, tx_index: int) -> int | None:
         return self._tx_state_by_index[tx_index].working_tx_id
 
-    def tx_index_for_group(self, tx_group: Hashable) -> int:
+    def tx_index_for_group(self, tx_key: Hashable) -> int:
         try:
-            return type(self).__class_tx_group_to_index__[tx_group]
+            return type(self).__class_tx_key_to_index__[tx_key]
         except KeyError as exc:
-            raise RuntimeError(f"unknown lifecycle transaction group {tx_group!r}") from exc
+            raise RuntimeError(f"unknown lifecycle transaction key {tx_key!r}") from exc
 
     def tx_index_for_field(self, name: str) -> int:
         return type(self).__class_ftable_tx_index__[name]
@@ -3185,17 +3185,17 @@ class LifecycleContextState:
 
         working = Record()
         tx_state.working_record = working
-        tx_group = type(self).__class_tx_groups__[tx_index]
-        tx_state.working_tx_id = self.transaction_manager.enlist(self.owner, tx_group)
+        tx_key = type(self).__class_tx_keys__[tx_index]
+        tx_state.working_tx_id = self.transaction_manager.enlist(self.owner, tx_key)
         return working
 
     def ensure_working_record(self) -> Record:
         return self.ensure_working_record_for_index(0)
 
     def require_active_transaction_for_index(self, tx_index: int) -> None:
-        tx_group = type(self).__class_tx_groups__[tx_index]
+        tx_key = type(self).__class_tx_keys__[tx_index]
         transaction = (
-            self.transaction_manager.active_transaction_for(tx_group)
+            self.transaction_manager.active_transaction_for(tx_key)
             if self.transaction_manager is not None
             else None
         )
@@ -3266,23 +3266,23 @@ class LifecycleContextState:
         working.values[name] = value
         return value
 
-    def commit_order_key_for(self, tx_group: Hashable = DEFAULT_TRANSACTION) -> tuple[Any, ...]:
-        field_name = type(self).__class_commit_order_key_by_group__.get(tx_group)
+    def commit_order_key_for(self, tx_key: Hashable = DEFAULT_TRANSACTION) -> tuple[Any, ...]:
+        field_name = type(self).__class_commit_order_key_by_group__.get(tx_key)
         if field_name is None:
             return ()
         return self.current_record.values[field_name]
 
-    def commit_validator_for(self, tx_group: Hashable = DEFAULT_TRANSACTION) -> Any:
-        field_name = type(self).__class_commit_validator_by_group__.get(tx_group)
+    def commit_validator_for(self, tx_key: Hashable = DEFAULT_TRANSACTION) -> Any:
+        field_name = type(self).__class_commit_validator_by_group__.get(tx_key)
         if field_name is None:
             return None
         return self.current_record.values[field_name]
 
     def commit_validator_runner_for(
         self,
-        tx_group: Hashable = DEFAULT_TRANSACTION,
+        tx_key: Hashable = DEFAULT_TRANSACTION,
     ) -> InjectedRunner | None:
-        return type(self).__class_ftable_commit_validator_runner_by_group__.get(tx_group)
+        return type(self).__class_ftable_commit_validator_runner_by_group__.get(tx_key)
 
     def defer_commit_cleanup(self, callback: Callable[[], None]) -> None:
         if self._deferred_commit_cleanup is None:
@@ -3292,7 +3292,7 @@ class LifecycleContextState:
 
     def _run_before_commit_hooks(
         self,
-        tx_group: Hashable,
+        tx_key: Hashable,
         *,
         current: _ManagedContextBase,
         working: _ManagedContextBase,
@@ -3301,14 +3301,14 @@ class LifecycleContextState:
         injected = {
             "current": current,
             "working": working,
-            "tx_group": tx_group,
+            "tx_key": tx_key,
         }
-        for runner in type(self).__class_ftable_before_commit_runners__.get(tx_group, ()):
+        for runner in type(self).__class_ftable_before_commit_runners__.get(tx_key, ()):
             runner(self, injected)
 
     def _run_after_commit_hooks(
         self,
-        tx_group: Hashable,
+        tx_key: Hashable,
         *,
         previous: _RecordSnapshot,
         current: _ManagedContextBase,
@@ -3317,44 +3317,44 @@ class LifecycleContextState:
         injected = {
             "previous": previous,
             "current": current,
-            "tx_group": tx_group,
+            "tx_key": tx_key,
         }
-        for runner in type(self).__class_ftable_after_commit_runners__.get(tx_group, ()):
+        for runner in type(self).__class_ftable_after_commit_runners__.get(tx_key, ()):
             runner(self, injected)
 
     def _run_after_rollback_hooks(
         self,
-        tx_group: Hashable,
+        tx_key: Hashable,
         *,
         current: _ManagedContextBase,
     ) -> None:
         self.owner.after_rollback(self.snapshot_current())
         injected = {
             "current": current,
-            "tx_group": tx_group,
+            "tx_key": tx_key,
         }
-        for runner in type(self).__class_ftable_after_rollback_runners__.get(tx_group, ()):
+        for runner in type(self).__class_ftable_after_rollback_runners__.get(tx_key, ()):
             runner(self, injected)
 
     def reset_to_default(self, name: str) -> Any:
         type(self).__field_specs__[name].kind.reset_default_store(state=self, name=name)
         return self.resolve_default_field(name)
 
-    def commit(self, tx_group: Hashable = DEFAULT_TRANSACTION) -> _ManagedContextBase:
-        tx_index = self.tx_index_for_group(tx_group)
+    def commit(self, tx_key: Hashable = DEFAULT_TRANSACTION) -> _ManagedContextBase:
+        tx_index = self.tx_index_for_group(tx_key)
         tx_state = self.tx_state_for_index(tx_index)
         if tx_state.working_record is None:
             return self.owner.current
 
         if self.transaction_manager is not None and tx_state.working_tx_id is not None:
-            self.transaction_manager.drop(self.owner, tx_state.working_tx_id, tx_group)
+            self.transaction_manager.drop(self.owner, tx_state.working_tx_id, tx_key)
 
         previous = self.snapshot_current()
         committed = False
         self._deferred_commit_cleanup = []
         try:
             self._run_before_commit_hooks(
-                tx_group,
+                tx_key,
                 current=self.current_view,
                 working=self.working_view,
             )
@@ -3368,7 +3368,7 @@ class LifecycleContextState:
             committed = True
             current = self.owner.current
             try:
-                self._run_after_commit_hooks(tx_group, previous=previous, current=current)
+                self._run_after_commit_hooks(tx_key, previous=previous, current=current)
             finally:
                 for callback in self._deferred_commit_cleanup:
                     callback()
@@ -3385,14 +3385,14 @@ class LifecycleContextState:
             self._deferred_commit_cleanup = None
         return self.owner.current
 
-    def rollback(self, tx_group: Hashable = DEFAULT_TRANSACTION) -> _ManagedContextBase:
-        tx_index = self.tx_index_for_group(tx_group)
+    def rollback(self, tx_key: Hashable = DEFAULT_TRANSACTION) -> _ManagedContextBase:
+        tx_index = self.tx_index_for_group(tx_key)
         tx_state = self.tx_state_for_index(tx_index)
         if tx_state.working_record is None:
             return self.owner.current
 
         if self.transaction_manager is not None and tx_state.working_tx_id is not None:
-            self.transaction_manager.drop(self.owner, tx_state.working_tx_id, tx_group)
+            self.transaction_manager.drop(self.owner, tx_state.working_tx_id, tx_key)
 
         for name in type(self).__field_names__:
             if self.tx_index_for_field(name) != tx_index:
@@ -3400,36 +3400,36 @@ class LifecycleContextState:
             type(self).__class_ftable_rollback_field__[name](self, name)
         tx_state.working_record = None
         tx_state.working_tx_id = None
-        self._run_after_rollback_hooks(tx_group, current=self.owner.current)
+        self._run_after_rollback_hooks(tx_key, current=self.owner.current)
         return self.owner.current
 
     def commit_transaction(
         self,
         tx_id: int,
-        tx_group: Hashable = DEFAULT_TRANSACTION,
+        tx_key: Hashable = DEFAULT_TRANSACTION,
     ) -> _ManagedContextBase:
-        tx_index = self.tx_index_for_group(tx_group)
+        tx_index = self.tx_index_for_group(tx_key)
         if self.working_tx_id_for_index(tx_index) != tx_id:
             return self.owner.current
-        return self.commit(tx_group)
+        return self.commit(tx_key)
 
     def rollback_transaction(
         self,
         tx_id: int,
-        tx_group: Hashable = DEFAULT_TRANSACTION,
+        tx_key: Hashable = DEFAULT_TRANSACTION,
     ) -> _ManagedContextBase:
-        tx_index = self.tx_index_for_group(tx_group)
+        tx_index = self.tx_index_for_group(tx_key)
         if self.working_tx_id_for_index(tx_index) != tx_id:
             return self.owner.current
-        return self.rollback(tx_group)
+        return self.rollback(tx_key)
 
     def close(self, *, was_committed: bool = True) -> None:
         del was_committed
         if self.closed:
             return
-        for tx_group, tx_index in type(self).__class_tx_group_to_index__.items():
+        for tx_key, tx_index in type(self).__class_tx_key_to_index__.items():
             if self.working_record_for_index(tx_index) is not None:
-                self.rollback(tx_group)
+                self.rollback(tx_key)
         for name in type(self).__field_names__:
             type(self).__class_ftable_close_field__[name](self, name)
         self.closed = True
@@ -3572,15 +3572,15 @@ class _ManagedContextBase:
         """
         return self._state.commit_order_key_for()
 
-    def commit_order_key_for(self, tx_group: Hashable = DEFAULT_TRANSACTION) -> tuple[Any, ...]:
-        return self._state.commit_order_key_for(tx_group)
+    def commit_order_key_for(self, tx_key: Hashable = DEFAULT_TRANSACTION) -> tuple[Any, ...]:
+        return self._state.commit_order_key_for(tx_key)
     
     def requires_validation(self) -> bool:
         """Return True if the context requires validation before commit, False otherwise."""
         return self._state.commit_validator_runner_for() is not None
 
-    def requires_validation_for(self, tx_group: Hashable = DEFAULT_TRANSACTION) -> bool:
-        return self._state.commit_validator_runner_for(tx_group) is not None
+    def requires_validation_for(self, tx_key: Hashable = DEFAULT_TRANSACTION) -> bool:
+        return self._state.commit_validator_runner_for(tx_key) is not None
 
     def validate_commit(self) -> bool:
         """Return True if the context is valid and can be committed, False otherwise."""
@@ -3589,8 +3589,8 @@ class _ManagedContextBase:
             return bool(runner(self._state, {}))
         return True
 
-    def validate_commit_for(self, tx_group: Hashable = DEFAULT_TRANSACTION) -> bool:
-        runner = self._state.commit_validator_runner_for(tx_group)
+    def validate_commit_for(self, tx_key: Hashable = DEFAULT_TRANSACTION) -> bool:
+        runner = self._state.commit_validator_runner_for(tx_key)
         if runner is not None:
             return bool(runner(self._state, {}))
         return True
@@ -3648,25 +3648,25 @@ class _ManagedContextBase:
     def _snapshot_current(self) -> _RecordSnapshot:
         return self._state.snapshot_current()
 
-    def commit(self, tx_group: Hashable = DEFAULT_TRANSACTION) -> _ManagedContextBase:
-        return self._state.commit(tx_group)
+    def commit(self, tx_key: Hashable = DEFAULT_TRANSACTION) -> _ManagedContextBase:
+        return self._state.commit(tx_key)
 
-    def rollback(self, tx_group: Hashable = DEFAULT_TRANSACTION) -> _ManagedContextBase:
-        return self._state.rollback(tx_group)
+    def rollback(self, tx_key: Hashable = DEFAULT_TRANSACTION) -> _ManagedContextBase:
+        return self._state.rollback(tx_key)
 
     def _commit_transaction(
         self,
         tx_id: int,
-        tx_group: Hashable = DEFAULT_TRANSACTION,
+        tx_key: Hashable = DEFAULT_TRANSACTION,
     ) -> _ManagedContextBase:
-        return self._state.commit_transaction(tx_id, tx_group)
+        return self._state.commit_transaction(tx_id, tx_key)
 
     def _rollback_transaction(
         self,
         tx_id: int,
-        tx_group: Hashable = DEFAULT_TRANSACTION,
+        tx_key: Hashable = DEFAULT_TRANSACTION,
     ) -> _ManagedContextBase:
-        return self._state.rollback_transaction(tx_id, tx_group)
+        return self._state.rollback_transaction(tx_id, tx_key)
 
 
 LifecycleContext = _ManagedContextBase
@@ -3682,14 +3682,14 @@ def _build_commit_validator_runner_table(
     result: dict[Hashable, InjectedRunner] = {}
     allowed = _allowed_commit_validator_params(initvar_names)
     resolve = initvar_resolve if initvar_names else None
-    for tx_group, field_name in special_tables.commit_validator_by_group.items():
+    for tx_key, field_name in special_tables.commit_validator_by_group.items():
         spec = merged_specs[field_name]
         hook = spec.default
         if hook is MISSING or not callable(hook):
             raise TypeError(
                 f"commit_validator field {field_name!r} requires a callable default",
             )
-        result[tx_group] = _compile_injected_runner(
+        result[tx_key] = _compile_injected_runner(
             field_name=field_name,
             hook_name="commit_validator",
             function=typing.cast(Callable[..., Any], hook),
@@ -3714,13 +3714,13 @@ def _build_hook_runner_tables(
 
     return {
         "__class_ftable_before_commit_runners__": {
-            tx_group: tuple(runners) for tx_group, runners in hook_tables.before_commit.items()
+            tx_key: tuple(runners) for tx_key, runners in hook_tables.before_commit.items()
         },
         "__class_ftable_after_commit_runners__": {
-            tx_group: tuple(runners) for tx_group, runners in hook_tables.after_commit.items()
+            tx_key: tuple(runners) for tx_key, runners in hook_tables.after_commit.items()
         },
         "__class_ftable_after_rollback_runners__": {
-            tx_group: tuple(runners) for tx_group, runners in hook_tables.after_rollback.items()
+            tx_key: tuple(runners) for tx_key, runners in hook_tables.after_rollback.items()
         },
     }
 
@@ -3728,7 +3728,7 @@ def _build_hook_runner_tables(
 def _build_class_tables(
     specs: dict[str, FieldSpec],
     *,
-    tx_group_to_index: dict[Hashable, int],
+    tx_key_to_index: dict[Hashable, int],
     initvar_names: tuple[str, ...] = (),
     initvar_resolve: Callable[[LifecycleContextState, str], Any] | None = None,
 ) -> dict[str, dict[str, Callable[..., Any]]]:
@@ -3736,7 +3736,7 @@ def _build_class_tables(
     factory_allowed = _allowed_factory_params(initvar_names)
     factory_resolve = initvar_resolve if initvar_names else None
     for name, spec in specs.items():
-        tx_index = tx_group_to_index[spec.tx_group]
+        tx_index = tx_key_to_index[spec.tx_key]
         tables.field_tx_index[name] = tx_index
         if spec.default_factory is not MISSING:
             tables.default_factory_runner[name] = _compile_factory_runner(
@@ -3884,7 +3884,7 @@ def _merge_field_specs(base: FieldSpec, derived: FieldSpec) -> FieldSpec:
         kind=base.kind,
         annotation=derived.annotation,
         compare=base.compare,
-        tx_group=base.tx_group,
+        tx_key=base.tx_key,
         default=default,
         default_factory=default_factory,
         working_default_factory=working_default_factory,
@@ -3997,11 +3997,11 @@ def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
         constructor_only_specs
     )
 
-    tx_groups: list[Hashable] = [DEFAULT_TRANSACTION]
+    tx_keys: list[Hashable] = [DEFAULT_TRANSACTION]
     for spec in merged_specs.values():
-        if spec.tx_group not in tx_groups:
-            tx_groups.append(spec.tx_group)
-    tx_group_to_index = {tx_group: index for index, tx_group in enumerate(tx_groups)}
+        if spec.tx_key not in tx_keys:
+            tx_keys.append(spec.tx_key)
+    tx_key_to_index = {tx_key: index for index, tx_key in enumerate(tx_keys)}
 
     special_tables = SpecialFieldTables()
     for name, spec in merged_specs.items():
@@ -4050,8 +4050,8 @@ def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
         "__class_constructor_only_requested__": requested_live,
         "__class_constructor_only_retained__": retained_live,
         "__class_has_late_constructor_only_consumers__": bool(retained_live),
-        "__class_tx_groups__": tuple(tx_groups),
-        "__class_tx_group_to_index__": tx_group_to_index,
+        "__class_tx_keys__": tuple(tx_keys),
+        "__class_tx_key_to_index__": tx_key_to_index,
         "__class_commit_order_key_by_group__": special_tables.commit_order_key_by_group,
         "__class_commit_validator_by_group__": special_tables.commit_validator_by_group,
         "__class_ftable_commit_validator_runner_by_group__": validator_runners,
@@ -4060,7 +4060,7 @@ def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
     state_cls.__field_names__ = tuple(state_cls.__field_specs__)
     for table_name, table in _build_class_tables(
         state_cls.__field_specs__,
-        tx_group_to_index=state_cls.__class_tx_group_to_index__,
+        tx_key_to_index=state_cls.__class_tx_key_to_index__,
         initvar_names=constructor_only_names,
         initvar_resolve=initvar_resolve,
     ).items():
