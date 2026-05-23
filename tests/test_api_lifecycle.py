@@ -1903,7 +1903,7 @@ def test_eager_only_initvar_is_not_retained_on_state_class() -> None:
         seed: int = initvar(default=1)
         x: int = const(default_factory=lambda self, seed: seed + 5)
 
-    assert Ctx.__state_cls__.__class_retained_initvars__ == frozenset()
+    assert Ctx.__state_cls__.__class_constructor_only_retained__ == frozenset()
     assert Ctx().x == 6
 
 
@@ -2160,7 +2160,7 @@ def test_underscore_prefixed_lifecycle_declarations_are_collected_when_explicit(
     assert c._x == 6
     assert type(c)._TAG == "tag"
     assert "_x" in Ctx.__state_cls__.__field_specs__
-    assert "_seed" in Ctx.__state_cls__.__initvar_specs__
+    assert "_seed" in Ctx.__state_cls__.__class_constructor_only_specs__
     assert "_TAG" not in Ctx.__state_cls__.__field_specs__
 
 
@@ -2173,7 +2173,7 @@ def test_private_plain_annotations_remain_ignored() -> None:
     c = Ctx()
     assert c.x == 1
     assert "_plain" not in Ctx.__state_cls__.__field_specs__
-    assert "_plain" not in Ctx.__state_cls__.__initvar_specs__
+    assert "_plain" not in Ctx.__state_cls__.__class_constructor_only_specs__
 
 
 def test_compile_injected_runner_resolves_initvar_like_name_via_resolver() -> None:

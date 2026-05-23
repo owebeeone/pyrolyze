@@ -14,6 +14,7 @@ from ._support import (
     _resolve_runtime_component_func,
     _unwrap,
     dirtyof_values,
+    DirtyStateContext,
 )
 from pyrolyze.runtime.function_arg_helpers import build_function_arg_dirty_map, pack_function_args
 
@@ -50,7 +51,7 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
         owner_slot_facade: Any = USE_OWNER,
         scheduler_root_facade: Any = USE_OWNER,
         render_context_factory: Callable[..., Any] | object = USE_FACTORY,
-        dirty_state: Any = None,
+        dirty_state: DirtyStateContext | None = None,
         _pyr_param_names: tuple[str, ...] | None = None,
         _pyr_args_dirty: tuple[Any, ...] | None = None,
         _pyr_kwargs_dirty: dict[str, Any] | None = None,

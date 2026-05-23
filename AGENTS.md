@@ -5,6 +5,11 @@ This file defines repository-specific coding instructions for `py-rolyze`.
 
 ## Design Rules
 - Prefer `@dataclass` for classes that primarily hold state.
+- Do not introduce enums without explicit project-owner approval. Do not work
+  around this with magic strings, magic integers, sentinel strings, or other
+  passive tags when the concept has semantics. Semantic concepts should be
+  represented by objects/classes that can own behavior, validation, lowering,
+  and documentation.
 - Keep transport clients small and explicit; protocol conversion should be easy to inspect.
 - Keep type annotations complete and precise so IDE inference remains strong.
 - Organize modules by cohesive responsibility and change boundary.

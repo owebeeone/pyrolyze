@@ -32,7 +32,8 @@ Only the restarted Phase 1.1/1.10 surface is implemented here:
 - ``on_after_commit``
 - ``on_after_rollback``
 - ``managed_context``
-- ``initvar`` / ``classvar``
+- ``initvar``
+- ``classvar``
 - ``LifecycleContext``
 - ``TransactionManager``
 """
@@ -543,6 +544,10 @@ def _initvar_resolve_from_state(state: "LifecycleContextState", name: str) -> An
     raise RuntimeError(f"initvar {name!r} is not available for injection")
 
 
+def _constructor_only_resolve_from_state(state: "LifecycleContextState", name: str) -> Any:
+    return _initvar_resolve_from_state(state, name)
+
+
 @dataclass(slots=True)
 class HookRunnerTables:
     before_commit: dict[Hashable, list[InjectedRunner]] = field(default_factory=dict)
@@ -738,38 +743,14 @@ class LCKind:
         return "field"
 
     @classmethod
-    def validate_descriptor(cls, descriptor: "LifecycleField") -> None:
-        if descriptor.init is MISSING:
-            raise TypeError(f"{cls.name!r} descriptor init was not normalized")
-        temp_spec = FieldSpec(
-            name="<unbound>",
-            kind=cls,
-            annotation=Any,
-            compare=descriptor.compare,
-            tx_group=descriptor.tx_group,
-            default=descriptor.default,
-            default_factory=descriptor.default_factory,
-            working_default_factory=descriptor.working_default_factory,
-            initial_working=descriptor.initial_working,
-            freeze=descriptor.freeze,
-            thaw=descriptor.thaw,
-            state_factory=descriptor.state_factory,
-            state_copy=descriptor.state_copy,
-            init=descriptor.init,
-        )
-        cls.validate_final_spec(temp_spec)
-
-    @classmethod
-    def build_declaration_spec(
+    def build_field_spec_from_descriptor(
         cls,
         descriptor: "LifecycleField",
         *,
         annotation: Any,
         name: str,
-    ) -> Any:
-        if descriptor.init is MISSING:
-            raise TypeError(f"{cls.name!r} descriptor init was not normalized")
-        spec = FieldSpec(
+    ) -> "FieldSpec":
+        return FieldSpec(
             name=name,
             kind=cls,
             annotation=annotation,
@@ -784,6 +765,29 @@ class LCKind:
             state_factory=descriptor.state_factory,
             state_copy=descriptor.state_copy,
             init=descriptor.init,
+        )
+
+    @classmethod
+    def validate_descriptor(cls, descriptor: "LifecycleField") -> None:
+        temp_spec = cls.build_field_spec_from_descriptor(
+            descriptor,
+            annotation=Any,
+            name="<unbound>",
+        )
+        cls.validate_final_spec(temp_spec)
+
+    @classmethod
+    def build_declaration_spec(
+        cls,
+        descriptor: "LifecycleField",
+        *,
+        annotation: Any,
+        name: str,
+    ) -> Any:
+        spec = cls.build_field_spec_from_descriptor(
+            descriptor,
+            annotation=annotation,
+            name=name,
         )
         cls.validate_final_spec(spec)
         return spec
@@ -1504,50 +1508,6 @@ class InitVarDeclarationKind(LCKind):
     def validate_final_spec(cls, spec: FieldSpec) -> None:
         cls.validate_field_spec(spec)
 
-    @classmethod
-    def validate_descriptor(cls, descriptor: "LifecycleField") -> None:
-        init_for_spec = descriptor.init if descriptor.init is not MISSING else MISSING
-        eff_init = True if init_for_spec is MISSING else bool(init_for_spec)
-        spec = FieldSpec(
-            name="<unbound>",
-            kind=cls,
-            annotation=Any,
-            compare=descriptor.compare,
-            init=init_for_spec,
-            default=descriptor.default,
-            default_factory=descriptor.default_factory,
-            working_default_factory=descriptor.working_default_factory,
-            initial_working=descriptor.initial_working,
-            tx_group=descriptor.tx_group,
-        )
-        _validate_initvar_spec(dataclasses.replace(spec, init=eff_init))
-
-    @classmethod
-    def build_declaration_spec(
-        cls,
-        descriptor: "LifecycleField",
-        *,
-        annotation: Any,
-        name: str,
-    ) -> FieldSpec:
-        init_for_spec = descriptor.init if descriptor.init is not MISSING else MISSING
-        eff_init = True if init_for_spec is MISSING else bool(init_for_spec)
-        spec = FieldSpec(
-            name=name,
-            kind=cls,
-            annotation=annotation,
-            compare=descriptor.compare,
-            init=init_for_spec,
-            default=descriptor.default,
-            default_factory=descriptor.default_factory,
-            working_default_factory=descriptor.working_default_factory,
-            initial_working=descriptor.initial_working,
-            tx_group=descriptor.tx_group,
-        )
-        _validate_initvar_spec(dataclasses.replace(spec, init=eff_init))
-        return dataclasses.replace(spec, init=eff_init)
-
-
 class HookDeclarationKind(HookKind):
     pass
 
@@ -2069,7 +2029,7 @@ class FieldSpec:
     annotation: Any
     compare: str
     # Must precede defaulted fields: dataclasses treats `= MISSING` as "no default".
-    init: Any = MISSING
+    init: bool | object = MISSING
     default: Any = MISSING
     default_factory: Callable[[], Any] | object = MISSING
     working_default_factory: Callable[[], Any] | object = MISSING
@@ -2208,53 +2168,53 @@ def _require_explicit_params_allowed(
             )
 
 
-def _initvar_names_in_callable_strict(
+def _constructor_only_names_in_callable_strict(
     function: Callable[..., Any],
-    initvar_names: frozenset[str],
+    constructor_only_names: frozenset[str],
     *,
     context: str,
 ) -> frozenset[str]:
     params = _extract_explicit_parameter_names_or_raise(function, context=context)
-    return frozenset(p for p in params if p in initvar_names)
+    return frozenset(p for p in params if p in constructor_only_names)
 
 
-def _scan_initvar_consumer_seeds(
+def _scan_constructor_only_consumer_seeds(
     merged_specs: dict[str, FieldSpec],
-    merged_initvars: dict[str, FieldSpec],
+    constructor_only_specs: dict[str, FieldSpec],
 ) -> tuple[frozenset[str], frozenset[str]]:
-    initvar_names = frozenset(merged_initvars)
+    constructor_only_names = frozenset(constructor_only_specs)
     all_seeds: set[str] = set()
     late_seeds: set[str] = set()
     for fname, spec in merged_specs.items():
         if spec.default_factory is not MISSING and callable(spec.default_factory):
             ctx = f"default_factory for field {fname!r}"
-            refs = _initvar_names_in_callable_strict(
-                spec.default_factory, initvar_names, context=ctx
+            refs = _constructor_only_names_in_callable_strict(
+                spec.default_factory, constructor_only_names, context=ctx
             )
             all_seeds.update(refs)
             if spec.kind.default_factory_may_run_after_initialization(spec):
                 late_seeds.update(refs)
         if spec.working_default_factory is not MISSING and callable(spec.working_default_factory):
             ctx = f"working_default_factory for field {fname!r}"
-            refs = _initvar_names_in_callable_strict(
-                spec.working_default_factory, initvar_names, context=ctx
+            refs = _constructor_only_names_in_callable_strict(
+                spec.working_default_factory, constructor_only_names, context=ctx
             )
             all_seeds.update(refs)
             late_seeds.update(refs)
         for label, fn in spec.kind.initvar_requestor_callables(spec):
             ctx = f"{label} for field {fname!r}"
-            refs = _initvar_names_in_callable_strict(fn, initvar_names, context=ctx)
+            refs = _constructor_only_names_in_callable_strict(fn, constructor_only_names, context=ctx)
             all_seeds.update(refs)
             late_seeds.update(refs)
     return frozenset(all_seeds), frozenset(late_seeds)
 
 
-def _initvar_prereq_initvars_from_specs(
-    merged_initvars: dict[str, FieldSpec],
+def _constructor_only_prereqs_from_specs(
+    constructor_only_specs: dict[str, FieldSpec],
 ) -> dict[str, frozenset[str]]:
-    names_set = frozenset(merged_initvars)
+    names_set = frozenset(constructor_only_specs)
     prereqs: dict[str, frozenset[str]] = {}
-    for name, spec in merged_initvars.items():
+    for name, spec in constructor_only_specs.items():
         if spec.default_factory is MISSING:
             prereqs[name] = frozenset()
             continue
@@ -2267,12 +2227,12 @@ def _initvar_prereq_initvars_from_specs(
     return prereqs
 
 
-def _transitive_initvar_closure(
-    merged_initvars: dict[str, FieldSpec],
+def _transitive_constructor_only_closure(
+    constructor_only_specs: dict[str, FieldSpec],
     seeds: frozenset[str],
     prereqs: Mapping[str, frozenset[str]],
 ) -> frozenset[str]:
-    names_set = frozenset(merged_initvars)
+    names_set = frozenset(constructor_only_specs)
     needed = set(seeds) & names_set
     changed = True
     while changed:
@@ -2286,13 +2246,13 @@ def _transitive_initvar_closure(
     return frozenset(needed)
 
 
-def _compile_initvar_default_factory_runner(
+def _compile_constructor_only_default_factory_runner(
     *,
-    initvar_name: str,
+    declaration_name: str,
     factory: Callable[..., Any],
     allowed_params: frozenset[str],
 ) -> Callable[[dict[str, Any], type[Any]], Any]:
-    ctx = f"initvar {initvar_name!r} default_factory"
+    ctx = f"initvar {declaration_name!r} default_factory"
     parameter_names = _explicit_parameter_names_for_runner_compile(factory, context=ctx)
     if parameter_names is None or not parameter_names:
         return lambda _resolved, owner_cls: factory()
@@ -2312,56 +2272,59 @@ def _compile_initvar_default_factory_runner(
     return run
 
 
-def _build_initvar_factory_runners(
-    merged_initvars: dict[str, FieldSpec],
+def _build_constructor_only_factory_runners(
+    constructor_only_specs: dict[str, FieldSpec],
 ) -> dict[str, Callable[[dict[str, Any], type[Any]], Any]]:
-    order = tuple(merged_initvars.keys())
+    order = tuple(constructor_only_specs.keys())
     result: dict[str, Callable[[dict[str, Any], type[Any]], Any]] = {}
     for i, name in enumerate(order):
-        spec = merged_initvars[name]
+        spec = constructor_only_specs[name]
         if spec.default_factory is MISSING:
             continue
         allowed = frozenset({"cls"}) | frozenset(order[:i])
         factory = typing.cast(Callable[..., Any], spec.default_factory)
-        result[name] = _compile_initvar_default_factory_runner(
-            initvar_name=name,
+        result[name] = _compile_constructor_only_default_factory_runner(
+            declaration_name=name,
             factory=factory,
             allowed_params=allowed,
         )
     return result
 
 
-def _normalize_retained_initvar_value(value: Any) -> Any:
+def _normalize_retained_constructor_only_value(value: Any) -> Any:
     frozen = getattr(value, "to_frozen", None)
     if callable(frozen):
         return frozen()
     return value
 
 
-def _resolve_initvar_values(
-    merged_initvars: dict[str, FieldSpec],
+def _resolve_constructor_only_values(
+    constructor_only_specs: dict[str, FieldSpec],
     *,
     user_kw: dict[str, Any],
     owner_cls: type[Any],
     factory_runners: Mapping[str, Callable[[dict[str, Any], type[Any]], Any]],
 ) -> dict[str, Any]:
     resolved: dict[str, Any] = {}
-    order = tuple(merged_initvars.keys())
+    order = tuple(constructor_only_specs.keys())
     for name in order:
-        spec = merged_initvars[name]
+        spec = constructor_only_specs[name]
         if name in user_kw:
             if not spec.init:
-                raise TypeError(f"constructor kw {name!r} is not accepted (initvar init=False)")
+                raise TypeError(
+                    f"constructor kw {name!r} is not accepted (constructor-only init=False)"
+                )
             resolved[name] = user_kw[name]
         elif spec.default is not MISSING:
             resolved[name] = spec.default
         elif spec.default_factory is not MISSING:
             resolved[name] = factory_runners[name](resolved, owner_cls)
         elif spec.init:
-            raise TypeError(f"missing required initvar {name!r}")
+            raise TypeError(f"missing required constructor-only declaration {name!r}")
         else:
             raise TypeError(
-                f"initvar {name!r} with init=False requires default or default_factory",
+                f"constructor-only declaration {name!r} with init=False requires "
+                "default or default_factory",
             )
     return resolved
 
@@ -2375,12 +2338,12 @@ def _validate_classvar_spec(spec: FieldSpec) -> None:
         raise TypeError(f"classvar name {spec.name!r} is reserved for lifecycle injection")
 
 
-def _compile_classvar_factory_runner(
+def _compile_class_materialized_factory_runner(
     *,
-    classvar_name: str,
+    declaration_name: str,
     factory: Callable[..., Any],
 ) -> Callable[[type[Any]], Any]:
-    ctx = f"classvar {classvar_name!r} default_factory"
+    ctx = f"classvar {declaration_name!r} default_factory"
     parameter_names = _explicit_parameter_names_for_runner_compile(factory, context=ctx)
     if parameter_names is None or not parameter_names:
         return lambda owner_cls: factory()
@@ -2394,32 +2357,32 @@ def _compile_classvar_factory_runner(
     return run
 
 
-def _build_classvar_factory_runners(
-    merged_classvars: dict[str, FieldSpec],
+def _build_class_materialized_factory_runners(
+    class_materialized_specs: dict[str, FieldSpec],
 ) -> dict[str, Callable[[type[Any]], Any]]:
     result: dict[str, Callable[[type[Any]], Any]] = {}
-    for name, spec in merged_classvars.items():
+    for name, spec in class_materialized_specs.items():
         if spec.default_factory is MISSING:
             continue
         factory = typing.cast(Callable[..., Any], spec.default_factory)
-        result[name] = _compile_classvar_factory_runner(
-            classvar_name=name,
+        result[name] = _compile_class_materialized_factory_runner(
+            declaration_name=name,
             factory=factory,
         )
     return result
 
 
-def _materialize_classvars_on_managed_class(
+def _materialize_class_declarations_on_managed_class(
     wrapped: type[Any],
-    merged: dict[str, FieldSpec],
+    class_materialized_specs: dict[str, FieldSpec],
     *,
     factory_runners: Mapping[str, Callable[[type[Any]], Any]],
 ) -> None:
-    for cv_name, spec in merged.items():
+    for attr_name, spec in class_materialized_specs.items():
         if spec.default is not MISSING:
-            setattr(wrapped, cv_name, spec.default)
+            setattr(wrapped, attr_name, spec.default)
         else:
-            setattr(wrapped, cv_name, factory_runners[cv_name](wrapped))
+            setattr(wrapped, attr_name, factory_runners[attr_name](wrapped))
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -2431,7 +2394,7 @@ class LifecycleField:
     default_factory: Callable[[], Any] | object = MISSING
     working_default_factory: Callable[[], Any] | object = MISSING
     initial_working: Any = MISSING
-    init: Any = MISSING
+    init: bool | object = MISSING
     freeze: Callable[[Any], Any] | None = None
     thaw: Callable[[Any], Any] | None = None
     state_factory: Callable[[], Any] | None = None
@@ -3048,18 +3011,18 @@ def _reset_derived_field(state: LifecycleContextState, name: str) -> None:
 
 class LifecycleContextState:
     __field_specs__: dict[str, FieldSpec] = {}
-    __initvar_specs__: dict[str, FieldSpec] = {}
+    __class_constructor_only_specs__: dict[str, FieldSpec] = {}
     __field_names__: tuple[str, ...] = ()
     __class_tx_groups__: tuple[Hashable, ...] = (DEFAULT_TRANSACTION,)
     __class_tx_group_to_index__: dict[Hashable, int] = {DEFAULT_TRANSACTION: 0}
     __class_commit_order_key_by_group__: dict[Hashable, str] = {}
     __class_commit_validator_by_group__: dict[Hashable, str] = {}
     __class_ftable_commit_validator_runner_by_group__: dict[Hashable, InjectedRunner] = {}
-    __initvar_names__: tuple[str, ...] = ()
-    __class_initvar_factory_runners__: dict[str, Callable[[dict[str, Any], type[Any]], Any]] = {}
-    __class_requested_initvars__: frozenset[str] = frozenset()
-    __class_retained_initvars__: frozenset[str] = frozenset()
-    __class_has_late_initvar_consumers__: bool = False
+    __class_constructor_only_names__: tuple[str, ...] = ()
+    __class_constructor_only_factory_runners__: dict[str, Callable[[dict[str, Any], type[Any]], Any]] = {}
+    __class_constructor_only_requested__: frozenset[str] = frozenset()
+    __class_constructor_only_retained__: frozenset[str] = frozenset()
+    __class_has_late_constructor_only_consumers__: bool = False
     __class_ftable_get_default__: dict[str, FieldGetter] = {}
     __class_ftable_get_current__: dict[str, FieldGetter] = {}
     __class_ftable_get_working__: dict[str, FieldGetter] = {}
@@ -3481,14 +3444,16 @@ class _ManagedContextBase:
     def __init__(self, **values: Any) -> None:
         state_cls = type(self).__state_cls__
         field_specs = state_cls.__field_specs__
-        initvar_specs: dict[str, FieldSpec] = getattr(state_cls, "__initvar_specs__", {}) or {}
+        constructor_only_specs: dict[str, FieldSpec] = getattr(
+            state_cls, "__class_constructor_only_specs__", {},
+        ) or {}
         raw = dict(values)
         transaction_manager = raw.pop("transaction_manager", None)
 
         field_kw: dict[str, Any] = {}
         init_kw: dict[str, Any] = {}
         for name in list(raw):
-            if name in initvar_specs:
+            if name in constructor_only_specs:
                 init_kw[name] = raw.pop(name)
             elif name in field_specs:
                 field_kw[name] = raw.pop(name)
@@ -3503,24 +3468,24 @@ class _ManagedContextBase:
                 raise TypeError(f"constructor kw {fname!r} is not accepted (field init=False)")
 
         factory_runners: Mapping[str, Callable[[dict[str, Any], type[Any]], Any]] = (
-            getattr(state_cls, "__class_initvar_factory_runners__", {}) or {}
+            getattr(state_cls, "__class_constructor_only_factory_runners__", {}) or {}
         )
         resolved_initvars: dict[str, Any] = {}
-        if initvar_specs:
-            resolved_initvars = _resolve_initvar_values(
-                initvar_specs,
+        if constructor_only_specs:
+            resolved_initvars = _resolve_constructor_only_values(
+                constructor_only_specs,
                 user_kw=init_kw,
                 owner_cls=type(self),
                 factory_runners=factory_runners,
             )
 
         retained_names: frozenset[str] = getattr(
-            state_cls, "__class_retained_initvars__", frozenset(),
+            state_cls, "__class_constructor_only_retained__", frozenset(),
         )
         retained_frozen: dict[str, Any] | None = None
         if retained_names:
             retained_frozen = {
-                n: _normalize_retained_initvar_value(resolved_initvars[n]) for n in retained_names
+                n: _normalize_retained_constructor_only_value(resolved_initvars[n]) for n in retained_names
             }
 
         construction = resolved_initvars if resolved_initvars else None
@@ -3870,6 +3835,18 @@ def _collect_own_field_specs(cls: type[Any]) -> dict[str, FieldSpec]:
     return fields
 
 
+def _select_declaration_specs(
+    specs: Mapping[str, FieldSpec],
+    *,
+    declaration_space: str,
+) -> dict[str, FieldSpec]:
+    return {
+        name: spec
+        for name, spec in specs.items()
+        if spec.kind.declaration_space_name() == declaration_space
+    }
+
+
 def _merge_field_specs(base: FieldSpec, derived: FieldSpec) -> FieldSpec:
     base.kind.validate_override(base, derived)
     if not is_annotation_narrower_or_equal(derived.annotation, base.annotation):
@@ -3975,10 +3952,10 @@ def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
         )
         wrapped.__qualname__ = cls.__qualname__
 
-    own_specs, own_initvars, own_classvars = _collect_own_declarations(cls)
+    own_specs, own_constructor_only_specs, own_class_materialized_specs = _collect_own_declarations(cls)
     wrapped.__managed_own_field_specs__ = own_specs
-    wrapped.__managed_own_initvar_specs__ = own_initvars
-    wrapped.__managed_own_classvar_specs__ = own_classvars
+    wrapped.__managed_own_constructor_only_specs__ = own_constructor_only_specs
+    wrapped.__managed_own_class_materialized_specs__ = own_class_materialized_specs
 
     base_state_cls = LifecycleContextState
     for base in wrapped.__mro__[1:]:
@@ -3996,19 +3973,29 @@ def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
         merged_desc.__set_name__(wrapped, fname)
         setattr(wrapped, fname, merged_desc)
 
-    merged_initvars = _merge_field_specs_from_mro(
+    merged_constructor_only_specs = _merge_field_specs_from_mro(
         wrapped,
-        attr_name="__managed_own_initvar_specs__",
-        own_items=own_initvars,
+        attr_name="__managed_own_constructor_only_specs__",
+        own_items=own_constructor_only_specs,
     )
-    merged_classvars = _merge_field_specs_from_mro(
+    merged_class_materialized_specs = _merge_field_specs_from_mro(
         wrapped,
-        attr_name="__managed_own_classvar_specs__",
-        own_items=own_classvars,
+        attr_name="__managed_own_class_materialized_specs__",
+        own_items=own_class_materialized_specs,
     )
-    classvar_factory_runners = _build_classvar_factory_runners(merged_classvars)
-    initvar_names_tuple = tuple(merged_initvars.keys())
-    initvar_factory_runners = _build_initvar_factory_runners(merged_initvars)
+    constructor_only_specs = _select_declaration_specs(
+        merged_constructor_only_specs, declaration_space="initvar"
+    )
+    class_materialized_specs = _select_declaration_specs(
+        merged_class_materialized_specs, declaration_space="classvar"
+    )
+    class_materialized_factory_runners = _build_class_materialized_factory_runners(
+        class_materialized_specs
+    )
+    constructor_only_names = tuple(constructor_only_specs.keys())
+    constructor_only_factory_runners = _build_constructor_only_factory_runners(
+        constructor_only_specs
+    )
 
     tx_groups: list[Hashable] = [DEFAULT_TRANSACTION]
     for spec in merged_specs.values():
@@ -4020,34 +4007,36 @@ def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
     for name, spec in merged_specs.items():
         spec.kind.register_special_field(name=name, spec=spec, special_tables=special_tables)
 
-    if merged_initvars:
-        iv_prereqs = _initvar_prereq_initvars_from_specs(merged_initvars)
-        all_seeds, late_seeds = _scan_initvar_consumer_seeds(merged_specs, merged_initvars)
-        requested_live = _transitive_initvar_closure(
-            merged_initvars, all_seeds, iv_prereqs
+    if constructor_only_specs:
+        iv_prereqs = _constructor_only_prereqs_from_specs(constructor_only_specs)
+        all_seeds, late_seeds = _scan_constructor_only_consumer_seeds(
+            merged_specs, constructor_only_specs
         )
-        dead = frozenset(merged_initvars) - requested_live
+        requested_live = _transitive_constructor_only_closure(
+            constructor_only_specs, all_seeds, iv_prereqs
+        )
+        dead = frozenset(constructor_only_specs) - requested_live
         if dead:
             raise TypeError(
                 "unused lifecycle initvar declarations (no lifecycle consumer request): "
                 + ", ".join(sorted(dead)),
             )
-        retained_live = _transitive_initvar_closure(
-            merged_initvars, late_seeds, iv_prereqs
+        retained_live = _transitive_constructor_only_closure(
+            constructor_only_specs, late_seeds, iv_prereqs
         )
     else:
         requested_live = frozenset()
         retained_live = frozenset()
 
     initvar_resolve: Callable[[LifecycleContextState, str], Any] | None
-    if initvar_names_tuple:
-        initvar_resolve = _initvar_resolve_from_state
+    if constructor_only_names:
+        initvar_resolve = _constructor_only_resolve_from_state
     else:
         initvar_resolve = None
     validator_runners = _build_commit_validator_runner_table(
         merged_specs,
         special_tables=special_tables,
-        initvar_names=initvar_names_tuple,
+        initvar_names=constructor_only_names,
         initvar_resolve=initvar_resolve,
     )
 
@@ -4055,12 +4044,12 @@ def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
     state_namespace = {
         "__module__": wrapped.__module__,
         "__field_specs__": merged_specs,
-        "__initvar_specs__": merged_initvars,
-        "__initvar_names__": initvar_names_tuple,
-        "__class_initvar_factory_runners__": initvar_factory_runners,
-        "__class_requested_initvars__": requested_live,
-        "__class_retained_initvars__": retained_live,
-        "__class_has_late_initvar_consumers__": bool(retained_live),
+        "__class_constructor_only_specs__": constructor_only_specs,
+        "__class_constructor_only_names__": constructor_only_names,
+        "__class_constructor_only_factory_runners__": constructor_only_factory_runners,
+        "__class_constructor_only_requested__": requested_live,
+        "__class_constructor_only_retained__": retained_live,
+        "__class_has_late_constructor_only_consumers__": bool(retained_live),
         "__class_tx_groups__": tuple(tx_groups),
         "__class_tx_group_to_index__": tx_group_to_index,
         "__class_commit_order_key_by_group__": special_tables.commit_order_key_by_group,
@@ -4072,13 +4061,13 @@ def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
     for table_name, table in _build_class_tables(
         state_cls.__field_specs__,
         tx_group_to_index=state_cls.__class_tx_group_to_index__,
-        initvar_names=initvar_names_tuple,
+        initvar_names=constructor_only_names,
         initvar_resolve=initvar_resolve,
     ).items():
         setattr(state_cls, table_name, table)
     for table_name, table in _build_hook_runner_tables(
         state_cls.__field_specs__,
-        initvar_names=initvar_names_tuple,
+        initvar_names=constructor_only_names,
         initvar_resolve=initvar_resolve,
     ).items():
         setattr(state_cls, table_name, table)
@@ -4093,11 +4082,10 @@ def managed_context(cls: type[LifecycleContext]) -> type[LifecycleContext]:
         wrapped,
         mode="working",
     )
-    wrapped.__classvar_specs__ = dict(merged_classvars)
-    _materialize_classvars_on_managed_class(
+    _materialize_class_declarations_on_managed_class(
         wrapped,
-        merged_classvars,
-        factory_runners=classvar_factory_runners,
+        class_materialized_specs,
+        factory_runners=class_materialized_factory_runners,
     )
     return wrapped
 
