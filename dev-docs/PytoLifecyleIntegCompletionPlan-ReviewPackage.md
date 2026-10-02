@@ -2,12 +2,26 @@
 
 ## Scope And Status
 
-Status: **accepted at Pyrolyze b0019be76927795eceb085379c3ea4f8fde4c85c
-after Consistency-1 and Safety-1 returned GO; DRAFT plan only**.
+Status: **historical acceptance at Pyrolyze
+b0019be76927795eceb085379c3ea4f8fde4c85c after Consistency-1 and Safety-1
+returned GO; superseded for the current plan by the 2026-10-03 scope revision**.
 This gate reviews the integration
 completion plan and committed I0 evidence, not a runtime implementation or
-authorization of the pending semantic decisions. This is a fresh review campaign;
+authorization of the then-pending semantic decisions. This was a fresh campaign;
 the earlier PytoLifecyleIntegPlan review files remain historical and unchanged.
+
+The user subsequently deferred stronger outer publication guarantees and moved
+broader D2/D3 containment/lifetime work after integration. The revised plan's
+minimum migration compatibility requirements have not been independently
+reviewed. This package and its reports describe the old settled tuple only;
+see the review-loop ledger for the current status. No runtime change, new
+review dispatch, commit, or roll-build is implied by the scope revision.
+
+The user then agreed to the bounded compatibility preflight and committing the
+revised plan. The new generated-field completion snapshot exposes an API choice
+before I1 live sharing; see `dev-docs/PytoLifecyleIntegI0Findings.md`. That
+checkpoint is not a new settled review package: no fresh reviewers are
+dispatched until the compatibility route is chosen.
 
 ## Initial Settled Tuple
 
@@ -73,5 +87,7 @@ documented in I0; this narrow rerun does not establish runtime readiness.
 
 One merged documentation remediation was required. Its plan, both re-verdict
 prompts, and both complete closure reports are filed with suffix `-1`; the
-review-loop ledger records their exact tuple and scope. D1-D5 remain pending
-execution gates, not approved by this plan-level acceptance.
+review-loop ledger records their exact tuple and scope. At that revision D1-D5
+remained pending execution gates, not approved by plan-level acceptance. The
+later user-directed scope change is recorded above, not in the reviewers'
+historical reports.

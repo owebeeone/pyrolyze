@@ -2,11 +2,25 @@
 
 ## Gate
 
-Status: **accepted at Pyrolyze b0019be76927795eceb085379c3ea4f8fde4c85c
-with the unchanged dependency tuple after the Consistency-1 and Safety-1
-reports returned GO; this accepts the DRAFT plan only**.
-Scope: draft completion plan and I0 evidence, not runtime activation or
-approval of pending D1-D5 outcomes.
+Status: **historical acceptance at Pyrolyze
+b0019be76927795eceb085379c3ea4f8fde4c85c; superseded for the current plan by the
+user-directed migration-first scope revision on 2026-10-03**.
+Historical scope: draft completion plan and I0 evidence, not runtime activation
+or approval of the then-pending D1-D5 outcomes.
+
+The current plan defers stronger outer publication guarantees and narrows D2/D3
+to migration compatibility, with broader failure-containment/resource-lifetime
+work after integration. This changes the reviewed boundary and acceptance
+contract; the GO reports below remain historical testimony, not acceptance of
+the revised plan. No new review loop has run. D4/D5 and the concrete compatible
+shared-TM/key mechanism remain to be settled before dependent implementation.
+
+The subsequent bounded preflight demonstrated that the current shared-key API
+cannot independently complete generated parent/child state. Its fixture and
+evidence are recorded in `dev-docs/PytoLifecyleIntegI0Findings.md`. The user has
+authorized committing this compatibility checkpoint; fresh review dispatch is
+paused until the isolated-completion versus temporary-existing-boundaries
+choice is settled. This is not a new reviewer NO-GO or an I1 implementation.
 
 Initial reviewed Pyrolyze revision: `723460d6c1dce75b70f03e355daf20c248bde8ad`.
 The exact dependency tuple, excluded dirty state, canonical-template prompts,
@@ -92,8 +106,10 @@ Accepted plan blob: `792989a3b5eb70e7aa3bb4deac37de4ce318d7e3` for
 `dev-docs/PytoLifecyleIntegPlan.md`. The final evidence commit preserves this
 same blob; acceptance is tied to those reviewed plan bytes and the tuple above.
 
-D1-D5, concrete containment facilities where necessary, resource timelines,
-baseline failures, implementation, and activation remain execution gates.
+At the accepted revision, D1-D5, concrete containment facilities where necessary,
+resource timelines, baseline failures, implementation, and activation remained
+execution gates. The current scope revision replaces the D1-D3 gates as noted
+above; it does not retroactively change either reviewer's verdict.
 No roll-build starts from this document-gate GO. Both reviewer agents are closed
 after returning their final reports.
 

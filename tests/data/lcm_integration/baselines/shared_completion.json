@@ -1,0 +1,51 @@
+{
+  "caught_child_rollback": {
+    "active": false,
+    "begin_count": 0,
+    "child": {
+      "current": 0,
+      "effective": 0
+    },
+    "parent": {
+      "current": 0,
+      "effective": 0
+    }
+  },
+  "direct_child_commit": {
+    "active": false,
+    "begin_count": 0,
+    "child": {
+      "current": 20,
+      "effective": 20
+    },
+    "parent": {
+      "current": 10,
+      "effective": 10
+    }
+  },
+  "nested_child_commit": {
+    "active": true,
+    "begin_count": 1,
+    "child": {
+      "current": 0,
+      "effective": 20
+    },
+    "parent": {
+      "current": 0,
+      "effective": 10
+    }
+  },
+  "parent_continuation_error": "writes require an active yidl transaction",
+  "subsequent_parent_rollback": {
+    "active": false,
+    "begin_count": 0,
+    "child": {
+      "current": 0,
+      "effective": 0
+    },
+    "parent": {
+      "current": 0,
+      "effective": 0
+    }
+  }
+}

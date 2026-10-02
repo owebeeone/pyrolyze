@@ -16,6 +16,11 @@ Never regenerate a baseline merely to hide an unapproved semantic change.
   This probes callback mechanics, not generated lifecycle field correctness or
   external resource ownership. Recovery explicitly restages every participant;
   it does not imply skipped cleanup repaired itself.
+- `shared_completion.py`: two instances of a generated lifecycle class share
+  one TM and one key. It observes nested commit, direct child-facade commit,
+  and caught-child rollback. The snapshot demonstrates that the current API
+  does not provide independent parent/child completion on that shared key;
+  it is a capability observation, not approval of the resulting behavior.
 - `baselines/*.json`: structured historical snapshots, compared as JSON rather
   than by whitespace. Runtime selection takes place in fresh subprocesses.
 
@@ -46,6 +51,10 @@ PYTHONDONTWRITEBYTECODE=1 \
 PYTHONPATH=src:../yidl-lifecycle/src:../yidl/src:../astichi/src \
 PYROLYZE_CONTEXT_IMPL=bare_refactor_lcm \
   ../.venv/bin/python tests/data/lcm_integration/characterize.py
+
+PYTHONDONTWRITEBYTECODE=1 \
+PYTHONPATH=src:../yidl-lifecycle/src:../yidl/src:../astichi/src \
+  ../.venv/bin/python tests/data/lcm_integration/shared_completion.py
 ```
 
 ## Explicit Regeneration
@@ -67,6 +76,11 @@ PYTHONDONTWRITEBYTECODE=1 \
 PYTHONPATH=src:../yidl-lifecycle/src:../yidl/src:../astichi/src \
   ../.venv/bin/python tests/data/lcm_integration/transaction_failures.py \
   --output tests/data/lcm_integration/baselines/transaction_failures.json
+
+PYTHONDONTWRITEBYTECODE=1 \
+PYTHONPATH=src:../yidl-lifecycle/src:../yidl/src:../astichi/src \
+  ../.venv/bin/python tests/data/lcm_integration/shared_completion.py \
+  --output tests/data/lcm_integration/baselines/shared_completion.json
 ```
 
 Normal pytest execution never rewrites expected files. External-store, effect,

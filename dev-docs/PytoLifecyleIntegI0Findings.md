@@ -142,7 +142,12 @@ cleanup was skipped. Explicitly restaging all participants allows a subsequent
 successful transaction in the probe; it does not repair missed external
 retirement/notifications. This substantiates the existing L0 prerequisite.
 
-## Decisions To Approve
+## Historical Decisions To Approve (Superseded)
+
+The recommendations below are preserved as historical I0 output. The subsequent
+user-directed migration-first decision in `dev-docs/PytoLifecyleIntegPlan.md`
+defers outer atomicity and broader D2/D3 containment/lifetime work; it supersedes
+these recommendations. They are not execution authority.
 
 1. **Recommend atomic outer-boundary publication.** An earlier successful child
    remains provisional if a later parent fails. Accept that this differs from
@@ -159,8 +164,86 @@ retirement/notifications. This substantiates the existing L0 prerequisite.
    resource cleanup to hooks. Finalize generation publication, scratch cleanup,
    retirement, and notification ordering before removing their legacy paths.
 
-The first two questions were raised with the project owner during I0. No answer
-has yet been recorded here. No dependent semantic implementation was attempted.
+At the original I0 checkpoint the first two questions had been raised but not
+answered. No dependent semantic implementation was attempted. See the scope
+decision and bounded preflight below for the subsequent disposition.
+
+## Migration-First Shared Completion Preflight
+
+The user subsequently chose to preserve existing publication/failure/resource
+behavior while replacing holders. This preflight asks only whether the current
+shared-TM API can express the observed parent/child completion boundaries. It
+does not attempt to fix existing failure-handling or lifetime bugs.
+
+The reproducible fixture is `tests/data/lcm_integration/shared_completion.py`,
+with its JSON snapshot checked by the existing characterization harness. It
+uses two instances of a real generated `@lifecycle` class, not protocol mocks.
+Each has one managed integer on `DEFAULT_TRANSACTION`, initialized to 0, and
+both receive the same manager. The parent stages 10 and the child stages 20.
+The graph's `PASS_TX_KEY` uses the same per-key manager protocol; this probe
+isolates completion mechanics from Pyrolyze rendering and domain callbacks.
+
+| Attempt | Observed Result | Compatibility Consequence |
+| --- | --- | --- |
+| Parent begins; child begins; child commits | Depth drops from 2 to 1; neither current value publishes | Nested begin/commit does not reproduce early child publication |
+| Parent then rolls back | Both current/effective values are 0; the key is inactive | The earlier child is not independently accepted |
+| Parent begins; both stage; child facade commits without a nested begin | Both current values publish, 10 and 20; the key is inactive | Calling commit on a child facade completes all enlisted work on that key, including the parent's unpublished value |
+| Parent begins; child begins; child rolls back and its failure is caught | Both values reset to 0; depth is 0 and the key is inactive | Parent work is discarded too; a subsequent parent write raises `writes require an active yidl transaction` |
+
+The source agrees with these observations:
+
+- `GroupTransactionManager.commit()` only decrements a nested begin count, or
+  completes the entire key at depth 1.
+- `rollback()` always completes the entire active key, regardless of depth.
+- `LifecycleTransaction` prepares/applies/discards its complete enlisted set.
+- `drop()` merely removes an enlistment. It neither publishes/discards that
+  generated participant's fields nor establishes an independent boundary.
+- Keys are configured on manager construction, and generated field-to-key
+  mappings are class-level. The current public API does not dynamically remap
+  each instance to an independently completed key.
+
+Distinct configured keys can complete independently, but that alone does not
+provide a per-context boundary for arbitrarily many instances of the same
+decorated state-manager class. Do not solve this by generating a new lifecycle
+class per object, mutating generated private key maps, or calling generated
+prepare/apply/rollback callbacks directly from Pyrolyze.
+
+**Disposition:** I1 live sharing needs a bounded compatibility decision. A
+generic manager-owned isolated completion boundary is one possible extension;
+its participant ownership and enlistment/cleanup rules need approval before
+implementation. This is not authorization for savepoints or outer atomicity.
+The alternative is explicitly phasing shared-TM wiring after authoritative
+holder replacement, retaining existing manager boundaries temporarily. That
+would change I1's sequence and cannot be silently called a completed I1.
+
+The revised plan can be committed as a blocked compatibility checkpoint, but
+its new review dispatch and I1 live wiring wait for this choice. The old review
+GO does not cover the scope revision. No runtime or library behavior has changed.
+
+### Preflight Verification
+
+The source tuple is unchanged from the previous evidence checkpoint: Pyrolyze
+`bfbe282c32b584d8c6bf6a186e5f031b132ecdbc`, `yidl-lifecycle`
+`cdf08544deea846bca4fa7e0c468ebee8d41e138`, Astichi
+`387ca5e1da76204ee60922094734c13ee36383c0`, and YIDL
+`95a6e3e52fc3d710d25c5d59315e791a3ed75cc4` with the existing unrelated dirty
+cleanup/docs work excluded. The relevant YIDL assembly-generation source is
+unchanged. The plan/docs and the new characterization fixture/snapshot are the
+preflight additions; the four historical snapshots remain byte-for-byte intact.
+
+- Existing four characterization cases rerun: **4 passed in 1.08s**.
+- New snapshot test first failed because its baseline was not yet recorded;
+  the actual generated-field observation was then captured explicitly.
+- Seven focused LCM files plus all five characterization cases: **37 passed
+  in 1.83s**.
+- Full default suite: **807 passed, 13 failed, 20 skipped in 28.92s**. The same
+  eleven visitor/export failures and two host-ordering failures listed above
+  remain; the passing count increased by the one new characterization case.
+- Fixture syntax, plan Python sketches/fences, and diff whitespace checks pass.
+  No machine-specific paths were added to the package.
+
+These checks preserve baseline behavior and expose the completion-isolation
+limitation. They do not prove a compatible shared-TM mechanism or complete I1.
 
 ## Reproduction
 

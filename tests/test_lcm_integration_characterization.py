@@ -24,6 +24,10 @@ def test_lifecycle_failure_completion_characterization_baseline() -> None:
     _check_baseline("transaction_failures.py", "transaction_failures", dict(os.environ))
 
 
+def test_lifecycle_shared_completion_characterization_baseline() -> None:
+    _check_baseline("shared_completion.py", "shared_completion", dict(os.environ))
+
+
 def _check_baseline(script: str, name: str, environment: dict[str, str]) -> None:
     expected = json.loads(
         (_DATA / "baselines" / f"{name}.json").read_text(encoding="utf-8")
