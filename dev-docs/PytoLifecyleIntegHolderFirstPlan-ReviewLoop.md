@@ -1,6 +1,8 @@
 # Holder-First Integration Plan Review Loop
 
-Status: **draft package prepared; independent review pending**.
+Status: **plan-only acceptance at Pyrolyze
+78e3184132eae33169ae3c329be35f3146ed338a after both original reviewers returned
+GO on remediation 1; no runtime implementation certified**.
 
 Scope: the revised integration plan's holder-first sequence, retained completion
 cohorts, and I1a constructor prerequisite. This is a fresh campaign, not renewed
@@ -38,3 +40,30 @@ Pre-dispatch evidence: 5 characterization cases passed in 1.31s; seven focused
 LCM files plus those cases passed all 37 tests in 1.99s. The new two callback
 snapshot cases first failed on absent expected data; both actual reference
 outputs were inspected and matched the one explicitly added snapshot.
+
+## Independent Closure And Acceptance
+
+Both original reviewers returned GO for Pyrolyze
+`78e3184132eae33169ae3c329be35f3146ed338a`; the other four tuple revisions and
+excluded dirty views above are unchanged. Their complete reports are filed
+verbatim with suffix `-1`. Every P2 and the P3 were independently closed against
+their original source-traced counterexamples. No new architectural root cause
+was found; both classified the remedy as conformance to the controlling
+reference rule, not a changed interface or completion boundary.
+
+Remediation rounds: **1 of 2**. Accepted plan blob:
+`81d004dc44bc84516a3484e2a64be9667f0657bc`. This evidence commit preserves those exact
+plan bytes. Earlier campaign GO reports are historical, not transferred.
+
+The new seven-case characterization suite passed in 1.74s. Before runtime edits,
+the full default suite reported **809 passed, 13 failed, 20 skipped, 1 warning
+in 30.55s**; all 13 failure names match I0's existing visitor/export and
+host-ordering clusters. Source and five historical snapshot diffs from the
+initial package are empty; whitespace checks passed. No runtime or library API
+change is part of plan acceptance.
+
+The user authorized proceeding with the holder-first sequence. I1a can now
+start as a bounded constructor prerequisite with red/green/regression evidence;
+this is not a roll-build/tag request or completed holder migration. D4/D5 and
+U1/U2 remain outside that checkpoint. Both plan reviewer agents are closed
+after filing their final reports.
