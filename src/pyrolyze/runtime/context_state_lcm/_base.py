@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Self
 
 from .lifecycle_adapter import const, managed_context
 
@@ -15,6 +15,11 @@ def unavailable() -> None:
 @managed_context
 class StateMgrBase:
     owner: Any = const()
+
+    @classmethod
+    def create(cls, owner: Any, **kwargs: Any) -> Self:
+        """Construct through the runtime's boundary-resolution entry point."""
+        return cls(owner=owner, **kwargs)
 
     def _owner_facade(self) -> Any:
         return object.__getattribute__(self, "owner")

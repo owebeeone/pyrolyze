@@ -65,8 +65,8 @@ class _StateDelegatingObject:
     _state_mgr: ContextBaseStateMgr
     _context_kind = ContextKind.SLOT
 
-    def _init_state_mgr(self, *args: Any, **kwargs: Any) -> None:
-        self._state_mgr = self._state_mgr_cls(self, *args, **kwargs)
+    def _init_state_mgr(self, **kwargs: Any) -> None:
+        self._state_mgr = self._state_mgr_cls.create(owner=self, **kwargs)
 
     def get_kind(self) -> ContextKind:
         return self._state_mgr.context_kind()

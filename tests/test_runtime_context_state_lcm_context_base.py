@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from pyrolyze.runtime.context_state_lcm.lifecycle_adapter import TransactionManager
+from pyrolyze.runtime.context_state_lcm.lifecycle_adapter import (
+    TransactionManager,
+    const,
+    managed_context,
+)
 from pyrolyze.runtime.context_state_lcm.context_base import ContextBaseStateMgr
 from pyrolyze.runtime.context_state_lcm.context_base import PASS_TX_KEY
 from pyrolyze.runtime.context_state_lcm.rerunnable_slot_context import RerunnableSlotContextStateMgr
@@ -44,6 +48,67 @@ class _ParentStateMgrStub:
 class _DerivedContextBaseStateMgr(ContextBaseStateMgr):
     def __init__(self, owner: object, **kwargs: object) -> None:
         super().__init__(owner=owner, **kwargs)
+
+
+def _observe_manager_during_initialization(self: ContextBaseStateMgr) -> TransactionManager:
+    manager = self._transaction_manager
+    assert manager is not None
+    return manager
+
+
+@managed_context
+class ObservedContextBaseStateMgr(ContextBaseStateMgr):
+    _generation_tracker_key: object = const(
+        init=False,
+        default_factory=_observe_manager_during_initialization,
+        allow_self_factory=True,
+    )
+
+
+def test_context_factory_injects_manager_before_default_factories() -> None:
+    txm = TransactionManager(tx_keys=(PASS_TX_KEY,))
+    mgr = ObservedContextBaseStateMgr.create(
+        owner=_DummyOwner(),
+        render_context_state_mgr=_RenderContextStateMgrStub(txm),
+    )
+
+    assert mgr._generation_tracker_key is txm
+
+
+def test_ordinary_derived_context_factory_preserves_boundary_manager() -> None:
+    txm = TransactionManager(tx_keys=(PASS_TX_KEY,))
+    mgr = _DerivedContextBaseStateMgr.create(
+        owner=_DummyOwner(),
+        render_context=_RenderContextWithStateMgr(_RenderContextStateMgrStub(txm)),
+    )
+
+    assert mgr._transaction_manager is txm
+
+
+def test_context_factory_accepts_explicit_manager_without_render_context() -> None:
+    txm = TransactionManager(tx_keys=(PASS_TX_KEY,))
+    mgr = ObservedContextBaseStateMgr.create(owner=_DummyOwner(), transaction_manager=txm)
+
+    assert mgr._generation_tracker_key is txm
+
+
+def test_context_factories_keep_nested_render_completion_independent() -> None:
+    from pyrolyze.runtime.context_bare_refactor_lcm import LeafSlotContext, RenderContext
+    from pyrolyze.runtime.slot_identity import ModuleId, SlotId
+
+    module = ModuleId("tests.context_constructor_boundaries")
+    root = RenderContext()
+    with root.pass_scope():
+        root_slot = LeafSlotContext(render_context=root, parent=root, slot_id=SlotId(module, 1))
+    nested = RenderContext(owner_slot=root_slot, scheduler_root=root)
+    with nested.pass_scope():
+        nested_slot = LeafSlotContext(
+            render_context=nested, parent=nested, slot_id=SlotId(module, 2)
+        )
+
+    assert root_slot._state_mgr._transaction_manager is root._state_mgr._transaction_manager
+    assert nested_slot._state_mgr._transaction_manager is nested._state_mgr._transaction_manager
+    assert nested._state_mgr._transaction_manager is not root._state_mgr._transaction_manager
 
 
 def test_context_base_resolves_render_context_state_mgr_from_explicit_initvar() -> None:
@@ -89,7 +154,7 @@ def test_context_base_reads_transaction_manager_from_render_context_state_mgr() 
     txm = TransactionManager(tx_keys={PASS_TX_KEY})
     render_context_state_mgr = _RenderContextStateMgrStub(transaction_manager=txm)
 
-    mgr = ContextBaseStateMgr(
+    mgr = ContextBaseStateMgr.create(
         owner=_DummyOwner(),
         render_context_state_mgr=render_context_state_mgr,
     )
@@ -102,7 +167,7 @@ def test_rerunnable_slot_context_inherits_transaction_manager_from_render_contex
     render_context_state_mgr = _RenderContextStateMgrStub(transaction_manager=txm)
     parent_state_mgr = _ParentStateMgrStub()
 
-    mgr = RerunnableSlotContextStateMgr(
+    mgr = RerunnableSlotContextStateMgr.create(
         owner=_DummyOwner(),
         parent_state_mgr=parent_state_mgr,
         slot_id="slot-1",
@@ -117,7 +182,7 @@ def test_rerunnable_slot_context_inherits_transaction_manager_from_render_contex
 def test_scope_activity_tracks_transaction_state() -> None:
     txm = TransactionManager(tx_keys={PASS_TX_KEY})
     render_context_state_mgr = _RenderContextStateMgrStub(transaction_manager=txm)
-    mgr = ContextBaseStateMgr(
+    mgr = ContextBaseStateMgr.create(
         owner=_DummyOwner(),
         render_context_state_mgr=render_context_state_mgr,
     )
@@ -138,7 +203,7 @@ def test_scope_activity_tracks_transaction_state() -> None:
 def test_begin_end_and_rollback_pass_manage_pass_transaction() -> None:
     txm = TransactionManager(tx_keys={PASS_TX_KEY})
     render_context_state_mgr = _RenderContextStateMgrStub(transaction_manager=txm)
-    mgr = ContextBaseStateMgr(
+    mgr = ContextBaseStateMgr.create(
         owner=_DummyOwner(),
         render_context_state_mgr=render_context_state_mgr,
     )

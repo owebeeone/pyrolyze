@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass
 import os
-from typing import Any, Callable, Iterator, TYPE_CHECKING, TypeVar
+from typing import Any, Callable, Iterator, Self, TYPE_CHECKING, TypeVar
 
 from pyrolyze.api import MountDirective, UIElement
 from .lifecycle_adapter import TransactionManager, const, initvar, local_store, managed, managed_context
@@ -85,27 +85,6 @@ def _default_render_context_state_mgr(
     return _resolved_render_context_state_mgr
 
 
-def _bootstrap_transaction_manager_bad_program(
-    self: ContextBaseStateMgr,
-    _resolved_render_context_state_mgr: RenderContextStateMgr | None,
-) -> TransactionManager | None:
-    # BAD PROGRAM. DON'T DO THIS FOR REALS. YOU WILL REGRET IT.
-    # SIDEEFFECTS LIKE THIS ARE FOOTGUNS. YOU HAVE BEEN WARNED.
-    # DO THIS IN A BETTER WAY LATER.
-    #
-    # This exists only to unblock LCM integration while we keep unwinding the
-    # imperative state model. A proper lifecycle bootstrap path for shared
-    # transaction-manager installation should replace this.
-    state = self._y_state
-    if _resolved_render_context_state_mgr is None:
-        return state._y_transaction_manager
-    transaction_manager = getattr(_resolved_render_context_state_mgr, "_transaction_manager", None)
-    if transaction_manager is None:
-        return state._y_transaction_manager
-    state._y_transaction_manager = transaction_manager
-    return state._y_transaction_manager
-
-
 @dataclass(frozen=True, slots=True)
 class UiSnapshotEntry:
     generation_id: int
@@ -143,10 +122,6 @@ class ContextBaseStateMgr(StateMgrBase):
         default_factory=_default_render_context_state_mgr,
         allow_self_factory=True,
     )
-    _transaction_manager_bootstrap_bad_program: TransactionManager | None = const(
-        default_factory=_bootstrap_transaction_manager_bad_program,
-        allow_self_factory=True,
-    )
     children_state: dict[Any, Any] = managed(
         default_factory=dict,
         compare="identity",
@@ -167,6 +142,20 @@ class ContextBaseStateMgr(StateMgrBase):
     # The methods below are still the legacy imperative implementation and do
     # not yet respect these state units. That mismatch is intentional in this
     # step: lock the field model first, then rewrite the methods against it.
+
+    @classmethod
+    def create(cls, owner: Any, **kwargs: Any) -> Self:
+        render_state = _resolve_render_context_state_mgr_initvar(
+            cls,
+            kwargs.get("render_context_state_mgr"),
+            kwargs.get("render_context"),
+        )
+        if render_state is not None:
+            manager = getattr(render_state, "_transaction_manager", None)
+            if manager is not None:
+                # Preserve the bootstrap's boundary-manager precedence, before initialization.
+                kwargs["transaction_manager"] = manager
+        return super().create(owner=owner, **kwargs)
 
     @property
     def _transaction_manager(self) -> TransactionManager | None:

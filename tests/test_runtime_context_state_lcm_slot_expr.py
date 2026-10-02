@@ -37,7 +37,7 @@ class _ParentStateMgrStub:
 
 
 def _mgr() -> SlotExprSlotContextStateMgr:
-    return SlotExprSlotContextStateMgr(
+    return SlotExprSlotContextStateMgr.create(
         owner=_DummyOwner(),
         render_context_state_mgr=_RenderContextStateMgrStub(),
         parent_state_mgr=_ParentStateMgrStub(),
