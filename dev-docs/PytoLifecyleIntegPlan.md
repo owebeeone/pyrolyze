@@ -185,8 +185,10 @@ Proposed graph-boundary sequence:
 
 Before publication, failure rolls back the boundary-owned active keys. After
 publication, a notification failure must not pretend that committed state can
-be restored by another rollback. Preserve the manager's structured error and
-after-hook resilience behavior.
+be restored by another rollback. Drain-first failure handling and grouped error
+reporting are the intended Phase F-1 contract, not a guarantee of the pinned TM.
+The lifecycle prerequisite L0 below must reconcile and verify that contract
+before the new coordinator or migrated hooks depend on it.
 
 Nested boundaries and locally completed child passes must not finalize the
 outer publication transaction. If a nested failure is caught and the outer
@@ -206,6 +208,17 @@ transaction does not confer permission to commit it.
 - Multi-key commit currently completes keys separately. It is not one atomic
   prepare-all/apply-all operation across keys.
 - Nested begin counts are not savepoints; rollback is not a local child undo.
+- In the pinned `yidl-lifecycle` runtime, prepare/apply/after-commit dispatch and
+  rollback/after-rollback dispatch can stop at the first participant exception.
+  Manager teardown still clears its active transaction. It does not attempt
+  skipped participants' callbacks or provide the complete drain-first/grouped
+  failure contract required by its Phase F-1 design.
+
+An early failing after-commit hook can therefore skip another participant's
+mandatory retirement even though its values were published. An early rollback
+failure can skip remaining cleanup. Neither a manager reset nor an unchanged
+next render repairs this automatically. Do not remove legacy delivery/cleanup
+mechanisms on the assumption that the missing capability already exists.
 
 Consequently, atomic published state belongs to one publication key in this
 plan. The pass key is scratch, not a second collection of independently
@@ -289,6 +302,10 @@ A generic lifecycle `close()` protocol, generalized `derived` fields, and new
 YIDL grammar are not prerequisites to be invented during this integration.
 If existing facilities cannot preserve a resource's required semantics, stop
 and propose the smallest library extension before adding a local workaround.
+The known TM failure-completion gap is an explicit instance of this rule: L0
+owns its reconciliation in `yidl-lifecycle`, not a replacement Pyrolyze callback
+engine. I4 cannot transfer mandatory resource completion to hooks until that
+prerequisite passes.
 
 ## Field And Hook Migration Map
 
@@ -335,21 +352,61 @@ fields alongside the old authoritative state is incomplete.
    caught child failure, repeated passes, and external update/deactivation paths.
 6. Confirm the publication/pass split and outer-boundary ownership against those
    results. Discuss any actual semantic change before continuing.
+7. Characterize multi-participant prepare/apply/hook/rollback failures against
+   the Phase F-1 intended contract. Record the known pinned fail-fast limitation
+   and approve the smallest lifecycle-owned L0 scope before dependent work.
 
 Exit: a recorded baseline, approved boundary/key semantics, and a concrete
 resource-category mapping. A needed savepoint or unresolved ownership contract
 blocks the affected later slice; it is not permission to rebuild the legacy
 engine inside an adapter.
 
-### I1: Shared TM Construction
+### L0: Lifecycle Failure-Completion Prerequisite
 
-1. Allocate only for an independent scheduler/root graph; nested render contexts
+This is a separately committed `yidl-lifecycle` checkpoint, not Pyrolyze domain
+logic. I0 must approve its scope and any unresolved policy choices before code
+changes. It reconciles the existing Phase F-1 manager contract with the pinned
+implementation; review-loop acceptance of this plan does not authorize it.
+
+1. Specify phase-draining and failure reporting for prepare, unexpected apply,
+   after-commit, rollback, and after-rollback. Preserve the original failure
+   context when cleanup also fails; do not let a first callback exception hide
+   skipped mandatory work or be mistaken for successful completion.
+2. Implement the approved lifecycle-owned correction and its failure tests in
+   `yidl-lifecycle`. Do not introduce a Pyrolyze-wide loop over participant
+   classes as a substitute for manager behavior.
+3. Verify three enlisted participants with an early throwing after-commit hook:
+   later hooks/retirement are attempted once, values remain committed, failure
+   reporting preserves context, and the key is completed without fictitious
+   undo.
+4. Verify early rollback-callback and after-rollback failures independently:
+   later participants still receive cleanup and after-rollback attempts. Check
+   owned-key/token cleanup, error aggregation, and recovery by a subsequent
+   transaction. A broken participant's incomplete cleanup must be reported,
+   not assumed repaired by resetting the manager.
+5. Verify prepare failure prevents publication while all required cleanup is
+   attempted, and unexpected apply failure follows the explicitly approved
+   Phase F-1 drain/report policy. Do not claim atomic undo after publication.
+
+Exit: an approved, tested lifecycle failure-completion contract and recorded
+library revision. The new I2 coordinator and the I4/I6 hook migrations cannot
+complete without this evidence. Existing single-participant hook tests are not
+sufficient; Pyrolyze's eventual integration fixture must also prove local-scope
+cleanup and recovery when library failures cross the root boundary.
+
+### I1: Shared TM Construction And Local Scope Safety
+
+1. Separate context-local pass activity from shared key activity before enabling
+   live nested-TM sharing. Preserve each local entry/exit, per-invocation scratch
+   reset, visitation, candidate UI finalization, and the completion-ownership
+   rules approved in I0. An active sibling/parent key must not suppress them.
+2. Allocate only for an independent scheduler/root graph; nested render contexts
    reuse their scheduler root's manager.
-2. Thread the existing constructor parameter through base/derived state-manager
+3. Thread the existing constructor parameter through base/derived state-manager
    factories without writing generated private slots after construction.
-3. Remove `_bootstrap_transaction_manager_bad_program` and its dummy field.
-4. Move graph-attachment factory side effects to explicit provisional attachment.
-5. Prepare an injected shared-TM construction seam for call-site participants;
+4. Remove `_bootstrap_transaction_manager_bad_program` and its dummy field.
+5. Move graph-attachment factory side effects to explicit provisional attachment.
+6. Prepare an injected shared-TM construction seam for call-site participants;
    migrate their actual legacy implementation in I4 rather than passing an
    incompatible TM to it.
 
@@ -358,13 +415,24 @@ different independent roots; no per-slot allocation or manager replacement in
 the migrated state construction path. Preserve existing owner/initvar/factory
 behavior and constructor failure cleanup.
 
+At this same checkpoint, run a nested authored component that emits native UI
+directly, then rerender with changed input: exactly the new emission remains.
+Include nested child removal and a failing nested pass followed by recovery.
+Verify local scope entry/exit independently of TM identity, repeated-pass reset,
+and that a joined local scope does not finalize an outer-owned transaction.
+Constructor seams may be preparatory work, but I1 is not complete while live
+sharing still relies on `is_scope_active()` returning graph-wide key activity.
+
 ### I2: Key Boundaries And Local Scope Control
 
 1. Introduce or adapt a small runtime-only boundary coordinator at the root.
    Keep key/lifetime behavior explicit rather than represented by new mode tags.
+   L0's verified failure-completion contract is a prerequisite.
 2. Move published base/component fields to the approved publication key and
    activate it explicitly wherever legitimate domain writes occur.
-3. Preserve separate pass-key activity and per-context scope entry/exit.
+3. Integrate the local scope controls already made operational in I1 with the
+   separate publication/pass-key coordinator. Do not postpone local pass reset
+   or finalization to this checkpoint after enabling sharing in I1.
 4. Remove child publication commits; local scope exit computes candidate domain
    state without finalizing the root transaction.
 5. Give out-of-render invalidation/deactivation paths explicit authorized scopes.
@@ -392,6 +460,9 @@ Current values remain old until root publication; rollback restores them by
 discarding working state, not by an application copy loop.
 
 ### I4: Call Sites And External Resource Participants
+
+Prerequisite: L0's multi-participant failure-completion evidence. Do not move
+mandatory retirement or delivery to lifecycle hooks on the fail-fast baseline.
 
 1. Migrate `_CallSitePassContext` / `CallSiteContextManager` from the legacy
    lifecycle and record internals to supported shared-TM fields/facades.
@@ -426,6 +497,9 @@ handler reorder/removal, identity preservation, and cancellation/unsubscribe
 ordering. Include a failure after staging removal of an existing child.
 
 ### I6: Overrides, Registries, And Publication Notifications
+
+Prerequisite: the same L0 contract remains verified for the integrated hooks;
+after-publication failure must not skip later participants' required work.
 
 1. Migrate override values and lookup selection to authoritative decorated state.
 2. Keep fixed-key validation and drip/subscription semantics in domain code;
@@ -511,6 +585,13 @@ The canonical integration scenario should cover:
    committed, cleanup runs, and the error preserves useful context.
 8. A three-participant prepare failure proving that earlier participants do not
    publish before all required publication-key preparations succeed.
+9. Three enlisted participants where the first after-commit hook raises: later
+   mandatory retirement/notification hooks are still attempted, committed state
+   stays published, and error reporting preserves the failure context.
+10. Early rollback-callback and after-rollback failures with later participants'
+    cleanup observable, local scopes exited, owned keys finalized, and a
+    subsequent transaction/render able to recover. These complement L0's
+    lifecycle-owned mechanics tests rather than duplicate their assertions.
 
 Characterize nested/caught failure before asserting savepoint-like behavior.
 Compare public observables, not internal generated class names, slot layouts,
@@ -599,6 +680,8 @@ can depend on it. Do not restore `pyrolyze.lifecycle` as an integration shortcut
   slots, call sites, and transactional resource participants share it.
 - [ ] Publication/pass keys have approved, tested lifetimes and write permissions.
 - [ ] Local context scope activity is distinct from shared TM activity.
+- [ ] Live nested TM sharing and local entry/reset/finalization pass together at
+  I1, including changed native emissions, child removal, and failure recovery.
 - [ ] Decorated state is authoritative; no `_lcm_sync` or duplicate field engine.
 - [ ] Field rollback occurs through lifecycle, not manual value restoration.
 - [ ] Resource acceptance/retirement and external side effects preserve approved
@@ -608,6 +691,9 @@ can depend on it. Do not restore `pyrolyze.lifecycle` as an integration shortcut
   hidden default-factory side effects.
 - [ ] Canonical fixtures prove whole-boundary failure and recovery, not only
   isolated per-slot commits.
+- [ ] L0's lifecycle-owned multi-participant failure contract is verified before
+  I2/I4/I6 rely on resilient cleanup/delivery; failing callbacks do not silently
+  skip later participants' mandatory work.
 - [ ] Runtime selection, public exports, broader regressions, and the full suite
   pass with approved differences explicitly recorded.
 - [ ] Performance results and remaining limitations are documented separately
