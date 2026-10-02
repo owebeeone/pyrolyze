@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 import os
-from typing import Any, Callable, TYPE_CHECKING, TypeVar
+from typing import Any, Callable, Iterator, TYPE_CHECKING, TypeVar
 
 from pyrolyze.api import MountDirective, UIElement
-from pyrolyze.lifecycle import TransactionManager, const, initvar, managed, managed_context, owned
+from .lifecycle_adapter import TransactionManager, const, initvar, local_store, managed, managed_context
 from pyrolyze.runtime.app_context import APP_CONTEXT_MISSING, EMPTY_APP_CONTEXT_LOOKUP
 from pyrolyze.runtime.slot_kinds import ContextKind
 from pyrolyze.runtime.slot_call_semantics import ExternalStoreRef
@@ -95,16 +96,14 @@ def _bootstrap_transaction_manager_bad_program(
     # This exists only to unblock LCM integration while we keep unwinding the
     # imperative state model. A proper lifecycle bootstrap path for shared
     # transaction-manager installation should replace this.
-    state = self._state
-    if state.transaction_manager is not None:
-        return state.transaction_manager
+    state = self._y_state
     if _resolved_render_context_state_mgr is None:
-        return None
+        return state._y_transaction_manager
     transaction_manager = getattr(_resolved_render_context_state_mgr, "_transaction_manager", None)
     if transaction_manager is None:
-        return None
-    state.transaction_manager = transaction_manager
-    return transaction_manager
+        return state._y_transaction_manager
+    state._y_transaction_manager = transaction_manager
+    return state._y_transaction_manager
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,16 +124,28 @@ class ContextBaseStateMgr(StateMgrBase):
     )
 
     _generation_tracker_key: AppContextKey[GenerationTracker] = const(
-        default_factory=_default_generation_tracker_key
+        default_factory=_default_generation_tracker_key,
+        allow_self_factory=True,
     )
-    _context_kind: ContextKind = const(default_factory=_default_context_kind)
-    _pass_scope_handle_cls: Any = const(default_factory=_default_pass_scope_handle_cls)
-    _owner_type_name: str = const(default_factory=_default_owner_type_name)
+    _context_kind: ContextKind = const(
+        default_factory=_default_context_kind,
+        allow_self_factory=True,
+    )
+    _pass_scope_handle_cls: Any = const(
+        default_factory=_default_pass_scope_handle_cls,
+        allow_self_factory=True,
+    )
+    _owner_type_name: str = const(
+        default_factory=_default_owner_type_name,
+        allow_self_factory=True,
+    )
     _render_context_state_mgr: RenderContextStateMgr | None = const(
         default_factory=_default_render_context_state_mgr,
+        allow_self_factory=True,
     )
     _transaction_manager_bootstrap_bad_program: TransactionManager | None = const(
         default_factory=_bootstrap_transaction_manager_bad_program,
+        allow_self_factory=True,
     )
     children_state: dict[Any, Any] = managed(
         default_factory=dict,
@@ -147,6 +158,9 @@ class ContextBaseStateMgr(StateMgrBase):
         default_factory=tuple,
         tx_key=PASS_TX_KEY,
     )
+    _pass_child_order: tuple[Any, ...] = local_store(default_factory=tuple)
+    _pass_child_dirty: dict[Any, bool] = local_store(default_factory=dict)
+    _pass_started_tx: bool = local_store(default=False)
 
     # Integration note:
     # The field declarations above are the lifecycle target semantics.
@@ -156,7 +170,7 @@ class ContextBaseStateMgr(StateMgrBase):
 
     @property
     def _transaction_manager(self) -> TransactionManager | None:
-        return self._state.transaction_manager
+        return self._y_get_transaction_manager()
 
     def root_context_state_mgr(self) -> Any:
         if self._render_context_state_mgr is None:
@@ -248,6 +262,22 @@ class ContextBaseStateMgr(StateMgrBase):
     def is_scope_active(self) -> bool:
         return self._transaction_manager.active_transaction_for(PASS_TX_KEY) is not None
 
+    @contextmanager
+    def publish_write_scope(self) -> Iterator[None]:
+        if self.is_scope_active():
+            yield
+            return
+        txm = self._transaction_manager
+        if txm is None:
+            raise RuntimeError("transaction manager is not configured")
+        txm.begin(PASS_TX_KEY)
+        try:
+            yield
+            txm.commit(PASS_TX_KEY)
+        except BaseException:
+            txm.rollback(PASS_TX_KEY)
+            raise
+
     def register_child(self, slot_id: Any, child: Any) -> None:
         next_children = dict(self.children_state)
         next_children[slot_id] = child._state_mgr
@@ -262,13 +292,86 @@ class ContextBaseStateMgr(StateMgrBase):
         return len(self.own_ui_state)
 
     def begin_pass(self) -> None:
-        return None
+        if self._pass_child_order:
+            raise RuntimeError("scope already active")
+        txm = self._transaction_manager
+        if txm is None:
+            raise RuntimeError("transaction manager is not configured")
+        self._pass_started_tx = False
+        if not self.is_scope_active():
+            txm.begin(PASS_TX_KEY)
+            self._pass_started_tx = True
+        self._pass_child_order = tuple(self.children_state.keys())
+        self._pass_child_dirty = {
+            slot_id: child_state_mgr._invoke_dirty
+            for slot_id, child_state_mgr in self.children_state.items()
+        }
+        self.own_ui_entries_state = ()
+        self.own_ui_state = ()
+        for child_state_mgr in self.children_state.values():
+            child_state_mgr._seen_in_pass = False
 
     def end_pass(self) -> None:
-        return None
+        self.require_active_scope()
+        unseen_slots = [
+            slot_id
+            for slot_id, child_state_mgr in self.children_state.items()
+            if not child_state_mgr._seen_in_pass
+        ]
+        for slot_id in unseen_slots:
+            child_state_mgr = self.children_state.get(slot_id)
+            if child_state_mgr is not None:
+                child_state_mgr.deactivate()
+
+        for child_state_mgr in self.children_state.values():
+            child_type = type(child_state_mgr.owner).__name__
+            if child_type in {"SlotCallSlotContext", "SlotExprSlotContext"}:
+                child_state_mgr.commit_binding()
+            elif child_type == "EventHandlerSlotContext":
+                child_state_mgr.commit_handler()
+            elif child_type == "ComponentCallSlotContext":
+                child_state_mgr.commit_owned_event_handlers()
+
+        if hasattr(self, "_expects_native_root"):
+            self._committed_native_root = self._expects_native_root
+
+        self.ui_state = self.build_committed_ui()
+
+        for child_state_mgr in self.children_state.values():
+            child_state_mgr._invoke_dirty = False
+
+        if self._pass_started_tx:
+            self._transaction_manager.commit(PASS_TX_KEY)
+        self._pass_started_tx = False
+        self._pass_child_order = ()
+        self._pass_child_dirty = {}
 
     def rollback_pass(self) -> None:
-        return None
+        if not self.is_scope_active():
+            raise RuntimeError("scope is not active")
+        committed_ids = set(self._pass_child_order)
+        for slot_id, child_state_mgr in list(self.children_state.items()):
+            if slot_id not in committed_ids:
+                child_state_mgr.deactivate()
+                continue
+            child_type = type(child_state_mgr.owner).__name__
+            if child_type in {"SlotCallSlotContext", "SlotExprSlotContext"}:
+                child_state_mgr.rollback_binding()
+            elif child_type == "EventHandlerSlotContext":
+                child_state_mgr.rollback_handler()
+            elif child_type == "ComponentCallSlotContext":
+                child_state_mgr.rollback_owned_event_handlers()
+            child_state_mgr._invoke_dirty = self._pass_child_dirty.get(
+                slot_id,
+                child_state_mgr._invoke_dirty,
+            )
+            child_state_mgr._seen_in_pass = True
+
+        if self._pass_started_tx:
+            self._transaction_manager.rollback(PASS_TX_KEY)
+        self._pass_started_tx = False
+        self._pass_child_order = ()
+        self._pass_child_dirty = {}
 
     def runtime_key_path(self) -> tuple[Any, ...]:
         owner_kind = self.context_kind()

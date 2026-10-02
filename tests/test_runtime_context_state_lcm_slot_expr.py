@@ -4,7 +4,7 @@ from pyrolyze.runtime.context_state_lcm.slot_expr_slot_context import SlotExprSl
 from pyrolyze.runtime.slot_call_semantics import PyrolyzeMountAdvertisementBinding
 from pyrolyze.runtime.slot_kinds import ContextKind
 from pyrolyze.runtime.context_state_lcm.context_base import PASS_TX_KEY
-from pyrolyze.lifecycle import TransactionManager
+from pyrolyze.runtime.context_state_lcm.lifecycle_adapter import TransactionManager
 
 
 class _DummyPassScope:
@@ -59,7 +59,10 @@ def test_slot_expr_runtime_locals_reuse_per_slot() -> None:
 
 def test_slot_expr_stage_slot_expr_pass_merges_ids_and_callbacks() -> None:
     mgr = _mgr()
-    callback = lambda: None
+
+    def callback() -> None:
+        return None
+
     mgr._transaction_manager.begin(PASS_TX_KEY)
 
     mgr.stage_slot_expr_pass(
@@ -78,7 +81,10 @@ def test_slot_expr_stage_slot_expr_pass_merges_ids_and_callbacks() -> None:
 
 def test_slot_expr_commit_and_rollback_binding_clear_staged_state() -> None:
     mgr = _mgr()
-    callback = lambda: None
+
+    def callback() -> None:
+        return None
+
     mgr._transaction_manager.begin(PASS_TX_KEY)
     mgr._staged_call_site_ids = ("one",)
     mgr._staged_post_commit_callbacks = (callback,)

@@ -9,7 +9,7 @@ import logging
 import os
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
-from typing import Any, Callable, Generic, Iterator, TypeVar, cast, override
+from typing import Any, Callable, Generic, Iterator, TypeVar, cast
 
 from pyrolyze.api import (
     MountDirective,
@@ -19,8 +19,13 @@ from pyrolyze.api import (
     UIElement,
 )
 from pyrolyze.runtime.slot_expr import SlotExprLiteralContext
+from yidl_lifecycle.lifecycle import lifecycle as managed_context
+from yidl_lifecycle.lifecycle import local_store
+from yidl_lifecycle.lifecycle import managed
+from yidl_lifecycle.lifecycle import transient
+from yidl_lifecycle.transaction_yidl import TransactionManager
 
-from .app_context import (
+from pyrolyze.runtime.app_context import (
     APP_CONTEXT_MISSING,
     EMPTY_APP_CONTEXT_LOOKUP,
     AppContextKey,
@@ -29,10 +34,10 @@ from .app_context import (
     GENERATION_TRACKER_KEY,
     OverlayAppContextLookup,
 )
-from .call_site_context import CallSiteContextManager
-from .drip import Drip
-from .function_arg_helpers import build_function_arg_dirty_map, pack_function_args
-from .slot_call_semantics import (
+from pyrolyze.runtime.call_site_context import CallSiteContextManager
+from pyrolyze.runtime.drip import Drip
+from pyrolyze.runtime.function_arg_helpers import build_function_arg_dirty_map, pack_function_args
+from pyrolyze.runtime.slot_call_semantics import (
     ExternalStoreBinding,
     ExternalStoreRef,
     SlotCallBinding,
@@ -43,7 +48,7 @@ from .slot_call_semantics import (
     UseEffectBinding,
     UseEffectRequest,
 )
-from .slot_call_core import (
+from pyrolyze.runtime.slot_call_core import (
     _CALLABLE_CACHE_MISSING,
     _read_callable_annotation_cache,
     _write_callable_annotation_cache,
@@ -55,10 +60,10 @@ from .slot_call_core import (
     runtime_context_param_name,
     should_invoke_slot_call,
 )
-from .pyro_call import RuntimeSiteMetadata, resolve_runtime_pyro_call
-from .slot_kinds import ContextKind
-from .trace import TraceChannel, emit_trace, trace_enabled
-from .slot_identity import ModuleId, ModuleRegistry, SlotId, SlotIdPath, module_registry
+from pyrolyze.runtime.pyro_call import RuntimeSiteMetadata, resolve_runtime_pyro_call
+from pyrolyze.runtime.slot_kinds import ContextKind
+from pyrolyze.runtime.trace import TraceChannel, emit_trace, trace_enabled
+from pyrolyze.runtime.slot_identity import ModuleId, ModuleRegistry, SlotId, SlotIdPath, module_registry
 
 
 T = TypeVar("T")
@@ -2640,10 +2645,8 @@ __all__ = [
     "module_registry",
 ]
 
-from pyrolyze.lifecycle import TransactionManager, local_store, managed, managed_context, transient
-
 @managed_context
-class _EventHandlerSlotState:
+class YidlEventHandlerSlotState:
     committed_callback: Callable[..., Any] | None = managed(default=None, compare="identity")
     committed_key: object | None = managed(default=None, compare="identity")
     staged_callback: Callable[..., Any] | None = transient(default=None)
@@ -2652,20 +2655,20 @@ class _EventHandlerSlotState:
 
 
 @managed_context
-class _LeafSlotState:
+class YidlLeafSlotState:
     last_args: tuple[Any, ...] = local_store(default_factory=tuple)
     last_kwargs: tuple[tuple[str, Any], ...] = local_store(default_factory=tuple)
 
 
 @managed_context
-class _ContainerSlotState:
+class YidlContainerSlotState:
     expects_native_root: bool = local_store(default=False)
     committed_native_root: bool = managed(default=False)
     site_metadata: tuple[RuntimeSiteMetadata[Any], ...] = local_store(default_factory=tuple)
 
 
 @managed_context
-class _SlotExprSlotState:
+class YidlSlotExprSlotState:
     call_site_context_manager: CallSiteContextManager = local_store(default_factory=CallSiteContextManager)
     runtime_locals_by_slot_id: dict[Any, dict[str, Any]] = local_store(default_factory=dict)
     staged_call_site_ids: tuple[Any, ...] = transient(default_factory=tuple)
@@ -2673,7 +2676,7 @@ class _SlotExprSlotState:
 
 
 @managed_context
-class _SlotCallSlotState:
+class YidlSlotCallSlotState:
     function_identity: Any = local_store(default=None)
     schema: tuple[int, tuple[str, ...]] = local_store(default=(0, ()))
     last_args: tuple[Any, ...] = local_store(default_factory=tuple)
@@ -2684,7 +2687,7 @@ class _SlotCallSlotState:
 
 
 @managed_context
-class _ComponentCallSlotState:
+class YidlComponentCallSlotState:
     component_identity: Any = local_store(default=None)
     schema: tuple[int, tuple[str, ...]] = local_store(default=(0, ()))
     child_context: RenderContext | None = local_store(default=None)
@@ -2705,7 +2708,7 @@ class _ComponentCallSlotState:
 
 
 @managed_context
-class _AppContextOverrideSlotState:
+class YidlAppContextOverrideSlotState:
     declared_keys: tuple[AppContextKey[Any], ...] = local_store(default_factory=tuple)
     committed_values: tuple[Any, ...] = local_store(default_factory=tuple)
     committed_key_states: dict[AppContextKey[Any], _CommittedAppContextOverrideKeyState] = local_store(default_factory=dict)
@@ -2718,9 +2721,24 @@ class _AppContextOverrideSlotState:
 
 
 @managed_context
-class _DirectiveSlotState(_SlotCallSlotState):
+class YidlDirectiveSlotState(YidlSlotCallSlotState):
     committed_selectors: tuple[SlotSelector, ...] = local_store(default_factory=tuple)
     pass_committed_selectors: tuple[SlotSelector, ...] = local_store(default_factory=tuple)
+
+
+def _new_lcm_state(
+    state_cls: type[Any],
+    *,
+    transaction_manager: TransactionManager | None = None,
+    **values: Any,
+) -> Any:
+    if transaction_manager is None:
+        state = state_cls()
+    else:
+        state = state_cls(transaction_manager=transaction_manager)
+    for name, value in values.items():
+        setattr(state, name, value)
+    return state
 
 
 class _LifecycleSlotMixin:
@@ -2749,7 +2767,7 @@ class _LifecycleSlotMixin:
 @dataclass(slots=True)
 class EventHandlerSlotContext(_LifecycleSlotMixin, EventHandlerSlotContext):
     _lcm_txm: TransactionManager = field(init=False, repr=False)
-    _lcm_state: _EventHandlerSlotState = field(init=False, repr=False)
+    _lcm_state: YidlEventHandlerSlotState = field(init=False, repr=False)
 
     _lcm_fields = (
         "committed_callback",
@@ -2764,11 +2782,8 @@ class EventHandlerSlotContext(_LifecycleSlotMixin, EventHandlerSlotContext):
         object.__setattr__(
             self,
             "_lcm_state",
-            _EventHandlerSlotState(
+            _new_lcm_state(YidlEventHandlerSlotState,
                 transaction_manager=self._lcm_txm,
-                committed_callback=self.committed_callback,
-                committed_key=self.committed_key,
-                dispatch=self.dispatch,
             ),
         )
         self._lcm_sync()
@@ -2810,7 +2825,7 @@ class EventHandlerSlotContext(_LifecycleSlotMixin, EventHandlerSlotContext):
         object.__setattr__(
             self,
             "_lcm_state",
-            _EventHandlerSlotState(
+            _new_lcm_state(YidlEventHandlerSlotState,
                 transaction_manager=self._lcm_txm,
                 dispatch=dispatch,
             ),
@@ -2835,7 +2850,7 @@ class EventHandlerSlotContext(_LifecycleSlotMixin, EventHandlerSlotContext):
 
 @dataclass(slots=True)
 class LeafSlotContext(_LifecycleSlotMixin, LeafSlotContext):
-    _lcm_state: _LeafSlotState = field(init=False, repr=False)
+    _lcm_state: YidlLeafSlotState = field(init=False, repr=False)
 
     _lcm_fields = (
         "last_args",
@@ -2847,7 +2862,7 @@ class LeafSlotContext(_LifecycleSlotMixin, LeafSlotContext):
         object.__setattr__(
             self,
             "_lcm_state",
-            _LeafSlotState(
+            _new_lcm_state(YidlLeafSlotState,
                 last_args=self.last_args,
                 last_kwargs=self.last_kwargs,
             ),
@@ -2885,7 +2900,7 @@ class LeafSlotContext(_LifecycleSlotMixin, LeafSlotContext):
 @dataclass(slots=True)
 class ContainerSlotContext(_LifecycleSlotMixin, ContainerSlotContext):
     _lcm_txm: TransactionManager = field(init=False, repr=False)
-    _lcm_state: _ContainerSlotState = field(init=False, repr=False)
+    _lcm_state: YidlContainerSlotState = field(init=False, repr=False)
 
     _lcm_fields = (
         "expects_native_root",
@@ -2899,11 +2914,8 @@ class ContainerSlotContext(_LifecycleSlotMixin, ContainerSlotContext):
         object.__setattr__(
             self,
             "_lcm_state",
-            _ContainerSlotState(
+            _new_lcm_state(YidlContainerSlotState,
                 transaction_manager=self._lcm_txm,
-                expects_native_root=self.expects_native_root,
-                committed_native_root=self.committed_native_root,
-                site_metadata=self.site_metadata,
             ),
         )
         self._lcm_sync()
@@ -2929,7 +2941,8 @@ class ContainerSlotContext(_LifecycleSlotMixin, ContainerSlotContext):
 
 @dataclass(slots=True)
 class SlotExprSlotContext(_LifecycleSlotMixin, SlotExprSlotContext):
-    _lcm_state: _SlotExprSlotState = field(init=False, repr=False)
+    _lcm_txm: TransactionManager = field(init=False, repr=False)
+    _lcm_state: YidlSlotExprSlotState = field(init=False, repr=False)
 
     _lcm_fields = (
         "call_site_context_manager",
@@ -2945,14 +2958,14 @@ class SlotExprSlotContext(_LifecycleSlotMixin, SlotExprSlotContext):
 
     def __post_init__(self) -> None:
         RerunnableSlotContext.__post_init__(self)
+        object.__setattr__(self, "_lcm_txm", TransactionManager())
         object.__setattr__(
             self,
             "_lcm_state",
-            _SlotExprSlotState(
+            _new_lcm_state(YidlSlotExprSlotState,
+                transaction_manager=self._lcm_txm,
                 call_site_context_manager=self.call_site_context_manager,
                 runtime_locals_by_slot_id=self._runtime_locals_by_slot_id,
-                staged_call_site_ids=self._staged_call_site_ids,
-                staged_post_commit_callbacks=self._staged_post_commit_callbacks,
             ),
         )
         self._lcm_sync()
@@ -2960,12 +2973,17 @@ class SlotExprSlotContext(_LifecycleSlotMixin, SlotExprSlotContext):
     def runtime_locals(self, slot_id: Any) -> dict[str, Any]:
         return self._runtime_locals_by_slot_id.setdefault(slot_id, {})
 
+    def _ensure_lcm_transaction(self) -> None:
+        if self._lcm_txm.active_transaction is None:
+            self._lcm_txm.begin()
+
     def stage_slot_expr_pass(
         self,
         *,
         visited_call_site_ids: tuple[Any, ...],
         post_commit_callbacks: tuple[Callable[[], None], ...],
     ) -> None:
+        self._ensure_lcm_transaction()
         merged_ids = list(self._staged_call_site_ids)
         for slot_id in visited_call_site_ids:
             if slot_id not in merged_ids:
@@ -2975,6 +2993,7 @@ class SlotExprSlotContext(_LifecycleSlotMixin, SlotExprSlotContext):
             self._staged_post_commit_callbacks += post_commit_callbacks
 
     def append_slot_expr_post_commit_callback(self, callback: Callable[[], None]) -> None:
+        self._ensure_lcm_transaction()
         self._staged_post_commit_callbacks += (callback,)
 
     def commit_binding(self) -> None:
@@ -2987,8 +3006,11 @@ class SlotExprSlotContext(_LifecycleSlotMixin, SlotExprSlotContext):
         self.call_site_context_manager.commit_pass()
         self.sync_committed_ui()
         callbacks = self._staged_post_commit_callbacks
+        self._ensure_lcm_transaction()
         self._staged_call_site_ids = ()
         self._staged_post_commit_callbacks = ()
+        self._lcm_txm.commit()
+        self._lcm_sync()
         for callback in callbacks:
             callback()
 
@@ -3001,8 +3023,9 @@ class SlotExprSlotContext(_LifecycleSlotMixin, SlotExprSlotContext):
                 rollback()
         self.call_site_context_manager.rollback_pass()
         self.sync_committed_ui()
-        self._staged_call_site_ids = ()
-        self._staged_post_commit_callbacks = ()
+        if self._lcm_txm.active_transaction is not None:
+            self._lcm_txm.rollback()
+        self._lcm_sync()
 
     def sync_committed_ui(self) -> None:
         advertisements: list[PyrolyzeMountAdvertisement] = []
@@ -3017,17 +3040,25 @@ class SlotExprSlotContext(_LifecycleSlotMixin, SlotExprSlotContext):
         self._committed_ui = tuple(advertisements)
 
     def deactivate(self) -> None:
-        self._staged_call_site_ids = ()
-        self._staged_post_commit_callbacks = ()
+        if self._lcm_txm.active_transaction is not None:
+            self._lcm_txm.rollback()
         self.call_site_context_manager.close_all()
-        self._runtime_locals_by_slot_id.clear()
+        object.__setattr__(self, "_lcm_txm", TransactionManager())
+        object.__setattr__(
+            self,
+            "_lcm_state",
+            _new_lcm_state(YidlSlotExprSlotState,
+                transaction_manager=self._lcm_txm,
+            ),
+        )
         self._committed_ui = ()
+        self._lcm_sync()
         SlotContext.deactivate(self)
 
 
 @dataclass(slots=True)
 class SlotCallSlotContext(_LifecycleSlotMixin, SlotCallSlotContext):
-    _lcm_state: _SlotCallSlotState = field(init=False, repr=False)
+    _lcm_state: YidlSlotCallSlotState = field(init=False, repr=False)
 
     _lcm_fields = (
         "function_identity",
@@ -3047,7 +3078,7 @@ class SlotCallSlotContext(_LifecycleSlotMixin, SlotCallSlotContext):
         object.__setattr__(
             self,
             "_lcm_state",
-            _SlotCallSlotState(
+            _new_lcm_state(YidlSlotCallSlotState,
                 function_identity=self.function_identity,
                 schema=self.schema,
                 last_args=self.last_args,
@@ -3179,7 +3210,7 @@ class SlotCallSlotContext(_LifecycleSlotMixin, SlotCallSlotContext):
 class DirectiveSlotContext(SlotCallSlotContext):
     committed_selectors: tuple[SlotSelector, ...] = ()
     _pass_committed_selectors: tuple[SlotSelector, ...] = ()
-    _lcm_state: _DirectiveSlotState = field(init=False, repr=False)
+    _lcm_state: YidlDirectiveSlotState = field(init=False, repr=False)
 
     _lcm_fields = SlotCallSlotContext._lcm_fields + (
         "committed_selectors",
@@ -3195,7 +3226,7 @@ class DirectiveSlotContext(SlotCallSlotContext):
         object.__setattr__(
             self,
             "_lcm_state",
-            _DirectiveSlotState(
+            _new_lcm_state(YidlDirectiveSlotState,
                 function_identity=self.function_identity,
                 schema=self.schema,
                 last_args=self.last_args,
@@ -3273,7 +3304,7 @@ class DirectiveSlotContext(SlotCallSlotContext):
 
 @dataclass(slots=True)
 class ComponentCallSlotContext(_LifecycleSlotMixin, ComponentCallSlotContext):
-    _lcm_state: _ComponentCallSlotState = field(init=False, repr=False)
+    _lcm_state: YidlComponentCallSlotState = field(init=False, repr=False)
 
     _lcm_fields = (
         "component_identity",
@@ -3303,7 +3334,7 @@ class ComponentCallSlotContext(_LifecycleSlotMixin, ComponentCallSlotContext):
         object.__setattr__(
             self,
             "_lcm_state",
-            _ComponentCallSlotState(
+            _new_lcm_state(YidlComponentCallSlotState,
                 component_identity=self.component_identity,
                 schema=self.schema,
                 child_context=self.child_context,
@@ -3545,7 +3576,7 @@ class ComponentCallSlotContext(_LifecycleSlotMixin, ComponentCallSlotContext):
 
 @dataclass(slots=True)
 class AppContextOverrideSlotContext(_LifecycleSlotMixin, AppContextOverrideSlotContext):
-    _lcm_state: _AppContextOverrideSlotState = field(init=False, repr=False)
+    _lcm_state: YidlAppContextOverrideSlotState = field(init=False, repr=False)
 
     _lcm_fields = (
         "declared_keys",
@@ -3573,7 +3604,7 @@ class AppContextOverrideSlotContext(_LifecycleSlotMixin, AppContextOverrideSlotC
         object.__setattr__(
             self,
             "_lcm_state",
-            _AppContextOverrideSlotState(
+            _new_lcm_state(YidlAppContextOverrideSlotState,
                 declared_keys=self.declared_keys,
                 committed_values=self.committed_values,
                 committed_key_states=self._committed_key_states,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from pyrolyze.lifecycle import TransactionManager
+from .lifecycle_adapter import TransactionManager
 from pyrolyze.runtime.slot_kinds import ContextKind
 from pyrolyze.runtime.slot_call_semantics import PyrolyzeMountAdvertisementBinding
 from pyrolyze.runtime.trace import TraceChannel, emit_trace, trace_enabled

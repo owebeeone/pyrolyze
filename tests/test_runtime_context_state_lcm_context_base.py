@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from pyrolyze.lifecycle import TransactionManager
+from pyrolyze.runtime.context_state_lcm.lifecycle_adapter import TransactionManager
 from pyrolyze.runtime.context_state_lcm.context_base import ContextBaseStateMgr
 from pyrolyze.runtime.context_state_lcm.context_base import PASS_TX_KEY
 from pyrolyze.runtime.context_state_lcm.rerunnable_slot_context import RerunnableSlotContextStateMgr
@@ -57,9 +57,10 @@ def test_context_base_resolves_render_context_state_mgr_from_explicit_initvar() 
     )
 
     assert mgr._render_context_state_mgr is explicit_state_mgr
-    assert "render_context_state_mgr" not in mgr.__state_cls__.__field_specs__
-    assert "render_context" not in mgr.__state_cls__.__field_specs__
-    assert "_resolved_render_context_state_mgr" not in mgr.__state_cls__.__field_specs__
+    lifecycle_field_names = mgr.__yidl_lifecycle_definition__["class"]["lifecycle_field_names"]
+    assert "render_context_state_mgr" not in lifecycle_field_names
+    assert "render_context" not in lifecycle_field_names
+    assert "_resolved_render_context_state_mgr" not in lifecycle_field_names
 
 
 def test_context_base_resolves_render_context_state_mgr_from_render_context_initvar() -> None:
@@ -134,7 +135,7 @@ def test_scope_activity_tracks_transaction_state() -> None:
     assert mgr.is_scope_active() is False
 
 
-def test_begin_end_and_rollback_pass_are_no_ops() -> None:
+def test_begin_end_and_rollback_pass_manage_pass_transaction() -> None:
     txm = TransactionManager(tx_keys={PASS_TX_KEY})
     render_context_state_mgr = _RenderContextStateMgrStub(transaction_manager=txm)
     mgr = ContextBaseStateMgr(
@@ -143,12 +144,15 @@ def test_begin_end_and_rollback_pass_are_no_ops() -> None:
     )
 
     mgr.begin_pass()
-    assert txm.active_transaction_for(PASS_TX_KEY) is None
+    assert txm.active_transaction_for(PASS_TX_KEY) is not None
+    assert mgr.is_scope_active() is True
 
-    txm.begin(PASS_TX_KEY)
-    active = txm.active_transaction_for(PASS_TX_KEY)
     mgr.end_pass()
-    assert txm.active_transaction_for(PASS_TX_KEY) is active
+    assert txm.active_transaction_for(PASS_TX_KEY) is None
+    assert mgr.is_scope_active() is False
+
+    mgr.begin_pass()
+    assert mgr.is_scope_active() is True
     mgr.rollback_pass()
-    assert txm.active_transaction_for(PASS_TX_KEY) is active
-    txm.rollback(PASS_TX_KEY)
+    assert txm.active_transaction_for(PASS_TX_KEY) is None
+    assert mgr.is_scope_active() is False

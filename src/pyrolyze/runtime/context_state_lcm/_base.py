@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pyrolyze.lifecycle import const, managed_context
+from .lifecycle_adapter import const, managed_context
 
 USE_OWNER = object()
 USE_FACTORY = object()

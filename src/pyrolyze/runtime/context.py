@@ -45,3 +45,6 @@ else:
 
 
 __PYROLYZE_CONTEXT_IMPLEMENTATION__ = _impl.__PYROLYZE_CONTEXT_IMPLEMENTATION__
+
+# Compatibility alias until a dedicated plain-call runtime context type lands.
+PlainCallRuntimeContext = SlotRuntimeContext

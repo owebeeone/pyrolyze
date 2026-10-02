@@ -12,6 +12,7 @@ dependencies = [
   "dearpygui>=2.0,<3",
   "frozendict>=2,<3",
   "PySide6>=6.7,<7",
+  "yidl-lifecycle>=0.1.0",
 ]
 
 [project.optional-dependencies]
@@ -29,6 +30,11 @@ pyrolyze = "pyrolyze.compiler.pytest_plugin"
 
 [tool.uv]
 exclude-newer = "1 week"
+
+[tool.uv.sources]
+astichi = { path = "../astichi", editable = true }
+yidl = { path = "../yidl", editable = true }
+yidl-lifecycle = { path = "../yidl-lifecycle", editable = true }
 
 [tool.pyrolyze.test-matrix]
 python = ["3.12", "3.13", "3.14", "3.15"]

@@ -4,7 +4,7 @@ from dataclasses import replace
 from typing import Any, Callable
 
 from pyrolyze.freezable import freezable_dataclass, frozen_dataclass
-from pyrolyze.lifecycle import managed, managed_context
+from .lifecycle_adapter import const, field as lifecycle_field, initvar, local_store, managed, managed_context
 from pyrolyze.runtime.slot_kinds import ContextKind
 
 from ._base import USE_FACTORY, USE_OWNER
@@ -23,6 +23,31 @@ from pyrolyze.runtime.function_arg_helpers import build_function_arg_dirty_map, 
 
 from .context_base import PASS_TX_KEY
 from .rerunnable_slot_context import RerunnableSlotContextStateMgr
+
+
+def _copy_parent_state_mgr(cls: type[object], parent_state_mgr: Any) -> Any:
+    del cls
+    return parent_state_mgr
+
+
+def _copy_slot_id(cls: type[object], slot_id: Any) -> Any:
+    del cls
+    return slot_id
+
+
+def _copy_invoke_dirty(cls: type[object], invoke_dirty: bool) -> bool:
+    del cls
+    return invoke_dirty
+
+
+def _copy_seen_in_pass(cls: type[object], seen_in_pass: bool) -> bool:
+    del cls
+    return seen_in_pass
+
+
+def _attach_component_call_to_graph(self: object) -> None:
+    self.attach_to_graph()
+    return None
 
 
 @freezable_dataclass(frozen_type="FrozenComponentCallInvocationState")
@@ -48,19 +73,41 @@ class FrozenComponentCallInvocationState:
 
 @managed_context
 class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
+    parent_state_mgr: Any = initvar(default=None)
+    slot_id: Any = initvar(default=None)
+    invoke_dirty: bool = initvar(default=True)
+    seen_in_pass: bool = initvar(default=False)
+    _parent_state_mgr: Any = const(
+        init=False,
+        default_factory=_copy_parent_state_mgr,
+    )
+    _slot_id: Any = const(
+        init=False,
+        default_factory=_copy_slot_id,
+    )
+    _invoke_dirty: bool = lifecycle_field(
+        init=False,
+        default_factory=_copy_invoke_dirty,
+    )
+    _seen_in_pass: bool = lifecycle_field(
+        init=False,
+        default_factory=_copy_seen_in_pass,
+    )
+    _attach_to_graph_bad_program: None = const(
+        init=False,
+        default_factory=_attach_component_call_to_graph,
+        allow_self_factory=True,
+    )
+    _component_identity: Any = local_store(default=None)
+    _schema: tuple[int, tuple[str, ...]] = local_store(default=(0, ()))
+    _child_context_state_mgr: Any = local_store(default=None)
+    _site_metadata: tuple[Any, ...] = local_store(default_factory=tuple)
+    _pass_owned_event_handler_order: tuple[Any, ...] = local_store(default_factory=tuple)
     _call_state: FrozenComponentCallInvocationState = managed(
         default_factory=FrozenComponentCallInvocationState,
         init=False,
         tx_key=PASS_TX_KEY,
     )
-
-    def __init__(self, owner: object, **kwargs: object) -> None:
-        super().__init__(owner=owner, **kwargs)
-        self._component_identity: Any = None
-        self._schema: tuple[int, tuple[str, ...]] = (0, ())
-        self._child_context_state_mgr: Any = None
-        self._site_metadata: tuple[Any, ...] = ()
-        self._pass_owned_event_handler_order: tuple[Any, ...] = ()
 
     def invoke(
         self,
@@ -224,8 +271,9 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
         self._pass_owned_event_handler_order = ()
 
     def deactivate(self) -> None:
-        self._dispose_child_context()
-        super().deactivate()
+        with self.publish_write_scope():
+            self._dispose_child_context()
+            super().deactivate()
 
     def _begin_owned_event_handler_pass(self) -> None:
         self._pass_owned_event_handler_order = tuple(
@@ -243,70 +291,73 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
         runtime_func = call_state.runtime_func
         if child_context is None or runtime_func is None:
             raise RuntimeError("component child is not mounted")
-        if call_state.uses_dirty_state_api:
-            dirty_state = call_state.pending_dirty_state
-            if dirty_state is None:
-                dirty_state = _clean_dirty_state(call_state.dirty_state)
-            else:
-                self._call_state = replace(call_state, pending_dirty_state=None)
-                call_state = self._call_state
-            if call_state.packed_kwargs:
+        refresh_parent = not self._parent_state_mgr.is_scope_active()
+        with self.publish_write_scope():
+            if call_state.uses_dirty_state_api:
+                dirty_state = call_state.pending_dirty_state
+                if dirty_state is None:
+                    dirty_state = _clean_dirty_state(call_state.dirty_state)
+                else:
+                    self._call_state = replace(call_state, pending_dirty_state=None)
+                    call_state = self._call_state
+                if call_state.packed_kwargs:
+                    packed_kwargs = pack_function_args(
+                        call_state.packed_kwarg_param_names,
+                        call_state.author_args,
+                        call_state.author_kwargs or {},
+                    )
+                    if call_state.bound_receiver is _BOUND_METHOD_SELF_MISSING:
+                        runtime_func(child_context, dirty_state, **packed_kwargs)
+                    else:
+                        runtime_func(call_state.bound_receiver, child_context, dirty_state, **packed_kwargs)
+                elif call_state.bound_receiver is _BOUND_METHOD_SELF_MISSING:
+                    runtime_func(
+                        child_context,
+                        dirty_state,
+                        *call_state.author_args,
+                        **(call_state.author_kwargs or {}),
+                    )
+                else:
+                    runtime_func(
+                        call_state.bound_receiver,
+                        child_context,
+                        dirty_state,
+                        *call_state.author_args,
+                        **(call_state.author_kwargs or {}),
+                    )
+            elif call_state.packed_kwargs:
                 packed_kwargs = pack_function_args(
                     call_state.packed_kwarg_param_names,
-                    call_state.author_args,
-                    call_state.author_kwargs or {},
+                    call_state.args,
+                    call_state.kwargs or {},
                 )
                 if call_state.bound_receiver is _BOUND_METHOD_SELF_MISSING:
-                    runtime_func(child_context, dirty_state, **packed_kwargs)
+                    runtime_func(child_context, **packed_kwargs)
                 else:
-                    runtime_func(call_state.bound_receiver, child_context, dirty_state, **packed_kwargs)
+                    runtime_func(call_state.bound_receiver, child_context, **packed_kwargs)
             elif call_state.bound_receiver is _BOUND_METHOD_SELF_MISSING:
-                runtime_func(
-                    child_context,
-                    dirty_state,
-                    *call_state.author_args,
-                    **(call_state.author_kwargs or {}),
-                )
+                runtime_func(child_context, *call_state.args, **(call_state.kwargs or {}))
             else:
                 runtime_func(
                     call_state.bound_receiver,
                     child_context,
-                    dirty_state,
-                    *call_state.author_args,
-                    **(call_state.author_kwargs or {}),
+                    *call_state.args,
+                    **(call_state.kwargs or {}),
                 )
-        elif call_state.packed_kwargs:
-            packed_kwargs = pack_function_args(
-                call_state.packed_kwarg_param_names,
-                call_state.args,
-                call_state.kwargs or {},
-            )
-            if call_state.bound_receiver is _BOUND_METHOD_SELF_MISSING:
-                runtime_func(child_context, **packed_kwargs)
-            else:
-                runtime_func(call_state.bound_receiver, child_context, **packed_kwargs)
-        elif call_state.bound_receiver is _BOUND_METHOD_SELF_MISSING:
-            runtime_func(child_context, *call_state.args, **(call_state.kwargs or {}))
-        else:
-            runtime_func(
-                call_state.bound_receiver,
-                child_context,
-                *call_state.args,
-                **(call_state.kwargs or {}),
-            )
-        self.ui_state = child_context._state_mgr.ui_state
-        if not self._parent_state_mgr.is_scope_active():
-            self._parent_state_mgr.refresh_committed_ui_from_children()
+            self.ui_state = child_context._state_mgr.ui_state
+            if refresh_parent:
+                self._parent_state_mgr.refresh_committed_ui_from_children()
 
     def _dispose_child_context(self) -> None:
         child_context = None if self._child_context_state_mgr is None else self._child_context_state_mgr.owner
         if child_context is None:
             return
         child_context._remove_from_scheduler()
-        for child in list(child_context._state_mgr.children_state.values()):
-            child.deactivate()
-        child_context._state_mgr.children_state = {}
-        child_context._state_mgr.clear_registered_slots()
+        with child_context._state_mgr.publish_write_scope():
+            for child in list(child_context._state_mgr.children_state.values()):
+                child.deactivate()
+            child_context._state_mgr.children_state = {}
+            child_context._state_mgr.clear_registered_slots()
         child_context._state_mgr._mounted_callback = None
         self._child_context_state_mgr = None
         self._call_state = replace(self._call_state, pending_dirty_state=None)

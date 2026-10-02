@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 from typing import Any
 
 from pyrolyze.runtime.slot_kinds import ContextKind
@@ -54,13 +55,22 @@ class SlotContextStateMgr(StateMgrBase):
         self.require_active_scope()
         return self._invoke_dirty
 
-    def deactivate(self) -> None:
-        for child_state_mgr in list(self.children_by_slot_id().values()):
-            child_state_mgr.deactivate()
-        self.children_state = {}
+    def _deactivate_write_scope(self) -> Any:
+        if isinstance(self, ContextBaseStateMgr):
+            return self.publish_write_scope()
+        render_context_state_mgr = getattr(self, "_render_context_state_mgr", None)
+        if render_context_state_mgr is not None and hasattr(render_context_state_mgr, "publish_write_scope"):
+            return render_context_state_mgr.publish_write_scope()
+        return nullcontext()
 
-        self._render_context_state_mgr.unregister_slot(self._slot_id)
-        parent_children = dict(self._parent_state_mgr.children_by_slot_id())
-        if parent_children.get(self._slot_id) is self:
-            parent_children.pop(self._slot_id, None)
-            self._parent_state_mgr.children_state = parent_children
+    def deactivate(self) -> None:
+        with self._deactivate_write_scope():
+            for child_state_mgr in list(self.children_by_slot_id().values()):
+                child_state_mgr.deactivate()
+            self.children_state = {}
+
+            self._render_context_state_mgr.unregister_slot(self._slot_id)
+            parent_children = dict(self._parent_state_mgr.children_by_slot_id())
+            if parent_children.get(self._slot_id) is self:
+                parent_children.pop(self._slot_id, None)
+                self._parent_state_mgr.children_state = parent_children
