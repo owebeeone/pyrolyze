@@ -22,6 +22,11 @@ authorized committing this compatibility checkpoint; fresh review dispatch is
 paused until the isolated-completion versus temporary-existing-boundaries
 choice is settled. This is not a new reviewer NO-GO or an I1 implementation.
 
+The user has now selected temporary existing boundaries: replace holders first,
+then design shared-manager isolation separately. The fresh campaign for that
+revision is `dev-docs/PytoLifecyleIntegHolderFirstPlan-ReviewLoop.md`. The reports
+and accepted tuple below remain historical; no verdict transfers to that campaign.
+
 Initial reviewed Pyrolyze revision: `723460d6c1dce75b70f03e355daf20c248bde8ad`.
 The exact dependency tuple, excluded dirty state, canonical-template prompts,
 and pre-dispatch evidence are recorded in

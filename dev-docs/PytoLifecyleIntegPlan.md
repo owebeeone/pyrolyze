@@ -7,8 +7,9 @@ Proposed continuation of the LCM migration on `lcm-resume`.
 The objective is to replace Pyrolyze's handwritten transactional state engine
 with `yidl_lifecycle`-decorated classes. Installing the decorator underneath the
 old engine is not the end state. The migration must remove duplicate state,
-field snapshots, field restoration, private per-slot transaction managers, and
-class-name-based child commit/rollback dispatch.
+field snapshots, field restoration, and class-name-based child field-transfer
+dispatch. Manager unification follows holder replacement; boundary-specific
+managers remain temporarily where they preserve existing completion semantics.
 
 This document updates the integration direction in
 `dev-docs/ContextLifecyleMetaprogrammingPlan.md` and
@@ -23,10 +24,11 @@ roll-build is advertised as ready.
 Completion detail added on 2026-10-03 after the I0 investigation. The earlier
 review-loop acceptance covered the preceding plan revision, not approval of
 the outstanding semantic decisions or independent review of this revision.
-The current completion-review status and exact reviewed tuples are recorded in
+Historical completion-review tuples are recorded in
 `dev-docs/PytoLifecyleIntegCompletionPlan-ReviewLoop.md`. The user-directed scope
-revision below supersedes that acceptance for the current plan; historical
-review reports remain unchanged. No new review or implementation is implied.
+and sequencing revisions below supersede that acceptance for the current plan;
+historical reports remain unchanged. The holder-first campaign is recorded in
+`dev-docs/PytoLifecyleIntegHolderFirstPlan-ReviewLoop.md`.
 
 ### Migration First: Scope Decision
 
@@ -49,11 +51,19 @@ The integration replaces state authority, not the existing runtime contract:
 - Record pre-existing defects as explicit debt. Do not silently repair them,
   skip their tests, or defer regressions caused by the migration.
 
-One shared graph TM remains the architecture target, but sharing must preserve
-the existing completion boundaries. A shared key can complete unrelated
-enlisted work; passing the same manager is not proof of compatibility. Resolve
-that mechanism at the affected checkpoint rather than silently imposing one
-outer commit or retaining private per-slot managers as the final design.
+The user subsequently chose **holder replacement first, manager unification
+afterward**. Preserve today's manager/key cohort and completion owners during
+I1-I8. Replace manual holders with lifecycle authority at their existing
+boundaries, without making separate boundaries share a transaction as part of
+the replacement. An existing implicit manual-holder boundary may obtain a
+lifecycle-owned manager when it is decorated; document that mapping, rather
+than introducing application snapshots or participant-selective TM callbacks.
+
+One shared graph TM remains a future target, not a holder-integration acceptance
+criterion. Its unresolved isolation mechanism belongs to U1/U2 below. A shared
+key can complete unrelated enlisted work; passing the same manager is not proof
+of compatibility. Do not silently impose outer atomicity or call temporary
+boundary-specific managers the final unified architecture.
 
 D4's library failure-completion proposal and D5's completion ordering remain
 separate pending decisions. They do not authorize the deferred D1-D3 hardening.
@@ -87,19 +97,22 @@ I0 baseline and characterization are now recorded in
 `dev-docs/PytoLifecyleIntegI0Inventory.md`. The original runtime permits early
 child publication and caught-child recovery. Preserve those observations as
 the migration compatibility contract; the atomic outer-boundary alternative is
-deferred. I0 still needs a concrete compatible shared-TM/key mechanism and the
-remaining execution decisions. No integration runtime changes have been made.
+deferred. I0's bounded completion probe is sufficient to choose the holder-first
+sequence; the shared-TM/key mechanism is no longer its execution gate. Remaining
+resource/hook decisions gate only work that depends on those contracts.
 
 The subsequent bounded shared-completion preflight is recorded in the findings
 document and `tests/data/lcm_integration/shared_completion.py`. Generated parent
 and child instances on the same manager/key cannot currently complete
 independently: nested commit only reduces depth, direct child commit publishes
 both, and child rollback discards both. No compatible isolation mechanism has
-yet been approved. I1 live wiring remains blocked on that bounded API/ownership
-choice, not on the deferred stronger publication or containment guarantees.
+yet been approved. The user chose not to extend that API now. U1/U2 live sharing
+remains blocked on a later API/ownership design; I1-I8 retain the existing
+completion cohorts. This is not approval of stronger publication or containment
+guarantees.
 
 The current I0 evidence supersedes the historical focused-test result for
-readiness assessment: 36 focused/characterization tests pass, but the full
+readiness assessment: 37 focused/characterization tests pass, but the full
 default suite has 13 existing failures and the broader decomposed-path subset
 has 14. See the findings document for exact targets and provenance. These are
 not permission to skip tests or call the eventual runtime switch complete.
@@ -138,12 +151,18 @@ Concrete unfinished work includes:
 
 ## Architecture Contract
 
-### One Manager, Several Transaction Spaces
+### Existing Boundaries First; One Manager Later
 
-One root render/scheduler graph owns one `yidl_lifecycle.TransactionManager`.
-Every lifecycle participant in that graph receives the same object at
-construction, including nested render contexts, call-site collections, and
-transactional resource adapters. Independent root graphs have independent TMs.
+For holder integration, retain the manager/key cohort of each existing
+completion boundary. Nested render contexts currently have their own manager;
+rerunnable slots within a render context use that context's manager; call-site
+collections own their pass manager. Do not unify those cohorts in I1-I8.
+Explicit constructor injection must preserve those identities, not patch a
+generated private slot midway through factory evaluation.
+
+The later U1/U2 target is one manager per root graph, with compatible completion
+isolation. Independent root graphs remain independent. That target is not
+implemented or required by holder-first acceptance.
 
 A shared TM does not imply one transaction key or one write permission.
 Lifecycle fields belong to a `tx_key`; state-changing writes require that key's
@@ -166,7 +185,7 @@ class-local index, or translate `DEFAULT_TRANSACTION` into a string literal.
 | Owner | Responsibilities |
 | --- | --- |
 | YIDL lifecycle | Facades, field storage, enlistment, conversion/staging, commit/rollback, supported transient and owned semantics |
-| Boundary coordinator / root TM owner | Explicit key activation and completion ownership at existing publication boundaries, error handling, generation coordination |
+| Existing completion boundary / its TM owner | Explicit key activation and completion ownership at existing publication boundaries, error handling, generation coordination |
 | Pyrolyze context classes | Rendering, child discovery/order, graph validation, UI assembly, invalidation, domain hooks |
 | Pyrolyze resource classes/adapters | Subscription/effect/mount behavior and resource-specific acceptance/retirement |
 
@@ -215,7 +234,7 @@ algorithms may remain substantial after the bookkeeping is gone.
 ### Proposed Key Assignment
 
 The following classifies storage roles, not a mandatory graph-wide key split.
-I0/I2 must map these roles to keys and completion ownership that preserve the
+I0/I2 must map these roles to existing keys and completion ownership that preserve the
 compatibility reference's publication timing. The proposed universal
 `DEFAULT_TRANSACTION` publication / `PASS_TX_KEY` scratch split is deferred
 where it would change that timing.
@@ -254,16 +273,17 @@ scope entry and re-entry behavior.
 Likewise, one field's transient lifetime is its transaction-key lifetime, not
 automatically the duration of an individual function call. A child can execute
 multiple local passes inside one outer transaction. Reinitialize per-invocation
-scratch explicitly or keep it in ordinary function locals; do not create a
-private TM just to obtain automatic cleanup at each child return.
+scratch explicitly or keep it in ordinary function locals. Retaining an
+existing independent completion boundary is different from inventing a manager
+solely to reset scratch on each function return.
 
 ### Boundary Ownership
 
 Migration boundary requirements:
 
 1. Identify the existing owner and publication point for each migrated value.
-   The root owns the graph TM; this does not make root success the only allowed
-   publication point.
+   Preserve that owner's current manager/key cohort; root success is not the
+   only allowed publication point.
 2. Activate keys explicitly and preserve local pass entry, reset, and exit.
    Existing successful child completion may publish that child's values before
    its parent finishes. Preserve that observation without completing unrelated
@@ -279,11 +299,12 @@ Migration boundary requirements:
 
 Only finish transactions the completing boundary owns. Joining an already
 active transaction does not confer permission to commit or roll back it. The
-shared-TM/key mechanism must demonstrate the compatibility observations in I0;
-the plan does not presume the current API can isolate arbitrary participants
-on a shared key. If it cannot preserve an affected boundary, stop that
+holder replacement must demonstrate the compatibility observations in I0
+without changing completion cohorts. The current API cannot isolate arbitrary
+participants on a shared key; U1/U2 must address that limitation separately.
+If holder replacement itself cannot preserve an affected boundary, stop that
 checkpoint to discuss the smallest compatibility mechanism. Do not resolve the
-conflict by silently adopting the deferred outer atomicity guarantee.
+conflict by silently adopting deferred outer atomicity.
 
 After publication, rollback cannot undo accepted values. Drain-first failure
 handling and grouped reporting remain D4/L0's separately proposed Phase F-1
@@ -298,7 +319,7 @@ Minimum migration requirements:
   affected boundaries, including the case that stages child UI before raising.
 - Preserve existing handling, propagation, fallback/retained-child outcomes,
   and cleanup calls. Do not replace caught recovery with automatic graph abort.
-- Test that shared manager ownership does not newly publish/discard unrelated
+- Test that holder replacement does not newly publish/discard unrelated
   work, leak local scope state, or prevent the next supported render.
 - Distinguish a pre-existing failure-handling defect from a migration regression.
   Record the former as debt; resolve the latter before completing its slice.
@@ -342,9 +363,10 @@ simplify migration tests.
 
 ## Construction And Initialization
 
-Allocate the TM only at the scheduler/root ownership boundary. Resolve it from
-the supplied parent/root for all subsequent constructions and pass the existing
-`transaction_manager=` constructor argument to generated lifecycle classes.
+Allocate or resolve the TM at the **existing completion ownership boundary**.
+Pass the existing `transaction_manager=` constructor argument to generated
+lifecycle classes before factories run. Do not change nested-render or
+call-site manager allocation policy while replacing holders.
 
 Expected construction shape, illustrative rather than a new public API:
 
@@ -356,11 +378,14 @@ slot_state = SlotState(
     parent_state_mgr=root_state,
     transaction_manager=root_tm,
 )
+# A nested render retains its independent completion cohort during integration.
+child_tm = TransactionManager(tx_keys=(PASS_TX_KEY,))
+child_state = NestedRenderState(owner=child, transaction_manager=child_tm)
 ```
 
-Include every additional key actually used by the graph; do not silently create
-unknown spaces. Do not eagerly allocate a throwaway per-slot manager and replace
-it later through `_y_state` internals.
+Include every key used by that boundary; do not silently create unknown spaces.
+Do not eagerly allocate a throwaway per-slot manager and replace it later through
+`_y_state` internals. Legitimate boundary managers are retained, not overwritten.
 
 Factory evaluation remains the generated constructor's responsibility. Named
 factory dependencies, including `local_store` factory parameters, are available.
@@ -391,7 +416,8 @@ Before a value-state subclass becomes authoritative:
    classification, including initialization and reset at each local pass.
 4. Verify the resolved field set for both ordinary slot subclasses and the
    multiple-inheritance rerunnable/context path. There must be one state and
-   one injected root TM, not a second decorated wrapper around a legacy object.
+   one correctly injected boundary TM, not a second decorated wrapper around a
+   legacy object.
 5. Construct through the existing state-manager factory, then perform explicit
    graph attachment. Remove base/subclass initializer calls whose sole role was
    populating the now-declared fields.
@@ -493,7 +519,7 @@ points, but their responsibility must shrink as follows:
 
 | Entry Point | Work That Remains | Work That Must Leave |
 | --- | --- | --- |
-| Local begin | Check/set this context's scope marker; reset this invocation's visitation and emission scratch | Allocate a private TM; snapshot current child order/dirty values; infer local activity from a global active key |
+| Local begin | Check/set this context's scope marker; reset this invocation's visitation and emission scratch | Change completion cohorts; snapshot current child order/dirty values; infer local activity from a global active key |
 | Local successful end | Check structure; build candidate children/UI; complete lifecycle values at this context's existing publication point where applicable; preserve domain cleanup; exit local scope | Manually transfer decorated fields; dispatch field commits by child class; complete unrelated parent/sibling work |
 | Local failed end | Preserve existing cleanup/recovery/propagation; discard owned unpublished work through lifecycle; exit local scope | Restore decorated fields from saved copies; introduce blanket abort; independently roll back unrelated shared work |
 | Root completion | Perform existing validation and complete root-owned work through the TM; preserve generation, retirement, and notification ordering | Walk every child to perform generated field transfers; claim already published children are undone after parent/hook failure |
@@ -514,7 +540,7 @@ that assumption is not the intended fix.
 Distinguish three independent behaviors:
 
 1. Staging replacement of a reference in its holder.
-2. Committing/rolling back the referenced object's own state on the shared TM.
+2. Committing/rolling back the referenced object's own state at its boundary.
 3. Accepting and retiring the referenced resource.
 
 Current `yidl_lifecycle.binding()` validates and directly stores a shared
@@ -528,7 +554,7 @@ turn an arbitrary `BindingBase` into a transaction participant.
 For each affected category, record its current holder, referent state, and
 domain cleanup calls. Select the smallest compatible replacement for storage:
 
-- A lifecycle-decorated participant on the shared TM for its internal mutable
+- A lifecycle-decorated participant on its existing boundary TM for internal mutable
   state.
 - A managed holder or supported owned reference/map for reference replacement;
   use `owned` only where its acceptance/lifetime contract is already compatible.
@@ -543,9 +569,9 @@ implement the extracted library's ownership contract.
 field". Such domain methods need deliberate hook integration, not indiscriminate
 deletion or a relocated loop over every graph object.
 
-`CallSiteContextManager` must be migrated too. Remove its private transaction
-manager and legacy record access, preserve its public/domain behavior, and
-express its context membership and visitation through the shared lifecycle
+`CallSiteContextManager` must be migrated too. Retain its independent pass
+manager during holder integration, remove legacy record access, preserve its
+public/domain behavior, and express membership and visitation through lifecycle
 model. Preserve the resource's existing lifetime policy: do not remove explicit
 reference-count calls or add a second release merely because its holder changes.
 
@@ -581,7 +607,7 @@ prerequisite passes.
 | Dirty and seen flags | Classify independently: rollback-sensitive published flags vs local-pass markers | `_pass_child_dirty` restoration loops |
 | Leaf/rerunnable inputs | Managed identity/schema/arguments with immutable values or declared thaw/freeze | Duplicate last/pending argument stores |
 | Event handlers | Managed callback/key; stable dispatch reads the committed selection | Manual staged-to-committed copying |
-| Slot-call resources | Shared-TM participant/adapter plus explicit replacement policy | Per-slot managers and generic child resource dispatch |
+| Slot-call resources | Boundary-owned participant/adapter plus compatible replacement policy | Duplicate holder transfer and generic child field dispatch; boundary managers remain until U1/U2 |
 | Slot-expression sites | Lifecycle-owned membership and transient visitation/notification data | Legacy call-site record access and private pass TM |
 | Component child context and owned handlers | Transactional child/resource membership with publication-aware retirement | `_pass_owned_event_handler_order` rollback snapshots |
 | App-context overrides | Managed values/lookup selection; domain hooks for observable drip/link behavior | `_pass_committed_values` / `_pass_committed_lookup` restore code |
@@ -606,14 +632,14 @@ all field facts. State-manager filenames below are relative to
 
 | Existing Mechanism | Authoritative Replacement | Owning Checkpoint / Required Deletion |
 | --- | --- | --- |
-| `_transaction_manager_bootstrap_bad_program` and generated private-manager patch | Root TM injected before factory evaluation in every construction branch | I1: delete dummy declaration, factory, and private-slot assignment |
-| Per-nested-render TM; per-slot TM defaults used as throwaway managers | Same root TM passed through construction factories | I1; I4 for legacy call sites: remove allocations, not just overwrite their results |
+| `_transaction_manager_bootstrap_bad_program` and generated private-manager patch | Existing boundary TM injected before factory evaluation | I1a: delete dummy declaration, factory, and private-slot assignment |
+| Per-slot TM defaults used as throwaway managers | Existing render manager passed through construction factories | I1a: remove discarded allocations; retain independent nested-render/call-site boundary managers until U1/U2 |
 | `_attach_to_graph_bad_program` | Explicit attachment after successful construction | I1: delete side-effect factory; preserve existing failure cleanup and introduce no new registered orphan |
 | Graph-wide `is_scope_active()` and `_pass_started_tx` ownership inference | Context-local entry/reset/exit plus explicit existing-boundary ownership | I1/I2: remove key-activity-as-local-scope test and accidental completion of unrelated work; preserve legitimate child publication |
 | `_pass_child_order`, `_pass_child_dirty`; eager current-map edits | Managed candidate membership/UI and classified dirty fields | I3a: delete snapshots/restoration loops and current-collection mutation |
 | `_committed_callback`, `_committed_key`, `_staged_callback`, `_staged_key`, `commit_handler()`, `rollback_handler()` | Managed callback/key; stable dispatch reads current selection | I3b: delete four stores, transfer/reset methods, and their dispatch callers |
 | `_last_args`, `_last_kwargs`, invocation identity/schema/site metadata | Managed invocation values or the existing frozen invocation record | I3c: replace value stores/transfers at their existing acceptance points; keep dirty projection/evaluation logic |
-| Legacy `current_record/working_record`, private call-site TM | Shared-TM collection with authoritative membership/visitation | I4a: delete direct record access and legacy ownership calls after both standalone/integrated expression paths migrate |
+| Legacy `current_record/working_record` | Authoritative lifecycle membership/visitation on the existing call-site pass boundary | I4a: delete record access; retain independent pass TM and compatible domain ownership calls until separately migrated |
 | Slot binding commit/rollback loops used for field transfer | Resource participant plus narrowly scoped external-effect hooks | I4b/I4c: delete generic loops; preserve only resource-specific delivery/cancellation/retirement |
 | Component `_pass_owned_event_handler_order` used for value restoration | Managed identity/child membership plus existing domain cleanup | I5: delete field snapshots/reconstruction; preserve child retirement timing rather than defer it to root success |
 | Override committed/pending/snapshot tuples and lookup copies | Managed value/lookup selection plus domain subscription hooks | I6a: delete transfer/restore stores; never emit rollback-visible notifications during staging |
@@ -654,22 +680,23 @@ fields alongside the old authoritative state is incomplete.
    Record the affected sites' existing publication, recovery, and cleanup
    behavior. A comprehensive throw-site containment inventory is deferred D2
    work, not the exit gate for replacing holders.
-6. Pin the compatibility reference where runtimes disagree, then specify shared
-   manager/key ownership that preserves existing publication points. Do not
+6. Pin the compatibility reference where runtimes disagree, then record existing
+   manager/key ownership and preserve those publication points. Do not
    require the deferred universal publication/pass split or outer atomicity.
    Discuss any unavoidable semantic change before continuing.
 7. Characterize multi-participant prepare/apply/hook/rollback failures against
    the Phase F-1 intended contract. Record the known pinned fail-fast limitation
    and approve the smallest lifecycle-owned L0 scope before dependent work.
 
-Exit: a recorded baseline, a compatible boundary/key mechanism for the affected
+Exit: a recorded baseline, existing boundary/key ownership for the affected
 slices, and a minimal holder/referent/domain-cleanup mapping. Broad containment,
 savepoint, and lifetime redesign are not exit requirements. An unsupported
 compatibility requirement blocks the affected later slice; it is not permission
 to rebuild the legacy field engine inside an adapter.
 
-Recorded work is baseline/inventory only, not an I0 pass tag: its approval exit
-remains open. Resolve the decision register at the end of this document, retain
+Recorded work is baseline/inventory and the shared-completion limitation, not
+an integration pass tag. The user approved retaining existing boundaries first.
+Retain
 the observed original snapshots, and add approved target expectations rather
 than silently rewriting the historical characterization.
 
@@ -732,115 +759,83 @@ error context, finalized keys/tokens, and subsequent-transaction recovery. Do
 not copy the entire Pyrolyze I0 probe into a second success suite.
 
 Exit: an approved, tested lifecycle failure-completion contract and recorded
-library revision. The new I2 coordinator and the I4/I6 hook migrations cannot
-complete without this evidence. Existing single-hook tests or manager-only
+library revision. I4/I6 mechanisms depending on this stronger contract cannot
+activate without this evidence. Holder-only replacements preserving existing
+domain cleanup calls do not require L0 first. Existing single-hook tests or manager-only
 multi-participant tests are not sufficient; Pyrolyze's eventual integration
 fixture must also prove per-action domain-batch draining, local-scope
 cleanup and recovery when library failures cross the root boundary.
 
-### I1: Shared TM Construction And Local Scope Safety
+### I1: Construction Seams At Existing Boundaries
 
-1. Separate context-local pass activity from shared key activity before enabling
-   live nested-TM sharing. Preserve each local entry/exit, per-invocation scratch
-   reset, visitation, candidate UI finalization, and the completion-ownership
-   rules approved in I0. An active sibling/parent key must not suppress them.
-2. Allocate only for an independent scheduler/root graph; nested render contexts
-   reuse their scheduler root's manager.
-3. Thread the existing constructor parameter through base/derived state-manager
-   factories without writing generated private slots after construction.
-4. Remove `_bootstrap_transaction_manager_bad_program` and its dummy field.
-5. Move graph-attachment factory side effects to explicit attachment, preserving
-   current registration and failure cleanup behavior.
-6. Prepare an injected shared-TM construction seam for call-site participants;
-   migrate their actual legacy implementation in I4 rather than passing an
-   incompatible TM to it.
+Do not enable new nested-manager sharing in this slice.
 
-Verification: same-manager identity across two slots and a nested render context;
-different independent roots; no per-slot allocation or manager replacement in
-the migrated state construction path. Preserve existing owner/initvar/factory
-behavior and constructor failure cleanup.
+**I1a: Explicit manager injection before initialization.**
 
-At this same checkpoint, run a nested authored component that emits native UI
-directly, then rerender with changed input: exactly the new emission remains.
-Include nested child removal and a failing nested pass followed by recovery.
-Verify local scope entry/exit independently of TM identity, repeated-pass reset,
-and that a local scope completes only its owned work at the existing boundary,
-not unrelated work enlisted by its parent/sibling.
-Constructor seams may be preparatory work, but I1 is not complete while live
-sharing still relies on `is_scope_active()` returning graph-wide key activity.
+1. Add a runtime-only state-manager construction entry point used by the owner
+   facade factories. Resolve the same render-boundary manager that the current
+   bootstrap factory installs; pass it through `transaction_manager=` before
+   generated initialization. An independent render still allocates its own TM.
+2. Cover ordinary and decorated derived construction, including the rerunnable
+   multiple-inheritance path. Direct generated constructors remain available,
+   but callers wanting boundary resolution must use the construction entry point
+   or explicitly supply the manager.
+3. Remove `_bootstrap_transaction_manager_bad_program` and its dummy field.
+   No replacement may write generated state internals or allocate then overwrite
+   a throwaway manager.
+4. Preserve owner/initvar/default-factory behavior and each boundary's existing
+   identity. Verify that an initialization factory observes the injected manager.
 
-Primary edits: `render_context.py`, `context_base.py`, `slot_context.py`, the
-component/slot-expression state factories, and the runtime-only context factory
-in `context_bare_refactor_lcm.py`. Trace callers rather than treating this as an
-exhaustive file list. Construction of an independent root must allocate once;
-nested construction and factories must pass the same object before defaults
-run. Merely showing equal manager identity after construction is insufficient.
+This is the next bounded implementation checkpoint. It is a constructor
+prerequisite, not completion of holder migration or manager unification.
 
-Minimum local-scope contract to settle against I0: entry to an inactive context
-resets its own scratch; joining that already active local scope does not reset
-or finalize it; a sibling with only a shared active key is not locally active;
-all exit paths clear the owning local marker. If current callers require
-recursive/reentrant local entry, specify that behavior before choosing a bool
-versus depth implementation. A transaction-local field needs explicit local
-reset even when the outer key remains active.
+**I1b: Explicit attachment, with common slot declarations in I3a.**
 
-Keep I1 coherent with compatible boundary ownership. Introduce the minimum
-mechanism needed to preserve legitimate child publication without completing
-unrelated parent/sibling work; I2 finishes the entry-path audit. Do not enable
-sharing with an I2 TODO beside an incompatible child commit. If the current
-library cannot express that completion boundary, stop this checkpoint for a
-bounded compatibility design rather than silently switching to outer atomicity.
+Move graph registration out of `_attach_to_graph_bad_program` factories once
+common slot inputs are declared. Construct fully, then attach through the
+runtime-only factory. Preserve existing failure cleanup and registration order;
+do not introduce root-wide provisional resources. Include both ordinary-slot
+and rerunnable branches. Do not delete side-effect factories before every
+construction caller has an explicit attachment path.
 
-### I2: Key Boundaries And Local Scope Control
+Verification: the root and its existing rerunnable participants share their
+current manager; independently completed nested renders and call-site collections
+retain theirs; independent roots remain independent. Existing native emissions,
+child removal, failed pass/recovery, and characterization snapshots must not
+change. Manager count reduction is not this slice's exit criterion.
 
-1. Introduce or adapt small runtime-only boundary ownership on the shared TM.
-   Preserve existing publication points; do not make the root the sole commit
-   boundary. Keep key/lifetime behavior explicit rather than represented by new
-   mode tags. Verify L0 before depending on its proposed failure completion.
-2. Assign base/component fields to compatible keys and activate them explicitly
-   wherever legitimate domain writes occur. Do not force all published fields
-   onto `DEFAULT_TRANSACTION` just to obtain the deferred stronger guarantee.
-3. Integrate the local scope controls already made operational in I1 with the
-   compatible boundary coordinator. Do not postpone local pass reset
-   or finalization to this checkpoint after enabling sharing in I1.
-4. Replace manual child field transfers with lifecycle completion at the child's
-   existing publication point. Remove class-based field dispatch, not the
-   observable fact that some children publish before their parents finish.
-5. Give out-of-render invalidation/deactivation paths explicit authorized scopes.
-   Replace broad `publish_write_scope()` behavior according to the I0 decision.
+Primary edits: `_base.py`, `context_base.py`, the owner factory in
+`context_bare_refactor_lcm.py`, then common/derived slot constructors in I1b.
+Do not broaden this checkpoint into RenderContext TM policy changes.
 
-Verification: existing write permissions; sibling scope remains inactive;
-legitimate child publication does not finish unrelated parent/sibling work;
-parent failure and caught-child recovery match the compatibility reference;
-repeated local passes reset their own scratch; no migration-created stale
-tokens/local scope markers. An unqualified TM call must not silently open every
-space.
+### I2: Existing Local Boundary Audit
 
-The coordinator is a runtime object representing an owning boundary, not an
-enum/magic mode tag. Pin the following in the implementation review:
+This audit runs alongside the affected holder checkpoints, not ahead of every
+holder migration and not as a shared-manager rollout.
 
-| Boundary Event | Required Ownership Behavior |
-| --- | --- |
-| Independent root entry | Acquire applicable keys explicitly and record this boundary's completion rights |
-| Nested render/local entry | Preserve existing join/independent-boundary behavior; do not infer completion rights from key activity alone |
-| Local successful exit | Publish at the existing child boundary where applicable; otherwise keep staged state until its existing owner completes |
-| Local failed exit | Preserve existing cleanup, propagation, and caught recovery; do not introduce a new boundary-invalidating policy |
-| Failure before this boundary's publication | Discard only owned unpublished work through lifecycle and preserve existing cleanup; clear local markers in `finally` |
-| Failure after this boundary's publication | Report the accepted state accurately; no undo of already published children/values; use separately approved D4 completion behavior where applicable |
+1. Record each affected value's existing begin/publish/discard owner and cohort.
+   Retain existing keys and explicit-key completion calls.
+2. Separate local pass entry/reset/exit from transaction-key activity where the
+   replacement requires it. Preserve existing supported re-entry behavior;
+   characterize it before choosing a bool/depth implementation.
+3. Replace field transfer at the existing accepted boundary with lifecycle
+   completion. A temporary boundary method may call its own manager; it must
+   not copy decorated fields or invoke generated callbacks directly.
+4. Preserve out-of-render invalidation/deactivation permissions and resource
+   cleanup timing. Do not change blanket failure policies to simplify storage.
+5. Delete a class-dispatch branch only when its corresponding migrated category
+   has a complete lifecycle path. Unmigrated resource-domain branches may remain.
 
-Audit direct `begin_pass`, scope-handle, scheduler flush, invalidation, and
-deactivation entry points. A borrowed active transaction with no identifiable
-coordinator is an unresolved ownership case, not automatic permission to finish
-it. Settle its compatibility behavior before changing those callers.
+Verification: unchanged call elision, repeated local passes, failed candidate
+discard, accepted earlier child surviving later parent failure, caught-child
+recovery, and later supported rerender. Never finish an unrelated boundary's
+work. Preserve the historical reference observations without silently correcting
+other decomposed-path defects.
 
-The I0 parent-failure/caught-failure snapshots establish compatibility targets,
-not obsolete behavior to replace with whole-graph rollback. A successful nested
-render alone cannot prove publication timing and ownership compatibility.
-
-No new candidate-validity state machine, exception whitelist, or blanket
-"some child raised" abort flag is required here. The stronger recovery/abort
-policy belongs to post-integration D2 work. Preserve existing supported recovery
-and report any incompatibility caused by sharing before completing this slice.
+A borrowed active transaction without an identifiable completion owner requires
+a bounded discussion at the affected site. It does not authorize savepoints,
+participant-selective commit, global abort, or forcing every value onto the
+default key. U1/U2 own future shared-manager isolation.
 
 ### I3: Decorated Value State Becomes Authoritative
 
@@ -876,23 +871,25 @@ and frozen invocation records separately from the immutability of their holder.
 
 ### I4: Call Sites And External Resource Participants
 
-Prerequisite: L0's multi-participant failure-completion evidence. Do not move
+Conditional prerequisite: L0's failure-completion evidence before relying on
+its stronger guarantees. Preserve existing domain calls while approval is
+pending. Do not move
 mandatory retirement or delivery to lifecycle hooks on the fail-fast baseline.
 
 1. Migrate `_CallSitePassContext` / `CallSiteContextManager` from the legacy
-   lifecycle and record internals to supported shared-TM fields/facades.
+   lifecycle and record internals to supported fields/facades on existing cohorts.
 2. Implement the minimal I0 holder/referent mapping for slot value, external
    store, effect, async effect, and mount-advertisement bindings in their owning
    modules, without redesigning their lifetime policy.
 3. Preserve resource-specific behavior through lifecycle hooks/participants or
    retained domain methods; map existing acceptance, subscription, cancellation,
    and replacement timing rather than redesign it.
-4. Remove private call-site/per-slot TMs and generic slot binding commit/rollback
+4. Retain existing call-site/per-slot completion cohorts until U1/U2; remove generic slot binding commit/rollback
    dispatch once their replacements are covered.
 5. Make staged-site visitation and post-publication notifications explicit,
    accounting for transient cleanup timing.
 
-Verification: shared-manager identity includes call sites; resource acceptance,
+Verification: unchanged manager/cohort ownership, including call sites; resource acceptance,
 failure cleanup, replacement, effects/async effects, and mount notifications
 match their existing boundaries and cardinality. Include early child acceptance
 followed by parent failure; do not expect root rollback to undo it.
@@ -902,13 +899,13 @@ Use the following resource checkpoints, each deleting its obsolete callers:
 
 | Checkpoint | Scope | Replacement And Removal |
 | --- | --- | --- |
-| I4a: Call-site collection | `src/pyrolyze/runtime/call_site_context.py`, `src/pyrolyze/runtime/slot_expr.py`, `slot_expr_slot_context.py` | Inject shared TM; express collection/visitation through facades; remove private TM, direct record access, and hidden default allocation in both standalone and integrated expression paths |
+| I4a: Call-site collection | `src/pyrolyze/runtime/call_site_context.py`, `src/pyrolyze/runtime/slot_expr.py`, `slot_expr_slot_context.py` | Retain independent pass completion; express collection/visitation through facades; remove direct record access and duplicate authority in standalone and integrated paths without changing legacy referent ownership |
 | I4b: Value/subscription participants | Slot-call state and the owning slot-value/external-store binding modules | Separate holder replacement from referent state and subscription lifetime; remove manual field commit/restore; retire a replacement subscription only at the approved boundary |
 | I4c: Effect/async/mount participants | Owning effect, async-effect, mount-advertisement modules and slot/expression dispatch callers | Stage request/dependency/advertisement state; keep resource-specific delivery/cancellation; remove generic participant loops once hooks cover that category |
 
-Standalone slot-expression use may still own an independent manager. Injected
-integration use may not. Test both through existing canonical fixtures rather
-than deleting the standalone branch to simplify sharing.
+Standalone and integrated slot-expression use retain their current independent
+call-site pass completion. Test both through existing canonical fixtures;
+unifying their manager with the render manager is U1/U2 work.
 
 For each affected resource, record the current acceptance/cleanup calls and
 keep them observable after replacing its holder. Do not replace explicit
@@ -917,7 +914,8 @@ generic `close()` protocol. A migration-created cleanup/retention incompatibilit
 requires bounded discussion; broader lifetime guarantees and cycle repair are
 deferred D3 work, not a new exit requirement.
 
-Resource-local delivery/retirement batches must also attempt later independent
+If D4's stronger completion contract is approved, resource-local delivery/retirement
+batches must also attempt later independent
 actions after an earlier action raises, collecting failures with action/resource
 context. I4 owns this domain-batch behavior; manager-level or generated-hook
 draining cannot resume the remainder of one throwing domain function. Do not
@@ -938,7 +936,7 @@ throwing action rather than claim it was repaired or automatically retried.
    current behavior. Do not introduce root-wide provisional child lifetimes.
 5. Remove owned-handler order snapshots and manual rollback reconstruction.
 
-Verification: nested context shares root TM, child failure and parent failure,
+Verification: nested context retains its current independent TM, child failure and parent failure,
 handler reorder/removal, identity preservation, and cancellation/unsubscribe
 ordering. Include a failure after staging removal of an existing child.
 
@@ -962,8 +960,9 @@ new graph-wide rollback guarantee.
 
 ### I6: Overrides, Registries, And Publication Notifications
 
-Prerequisite: the same L0 contract remains verified for the integrated hooks;
-after-publication failure must not skip later participants' required work.
+Conditional prerequisite: the L0 contract must be verified before integrated
+hooks depend on its stronger guarantees. Pending D4 approval, preserve existing
+domain completion calls rather than claiming new draining guarantees.
 
 1. Migrate override values and lookup selection to authoritative decorated state.
 2. Keep fixed-key validation and drip/subscription semantics in domain code;
@@ -996,8 +995,8 @@ fixing notifications. If generation acceptance has an existing failure gap,
 record it as debt; a new gap caused by migration must be resolved. D5 must not
 silently reintroduce the deferred single outer publication guarantee.
 
-Capture immutable delivery/retirement batches before their transient sources
-are cleared, and explicitly drain their independent actions after a failed
+Capture delivery/retirement batches before transient sources are cleared.
+If the D4 proposal is approved, explicitly drain independent actions after a failed
 entry with action/resource context in collected errors. Capturing or iterating
 a batch is not proof that later actions survive an earlier exception; this
 domain delivery guarantee belongs to I4/I6, not automatically to the TM.
@@ -1010,7 +1009,7 @@ inside an after-hook is not authorization to stage more publication work.
 I6b's deletion report must show no migrated-category class-name completion
 dispatch, override snapshots/pending-to-current transfers, or directive
 selector restore loop. Domain graph projection and callback delivery remain,
-with L0 ensuring a failing generated after-hook cannot skip later independent
+with approved L0 behavior ensuring a failing generated after-hook cannot skip later independent
 hooks or participants. I4/I6 separately ensure a failing domain-batch action
 cannot skip later independent actions inside that batch.
 
@@ -1062,6 +1061,27 @@ or a scope decision explicitly if they block release.
 Exit: the acceptance checklist below is satisfied and checkpoint results are
 reproducible. Astichi/native-backend optimization and package extraction are
 separate projects, not hidden completion requirements here.
+
+## U1/U2: Later Manager Unification
+
+These are not holder-integration slices or implicit authorization to change the
+transaction library. Finish and verify authoritative holder replacement first,
+then create a separate bounded design/review package.
+
+- **U1: Completion isolation.** Specify how one manager preserves existing
+  independently accepted parent/child/call-site boundaries. The committed
+  shared-completion probe demonstrates that depth, separate object instances,
+  and a common key do not provide isolation. Discuss any library API change;
+  never use private generated callbacks or Pyrolyze field snapshots to emulate it.
+  Outer atomicity is a separate deferred D1 choice, not the presumed solution.
+- **U2: Wiring and permissions.** Once U1's mechanism is approved and tested,
+  inject one root manager into nested renders, slots, and call-site participants;
+  remove retained boundary allocations. Verify independent roots, local scope
+  activity, write permissions, repeated passes, early child publication, caught
+  failure, and resource cleanup without completing unrelated work.
+
+The retained manager/cohort inventory is U1's input. Holder acceptance must
+report this debt explicitly, not claim the original one-TM objective complete.
 
 ## Deferred Post-Integration Work
 
@@ -1116,7 +1136,7 @@ publication. Preserve the existing characterization evidence alongside any
 explicitly approved D4 difference.
 
 1. Root, two sibling slots, nested component render context, and call-site state
-   all sharing the root TM.
+   retaining their current completion cohorts; no throwaway manager patching.
 2. Successful render, unchanged rerender, child reorder/removal, and callback
    replacement while preserving stable object/dispatch identity where required.
 3. Failure after an earlier child finishes: preserve the reference's published
@@ -1147,9 +1167,9 @@ explicitly approved D4 difference.
 11. Existing handled application failure, retained-child/fallback behavior, and
     caught-child recovery, including the I0 child that stages UI before raising.
     Preserve those outcomes rather than adding a new automatic abort policy.
-12. Shared-TM compatibility with earlier accepted children and still-unpublished
+12. Holder-replacement compatibility with earlier accepted children and still-unpublished
     parent/sibling changes: completing or failing one existing boundary must not
-    newly publish/discard another boundary's work. Exercise the existing
+    newly publish/discard another boundary's work. Keep separate cohorts and exercise the existing
     supported recovery sequence without claiming new savepoint semantics.
 13. Existing child cleanup and cancellation paths: preserve propagation and
     observable cleanup, with separately approved D4 differences explicit. Record
@@ -1282,8 +1302,12 @@ Commit library changes in `yidl-lifecycle`, consumer changes in Pyrolyze, and
 record corresponding parent submodule revisions separately. Do not absorb
 unrelated YIDL, Astichi, or workspace modifications into this integration.
 
-Checkpoint sequence after approval: I0, L0, I1, I2, I3a-I3c, I4a-I4c,
-I5a-I5b, I6a-I6b, I7, I8. The subcheckpoints above are separately reviewable
+Holder-first sequence after plan review: I0 evidence, I1a constructor injection,
+I1b with I3a common declarations, I3b callbacks, I3c invocation values,
+I4a-I4c resources, I5a-I5b membership, I6a-I6b overrides/registries, I7 routing,
+I8 evidence. I2 audits accompany each affected checkpoint. L0 is conditional on
+approval and dependent hook work, not a universal holder prerequisite. U1/U2
+are separate post-holder work. The subcheckpoints above are separately reviewable
 commit/tag candidates, not permission to tag an umbrella slice complete while
 its last checkpoint is unfinished. Use the agreed tag prefix and explicit
 checkpoint suffix; do not invent a prefix in this document. A prerequisite
@@ -1295,13 +1319,13 @@ can depend on it. Do not restore `pyrolyze.lifecycle` as an integration shortcut
 
 ## Acceptance Checklist
 
-- [ ] Every independent root graph allocates exactly one TM; nested contexts,
-  slots, call sites, and transactional resource participants share it.
-- [ ] Shared-TM keys have tested lifetimes, write permissions, and completion
-  ownership preserving existing publication boundaries.
+- [ ] Existing boundary manager/key cohorts and completion timing are preserved;
+  every retained manager has a documented owner and future unification task.
+- [ ] Boundary keys have tested lifetimes, write permissions, and completion
+  ownership; no new sharing publishes/discards unrelated work.
 - [ ] Local context scope activity is distinct from shared TM activity.
-- [ ] Live nested TM sharing and local entry/reset/finalization pass together at
-  I1, including changed native emissions, child removal, and failure recovery.
+- [ ] Explicit constructor injection replaces private-slot patching without
+  changing nested-render/call-site completion cohorts.
 - [ ] Decorated state is authoritative; no `_lcm_sync` or duplicate field engine.
 - [ ] Constructor declarations cover shared/derived slot state without chaining
   old initializer storage or allocating a second state wrapper.
@@ -1310,7 +1334,8 @@ can depend on it. Do not restore `pyrolyze.lifecycle` as an integration shortcut
 - [ ] Field rollback occurs through lifecycle, not manual value restoration.
 - [ ] Resource acceptance/retirement and external side effects preserve approved
   success/failure ordering without a generic child-type dispatch loop.
-- [ ] No migrated-path private call-site/per-slot TM or legacy record access.
+- [ ] No migrated-path legacy record access; temporary independent managers are
+  explicit completion owners, not a duplicate value engine.
 - [ ] Graph construction does not patch lifecycle managers or attach through
   hidden default-factory side effects.
 - [ ] Canonical fixtures preserve early child publication, parent failure, and
@@ -1318,9 +1343,9 @@ can depend on it. Do not restore `pyrolyze.lifecycle` as an integration shortcut
 - [ ] No migration-created failure/recovery/resource regression is deferred;
   pre-existing defects and stronger D1-D3 guarantees are separate follow-up work.
 - [ ] L0's lifecycle-owned multi-participant failure contract is verified before
-  I2/I4/I6 rely on resilient cleanup/delivery; failing callbacks do not silently
+  dependent I4/I6 hooks rely on new resilient cleanup/delivery; failing callbacks do not silently
   skip later participants' mandatory work.
-- [ ] L0 covers independently declared same-key/inherited hooks inside one
+- [ ] Where the approved stronger hook contract is activated, L0 covers independently declared same-key/inherited hooks inside one
   participant; I4/I6 separately drain independent domain-batch actions. An
   incomplete throwing action is reported, not mistaken for successful cleanup.
 - [ ] Runtime selection, public exports, broader regressions, and the full suite
@@ -1330,17 +1355,17 @@ can depend on it. Do not restore `pyrolyze.lifecycle` as an integration shortcut
 
 ## Decisions Required Before Execution
 
-The user has settled the D1-D3 scope: preserve current behavior for integration
-and defer stronger guarantees. The concrete shared-TM compatibility mechanism
-still needs checkpoint evidence. D4/D5 remain **pending**; earlier plan-level
+The user has settled the D1-D3 scope and holder-first sequencing: preserve
+current behavior and existing completion cohorts, then address manager
+unification separately. D4/D5 remain **pending**; earlier plan-level
 review acceptance did not approve their proposed semantic changes.
 
 | Decision | Evidence / Recommendation | Blocks |
 | --- | --- | --- |
-| D1: Publication compatibility; stronger guarantee deferred | Scope settled: retain existing accepted publication points, including early child publication surviving later parent failure. Do not force universal default-key publication/pass-key scratch or hold every child provisional. Resolve how the shared TM preserves those boundaries without completing unrelated work. | Only the compatible shared-TM/key mechanism gates affected I1/I2 work; outer atomicity is post-integration work |
+| D1: Publication compatibility; stronger guarantee deferred | Scope settled: retain accepted publication points and existing cohorts, including early child publication surviving later parent failure. Do not force universal default-key publication/pass-key scratch or hold every child provisional. Shared-TM isolation is U1/U2 work. | Holder regressions gate affected checkpoints; neither U1/U2 nor outer atomicity is a holder prerequisite |
 | D2: Minimum failure compatibility | Scope settled: retain affected sites' existing handling, caught recovery, propagation, cleanup, and subsequent-render behavior. Characterize migration regressions; record existing defects. Comprehensive classification, savepoints, and stronger recovery/abort policy are deferred. | A migration-created incompatibility blocks its affected checkpoint; the deferred hardening inventory is not an I0 exit gate |
 | D3: Minimum resource compatibility | Scope settled: map affected holders/referents and existing domain acceptance/cleanup calls; replace field storage without changing lifetime policy or retirement timing. Keep resource-specific methods where needed. Unified ownership/refcount policy, broad cycle repair, and stronger deterministic retirement are deferred. | Compatible holder replacement and existing resource behavior gate affected I4/I5 work, not a broader lifetime redesign |
-| D4: Library failure completion | Approve L0's prepare cleanup, unexpected-apply draining, after-hook/rollback draining between participants and between independently declared same-key/inherited hooks, error grouping/context, and partial-apply hook eligibility. I4/I6 own per-action domain-batch draining separately. Recommend the existing Phase F-1 intent: attempt required remaining work and report failure, never fictitious undo of applied values. | L0; I2/I4/I6 completion mechanisms |
+| D4: Library failure completion | Approve L0's prepare cleanup, unexpected-apply draining, after-hook/rollback draining between participants and between independently declared same-key/inherited hooks, error grouping/context, and partial-apply hook eligibility. I4/I6 own per-action domain-batch draining separately. Recommend the existing Phase F-1 intent: attempt required remaining work and report failure, never fictitious undo of applied values. | L0 and only mechanisms relying on the new contract; preserve existing domain cleanup otherwise |
 | D5: Observable completion ordering | Pending: pin generation visibility, resource retirement, scratch clearing, and observer delivery at the existing boundaries. Any proposed change needs explicit approval and must not implicitly reintroduce D1 outer atomicity or D3 lifetime redesign. Exceptions after publication cannot undo accepted values. | Affected hook/resource activation and final I6 timeline |
 
 D1-D3 no longer require approval of stronger semantics before integration.
