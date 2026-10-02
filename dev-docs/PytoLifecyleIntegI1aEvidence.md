@@ -70,9 +70,36 @@ eight-file decomposed subset: **41 passed, 14 failed in 0.83s**, matching I0's
 existing override, mount, generation, and event-UI failure clusters. The four
 extra passes are the new narrow construction checks, not repaired baseline bugs.
 
-Exact implementation revision and independent Code review outcome will be
-recorded before claiming checkpoint completion. Full-suite failures remain
-integration debt; this checkpoint is not an I7/default-routing acceptance.
+Full-suite failures remain integration debt; this checkpoint is not an
+I7/default-routing acceptance.
+
+## Independent Acceptance
+
+Status: **I1a accepted at Pyrolyze
+`30cb868c168d70907ad2fceff1bb8e2841dda16e` after
+`dev-docs/PytoLifecyleIntegI1a-ReviewCode.md` reported GO; this accepts constructor
+injection on existing completion boundaries only.**
+
+The settled dependency tuple was yidl-lifecycle
+`cdf08544deea846bca4fa7e0c468ebee8d41e138`, YIDL
+`95a6e3e52fc3d710d25c5d59315e791a3ed75cc4` (committed view only), Astichi
+`387ca5e1da76204ee60922094734c13ee36383c0`, and parent
+`a20f8cfb633a268925464eb27728d1934a70aea9` (context only). The reviewer checked
+the tuple at both ends; excluded dirty YIDL and parent bytes were unchanged.
+
+- The fresh, read-only Code review found zero P0/P1/P2/P3 issues and independently
+  ran the two constructor test files: **15 passed in 0.58s**.
+- No blocker triggered State escalation. Implementation remediation rounds: 0.
+  The preceding plan campaign used one round, recorded separately in its ledger.
+- The report is filed verbatim; the prompt is adjacent. Lane-owner broad/full
+  results above are not presented as reviewer-executed checks.
+- No library behavior, publication/rollback boundary, runtime selector default,
+  parent pointer, tag, push, or merge is part of this acceptance.
+
+I1b/I3a, authoritative holder replacement, and later U1/U2 manager unification
+remain open. The leading-underscore generated-name issue observed during test
+setup is separate pre-existing library debt, not an escaped I1a defect. No I1a
+defect was found by independent review; the existing I0 failures remain open.
 
 ## Reproduction
 
