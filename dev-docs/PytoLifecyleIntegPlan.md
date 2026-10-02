@@ -23,6 +23,9 @@ roll-build is advertised as ready.
 Completion detail added on 2026-10-03 after the I0 investigation. The earlier
 review-loop acceptance covered the preceding plan revision, not approval of
 the outstanding semantic decisions or independent review of this revision.
+The current completion-review status and exact reviewed tuples are recorded in
+`dev-docs/PytoLifecyleIntegCompletionPlan-ReviewLoop.md`; a plan-level GO does not
+authorize runtime execution or settle D1-D5.
 
 ## Checkpoint
 
@@ -406,11 +409,11 @@ class EventHandlerSlotContextStateMgr(SlotContextStateMgr):
         self, *, callback: Callable[..., Any], dirty: bool
     ) -> Callable[..., None]:
         callback_key = callback
-        current = self.current
+        candidate = self
         if (
             dirty
-            or current._callback is None
-            or current._callback_key != callback_key
+            or candidate._callback is None
+            or candidate._callback_key != callback_key
         ):
             self._callback = callback
             self._callback_key = callback_key
@@ -437,7 +440,14 @@ callback merely because render work has staged one. The lifecycle manager
 publishes or discards that selection; this class has no `commit_handler()` or
 `rollback_handler()` and no separate committed/staged callback attributes.
 
-Preserve the existing domain staging guard and callback-key comparison first.
+Preserve callback-key equality and dirty-forced selection semantics, but compare
+the staging guard against the effective default/working candidate, not
+`.current`. Several local passes may complete within one publication lifetime:
+published A, then local selections B and A with `dirty=False`, must finish with
+candidate A. Comparing only against published A on the second pass would skip
+the assignment and incorrectly leave B staged. Dispatch still reads `.current`
+throughout; candidate comparison does not expose staged callbacks to callers.
+
 Identity comparison on the callback field avoids eliding a dirty-forced
 replacement between distinct callable objects that compare equal. Keeping the
 key initially makes that migration explicit; removing it is a separate
@@ -657,18 +667,38 @@ implementation; review-loop acceptance of this plan does not authorize it.
 5. Verify prepare failure prevents publication while all required cleanup is
    attempted, and unexpected apply failure follows the explicitly approved
    Phase F-1 drain/report policy. Do not claim atomic undo after publication.
+6. Verify independent completion actions inside one generated participant,
+   not only draining between participants. A throwing first same-key
+   after-commit hook must not skip a second independently declared hook; apply
+   the same requirement to after-rollback hooks, including inherited/local
+   hook composition. Preserve deterministic order, exactly-once attempts, and
+   hook/participant/key context in collected failures. A throwing action may
+   remain incomplete and reported; later independent actions must be attempted.
+
+The manager can drain other participants, but cannot resume a generated
+callback after an internal hook call has unwound it. Lifecycle-owned generated
+after-hook invocation must therefore drain its independently declared hooks
+and report collected failures at that boundary. This makes Phase F-1's existing
+all-after-hooks requirement explicit; it is not supplied by a manager-only
+dispatch correction. It does not require continuing dependent preparation or
+arbitrary statements inside an individual throwing hook.
 
 Use the actual manager implementation in `yidl-lifecycle`'s
 `src/yidl_lifecycle/transaction_yidl.py`. Locate the existing failure tests and
 golden harness there before adding coverage. Narrow protocol tests own callback
 draining/error aggregation; generated lifecycle goldens own observable staged
-field behavior where it is needed. Do not copy the entire Pyrolyze I0 probe
-into a second success suite.
+field behavior and per-hook composition. Require generated coverage with two
+same-key hooks on one participant, first throwing and second recording cleanup,
+plus another enlisted participant. Cover commit and rollback, with inherited
+and local hooks composed. Assert state outcomes, exactly-once attempts, useful
+error context, finalized keys/tokens, and subsequent-transaction recovery. Do
+not copy the entire Pyrolyze I0 probe into a second success suite.
 
 Exit: an approved, tested lifecycle failure-completion contract and recorded
 library revision. The new I2 coordinator and the I4/I6 hook migrations cannot
-complete without this evidence. Existing single-participant hook tests are not
-sufficient; Pyrolyze's eventual integration fixture must also prove local-scope
+complete without this evidence. Existing single-hook tests or manager-only
+multi-participant tests are not sufficient; Pyrolyze's eventual integration
+fixture must also prove per-action domain-batch draining, local-scope
 cleanup and recovery when library failures cross the root boundary.
 
 ### I1: Shared TM Construction And Local Scope Safety
@@ -792,7 +822,7 @@ Use three bounded commit/tag checkpoints under I3:
 | Checkpoint | Edits And Deletions | Canonical Proof |
 | --- | --- | --- |
 | I3a: Common slot/value declarations | `_base.py`, `slot_context.py`, `context_base.py`, and affected derived declarations/factories: identity inputs, published dirty/site metadata, local visitation, candidate map/UI assignments; remove initializer-only storage and order/dirty snapshots | Root/sibling/nested construction, unchanged-call elision, repeated local reset, and failed candidate membership/UI with previous current values intact |
-| I3b: Callback selection | `event_handler_slot_context.py` and its base dispatch callers: implement the expected shape; delete manual callback stores, `commit_handler`, `rollback_handler`; fix polymorphic UI assembly | One retained dispatch handle before/during/after successful and failed replacement; dirty-forced distinct/equal callable case; no new callback visible before publication |
+| I3b: Callback selection | `event_handler_slot_context.py` and its base dispatch callers: implement the expected shape; delete manual callback stores, `commit_handler`, `rollback_handler`; fix polymorphic UI assembly | Retained dispatch before/during/after success/failure; published A, then two local selections B and A with dirty=False in one outer transaction finish at A; dirty-forced distinct/equal callable case; staged callbacks remain invisible to dispatch |
 | I3c: Invocation values | `leaf_slot_context.py`, `rerunnable_slot_context.py`, `slot_call_slot_context.py`, and related container/loop value declarations: managed input/identity/schema/site metadata; remove eager accepted-value assignment and duplicate snapshots | Unchanged elision, changed input, early child success followed by parent failure, recovery with the previous accepted invocation still authoritative |
 
 Each checkpoint keeps the domain call/evaluation algorithms. I3c does not
@@ -839,6 +869,14 @@ candidate on failure, and whether callbacks can retain a cycle. Observable
 cleanup cannot be delegated solely to `BindingBase.__del__`. If that requires
 an unsupported library lifetime contract, stop and discuss it instead of adding
 a second field engine or an unplanned generic `close()` protocol.
+
+Resource-local delivery/retirement batches must also attempt later independent
+actions after an earlier action raises, collecting failures with action/resource
+context. I4 owns this domain-batch behavior; manager-level or generated-hook
+draining cannot resume the remainder of one throwing domain function. Do not
+turn the batch into a loop that publishes decorated fields or traverses all
+graph participants. Respect dependent-action ordering and report an incomplete
+throwing action rather than claim it was repaired or automatically retried.
 
 ### I5: Child Ownership And Component Boundaries
 
@@ -906,7 +944,11 @@ existing generation service can fail during acceptance, validate/prepare its
 candidate before irrevocable field publication or stop to resolve the gap.
 
 Capture immutable delivery/retirement batches before their transient sources
-are cleared. Preserve independently arriving invalidations rather than
+are cleared, and explicitly drain their independent actions after a failed
+entry with action/resource context in collected errors. Capturing or iterating
+a batch is not proof that later actions survive an earlier exception; this
+domain delivery guarantee belongs to I4/I6, not automatically to the TM.
+Preserve independently arriving invalidations rather than
 discarding every queued event after a failed candidate. Observers must see a
 coherent accepted graph and generation. Reentrant writes during completion
 need an explicit domain gate or deferred boundary; the manager being active
@@ -915,7 +957,9 @@ inside an after-hook is not authorization to stage more publication work.
 I6b's deletion report must show no migrated-category class-name completion
 dispatch, override snapshots/pending-to-current transfers, or directive
 selector restore loop. Domain graph projection and callback delivery remain,
-with L0 ensuring a failing callback cannot skip unrelated required completion.
+with L0 ensuring a failing generated after-hook cannot skip later independent
+hooks or participants. I4/I6 separately ensure a failing domain-batch action
+cannot skip later independent actions inside that batch.
 
 ### I7: Canonical Runtime Routing And Scaffolding Removal
 
@@ -1018,6 +1062,13 @@ The canonical integration scenario should cover:
     remain observable, later required cleanup is attempted, and an uncertain
     candidate cannot publish. Contrast an isolated discarded structural failure
     with a graph-wide invariant failure that invalidates the boundary.
+14. Two independent actions in one domain delivery/retirement batch: the first
+    throws and the second observably unsubscribes or cleans up a resource.
+    Cover accepted completion and failed-candidate cleanup; assert exactly-once
+    attempts, preserved publication/rollback outcomes, useful error context,
+    finalized keys/local scopes, and subsequent-render recovery. Complement
+    L0's generated same-participant/inherited-hook proof rather than duplicate
+    its generic hook assertions.
 
 Use the same exception type before and after staging to prove the policy is
 effect/phase-based, not a type whitelist. Specify which retained-child/fallback
@@ -1177,6 +1228,9 @@ can depend on it. Do not restore `pyrolyze.lifecycle` as an integration shortcut
 - [ ] L0's lifecycle-owned multi-participant failure contract is verified before
   I2/I4/I6 rely on resilient cleanup/delivery; failing callbacks do not silently
   skip later participants' mandatory work.
+- [ ] L0 covers independently declared same-key/inherited hooks inside one
+  participant; I4/I6 separately drain independent domain-batch actions. An
+  incomplete throwing action is reported, not mistaken for successful cleanup.
 - [ ] Runtime selection, public exports, broader regressions, and the full suite
   pass with approved differences explicitly recorded.
 - [ ] Performance results and remaining limitations are documented separately
@@ -1192,7 +1246,7 @@ completion plan, not decisions inferred from the request to write it.
 | D1: Publication and key split | I0 original/monolithic permit early child publication. Recommend one outer publication boundary on `DEFAULT_TRANSACTION`, with `PASS_TX_KEY` for scratch only; an earlier child stays provisional until outer success. This intentionally changes that reference behavior. | I0 exit, live sharing ownership in I1, I2 and later acceptance expectations |
 | D2: Child failure containment | I0 permits caught-child recovery, but its fixture stages UI before raising. Classify concrete sites by phase/effects and prove which leave a valid candidate: contained failures may recover; uncontained or uncertain failures invalidate the owning boundary even if caught. Specify any required savepoint/equivalent in the library first, without a snapshot workaround. | I0 exit, I1/I2 nested failure/containment behavior, and affected resource checkpoints |
 | D3: Resource contract | Approve the category mapping in the I0 inventory: holder replacement, referent participation, acceptance, deterministic retirement, and one refcount/lifetime policy per resource. A nontransactional `binding()` declaration does not settle these questions. | Affected I4/I5 checkpoints and their constructor/attachment seams |
-| D4: Library failure completion | Approve L0's prepare cleanup, unexpected-apply draining, after-hook/rollback draining, error grouping/context, and which after-hooks are eligible following partial apply. Recommend the existing Phase F-1 intent: attempt required remaining work and report failure, never fictitious undo of applied values. | L0; I2/I4/I6 completion mechanisms |
+| D4: Library failure completion | Approve L0's prepare cleanup, unexpected-apply draining, after-hook/rollback draining between participants and between independently declared same-key/inherited hooks, error grouping/context, and partial-apply hook eligibility. I4/I6 own per-action domain-batch draining separately. Recommend the existing Phase F-1 intent: attempt required remaining work and report failure, never fictitious undo of applied values. | L0; I2/I4/I6 completion mechanisms |
 | D5: Observable completion ordering | Agree generation visibility, accepted-child/resource retirement, scratch clearing, and observer delivery. Recommend preparing domain candidates before field publication and delivering notifications only after accepted graph/generation are coherent. Exceptions after publication cannot undo accepted values. | Hook/resource activation in I4/I5 and final I6 timeline |
 
 D1/D2 approval must name the behavioral differences from the baseline. D2 must
