@@ -442,7 +442,16 @@ import os
 from typing import Any, Callable
 
 from .lifecycle_adapter import local_store, managed, managed_context
+from ._support import _BOUND_METHOD_SELF_MISSING
 from .slot_context import SlotContextStateMgr
+
+
+def _callback_key_for(callback: Callable[..., Any]) -> object:
+    bound_self = getattr(callback, "__self__", _BOUND_METHOD_SELF_MISSING)
+    bound_func = getattr(callback, "__func__", None)
+    if bound_self is not _BOUND_METHOD_SELF_MISSING and callable(bound_func):
+        return ("bound_method", id(bound_self), bound_func)
+    return callback
 
 
 @managed_context
@@ -456,8 +465,8 @@ class EventHandlerSlotContextStateMgr(SlotContextStateMgr):
     def stage_callback(
         self, *, callback: Callable[..., Any], dirty: bool
     ) -> Callable[..., None]:
-        callback_key = callback
-        candidate = self
+        callback_key = _callback_key_for(callback)
+        candidate = self.current
         if (
             dirty
             or candidate._callback is None
@@ -488,13 +497,19 @@ callback merely because render work has staged one. The lifecycle manager
 publishes or discards that selection; this class has no `commit_handler()` or
 `rollback_handler()` and no separate committed/staged callback attributes.
 
-Preserve callback-key equality and dirty-forced selection semantics, but compare
-the staging guard against the effective default/working candidate, not
-`.current`. If several selections occur before their existing publication
-boundary, published A followed by selections B and A with `dirty=False` must
-finish with candidate A. Comparing only against published A would skip
-the assignment and incorrectly leave B staged. Dispatch still reads `.current`
-throughout; candidate comparison does not expose staged callbacks to callers.
+Preserve the reference's callback-key policy, including receiver identity and
+function identity for bound methods, and dirty-forced selection. Distinct
+value-equal receivers must still select different handlers; repeated bound
+method objects from the same receiver/function retain the same key.
+
+For holder-only compatibility, compare the staging guard against `.current`,
+as the original and monolithic references do. Published A followed by pending B
+then A, both with `dirty=False`, currently publishes B on success and keeps A
+on failure. This is baseline debt, not desirable new semantics. The previous
+effective-candidate proposal (which ends at A on success) is deferred as a
+separate behavioral correction requiring approval. Keep historical observations
+distinct from any later approved target. Dispatch reads `.current` throughout;
+unpublished selection remains invisible to callers.
 
 Identity comparison on the callback field avoids eliding a dirty-forced
 replacement between distinct callable objects that compare equal. Keeping the
@@ -608,7 +623,7 @@ prerequisite passes.
 | Leaf/rerunnable inputs | Managed identity/schema/arguments with immutable values or declared thaw/freeze | Duplicate last/pending argument stores |
 | Event handlers | Managed callback/key; stable dispatch reads the committed selection | Manual staged-to-committed copying |
 | Slot-call resources | Boundary-owned participant/adapter plus compatible replacement policy | Duplicate holder transfer and generic child field dispatch; boundary managers remain until U1/U2 |
-| Slot-expression sites | Lifecycle-owned membership and transient visitation/notification data | Legacy call-site record access and private pass TM |
+| Slot-expression sites | Lifecycle-owned membership and transient visitation/notification data on the existing independent pass boundary | Legacy record access and manager implementation, not independent completion ownership; retain a lifecycle-owned pass TM until U2 |
 | Component child context and owned handlers | Transactional child/resource membership with publication-aware retirement | `_pass_owned_event_handler_order` rollback snapshots |
 | App-context overrides | Managed values/lookup selection; domain hooks for observable drip/link behavior | `_pass_committed_values` / `_pass_committed_lookup` restore code |
 | Registries and caches | Classify by observability; managed if failed work must undo membership | Treating visible graph membership as an inert cache |
@@ -861,7 +876,7 @@ Use three bounded commit/tag checkpoints under I3:
 | Checkpoint | Edits And Deletions | Canonical Proof |
 | --- | --- | --- |
 | I3a: Common slot/value declarations | `_base.py`, `slot_context.py`, `context_base.py`, and affected derived declarations/factories: identity inputs, published dirty/site metadata, local visitation, candidate map/UI assignments; remove initializer-only storage and order/dirty snapshots | Root/sibling/nested construction, unchanged-call elision, repeated local reset, and failed candidate membership/UI with previous current values intact |
-| I3b: Callback selection | `event_handler_slot_context.py` and its base dispatch callers: implement the expected shape; delete manual callback stores, `commit_handler`, `rollback_handler`; fix polymorphic UI assembly | Retained dispatch before/during/after existing success/failure boundaries; two pending selections B then A against published A finish at A; dirty-forced distinct/equal callable case; staged callbacks remain invisible until their existing publication point |
+| I3b: Callback selection | `event_handler_slot_context.py` and its base dispatch callers: implement the compatibility shape; delete manual callback stores, `commit_handler`, `rollback_handler`; fix polymorphic UI assembly | Retained dispatch before/during/after success/failure; equal-but-distinct bound receivers use identity keys; A then pending B/A ends at B on success and A on failure until a separate fix is approved; dirty-forced distinct/equal callable selection; staged callbacks remain invisible until publication |
 | I3c: Invocation values | `leaf_slot_context.py`, `rerunnable_slot_context.py`, `slot_call_slot_context.py`, and related container/loop value declarations: managed input/identity/schema/site metadata; remove duplicate snapshots/transfers while preserving acceptance timing | Unchanged elision, changed input, early child success followed by parent failure, and recovery with the reference's accepted invocation still authoritative |
 
 Each checkpoint keeps the domain call/evaluation algorithms. I3c does not

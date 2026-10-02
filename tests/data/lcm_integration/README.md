@@ -21,6 +21,12 @@ Never regenerate a baseline merely to hide an unapproved semantic change.
   and caught-child rollback. The snapshot demonstrates that the current API
   does not provide independent parent/child completion on that shared key;
   it is a capability observation, not approval of the resulting behavior.
+- `callback_selection.py`: original/monolithic callback behavior through runtime
+  pass scopes. It records receiver-identity replacement, stable dispatch,
+  unpublished selection, and A then pending B/A (B after success, A after
+  failure). The latter is known debt, not permission to fix it during holder
+  replacement. Both references share one JSON snapshot; prior snapshots remain
+  unchanged.
 - `baselines/*.json`: structured historical snapshots, compared as JSON rather
   than by whitespace. Runtime selection takes place in fresh subprocesses.
 
@@ -62,6 +68,20 @@ PYTHONPATH=src:../yidl-lifecycle/src:../yidl/src:../astichi/src \
 Regenerate only after reviewing the observed change and recording any semantic
 decision in the integration plan/findings. These commands write snapshots, not
 runtime code:
+
+Inspect the callback reference separately with the same environment and
+`PYROLYZE_CONTEXT_IMPL=original` or `lcm`:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 \
+PYTHONPATH=src:../yidl-lifecycle/src:../yidl/src:../astichi/src \
+PYROLYZE_CONTEXT_IMPL=original \
+  ../.venv/bin/python tests/data/lcm_integration/callback_selection.py
+```
+
+Its snapshot was added explicitly after inspecting both reference outputs.
+Change it only with a recorded semantic decision, not automatic regeneration.
+The earlier snapshots can be regenerated as follows:
 
 ```sh
 for implementation in original lcm bare_refactor_lcm; do

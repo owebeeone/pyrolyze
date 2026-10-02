@@ -14,3 +14,27 @@ No tests or writes by reviewers. No implementation starts before this gate.
 Exact tuple, prompt paths, agent IDs, verdicts, remediation counts, accepted plan
 blob, and evidence will be appended after dispatch. No tags, pushes, or parent
 pointer commit is part of this campaign.
+
+## Round 1
+
+Pyrolyze `0de04bc487b3e03c9444e40ce02587046b33dcec`; lifecycle
+`cdf08544deea846bca4fa7e0c468ebee8d41e138`; YIDL committed view
+`95a6e3e52fc3d710d25c5d59315e791a3ed75cc4`; Astichi
+`387ca5e1da76204ee60922094734c13ee36383c0`; parent context
+`a20f8cfb633a268925464eb27728d1934a70aea9`. Dirty YIDL/parent bytes excluded.
+
+| Axis | Reviewer | Agent ID | Verdict |
+| --- | --- | --- | --- |
+| Consistency | Goodall | 01a0feeb-1129-71d1-8f92-57a93d9b1358 | NO-GO: P2-1, P2-2; P3-1 |
+| Safety | Tesla | 01a0feeb-11d1-7552-8079-346c92ab2430 | NO-GO: P2-1, P2-2 |
+
+Both independently found raw callback-key receiver equality and the unclassified
+B-then-A behavioral fix. One merged remedy restores the already controlling
+reference contract; see `PytoLifecyleIntegHolderFirstPlan-RemPlan-1.md`.
+No runtime source changes. Original reviewers must verify their own findings;
+neither lane-owner disposition nor the peer's report closes them.
+
+Pre-dispatch evidence: 5 characterization cases passed in 1.31s; seven focused
+LCM files plus those cases passed all 37 tests in 1.99s. The new two callback
+snapshot cases first failed on absent expected data; both actual reference
+outputs were inspected and matched the one explicitly added snapshot.

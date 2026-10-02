@@ -28,6 +28,14 @@ def test_lifecycle_shared_completion_characterization_baseline() -> None:
     _check_baseline("shared_completion.py", "shared_completion", dict(os.environ))
 
 
+@pytest.mark.parametrize("implementation", ("original", "lcm"))
+def test_reference_callback_selection_baseline(implementation: str) -> None:
+    environment = dict(os.environ)
+    environment.pop("PYROLYZE_USE_CONTEXT_LCM", None)
+    environment["PYROLYZE_CONTEXT_IMPL"] = implementation
+    _check_baseline("callback_selection.py", "callback_selection", environment)
+
+
 def _check_baseline(script: str, name: str, environment: dict[str, str]) -> None:
     expected = json.loads(
         (_DATA / "baselines" / f"{name}.json").read_text(encoding="utf-8")
