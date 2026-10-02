@@ -2,7 +2,9 @@
 
 ## Gate
 
-Status: **round 1 NO-GO; remediation 1 drafted, findings not yet closed**.
+Status: **accepted at Pyrolyze b0019be76927795eceb085379c3ea4f8fde4c85c
+with the unchanged dependency tuple after the Consistency-1 and Safety-1
+reports returned GO; this accepts the DRAFT plan only**.
 Scope: draft completion plan and I0 evidence, not runtime activation or
 approval of pending D1-D5 outcomes.
 
@@ -31,9 +33,19 @@ The lane owner's preflight characterization rerun passed all four cases.
 | Round | Reviewed Pyrolyze Revision | Consistency | Safety | Disposition |
 | --- | --- | --- | --- | --- |
 | Initial | 723460d6c1dce75b70f03e355daf20c248bde8ad | NO-GO: P2-1 | NO-GO: P2-1 | One merged text-only remediation; independent closure pending |
+| Remediation 1 | b0019be76927795eceb085379c3ea4f8fde4c85c | GO: original finding closed | GO: original finding closed | Both original counterexamples independently retraced; plan-only acceptance |
 
 Remediation rounds used: **1 of 2**.
-Accepted-through tuple: **none for this new campaign**.
+Accepted-through tuple:
+
+| Repository | Revision |
+| --- | --- |
+| Pyrolyze | b0019be76927795eceb085379c3ea4f8fde4c85c |
+| yidl-lifecycle | cdf08544deea846bca4fa7e0c468ebee8d41e138 |
+| YIDL, committed view only | 95a6e3e52fc3d710d25c5d59315e791a3ed75cc4 |
+| Astichi | 387ca5e1da76204ee60922094734c13ee36383c0 |
+| Parent, context only | a20f8cfb633a268925464eb27728d1934a70aea9 |
+
 Earlier plan-review acceptance remains historical and is not transferred to
 this completion revision.
 
@@ -49,12 +61,41 @@ hooks/actions inside one participant or domain batch. No blind convergence on
 one root cause was reported; they are complementary findings.
 
 Safety identified one new architectural root cause; Consistency classified its
-finding as bounded. Architectural root causes discovered: **1**. The merged
-dispositions and closure obligations are in
-`dev-docs/PytoLifecyleIntegCompletionPlan-RemPlan-1.md`. No finding is closed by
-the lane owner's patch claim. Original reviewers must verify the corrected
-counterexamples and assess whether the unchanged interfaces/boundaries allow
-focused re-verdicts or require a fresh dual review.
+finding as bounded. Architectural root causes discovered: **1**, with none new
+in remediation. The merged dispositions and closure obligations are in
+`dev-docs/PytoLifecyleIntegCompletionPlan-RemPlan-1.md`. Both original reviewers
+verified their corrected counterexamples and explicitly judged that no new
+shared interface or ownership/mutation boundary required fresh reviewers.
+
+Re-verdicts are filed verbatim in
+`dev-docs/PytoLifecyleIntegCompletionPlan-ReviewConsistency-1.md` and
+`dev-docs/PytoLifecyleIntegCompletionPlan-ReviewSafety-1.md`. Neither closure is
+based on lane-owner assertion or the peer's verdict. The existing Phase F-1
+all-after-hooks intent was clarified, not newly implemented.
+
+## Acceptance Evidence And Limits
+
+The lane owner re-ran the four I0 characterization cases before the initial
+package commit: **4 passed in 1.58s**. The remediation changes documentation
+only; the diff of `src` and `tests` from the initial to accepted revision is
+empty. Two Python sketches AST-parse, path/fence checks pass, and source diff
+whitespace checks pass. Report files preserve the reviewers' Markdown
+hard-line-break spaces verbatim; checks allow those spaces without rewriting
+testimony. Reports are byte-checked against returned reviewer messages.
+
+The final evidence commit adds/reconciles review artifacts only; it does not
+alter the accepted plan bytes or dependency source. Its HEAD is not a claim
+that a different runtime tuple was reviewed. Runtime regressions specified by
+the plan are future obligations, not newly passing evidence.
+
+Accepted plan blob: `792989a3b5eb70e7aa3bb4deac37de4ce318d7e3` for
+`dev-docs/PytoLifecyleIntegPlan.md`. The final evidence commit preserves this
+same blob; acceptance is tied to those reviewed plan bytes and the tuple above.
+
+D1-D5, concrete containment facilities where necessary, resource timelines,
+baseline failures, implementation, and activation remain execution gates.
+No roll-build starts from this document-gate GO. Both reviewer agents are closed
+after returning their final reports.
 
 ## Change Boundary
 

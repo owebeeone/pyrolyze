@@ -2,12 +2,14 @@
 
 ## Scope And Status
 
-Status: **draft-stage dual review pending**. This gate reviews the integration
+Status: **accepted at Pyrolyze b0019be76927795eceb085379c3ea4f8fde4c85c
+after Consistency-1 and Safety-1 returned GO; DRAFT plan only**.
+This gate reviews the integration
 completion plan and committed I0 evidence, not a runtime implementation or
 authorization of the pending semantic decisions. This is a fresh review campaign;
 the earlier PytoLifecyleIntegPlan review files remain historical and unchanged.
 
-## Settled Tuple
+## Initial Settled Tuple
 
 | Repository | Revision | Reviewed View |
 | --- | --- | --- |
@@ -20,6 +22,13 @@ the earlier PytoLifecyleIntegPlan review files remain historical and unchanged.
 Controlling document: `dev-docs/PytoLifecyleIntegPlan.md` at the Pyrolyze
 revision above. Package diff: `b8d189f770dc5dc956584f1fb6dbe845651c15d8..723460d6c1dce75b70f03e355daf20c248bde8ad`.
 The Pyrolyze tree was clean after the package commit.
+
+The accepted re-verdict tuple replaces the Pyrolyze revision above with
+`b0019be76927795eceb085379c3ea4f8fde4c85c`; all dependency/context revisions and
+excluded dirty views are unchanged. The complete history, independent closure,
+and acceptance limits are in
+`dev-docs/PytoLifecyleIntegCompletionPlan-ReviewLoop.md`. Initial prompts and
+reports remain unchanged as historical dispatch/testimony.
 
 ## Review Process
 
@@ -62,4 +71,7 @@ documented in I0; this narrow rerun does not establish runtime readiness.
 - `dev-docs/PytoLifecyleIntegCompletionPlan-ReviewSafety.md`
 - `dev-docs/PytoLifecyleIntegCompletionPlan-ReviewLoop.md`
 
-Numbered remediation/re-verdict outputs will be filed only if required.
+One merged documentation remediation was required. Its plan, both re-verdict
+prompts, and both complete closure reports are filed with suffix `-1`; the
+review-loop ledger records their exact tuple and scope. D1-D5 remain pending
+execution gates, not approved by this plan-level acceptance.
