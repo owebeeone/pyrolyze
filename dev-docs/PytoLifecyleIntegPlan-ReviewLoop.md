@@ -2,7 +2,8 @@
 
 ## Scope And Authority
 
-Status: initial dual review NO-GO; merged remediation awaiting re-verdict.
+Status: **accepted at the corrected tuple below after both re-verdict reports
+returned GO; this accepts the plan only**.
 
 This loop reviews `dev-docs/PytoLifecyleIntegPlan.md` for consistency and
 failure/recovery safety. Acceptance covers the plan only: it does not approve
@@ -78,6 +79,7 @@ runtime regression scenarios remain deliverables of the implementation slices.
 | Round | Plan Revision | Consistency | Safety | Disposition |
 | --- | --- | --- | --- | --- |
 | Initial | `7f373420d9fde14559985792125559cd4f60a3cb` | NO-GO: one P2 | NO-GO: two P2 | Two unique root causes; one independently converged |
+| Remediation 1 | `aecb23366f17123b2cb48fd6e862d79bcbc1deee` | GO; original P2 verified closed | GO; both original P2s verified closed | Plan accepted; runtime work and decisions still gated |
 
 Reports are filed verbatim in
 `dev-docs/PytoLifecyleIntegPlan-ReviewConsistency.md` and
@@ -91,11 +93,45 @@ Remediation round 1 is recorded in
 - Moves local pass entry/reset/finalization safety into I1, the checkpoint that
   enables live shared-TM construction, with nested rerender/failure evidence.
 
-No findings are self-closed. Runtime regression requirements are specified in
-the plan; runtime fixes/tests are not part of this documentation-only review.
+Closure was verified by the originating reviewers in
+`dev-docs/PytoLifecyleIntegPlan-ReviewConsistency-1.md` and
+`dev-docs/PytoLifecyleIntegPlan-ReviewSafety-1.md`. Both retraced their original
+counterexamples and classified the patch as prerequisite/checkpoint correction,
+not a new architecture or interface. No new architectural root cause or other
+finding was reported in remediation round 1.
+
+No findings were self-closed. Runtime regression requirements are specified in
+the plan; runtime fixes/tests were not part of this documentation-only review.
+
+## Accepted Tuple And Remaining Work
+
+| Repository | Accepted Revision |
+| --- | --- |
+| Parent workspace | `a20f8cfb633a268925464eb27728d1934a70aea9` |
+| Pyrolyze plan | `aecb23366f17123b2cb48fd6e862d79bcbc1deee` |
+| yidl-lifecycle | `cdf08544deea846bca4fa7e0c468ebee8d41e138` |
+| YIDL | `95a6e3e52fc3d710d25c5d59315e791a3ed75cc4` |
+| Astichi | `387ca5e1da76204ee60922094734c13ee36383c0` |
+
+This acceptance record and the final reports are filed in a subsequent
+documentation-only commit; the accepted plan's content is not changed after
+re-verdict. Parent gitlinks and dependency revisions remain untouched.
+
+Discovery ledger: the initial plan review found two unique blocking planning
+defects across three axis-specific finding IDs. Both were resolved in one
+merged remediation round before integration implementation. No P3 findings or
+new findings were reported. This is not a claim that existing runtime defects
+were fixed or that unexecuted regressions pass.
+
+The live runtime still needs L0 failure-completion work and I1 operational
+scope/sharing verification. Broader regressions, dependency reproducibility,
+and performance remain I0/I8 deliverables. The four operator decisions remain
+open: publication/pass lifetimes, caught nested failures, resource ownership,
+and generation/notification/retirement ordering.
 
 ## Next Action
 
-Commit the merged documentation checkpoint and ask the original reviewers to
-verify their original counterexamples on the corrected plan. Semantic decisions
-remain with the operator even if both axes report GO.
+Resolve I0's semantic/capability decisions and obtain separate implementation
+authorization before considering a roll-build. Plan acceptance is not execution
+approval. No tags, pushes, parent gitlink commits, or runtime changes were made
+by this review loop.

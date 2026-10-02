@@ -60,4 +60,9 @@ the corrected plan and return their closure tables before acceptance.
 - The reviewers classify any newly exposed architectural root cause. The
   review-loop remediation cap remains two rounds.
 
-Status: corrections proposed; no blocking finding is closed until re-review.
+Status: both original reviewers verified their findings closed for the plan at
+`aecb23366f17123b2cb48fd6e862d79bcbc1deee` and returned GO in
+`dev-docs/PytoLifecyleIntegPlan-ReviewConsistency-1.md` and
+`dev-docs/PytoLifecyleIntegPlan-ReviewSafety-1.md`. Runtime corrections and
+execution approval remain future work; see the review ledger for acceptance
+scope and the exact tuple.
