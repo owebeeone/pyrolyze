@@ -1,0 +1,544 @@
+{
+  "caught_nested_failure": {
+    "after_caught_failure": {
+      "children": [
+        {
+          "children": [],
+          "ui": {
+            "children": [],
+            "kind": "text",
+            "props": {
+              "name": "nested",
+              "text": "old"
+            }
+          }
+        }
+      ],
+      "events": [],
+      "ui": [
+        {
+          "children": [],
+          "kind": "tail",
+          "props": {
+            "label": "new"
+          }
+        },
+        {
+          "children": [],
+          "kind": "text",
+          "props": {
+            "name": "nested",
+            "text": "old"
+          }
+        }
+      ]
+    },
+    "after_recovery": {
+      "children": [
+        {
+          "children": [],
+          "ui": {
+            "children": [],
+            "kind": "text",
+            "props": {
+              "name": "nested",
+              "text": "recovered"
+            }
+          }
+        }
+      ],
+      "events": [],
+      "ui": [
+        {
+          "children": [],
+          "kind": "tail",
+          "props": {
+            "label": "recovered"
+          }
+        },
+        {
+          "children": [],
+          "kind": "text",
+          "props": {
+            "name": "nested",
+            "text": "recovered"
+          }
+        }
+      ]
+    },
+    "before": {
+      "children": [
+        {
+          "children": [],
+          "ui": {
+            "children": [],
+            "kind": "text",
+            "props": {
+              "name": "nested",
+              "text": "old"
+            }
+          }
+        }
+      ],
+      "events": [],
+      "ui": [
+        {
+          "children": [],
+          "kind": "tail",
+          "props": {
+            "label": "old"
+          }
+        },
+        {
+          "children": [],
+          "kind": "text",
+          "props": {
+            "name": "nested",
+            "text": "old"
+          }
+        }
+      ]
+    },
+    "caught": [
+      "nested failure"
+    ]
+  },
+  "parent_failure": {
+    "after_failure": {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [],
+              "ui": {
+                "children": [],
+                "kind": "text",
+                "props": {
+                  "name": "leaf",
+                  "text": "old"
+                }
+              }
+            }
+          ],
+          "ui": {
+            "children": [
+              {
+                "children": [],
+                "kind": "text",
+                "props": {
+                  "name": "leaf",
+                  "text": "old"
+                }
+              }
+            ],
+            "kind": "row",
+            "props": {
+              "name": "root"
+            }
+          }
+        }
+      ],
+      "events": [
+        [
+          "child",
+          "old"
+        ],
+        [
+          "child",
+          "new"
+        ]
+      ],
+      "ui": {
+        "children": [
+          {
+            "children": [],
+            "kind": "text",
+            "props": {
+              "name": "leaf",
+              "text": "old"
+            }
+          }
+        ],
+        "kind": "row",
+        "props": {
+          "name": "root"
+        }
+      }
+    },
+    "after_recovery": {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [],
+              "ui": {
+                "children": [],
+                "kind": "text",
+                "props": {
+                  "name": "leaf",
+                  "text": "recovered"
+                }
+              }
+            }
+          ],
+          "ui": {
+            "children": [
+              {
+                "children": [],
+                "kind": "text",
+                "props": {
+                  "name": "leaf",
+                  "text": "recovered"
+                }
+              }
+            ],
+            "kind": "row",
+            "props": {
+              "name": "root"
+            }
+          }
+        }
+      ],
+      "events": [
+        [
+          "child",
+          "old"
+        ],
+        [
+          "child",
+          "new"
+        ],
+        [
+          "child",
+          "recovered"
+        ]
+      ],
+      "ui": {
+        "children": [
+          {
+            "children": [],
+            "kind": "text",
+            "props": {
+              "name": "leaf",
+              "text": "recovered"
+            }
+          }
+        ],
+        "kind": "row",
+        "props": {
+          "name": "root"
+        }
+      }
+    },
+    "before": {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [],
+              "ui": {
+                "children": [],
+                "kind": "text",
+                "props": {
+                  "name": "leaf",
+                  "text": "old"
+                }
+              }
+            }
+          ],
+          "ui": {
+            "children": [
+              {
+                "children": [],
+                "kind": "text",
+                "props": {
+                  "name": "leaf",
+                  "text": "old"
+                }
+              }
+            ],
+            "kind": "row",
+            "props": {
+              "name": "root"
+            }
+          }
+        }
+      ],
+      "events": [
+        [
+          "child",
+          "old"
+        ]
+      ],
+      "ui": {
+        "children": [
+          {
+            "children": [],
+            "kind": "text",
+            "props": {
+              "name": "leaf",
+              "text": "old"
+            }
+          }
+        ],
+        "kind": "row",
+        "props": {
+          "name": "root"
+        }
+      }
+    },
+    "error": {
+      "message": "parent failure after child",
+      "type": "ValueError"
+    }
+  },
+  "render_context_module": "pyrolyze.runtime.context_bare_refactor_lcm",
+  "repeated_passes": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [],
+              "ui": {
+                "children": [],
+                "kind": "text",
+                "props": {
+                  "name": "leaf",
+                  "text": "first"
+                }
+              }
+            }
+          ],
+          "ui": {
+            "children": [
+              {
+                "children": [],
+                "kind": "text",
+                "props": {
+                  "name": "leaf",
+                  "text": "first"
+                }
+              }
+            ],
+            "kind": "row",
+            "props": {
+              "name": "root"
+            }
+          }
+        }
+      ],
+      "events": [
+        [
+          "child",
+          "first"
+        ]
+      ],
+      "ui": {
+        "children": [
+          {
+            "children": [],
+            "kind": "text",
+            "props": {
+              "name": "leaf",
+              "text": "first"
+            }
+          }
+        ],
+        "kind": "row",
+        "props": {
+          "name": "root"
+        }
+      }
+    },
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [],
+              "ui": {
+                "children": [],
+                "kind": "text",
+                "props": {
+                  "name": "leaf",
+                  "text": "second"
+                }
+              }
+            }
+          ],
+          "ui": {
+            "children": [
+              {
+                "children": [],
+                "kind": "text",
+                "props": {
+                  "name": "leaf",
+                  "text": "second"
+                }
+              }
+            ],
+            "kind": "row",
+            "props": {
+              "name": "root"
+            }
+          }
+        }
+      ],
+      "events": [
+        [
+          "child",
+          "first"
+        ],
+        [
+          "child",
+          "second"
+        ]
+      ],
+      "ui": {
+        "children": [
+          {
+            "children": [],
+            "kind": "text",
+            "props": {
+              "name": "leaf",
+              "text": "second"
+            }
+          }
+        ],
+        "kind": "row",
+        "props": {
+          "name": "root"
+        }
+      }
+    },
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [],
+              "ui": {
+                "children": [],
+                "kind": "text",
+                "props": {
+                  "name": "leaf",
+                  "text": "second"
+                }
+              }
+            }
+          ],
+          "ui": {
+            "children": [
+              {
+                "children": [],
+                "kind": "text",
+                "props": {
+                  "name": "leaf",
+                  "text": "second"
+                }
+              }
+            ],
+            "kind": "row",
+            "props": {
+              "name": "root"
+            }
+          }
+        }
+      ],
+      "events": [
+        [
+          "child",
+          "first"
+        ],
+        [
+          "child",
+          "second"
+        ]
+      ],
+      "ui": {
+        "children": [
+          {
+            "children": [],
+            "kind": "text",
+            "props": {
+              "name": "leaf",
+              "text": "second"
+            }
+          }
+        ],
+        "kind": "row",
+        "props": {
+          "name": "root"
+        }
+      }
+    },
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [],
+              "ui": {
+                "children": [],
+                "kind": "text",
+                "props": {
+                  "name": "leaf",
+                  "text": "third"
+                }
+              }
+            }
+          ],
+          "ui": {
+            "children": [
+              {
+                "children": [],
+                "kind": "text",
+                "props": {
+                  "name": "leaf",
+                  "text": "third"
+                }
+              }
+            ],
+            "kind": "row",
+            "props": {
+              "name": "root"
+            }
+          }
+        }
+      ],
+      "events": [
+        [
+          "child",
+          "first"
+        ],
+        [
+          "child",
+          "second"
+        ],
+        [
+          "child",
+          "third"
+        ]
+      ],
+      "ui": {
+        "children": [
+          {
+            "children": [],
+            "kind": "text",
+            "props": {
+              "name": "leaf",
+              "text": "third"
+            }
+          }
+        ],
+        "kind": "row",
+        "props": {
+          "name": "root"
+        }
+      }
+    }
+  ],
+  "reported_implementation": "bare_refactor",
+  "selector": "bare_refactor_lcm"
+}
