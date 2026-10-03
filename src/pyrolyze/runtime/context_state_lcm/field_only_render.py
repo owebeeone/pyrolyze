@@ -173,6 +173,7 @@ class _FieldOnlyRenderCompletion:
 
     @contextmanager
     def pass_scope(self, context: ContextBaseStateMgr) -> Iterator[None]:
+        _nearest_render_state(context)._require_owned_render()
         with self.attempt_scope():
             if context.is_scope_active():
                 scope = getattr(context, "_field_only_local_scope", None)
@@ -203,6 +204,7 @@ class _FieldOnlyRenderCompletion:
         context._begin_field_only_pass()
 
     def begin_pass(self, context: ContextBaseStateMgr) -> None:
+        _nearest_render_state(context)._require_owned_render()
         outer = self.active is None
         if outer:
             self._start()

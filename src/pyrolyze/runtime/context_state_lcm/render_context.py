@@ -55,6 +55,8 @@ class RenderContextStateMgr(ContextBaseStateMgr):
                 ) is not owner_slot_state_mgr
             ):
                 shared_completion.reject("nested render requires an owned component")
+            if owner_slot_state_mgr._child_context_state_mgr is not None:
+                shared_completion.reject("owned render already has a child")
         super().__init__(
             owner=owner,
             transaction_manager=(
@@ -89,6 +91,17 @@ class RenderContextStateMgr(ContextBaseStateMgr):
             )
         if shared_completion is not None:
             shared_completion.note_render_root(self)
+
+    def _require_owned_render(self) -> None:
+        completion = _field_only_completion(self)
+        owner_slot = self._owner_slot_state_mgr
+        if (
+            completion is not None
+            and owner_slot is not None
+            and owner_slot._child_context_state_mgr is not self
+        ):
+            completion.reject("owned render is not the component's installed child")
+
     def context_kind(self) -> Any:
         return self._context_kind
 
@@ -120,6 +133,7 @@ class RenderContextStateMgr(ContextBaseStateMgr):
         self._slots_by_id.clear()
 
     def mount(self, boundary_facade: Any = USE_OWNER, callback: Callable[[], None] | None = None) -> None:
+        self._require_owned_render()
         boundary_facade = self._resolve_owner_arg(boundary_facade)
         if callback is None:
             raise RuntimeError("mount callback is required")
@@ -174,6 +188,7 @@ class RenderContextStateMgr(ContextBaseStateMgr):
                 )
 
     def _run_field_only_boundary(self, boundary_facade: Any) -> None:
+        self._require_owned_render()
         boundary_facade = self._resolve_owner_arg(boundary_facade)
         callback = self._mounted_callback
         if callback is None:
@@ -287,6 +302,7 @@ class RenderContextStateMgr(ContextBaseStateMgr):
         return super().committed_ui()
 
     def refresh_committed_ui_from_children(self) -> None:
+        self._require_owned_render()
         self.ui_state = self.build_committed_ui()
         owner_slot_state_mgr = self._owner_slot_state_mgr
         if owner_slot_state_mgr is None:

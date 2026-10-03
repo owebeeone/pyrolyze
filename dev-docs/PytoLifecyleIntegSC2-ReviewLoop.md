@@ -1,8 +1,7 @@
 # SC2 Field-Only Render Wiring Review
 
-Status: **round 2 NO-GO at Pyrolyze
-`4d1b9b089333e99cb98381939db311c2b7ce8bde`; SC2 remains unaccepted.
-Further remediation requires operator disposition.**
+Status: **round 2 NO-GO; operator approved a strictly localized follow-up
+on 2026-10-04. Independent closure pending; SC2 remains unaccepted.**
 Date: 2026-10-04. This does not activate production or resource-bearing routes.
 
 ## Settled Tuple
@@ -199,3 +198,50 @@ Artifact whitespace note: the verbatim State report retains a Markdown
 hard-break space on its review-object line. This is preserved testimony,
 not an owned-source whitespace defect. Reviewed source/test bytes remain
 unchanged; the filing commit changes process records only.
+
+## Operator-Authorized Localized Follow-Up
+
+The operator subsequently directed "bounded correction and re-review" on
+2026-10-04. This supersedes the stop for operator disposition above, but only
+for the two non-architectural P2-9 findings. `PytoLifecyleIntegSC2-RemPlan-3.md`
+pins that boundary and both original-counterexample closure requirements.
+Any architectural root identified during this follow-up stops the lane; no
+automatic fourth correction or scope expansion is authorized.
+
+New narrow cases ran red: **17 failed, 1 passed, 42 deselected in 2.87s**.
+The passing case already rejected a discarded owner through existing parent
+membership admission. The merged correction adds only reciprocal owned-root
+checks and preflight of unseen candidate subtrees. The initial narrow/canonical
+green run passed **61 tests in 4.39s**; initial formatted seven-file focused
+verification passed **125 tests in 12.68s**. Earlier canonical success targets
+remain unchanged. Full and broader regression evidence will be recorded before
+settling the review tuple; these green tests are not reviewer closure.
+
+### Follow-Up Settlement Evidence
+
+The additional direct attachment cases ran red before the reciprocal guard
+was added to the existing constructor seam. Final gates after that addition
+and formatting:
+
+| Gate | Result |
+| --- | --- |
+| Focused seven files | 127 passed in 12.79s |
+| Full default | 917 passed, 13 failed, 20 skipped, 1 warning in 43.96s |
+| Broader decomposed, unactivated | 41 passed, 14 failed in 2.10s |
+| Narrow/canonical review subset | 63 passed in 4.46s |
+| Black three new Python files / owned-source whitespace and paths | Pass |
+
+All gates use the unchanged committed dependency exports. Full failure
+identities are the eleven visitor/export and two host-order baseline cases;
+broader failure identities are the nine app-context, one mount-advert, one
+generation, and three event-handler baseline cases. No full green claim,
+failure waiver, canonical/historical target regeneration, dependency mutation,
+or resource-route activation is made.
+
+The follow-up changes four runtime modules plus narrow fault tests and process
+documents. The small reciprocal check is shared by existing constructor,
+execution, publication, and UI-propagation admission paths. Every candidate
+selected by the unseen filter now receives the existing retirement preflight.
+Neither correction introduces another field authority or resource callback.
+Fresh dual review is required because those entry call graphs changed. Original
+P2-9 closures and preservation of all earlier closures remain reviewer-owned.

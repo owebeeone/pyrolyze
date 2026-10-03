@@ -203,6 +203,7 @@ class ContextBaseStateMgr(StateMgrBase):
     def publish_write_scope(self) -> Iterator[None]:
         completion = _field_only_completion(self)
         if completion is not None:
+            self.root_context_state_mgr()._require_owned_render()
             with completion.attempt_scope():
                 completion.note_render_root(self.root_context_state_mgr())
                 yield
@@ -355,6 +356,9 @@ class ContextBaseStateMgr(StateMgrBase):
             if (
                 self.children_state.get(slot_id) is not child or not child._seen_in_pass
             ):
+                completion.require_retirement_allowed(child)
+        for child in self.children_state.values():
+            if not child._seen_in_pass:
                 completion.require_retirement_allowed(child)
         self.children_state = {
             slot_id: child for slot_id, child in self.children_state.items() if child._seen_in_pass

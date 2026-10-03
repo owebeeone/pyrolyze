@@ -22,6 +22,11 @@ scheduler root; omitted or conflicting ownership never creates another manager.
 Direct constructors also reject occupied current, candidate, or registry slot
 IDs before lifecycle initialization or graph attachment. Reuse goes through
 the existing ensure path, not a second constructor.
+Owned renders reject a second child before lifecycle initialization. A first
+root may be constructed before installation, but execution, publication scopes,
+child attachment, and owner UI propagation require its component's child pointer
+to refer back to that exact root; caught admission errors still poison the
+outer attempt.
 
 The proof admits the exact existing root, native leaf, plain structural slot,
 and component-call classes. External containers, mount directives, bindings,
@@ -72,6 +77,8 @@ slot-specific debug lookup traverses current membership, not the candidate
 cache. No resource close/deactivation callback is part of reconciliation.
 Direct disposal/deactivation and subtree removal preflight component descendants
 before scheduler, callback, pointer, or membership edits.
+This includes newly introduced unseen candidates selected by the local pass's
+membership filter, not only preceding or currently published children.
 
 ## Completion And Failure
 

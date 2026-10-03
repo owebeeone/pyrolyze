@@ -512,3 +512,165 @@ def test_leaf_removal_with_staged_sibling_discards_to_original_membership() -> N
             raise ValueError("discard removal")
     assert root._state_mgr.current.children_state == {_id(1): original._state_mgr}
     assert sibling._state_mgr.current.ui_state == ()
+
+
+@pytest.mark.parametrize("committed", (False, True))
+@pytest.mark.parametrize("inside", (False, True))
+def test_duplicate_owned_root_rejected_before_lifecycle_initialization(
+    committed: bool, inside: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from pyrolyze.runtime.context_state_lcm.context_base import ContextBaseStateMgr
+
+    root = _root()
+    tracker = root._state_mgr.get_app_context(root._state_mgr._generation_tracker_key)
+    component = None
+    if committed:
+        with root.pass_scope():
+            component = _component(root)
+    elif not inside:
+        with pytest.raises(ValueError, match="discard initial component"):
+            with root.pass_scope():
+                component = _component(root)
+                raise ValueError("discard initial component")
+    generation = tracker.committed_generation_id
+    current_ui = root._state_mgr.current.ui_state
+    initialized = []
+    original = ContextBaseStateMgr.__init__
+
+    def record_init(self: Any, **kwargs: Any) -> None:
+        initialized.append(self)
+        original(self, **kwargs)
+
+    def reject_duplicate() -> None:
+        with monkeypatch.context() as patch:
+            patch.setattr(ContextBaseStateMgr, "__init__", record_init)
+            with pytest.raises(RuntimeError, match="owned"):
+                runtime.RenderContext(owner_slot=component, scheduler_root=root)
+
+    if inside:
+        with pytest.raises(RenderAttemptAborted):
+            with root.pass_scope():
+                if committed:
+                    root._ensure_slot(_id(2), runtime.ComponentCallSlotContext)
+                else:
+                    component = _component(root)
+                child = component.child_context
+                callback = child._state_mgr._mounted_callback
+                root._state_mgr._scheduler.request(child)
+                reject_duplicate()
+    else:
+        child = component.child_context
+        callback = child._state_mgr._mounted_callback
+        if committed:
+            root._state_mgr._scheduler.request(child)
+        reject_duplicate()
+    assert initialized == []
+    assert component.child_context is child
+    assert child._state_mgr._mounted_callback is callback
+    assert tuple(root._state_mgr._scheduler.queue) == ((child,) if committed else ())
+    assert root._state_mgr.current.ui_state == current_ui
+    assert tracker.committed_generation_id == generation
+    with root.pass_scope():
+        reused = root._ensure_slot(_id(2), runtime.ComponentCallSlotContext)
+    assert (reused is component) is committed
+
+
+@pytest.mark.parametrize("inside", (False, True))
+@pytest.mark.parametrize(
+    "entry", ("mount", "boundary", "pass", "begin", "publish", "refresh", "construct")
+)
+def test_uninstalled_owned_root_cannot_execute_or_propagate_ui(
+    entry: str, inside: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _root()
+    with root.pass_scope():
+        component = root._ensure_slot(_id(2), runtime.ComponentCallSlotContext)
+        uninstalled = runtime.RenderContext(owner_slot=component, scheduler_root=root)
+    tracker = root._state_mgr.get_app_context(root._state_mgr._generation_tracker_key)
+    generation = tracker.committed_generation_id
+    ran = []
+
+    def callback() -> None:
+        ran.append(True)
+
+    monkeypatch.setattr(uninstalled._state_mgr, "_mounted_callback", callback)
+
+    def enter() -> None:
+        with pytest.raises(RuntimeError, match="owned render"):
+            if entry == "mount":
+                uninstalled.mount(lambda: ran.append(False))
+            elif entry == "boundary":
+                uninstalled._run_boundary()
+            elif entry == "pass":
+                with uninstalled.pass_scope():
+                    callback()
+            elif entry == "begin":
+                uninstalled.begin_pass()
+            elif entry == "publish":
+                with uninstalled._state_mgr.publish_write_scope():
+                    callback()
+            elif entry == "construct":
+                runtime.LeafSlotContext(
+                    uninstalled, uninstalled, _id(8), seen_in_pass=True
+                )
+            else:
+                uninstalled._refresh_committed_ui_from_children()
+
+    if inside:
+        with pytest.raises(RenderAttemptAborted):
+            with root.pass_scope():
+                root._ensure_slot(_id(2), runtime.ComponentCallSlotContext)
+                enter()
+    else:
+        enter()
+    assert ran == []
+    assert component.child_context is None
+    assert uninstalled._state_mgr._mounted_callback is callback
+    assert (
+        root._state_mgr.current.ui_state == component._state_mgr.current.ui_state == ()
+    )
+    assert root.debug_pending_boundaries() == ()
+    assert tracker.committed_generation_id == generation
+    with root.pass_scope():
+        _component(root)
+
+
+@pytest.mark.parametrize("through_leaf", (False, True))
+def test_new_unseen_component_subtree_cannot_be_silently_retired(
+    through_leaf: bool,
+) -> None:
+    root = _root()
+    tracker = root._state_mgr.get_app_context(root._state_mgr._generation_tracker_key)
+    retained = []
+
+    def nested(context: Any) -> None:
+        with context.pass_scope():
+            leaf = context._ensure_slot(_id(3), runtime.LeafSlotContext)
+            leaf.invoke_native(_emit, ("unseen-new",), {}, context_param="context")
+
+    def add_component(context: Any) -> None:
+        if through_leaf:
+            component = context._ensure_slot(_id(2), runtime.ComponentCallSlotContext)
+        else:
+            component = runtime.ComponentCallSlotContext(context, context, _id(2))
+        component.invoke(nested, (), {})
+        retained.append(component)
+        root._state_mgr._scheduler.request(component.child_context)
+
+    with pytest.raises(RuntimeError, match="retirement is not admitted"):
+        with root.pass_scope():
+            if through_leaf:
+                leaf = runtime.LeafSlotContext(root, root, _id(5))
+                leaf.invoke_native(add_component, (), {}, context_param="context")
+            else:
+                add_component(root)
+    component = retained[0]
+    assert root._state_mgr.current.children_state == {}
+    assert component._state_mgr.current.ui_state == ()
+    assert component.child_context._state_mgr.current.ui_state == ()
+    assert tracker.committed_generation_id == 0
+    assert root.debug_pending_boundaries() == ()
+    root.run_pending_invalidations()
+    assert tracker.committed_generation_id == 0
+    with root.pass_scope():
+        _component(root)
