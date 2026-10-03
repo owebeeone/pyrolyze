@@ -345,15 +345,13 @@ class ContextBaseStateMgr(StateMgrBase):
 
     def _end_field_only_pass(self) -> None:
         self.require_active_scope()
-        from .component_call_slot_context import ComponentCallSlotContextStateMgr
-
+        completion = _field_only_completion(self)
+        assert completion is not None
         for slot_id, child in self.current.children_state.items():
-            if isinstance(child, ComponentCallSlotContextStateMgr) and (
+            if (
                 self.children_state.get(slot_id) is not child or not child._seen_in_pass
             ):
-                completion = _field_only_completion(self)
-                assert completion is not None
-                completion.reject("component retirement is not admitted by SC2")
+                completion.require_retirement_allowed(child)
         self.children_state = {
             slot_id: child for slot_id, child in self.children_state.items() if child._seen_in_pass
         }

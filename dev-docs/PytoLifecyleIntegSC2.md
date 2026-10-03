@@ -15,6 +15,11 @@ or entering a pass. It is immutable for that graph. Nested render constructors
 receive the root's existing manager before lifecycle initialization. Do not
 construct another manager and overwrite a generated slot afterward.
 
+Activation requires an unowned scheduler root. Slot constructors validate both
+the parent graph and the supplied nearest render root before initialization
+or registration. Owned nested renders must supply their actual activated
+scheduler root; omitted or conflicting ownership never creates another manager.
+
 The proof admits the exact existing root, native leaf, plain structural slot,
 and component-call classes. External containers, mount directives, bindings,
 callbacks, authored app-context overrides, native containers, and keyed-loop
@@ -29,9 +34,11 @@ The graph coordinator delegates transaction ownership to the accepted SC1
 `_RenderAttempt`. Scheduler boundaries, standalone passes, and publication
 write scopes use the same admission and completion path. Nested scopes do not
 begin, validate, commit, or roll back the manager independently.
-Lexical pass scopes retain that outer claim until their own exit, even if the
-body explicitly releases its local pass early. Direct local completion cannot
-publish a lexically unfinished render body.
+Lexical pass scopes, no-op re-entry, publication scopes, and the entire native
+invocation retain an execution claim until their own exit, even if the body
+explicitly releases its local pass early. A direct outer local completion
+request waits for the last execution claim. Later failure preserves its primary
+error and discards the attempt rather than publishing an unfinished body.
 
 Local activity is the existence of an entered local handle, not key activity.
 Scoped re-entry does not reset twice. Direct duplicate entry diagnoses even
@@ -49,8 +56,11 @@ Published UI/debug/membership readers use `current` on activated graphs;
 internal parent UI assembly reads candidate fields. All child-map updates are
 replacement writes. Slot registration is a lookup cache, not publication:
 after a known clean completion, reconcile that cache from current graph
-membership, including nested render roots. No resource close/deactivation
-callback is part of that reconciliation.
+membership, including participating nested roots that a discard made
+unreachable. Published slot-specific debug lookup traverses current membership,
+not the candidate cache. No resource close/deactivation callback is part of
+that reconciliation. Direct disposal/deactivation and subtree removal preflight
+component descendants before scheduler, callback, pointer, or membership edits.
 
 ## Completion And Failure
 

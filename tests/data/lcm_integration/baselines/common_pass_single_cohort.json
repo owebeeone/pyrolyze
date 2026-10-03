@@ -119,6 +119,80 @@
       "other_token_preserved": true
     }
   },
+  "published_membership": {
+    "addition_inside": {
+      "children": [],
+      "active": false,
+      "slot_children": [],
+      "slot_ui": []
+    },
+    "addition_discarded": {
+      "children": [],
+      "active": false,
+      "slot_children": [],
+      "slot_ui": []
+    },
+    "addition_retry_inside": {
+      "children": [],
+      "active": false,
+      "slot_children": [],
+      "slot_ui": []
+    },
+    "addition_committed": {
+      "children": [
+        10
+      ],
+      "active": true,
+      "slot_children": [
+        11
+      ],
+      "slot_ui": [
+        "published-child"
+      ]
+    },
+    "removal_inside": {
+      "children": [
+        10
+      ],
+      "active": true,
+      "slot_children": [
+        11
+      ],
+      "slot_ui": [
+        "published-child"
+      ]
+    },
+    "removal_discarded": {
+      "children": [
+        10
+      ],
+      "active": true,
+      "slot_children": [
+        11
+      ],
+      "slot_ui": [
+        "published-child"
+      ]
+    },
+    "removal_retry_inside": {
+      "children": [
+        10
+      ],
+      "active": true,
+      "slot_children": [
+        11
+      ],
+      "slot_ui": [
+        "published-child"
+      ]
+    },
+    "removal_committed": {
+      "children": [],
+      "active": false,
+      "slot_children": [],
+      "slot_ui": []
+    }
+  },
   "membership_and_order": {
     "structural_slot": {
       "ui": [],

@@ -84,13 +84,21 @@ class StateMgrBase:
             kwargs.get("render_context_state_mgr"),
             kwargs.get("render_context"),
         )
+        from .field_only_render import _field_only_completion, _nearest_render_state
+
+        parent_state = kwargs.get("parent_state_mgr")
+        render_completion = _field_only_completion(render_state)
+        parent_completion = _field_only_completion(parent_state)
+        completion = parent_completion or render_completion
+        if completion is not None:
+            if (
+                parent_completion is not render_completion
+                or _nearest_render_state(parent_state) is not render_state
+            ):
+                completion.reject("slot parent/render ownership does not match")
+            completion.require_slot_type(type(owner))
         manager = getattr(render_state, "_transaction_manager", None)
         if manager is not None:
-            from .field_only_render import _field_only_completion
-
-            completion = _field_only_completion(render_state)
-            if completion is not None:
-                completion.require_slot_type(type(owner))
             kwargs["transaction_manager"] = manager
         return cls(owner=owner, **kwargs)
 

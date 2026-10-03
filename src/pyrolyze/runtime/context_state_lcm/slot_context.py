@@ -41,6 +41,11 @@ class SlotContextStateMgr(StateMgrBase):
         return nullcontext()
 
     def deactivate(self) -> None:
+        from .field_only_render import _field_only_completion
+
+        completion = _field_only_completion(self)
+        if completion is not None:
+            completion.require_retirement_allowed(self)
         with self._deactivate_write_scope():
             for child_state_mgr in list(self.children_by_slot_id().values()):
                 child_state_mgr.deactivate()

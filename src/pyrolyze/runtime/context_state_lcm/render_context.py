@@ -36,6 +36,12 @@ class RenderContextStateMgr(ContextBaseStateMgr):
         shared_completion = (
             None if scheduler_root_state_mgr is None else _field_only_completion(scheduler_root_state_mgr)
         )
+        owner_completion = _field_only_completion(owner_slot_state_mgr)
+        if owner_completion is not None and (
+            shared_completion is not owner_completion
+            or scheduler_root_state_mgr is not owner_completion.root
+        ):
+            owner_completion.reject("nested render scheduler ownership does not match")
         if shared_completion is not None:
             from pyrolyze.runtime.context_bare_refactor_lcm import RenderContext
             from .component_call_slot_context import ComponentCallSlotContextStateMgr
@@ -225,14 +231,30 @@ class RenderContextStateMgr(ContextBaseStateMgr):
         if slot_id is None:
             children = self.current.children_state if _field_only_completion(self) is not None else self.children_state
         else:
-            slot = self.get_registered_slot(slot_id)
+            slot = self._published_slot(slot_id)
             if slot is None:
                 return ()
             children = slot._state_mgr.children_by_slot_id()
         return tuple(children.keys())
 
     def debug_is_active(self, slot_id: Any) -> bool:
-        return slot_id in self._slots_by_id
+        return self._published_slot(slot_id) is not None
+
+    def _published_slot(self, slot_id: Any) -> Any | None:
+        if _field_only_completion(self) is None:
+            return self.get_registered_slot(slot_id)
+
+        def find(parent: ContextBaseStateMgr) -> Any | None:
+            for child_id, child in parent.current.children_state.items():
+                if child_id == slot_id:
+                    return child.owner
+                if isinstance(child, ContextBaseStateMgr):
+                    found = find(child)
+                    if found is not None:
+                        return found
+            return None
+
+        return find(self)
 
     def debug_pending_boundaries(self) -> tuple[Any, ...]:
         scheduler_root = self._scheduler_root_state_mgr
@@ -245,7 +267,7 @@ class RenderContextStateMgr(ContextBaseStateMgr):
         if slot_id is None:
             return self.committed_ui()
         else:
-            slot = self.get_registered_slot(slot_id)
+            slot = self._published_slot(slot_id)
             if slot is None:
                 return ()
             return slot._state_mgr.committed_ui()

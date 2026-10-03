@@ -323,6 +323,50 @@ def _membership_and_order() -> dict[str, Any]:
     return result
 
 
+def _published_membership() -> dict[str, Any]:
+    root = _root()
+    result: dict[str, Any] = {}
+
+    def observe() -> dict[str, Any]:
+        return {
+            "children": [slot.slot_index for slot in root.debug_children_of()],
+            "active": root.debug_is_active(_slot_id(10)),
+            "slot_children": [
+                slot.slot_index for slot in root.debug_children_of(_slot_id(10))
+            ],
+            "slot_ui": [item.props["value"] for item in root.debug_ui(_slot_id(10))],
+        }
+
+    def add() -> None:
+        parent = root._ensure_slot(_slot_id(10), runtime.LeafSlotContext)
+        with parent.pass_scope():
+            _leaf(parent, "published-child", index=11)
+
+    try:
+        with root.pass_scope():
+            add()
+            result["addition_inside"] = observe()
+            raise ValueError("discard addition")
+    except ValueError:
+        pass
+    result["addition_discarded"] = observe()
+    with root.pass_scope():
+        add()
+        result["addition_retry_inside"] = observe()
+    result["addition_committed"] = observe()
+    try:
+        with root.pass_scope():
+            result["removal_inside"] = observe()
+            raise ValueError("discard removal")
+    except ValueError:
+        pass
+    result["removal_discarded"] = observe()
+    with root.pass_scope():
+        result["removal_retry_inside"] = observe()
+    result["removal_committed"] = observe()
+    return result
+
+
 def characterize() -> dict[str, Any]:
     return {
         "clean_and_failures": _clean_and_failures(),
@@ -330,6 +374,7 @@ def characterize() -> dict[str, Any]:
         "standalone_and_boundaries": _standalone_and_boundaries(),
         "validation_and_permissions": _validation_and_permissions(),
         "membership_and_order": _membership_and_order(),
+        "published_membership": _published_membership(),
     }
 
 

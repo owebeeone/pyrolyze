@@ -14,9 +14,15 @@ if TYPE_CHECKING:
     from .render_context import RenderContextStateMgr
 
 
-def _field_only_completion(context: Any) -> _FieldOnlyRenderCompletion | None:
+def _nearest_render_state(context: Any) -> Any:
     resolve = getattr(context, "root_context_state_mgr", None)
-    root = context if resolve is None else resolve()
+    if resolve is not None:
+        return resolve()
+    return getattr(context, "_render_context_state_mgr", None) or context
+
+
+def _field_only_completion(context: Any) -> _FieldOnlyRenderCompletion | None:
+    root = _nearest_render_state(context)
     scheduler_root = getattr(root, "_scheduler_root_state_mgr", root)
     return getattr(scheduler_root, "_field_only_completion", None)
 
@@ -30,6 +36,7 @@ def _enable_field_only_render(root: RenderContextStateMgr) -> None:
         type(root) is not RenderContextStateMgr
         or type(root.owner) is not RenderContext
         or root._scheduler_root_state_mgr is not root
+        or root._owner_slot_state_mgr is not None
     ):
         raise RuntimeError("field-only activation requires an exact scheduler root")
     if (
@@ -52,6 +59,8 @@ class _FieldOnlyRenderCompletion:
     contexts: list[ContextBaseStateMgr] = field(default_factory=list, init=False)
     _completing: bool = field(default=False, init=False)
     _cleanup_failure: BaseException | None = field(default=None, init=False)
+    _execution_depth: int = field(default=0, init=False)
+    _completion_requested: bool = field(default=False, init=False)
 
     def require_slot_type(self, slot_type: type[Any]) -> None:
         from pyrolyze.runtime.context_bare_refactor_lcm import (
@@ -73,6 +82,25 @@ class _FieldOnlyRenderCompletion:
             self.active.fail(error)
         raise error
 
+    def require_retirement_allowed(self, context: Any) -> None:
+        from .component_call_slot_context import ComponentCallSlotContextStateMgr
+        from .context_base import ContextBaseStateMgr
+
+        visited: set[int] = set()
+
+        def check(state: Any) -> None:
+            if id(state) in visited:
+                return
+            visited.add(id(state))
+            if isinstance(state, ComponentCallSlotContextStateMgr):
+                self.reject("component retirement is not admitted by SC2")
+            if isinstance(state, ContextBaseStateMgr):
+                for children in (state.current.children_state, state.children_state):
+                    for child in children.values():
+                        check(child)
+
+        check(context)
+
     def _start(self) -> None:
         from .context_base import PASS_TX_KEY
 
@@ -88,6 +116,8 @@ class _FieldOnlyRenderCompletion:
         owner = _RenderAttempt.start(self.root._transaction_manager, PASS_TX_KEY)
         self.active = owner
         self.contexts = []
+        self._execution_depth = 0
+        self._completion_requested = False
         try:
             tracker.begin()
         except BaseException as error:
@@ -105,6 +135,7 @@ class _FieldOnlyRenderCompletion:
         assert self.active is not None
         owner = self.active
         error: BaseException | None = None
+        self._execution_depth += 1
         try:
             owner._require_open()
             owner._require_identity()
@@ -115,17 +146,20 @@ class _FieldOnlyRenderCompletion:
             raise
         finally:
             if outer:
+                self._completion_requested = True
+            self._execution_depth -= 1
+            if self._execution_depth == 0 and self._completion_requested:
                 self._complete(error)
 
     @contextmanager
     def pass_scope(self, context: ContextBaseStateMgr) -> Iterator[None]:
-        if context.is_scope_active():
-            scope = getattr(context, "_field_only_local_scope", None)
-            if scope is not None:
-                scope._require_active()
-            yield
-            return
         with self.attempt_scope():
+            if context.is_scope_active():
+                scope = getattr(context, "_field_only_local_scope", None)
+                if scope is not None:
+                    scope._require_active()
+                yield
+                return
             assert self.active is not None
             scope = self.active.scope(
                 context,
@@ -194,7 +228,9 @@ class _FieldOnlyRenderCompletion:
             context._field_only_local_scope = None
             context._field_only_outer_pass = False
             if outer:
-                self._complete(caught)
+                self._completion_requested = True
+                if self._execution_depth == 0:
+                    self._complete(caught)
 
     def _complete(self, propagating: BaseException | None) -> None:
         assert self.active is not None
@@ -233,6 +269,7 @@ class _FieldOnlyRenderCompletion:
                 self.active = None
                 self.contexts = []
                 self._completing = False
+                self._completion_requested = False
         if failure is not None:
             raise failure
 
@@ -240,6 +277,15 @@ class _FieldOnlyRenderCompletion:
         # Registrations are a cache of current membership, not resource lifetime.
         from .component_call_slot_context import ComponentCallSlotContextStateMgr
         from .context_base import ContextBaseStateMgr
+
+        visited: set[int] = set()
+
+        def rebuild(render: RenderContextStateMgr) -> None:
+            if id(render) in visited:
+                return
+            visited.add(id(render))
+            render._slots_by_id.clear()
+            visit(render, render)
 
         def visit(render: RenderContextStateMgr, parent: ContextBaseStateMgr) -> None:
             if not isinstance(parent, ContextBaseStateMgr):
@@ -249,9 +295,10 @@ class _FieldOnlyRenderCompletion:
                 if isinstance(child, ComponentCallSlotContextStateMgr):
                     nested = child._child_context_state_mgr
                     if nested is not None:
-                        nested._slots_by_id.clear()
-                        visit(nested, nested)
+                        rebuild(nested)
                 visit(render, child)
 
-        self.root._slots_by_id.clear()
-        visit(self.root, self.root)
+        rebuild(self.root)
+        # Discarded new component roots may no longer be reachable from current.
+        for context in self.contexts:
+            rebuild(_nearest_render_state(context))

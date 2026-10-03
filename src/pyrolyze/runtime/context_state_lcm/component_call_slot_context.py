@@ -226,6 +226,9 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
         self._pass_owned_event_handler_order = ()
 
     def deactivate(self) -> None:
+        completion = _field_only_completion(self)
+        if completion is not None:
+            completion.require_retirement_allowed(self)
         with self.publish_write_scope():
             self._dispose_child_context()
             super().deactivate()
@@ -307,6 +310,9 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
         child_context = None if self._child_context_state_mgr is None else self._child_context_state_mgr.owner
         if child_context is None:
             return
+        completion = _field_only_completion(self)
+        if completion is not None:
+            completion.require_retirement_allowed(self)
         child_context._remove_from_scheduler()
         with child_context._state_mgr.publish_write_scope():
             for child in list(child_context._state_mgr.children_state.values()):
