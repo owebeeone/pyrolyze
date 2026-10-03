@@ -19,6 +19,9 @@ Activation requires an unowned scheduler root. Slot constructors validate both
 the parent graph and the supplied nearest render root before initialization
 or registration. Owned nested renders must supply their actual activated
 scheduler root; omitted or conflicting ownership never creates another manager.
+Direct constructors also reject occupied current, candidate, or registry slot
+IDs before lifecycle initialization or graph attachment. Reuse goes through
+the existing ensure path, not a second constructor.
 
 The proof admits the exact existing root, native leaf, plain structural slot,
 and component-call classes. External containers, mount directives, bindings,
@@ -51,16 +54,24 @@ completion. This is not SC4's dirty/site-metadata migration. The coordinator
 stores execution handles and participating contexts, not copies of managed
 values or membership maps. Successful local release does not erase the
 snapshots needed if the outer body subsequently fails.
+Each local pass retains the preceding candidate child references solely for
+retirement admission. Repeated passes may revisit the same component, but
+omitting it requires the same retirement preflight as a committed component.
+This inventory is never used to restore membership and clears at outer cleanup.
 
 Published UI/debug/membership readers use `current` on activated graphs;
-internal parent UI assembly reads candidate fields. All child-map updates are
-replacement writes. Slot registration is a lookup cache, not publication:
+internal parent UI assembly, deactivation traversal, and parent-map edits read
+candidate fields. All child-map updates are replacement writes. Slot
+registration is a lookup cache, not publication:
 after a known clean completion, reconcile that cache from current graph
-membership, including participating nested roots that a discard made
-unreachable. Published slot-specific debug lookup traverses current membership,
-not the candidate cache. No resource close/deactivation callback is part of
-that reconciliation. Direct disposal/deactivation and subtree removal preflight
-component descendants before scheduler, callback, pointer, or membership edits.
+membership. Track affected render roots on registry/publication writes as well
+as local-pass entry, including nested roots that a discard made unreachable.
+Cancel scheduler bookkeeping for unpublished orphan boundaries on clean
+discard; preserve existing published boundaries and queue entries. Published
+slot-specific debug lookup traverses current membership, not the candidate
+cache. No resource close/deactivation callback is part of reconciliation.
+Direct disposal/deactivation and subtree removal preflight component descendants
+before scheduler, callback, pointer, or membership edits.
 
 ## Completion And Failure
 
@@ -116,6 +127,24 @@ Record red/green/full-suite results and the settled tuple in the review ledger.
 - Black 26.3.1 formatted only the three new Python files; existing modules
   retain scoped edits. Diff whitespace checks pass. No historical JSON was
   regenerated and no dependency source was changed.
+
+### Final Bounded Remediation Evidence
+
+Round 1 returned NO-GO on localized candidate-membership, repeated-pass
+retirement, publication-only cache, and direct-constructor collision omissions.
+Both reviewers classified these as non-architectural. Round 2 adds the
+counterexamples before their corrections; SC2 remains unaccepted pending fresh
+dual review, and no third architectural patch is authorized.
+
+- Initial round-2 red: **7 failed, 32 passed** on the narrow/canonical subset.
+  Two further detached-root registry-clear/removal cases also failed red before
+  affected-root bookkeeping was extended to publication and registry writes.
+- Final focused seven-file run: **107 passed in 14.12s**.
+- Final full default: **897 passed, 13 failed, 20 skipped, 1 warning in 43.45s**.
+- Final broader decomposed, unactivated: **41 passed, 14 failed in 2.23s**.
+- Full and broader failure identities remain the baselines above. No failure
+  waiver, historical target regeneration, resource activation, or dependency
+  source change is included.
 
 ### Reproduction
 

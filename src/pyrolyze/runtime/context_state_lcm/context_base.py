@@ -204,6 +204,7 @@ class ContextBaseStateMgr(StateMgrBase):
         completion = _field_only_completion(self)
         if completion is not None:
             with completion.attempt_scope():
+                completion.note_render_root(self.root_context_state_mgr())
                 yield
             return
         if self.is_scope_active():
@@ -331,6 +332,8 @@ class ContextBaseStateMgr(StateMgrBase):
     def _begin_field_only_pass(self) -> None:
         self._has_entered_pass = True
         children = self.children_state
+        # Admission inventory only: never used to restore managed membership.
+        self._field_only_prior_children = tuple(children.items())
         if not getattr(self, "_field_only_has_snapshot", False):
             self._pass_child_order = tuple(children)
             self._pass_child_dirty = {
@@ -347,7 +350,8 @@ class ContextBaseStateMgr(StateMgrBase):
         self.require_active_scope()
         completion = _field_only_completion(self)
         assert completion is not None
-        for slot_id, child in self.current.children_state.items():
+        prior = self._field_only_prior_children + tuple(self.current.children_state.items())
+        for slot_id, child in prior:
             if (
                 self.children_state.get(slot_id) is not child or not child._seen_in_pass
             ):
@@ -371,6 +375,7 @@ class ContextBaseStateMgr(StateMgrBase):
         self._pass_child_order = ()
         self._pass_child_dirty = {}
         self._field_only_has_snapshot = False
+        self._field_only_prior_children = ()
         self._field_only_local_scope = None
         self._field_only_outer_pass = False
 

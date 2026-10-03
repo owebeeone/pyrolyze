@@ -1,6 +1,6 @@
 # SC2 Field-Only Render Wiring Review
 
-Status: **initial NO-GO; remediation round 1 pending fresh dual acceptance**.
+Status: **round 1 NO-GO; final bounded remediation pending fresh dual acceptance**.
 Date: 2026-10-04. This does not activate production or resource-bearing routes.
 
 ## Settled Tuple
@@ -89,3 +89,49 @@ execution-ownership root; the two-round cap remains in force.
 Unrelated `RenderingBackendBugList.md` and `RenderingBackendDiscussionReport.md`
 and dirty dependency/parent work remain excluded. No production/resource-route
 activation, dependency change, tag, push, merge, or worktree is authorized here.
+
+### Revised Tuple And Dispatch
+
+Pyrolyze corrected implementation: `ca731d89a0086e0bff48dc426d1b5b1472aba869`.
+All dependency/parent revisions in the initial tuple remain unchanged. The
+implementation diff is `53c41674..ca731d89`, cumulative SC2
+`1b246d47..ca731d89`. Its controlling DRAFT and merged remediation plan are
+committed in that same corrected revision.
+
+Fresh strongest-inherited reviewers Singer (Code) and Avicenna (State) were
+dispatched in isolated contexts, from mechanically generated canonical prompts
+`PytoLifecyleIntegSC2-PromptCode-1.md` and
+`PytoLifecyleIntegSC2-PromptState-1.md`. Both prior reports are common inputs;
+neither current report is shared. Reports are held until both finish. The
+settled two-target review subset passed **33 tests in 4.22s**, after preserving
+the original JSON indentation mechanically. No product bytes/HEAD change
+during review; only process evidence may appear or change.
+
+## Round 1 Verdict Merge And Round 2 Settlement
+
+Singer and Avicenna both returned NO-GO. Their complete reports are filed
+verbatim as `PytoLifecyleIntegSC2-ReviewCode-1.md` and
+`PytoLifecyleIntegSC2-ReviewState-1.md`. Blind convergence identified candidate
+deactivation losing a staged sibling and repeat-pass omission bypassing
+component retirement. State also found incomplete publication-only cache
+reconciliation and a direct constructor collision bypass. Both reviewers
+classified all remaining findings as localized non-architectural omissions.
+
+`PytoLifecyleIntegSC2-RemPlan-2.md` maps every finding to a correction and
+original-counterexample test. The merged correction changes no accepted SC1
+kernel, dependency, resource protocol, public option, or activation scope.
+Candidate retirement references are admission data only; affected render roots
+are references only, not copied managed state or another undo authority.
+
+Final gates: focused **107 passed in 14.12s**; full default **897 passed,
+13 failed, 20 skipped, 1 warning in 43.45s**; broader unactivated **41 passed,
+14 failed in 2.23s**. Failure identities remain exactly baseline. No complete
+green claim or self-closure is made. Remediation count: two implemented,
+zero accepted. This is the final authorized bounded remediation; any further
+architectural patch requires an operator decision.
+
+Because constructor admission and cache/scheduler reconciliation call graphs
+changed, use fresh peer-blind Code/State contexts rather than the prior
+reviewers. Both initial and round-1 reports are legitimate common inputs;
+current-round reports remain held until both reviewers finish. Require a full
+prior-finding closure table and explicit architectural-root classification.

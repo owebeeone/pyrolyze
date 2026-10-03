@@ -57,6 +57,7 @@ class _FieldOnlyRenderCompletion:
     active: _RenderAttempt | None = field(default=None, init=False)
     last: _RenderAttempt | None = field(default=None, init=False)
     contexts: list[ContextBaseStateMgr] = field(default_factory=list, init=False)
+    render_roots: list[RenderContextStateMgr] = field(default_factory=list, init=False)
     _completing: bool = field(default=False, init=False)
     _cleanup_failure: BaseException | None = field(default=None, init=False)
     _execution_depth: int = field(default=0, init=False)
@@ -101,6 +102,24 @@ class _FieldOnlyRenderCompletion:
 
         check(context)
 
+    def require_attachment(
+        self, parent: ContextBaseStateMgr, render: RenderContextStateMgr, slot_id: Any
+    ) -> None:
+        if self.active is None:
+            self.reject("slot construction requires an active render execution")
+        self.active._require_open()
+        self.active._require_identity()
+        if (
+            slot_id in parent.children_state
+            or slot_id in parent.current.children_state
+            or slot_id in render._slots_by_id
+        ):
+            self.reject("slot replacement is not admitted by SC2")
+
+    def note_render_root(self, render: RenderContextStateMgr) -> None:
+        if self.active is not None and render not in self.render_roots:
+            self.render_roots.append(render)
+
     def _start(self) -> None:
         from .context_base import PASS_TX_KEY
 
@@ -116,6 +135,7 @@ class _FieldOnlyRenderCompletion:
         owner = _RenderAttempt.start(self.root._transaction_manager, PASS_TX_KEY)
         self.active = owner
         self.contexts = []
+        self.render_roots = [self.root]
         self._execution_depth = 0
         self._completion_requested = False
         try:
@@ -268,6 +288,7 @@ class _FieldOnlyRenderCompletion:
                     context._field_only_outer_pass = False
                 self.active = None
                 self.contexts = []
+                self.render_roots = []
                 self._completing = False
                 self._completion_requested = False
         if failure is not None:
@@ -299,6 +320,12 @@ class _FieldOnlyRenderCompletion:
                 visit(render, child)
 
         rebuild(self.root)
-        # Discarded new component roots may no longer be reachable from current.
-        for context in self.contexts:
-            rebuild(_nearest_render_state(context))
+        reachable = set(visited)
+        affected = self.render_roots + [
+            _nearest_render_state(context) for context in self.contexts
+        ]
+        for render in affected:
+            if id(render) not in reachable and render._owner_slot_state_mgr is not None:
+                # Cancel only orphan scheduler bookkeeping, not resource lifetime.
+                render._remove_from_scheduler()
+            rebuild(render)

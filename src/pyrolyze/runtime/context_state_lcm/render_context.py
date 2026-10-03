@@ -87,16 +87,24 @@ class RenderContextStateMgr(ContextBaseStateMgr):
                 if authored_app_context_lookup is None
                 else authored_app_context_lookup
             )
+        if shared_completion is not None:
+            shared_completion.note_render_root(self)
     def context_kind(self) -> Any:
         return self._context_kind
 
     def register_slot(self, slot: Any) -> None:
-        self._slots_by_id[slot.slot_id] = slot._state_mgr
+        self.register_slot_state_mgr(slot._state_mgr)
 
     def register_slot_state_mgr(self, slot_state_mgr: Any) -> None:
+        completion = _field_only_completion(self)
+        if completion is not None:
+            completion.note_render_root(self)
         self._slots_by_id[slot_state_mgr.current_slot_id()] = slot_state_mgr
 
     def unregister_slot(self, slot_id: Any) -> None:
+        completion = _field_only_completion(self)
+        if completion is not None:
+            completion.note_render_root(self)
         self._slots_by_id.pop(slot_id, None)
 
     def get_registered_slot(self, slot_id: Any) -> Any | None:
@@ -106,6 +114,9 @@ class RenderContextStateMgr(ContextBaseStateMgr):
         return slot_state_mgr.owner
 
     def clear_registered_slots(self) -> None:
+        completion = _field_only_completion(self)
+        if completion is not None:
+            completion.note_render_root(self)
         self._slots_by_id.clear()
 
     def mount(self, boundary_facade: Any = USE_OWNER, callback: Callable[[], None] | None = None) -> None:

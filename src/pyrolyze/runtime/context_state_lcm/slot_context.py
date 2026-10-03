@@ -47,12 +47,13 @@ class SlotContextStateMgr(StateMgrBase):
         if completion is not None:
             completion.require_retirement_allowed(self)
         with self._deactivate_write_scope():
-            for child_state_mgr in list(self.children_by_slot_id().values()):
+            children = self.children_state if isinstance(self, ContextBaseStateMgr) else self.children_by_slot_id()
+            for child_state_mgr in list(children.values()):
                 child_state_mgr.deactivate()
             self.children_state = {}
 
             self._render_context_state_mgr.unregister_slot(self._slot_id)
-            parent_children = dict(self._parent_state_mgr.children_by_slot_id())
+            parent_children = dict(self._parent_state_mgr.children_state)
             if parent_children.get(self._slot_id) is self:
                 parent_children.pop(self._slot_id, None)
                 self._parent_state_mgr.children_state = parent_children

@@ -97,6 +97,7 @@ class StateMgrBase:
             ):
                 completion.reject("slot parent/render ownership does not match")
             completion.require_slot_type(type(owner))
+            completion.require_attachment(parent_state, render_state, kwargs.get("slot_id"))
         manager = getattr(render_state, "_transaction_manager", None)
         if manager is not None:
             kwargs["transaction_manager"] = manager

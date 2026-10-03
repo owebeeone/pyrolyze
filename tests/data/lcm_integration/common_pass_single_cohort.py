@@ -367,6 +367,42 @@ def _published_membership() -> dict[str, Any]:
     return result
 
 
+def _candidate_retirement() -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for slot_type in (runtime.LeafSlotContext, runtime.SlotContext):
+        root = _root()
+        with root.pass_scope():
+            old = root._ensure_slot(_slot_id(1), slot_type)
+        with root.pass_scope():
+            root._ensure_slot(_slot_id(1), slot_type)
+            _leaf(root, "keep", index=3)
+            old.deactivate()
+            inside = {
+                "candidate": [
+                    slot.slot_index for slot in root._state_mgr.children_state
+                ],
+                "published": [slot.slot_index for slot in root.debug_children_of()],
+            }
+        result[slot_type.__name__] = {
+            "inside": inside,
+            "after": [slot.slot_index for slot in root.debug_children_of()],
+            "ui": _ui(root),
+        }
+    root = _root()
+
+    def render() -> None:
+        with root.pass_scope():
+            first = _component(root, "first")
+        with root.pass_scope():
+            second = _component(root, "second")
+        result["same_component"] = first is second
+
+    root.mount(render)
+    result["repeat_ui"] = _ui(root)
+    result["repeat_generation"] = _tracker(root).committed_generation_id
+    return result
+
+
 def characterize() -> dict[str, Any]:
     return {
         "clean_and_failures": _clean_and_failures(),
@@ -375,6 +411,7 @@ def characterize() -> dict[str, Any]:
         "validation_and_permissions": _validation_and_permissions(),
         "membership_and_order": _membership_and_order(),
         "published_membership": _published_membership(),
+        "candidate_retirement": _candidate_retirement(),
     }
 
 

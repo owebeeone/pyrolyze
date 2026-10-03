@@ -1,4 +1,43 @@
 {
+  "candidate_retirement": {
+    "LeafSlotContext": {
+      "inside": {
+        "candidate": [
+          3
+        ],
+        "published": [
+          1
+        ]
+      },
+      "after": [
+        3
+      ],
+      "ui": [
+        "keep"
+      ]
+    },
+    "SlotContext": {
+      "inside": {
+        "candidate": [
+          3
+        ],
+        "published": [
+          1
+        ]
+      },
+      "after": [
+        3
+      ],
+      "ui": [
+        "keep"
+      ]
+    },
+    "same_component": true,
+    "repeat_ui": [
+      "second"
+    ],
+    "repeat_generation": 1
+  },
   "clean_and_failures": {
     "participant_audit": true,
     "clean_inside": {
