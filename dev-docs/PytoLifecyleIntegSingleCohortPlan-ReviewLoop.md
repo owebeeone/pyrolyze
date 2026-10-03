@@ -96,3 +96,15 @@ owner/local-scope mechanics, real-manager failure/admission tests, and independe
 implementation review before SC2 wiring. Resource/notification routes, dirty/
 metadata policies, L0/D5 prerequisites, and I3a snapshot removal remain explicit
 gates. No broad production activation or I3a completion follows from this ledger.
+
+### SC1 Implementation Review Outcome
+
+The authorized next checkpoint was implemented privately at
+`84d4ab6116e0a743394a6269f09e026607402d80`, without live wiring. Its independent
+Code/State review returned NO-GO: two shared helper failure roots plus a
+missing supported manager-ownership observation for failed-attempt reuse.
+See `PytoLifecyleIntegSC1-ReviewLoop.md` and
+`PytoLifecyleIntegSC1-RemPlan-1.md`. SC1 is not accepted; the next decision is
+whether to authorize that bounded library prerequisite, not to start SC2.
+This does not revoke the single-cohort design choice or certify the plan's
+original no-library-change feasibility assertion.
