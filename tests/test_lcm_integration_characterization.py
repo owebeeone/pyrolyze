@@ -32,6 +32,16 @@ def test_common_slot_construction_golden() -> None:
     _check_baseline("slot_construction.py", "slot_construction", dict(os.environ))
 
 
+@pytest.mark.parametrize("implementation", ("original", "bare_refactor_lcm"))
+def test_common_pass_preflight_baseline(implementation: str) -> None:
+    environment = dict(os.environ)
+    environment.pop("PYROLYZE_USE_CONTEXT_LCM", None)
+    environment["PYROLYZE_CONTEXT_IMPL"] = implementation
+    _check_baseline(
+        "common_pass_preflight.py", f"common_pass_preflight_{implementation}", environment
+    )
+
+
 @pytest.mark.parametrize("implementation", ("original", "lcm"))
 def test_reference_callback_selection_baseline(implementation: str) -> None:
     environment = dict(os.environ)

@@ -8,8 +8,27 @@ The objective is to replace Pyrolyze's handwritten transactional state engine
 with `yidl_lifecycle`-decorated classes. Installing the decorator underneath the
 old engine is not the end state. The migration must remove duplicate state,
 field snapshots, field restoration, and class-name-based child field-transfer
-dispatch. Manager unification follows holder replacement; boundary-specific
-managers remain temporarily where they preserve existing completion semantics.
+dispatch. The current completion direction is the single-cohort amendment
+below; the earlier holder-first sequence is retained as historical planning.
+
+### Current Completion Authority (2026-10-03)
+
+The user subsequently chose **one outer render completion owner, including
+nested work**, while retaining multiple semantic transaction keys and their
+write permissions. `dev-docs/PytoLifecyleIntegSingleCohortPlan.md` is the current
+DRAFT amendment and gives the exact supersession table, gated implementation
+sequence, and new acceptance observations. Review of that amendment must finish
+before runtime changes. Other keys retain application-specific completion;
+no atomic multi-key operation is assumed.
+
+Where the earlier body below requires independent nested publication,
+caught-child recovery without outer abort, or postpones render-manager sharing
+until U1/U2, those rules are superseded as enumerated in the amendment. They
+must not be used to reject the newly chosen target or to accept incompatible
+runtime behavior. Historical review reports remain unchanged. I1b construction
+acceptance is intact; I3a implementation and runtime activation are not accepted.
+Resource lifetime, dirty/metadata permissions, and generic failure-draining
+gates not replaced by the amendment remain mandatory.
 
 This document updates the integration direction in
 `dev-docs/ContextLifecyleMetaprogrammingPlan.md` and

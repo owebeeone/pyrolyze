@@ -1,0 +1,52 @@
+{
+  "borrowed_scope_entry": {
+    "own_ui_inside_scope": ["stale"],
+    "reports_active_before_local_entry": true,
+    "transaction_active_after_scope": true
+  },
+  "caught_leaf_failure": {
+    "after_catch": {
+      "leaf": ["failed"],
+      "root": ["parent-candidate", "old"]
+    },
+    "after_parent_success": {
+      "leaf": ["failed"],
+      "root": ["parent-candidate", "failed"]
+    },
+    "before": {
+      "leaf": ["old"],
+      "root": ["old"]
+    },
+    "caught": "leaf failed after emission",
+    "lifecycle_after_catch": {
+      "leaf_current": ["old"],
+      "leaf_started_transaction": false,
+      "root_current": ["old"],
+      "same_manager": true,
+      "transaction_active": true
+    }
+  },
+  "managed_write_permissions": {
+    "_invoke_dirty": {
+      "error_type": "RuntimeError",
+      "message": "writes require an active yidl transaction"
+    },
+    "_site_metadata": {
+      "error_type": "RuntimeError",
+      "message": "writes require an active yidl transaction"
+    },
+    "current_after_rejected_writes": {
+      "dirty": false,
+      "metadata": []
+    }
+  },
+  "outside_pass_invalidation": {
+    "after_owner_setter": true,
+    "after_queue_invalidation": true,
+    "initial_dirty": false,
+    "metadata_after_outside_setter": ["outside-pass"],
+    "queued_boundaries": 1,
+    "transaction_active": false
+  },
+  "selector": "bare_refactor_lcm"
+}

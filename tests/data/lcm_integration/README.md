@@ -54,6 +54,39 @@ The expected JSON is authored against the accepted construction contract.
 Review a proposed change before updating `baselines/slot_construction.json`;
 the script prints observations and does not rewrite the golden.
 
+## I3a Preflight Observations
+
+`common_pass_preflight.py` and its two `common_pass_preflight_*.json` baselines
+record the original reference and decomposed path before I3a implementation.
+They are **characterization, not approval of the observed failures**. The
+decomposed path publishes a failed leaf candidate after its parent catches the
+exception and succeeds; the original retains the leaf's previous UI. Separate
+observations show skipped local entry on a borrowed transaction and the existing
+out-of-pass dirty/metadata writes that a plain managed-marker conversion would
+reject. No runtime changes or historical baseline rewrites accompany these
+observations. The intended I3a acceptance fixture remains `common_pass.py`, to
+be written only after the permission/isolation decisions are resolved.
+The later single-cohort decision is described in
+`dev-docs/PytoLifecyleIntegSingleCohortPlan.md`; its target fixture will be
+`common_pass_single_cohort.py`. These old observations are history, not the
+chosen target for nested completion.
+
+Run only these observations through the existing harness:
+
+```sh
+env -u PYROLYZE_CONTEXT_IMPL -u PYROLYZE_USE_CONTEXT_LCM \
+  PYTHONDONTWRITEBYTECODE=1 \
+  PYTHONPATH=src:../yidl-lifecycle/src:../yidl/src:../astichi/src \
+  ../.venv/bin/python -m pytest -p no:cacheprovider -q \
+  tests/test_lcm_integration_characterization.py -k common_pass_preflight
+```
+
+Inspect without rewriting a baseline by running `common_pass_preflight.py`
+with `PYROLYZE_CONTEXT_IMPL=original` or `bare_refactor_lcm`. It prints JSON
+only; it has no regeneration option. Committed-dependency reproduction and the
+writer/completion-owner audit are in
+`dev-docs/PytoLifecyleIntegI3aPreflight.md`.
+
 ## Run
 
 From the Pyrolyze repository root, using the existing workspace environment:

@@ -2,6 +2,17 @@
 
 ## Status And Authority
 
+**Current authority amendment (2026-10-03):**
+`dev-docs/PytoLifecyleIntegSingleCohortPlan.md` supersedes this addendum's
+preservation of independent child publication/caught-child recovery and its
+prohibition on the bounded render-manager sharing design. It selects one outer
+completion owner and sticky render-attempt failure, not savepoints or selective
+child completion. That DRAFT needs independent review before runtime changes.
+This document's field permissions, read-facade split, local resets, removal
+gates, and outstanding I3a work still apply where not explicitly replaced.
+The earlier acceptance ledger/reports certify only their exact historical
+revision, not the new contract.
+
 Status: **DRAFT for focused Consistency/Safety review.** This is a plan-only
 checkpoint, not authorization to implement or evidence that I3a is complete.
 
