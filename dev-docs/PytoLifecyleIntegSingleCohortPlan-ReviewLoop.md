@@ -117,3 +117,14 @@ plan now replaces its original no-library-change assertion explicitly. A fresh
 dual implementation review is required because that shared boundary changed;
 the original NO-GO reports remain verbatim. SC2 remains gated until correction,
 tests, and reviewer closure agree on the same settled tuple.
+
+### SC1 Remediation Accepted
+
+The fresh Code/State reports both returned GO at Pyrolyze
+`7a5d16cb5f6fea9a4d9640e6d443b7e5165a4ead` / yidl-lifecycle
+`335d2795cdd65b2542e0ac9ec70b7f16ee0b1901`, with YIDL/Astichi pinned as
+recorded in the SC1 ledger. Both independently verified the original
+counterexamples; all original blocking roots are closed, with no new finding.
+This accepts private SC1 mechanics and its bounded manager prerequisite only.
+Live integration remains accepted through I1b; SC2 render wiring, resources,
+registration/removal policy, field migration, and activation are not accepted.

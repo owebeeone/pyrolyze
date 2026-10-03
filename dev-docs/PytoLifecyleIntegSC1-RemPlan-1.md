@@ -2,11 +2,14 @@
 
 ## Status
 
-Remediation authorized on 2026-10-04; fresh acceptance review is pending.
+Remediation authorized and accepted on 2026-10-04 after fresh dual GO at
+Pyrolyze `7a5d16cb5f6fea9a4d9640e6d443b7e5165a4ead` / lifecycle
+`335d2795cdd65b2542e0ac9ec70b7f16ee0b1901`. See the review-loop ledger for
+the complete pinned tuple and verbatim reports.
 Both reviewers returned NO-GO at Pyrolyze
 `84d4ab6116e0a743394a6269f09e026607402d80`. No finding is self-closed and no
-architectural remediation round has been accepted.
-SC1 remains unaccepted and unwired. SC2 cannot begin on this checkpoint.
+initial remediation round had been accepted at that historical NO-GO point.
+The corrected SC1 is now accepted and unwired; SC2 remains a separate gate.
 
 ## Merged Finding Map
 
@@ -101,3 +104,12 @@ an owner-finish-from-local-callback case failed before the final guard.
 The revised mechanics targets pass 18 manager and 35 owner cases. These are
 implementation evidence, not reviewer closure. Fresh reviewers must verify the
 original counterexamples at the corrected settled tuple.
+
+## Verified Closure
+
+Fresh Code/State reports `PytoLifecyleIntegSC1-ReviewCode-1.md` and
+`PytoLifecyleIntegSC1-ReviewState-1.md` both returned GO. Each independently
+replayed the original counterexamples; all three merged roots are closed with
+no new finding. One architectural remediation round was accepted. The scope
+does not include SC2/live wiring, resource completion, field migration, or
+default activation.
