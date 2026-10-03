@@ -1,6 +1,8 @@
 # SC2 Field-Only Render Wiring Review
 
-Status: **round 1 NO-GO; final bounded remediation pending fresh dual acceptance**.
+Status: **round 2 NO-GO at Pyrolyze
+`4d1b9b089333e99cb98381939db311c2b7ce8bde`; SC2 remains unaccepted.
+Further remediation requires operator disposition.**
 Date: 2026-10-04. This does not activate production or resource-bearing routes.
 
 ## Settled Tuple
@@ -135,3 +137,65 @@ changed, use fresh peer-blind Code/State contexts rather than the prior
 reviewers. Both initial and round-1 reports are legitimate common inputs;
 current-round reports remain held until both reviewers finish. Require a full
 prior-finding closure table and explicit architectural-root classification.
+
+### Round 2 Tuple And Dispatch
+
+Settled Pyrolyze implementation: `4d1b9b089333e99cb98381939db311c2b7ce8bde`.
+All dependency/parent revisions in the initial tuple are unchanged. Correction
+diff: `ca731d89..4d1b9b08`; cumulative SC2: `1b246d47..4d1b9b08`.
+The controlling DRAFT and final merged remediation plan are committed there.
+
+Fresh strongest-inherited reviewers Hegel (Code) and Descartes (State) were
+dispatched together in isolated contexts using mechanically generated canonical
+prompts `PytoLifecyleIntegSC2-PromptCode-2.md` and
+`PytoLifecyleIntegSC2-PromptState-2.md`. Both prior rounds are common evidence;
+neither current report is shared. Reports remain held until both finish.
+The implementation and HEAD remain frozen; only process evidence is edited.
+The settled two-target review subset passed **43 tests in 4.25s** against
+the same clean dependency exports. Black checks for the three new Python
+files and owned-source/path whitespace checks pass. No excluded files were
+staged in the corrected implementation commit.
+
+## Round 2 Verdict Merge And Stop
+
+Both reports were held until both completed, then filed verbatim:
+`PytoLifecyleIntegSC2-ReviewCode-2.md` and
+`PytoLifecyleIntegSC2-ReviewState-2.md`. Both returned **NO-GO**, each with
+one new P2 finding. Both independently verified the same five HEADs unchanged
+at start/end, reran the original counterexamples, and confirmed all original
+counterexamples close. Their independent narrow/canonical gates passed
+**43 tests in 4.34s** (Code) and **43 tests in 4.12s** (State).
+
+The new findings have the same numeric ID on different axes but different
+roots; this is not blind convergence on one defect:
+
+| Axis / ID | Remaining defect | Required bounded correction and closure |
+| --- | --- | --- |
+| Code P2-9 | A second owned render root can execute and update a component whose actual child is another root | Reject duplicate owned-root construction before lifecycle initialization; require reciprocal owner/child identity before execution and UI propagation. Cover committed and candidate owners, inside/outside attempts, caught rejection, unchanged callbacks/queues/UI/generation, and normal nested reuse |
+| State P2-9 | Newly introduced unseen component subtrees are filtered out without retirement preflight | Preflight every candidate subtree selected for removal, not only preceding/current children. Cover direct components and native leaves containing components, discarded current UI, no generation advance or queued orphan, and clean retry |
+
+Both reviewers explicitly classify their findings as **localized,
+non-architectural omissions**, not new architectural roots. The original SC2
+execution-ownership root remains the only recorded architectural root. Two
+bounded remediation rounds have nevertheless been implemented; this package
+does not authorize an automatic third patch. Return the two findings to the
+operator for a strictly non-architectural correction decision or a revised
+checkpoint boundary. No finding is waived and no acceptance is claimed.
+
+Current counts: three dual review rounds, two implemented remediation rounds,
+zero accepted SC2 rounds, all original counterexamples verified closed, two
+open P2 findings, zero open P0/P1/P3. The focused107/full897/broader41 evidence
+above remains valid at the reviewed tuple but does not close these additional
+sequences. The 13/14 unrelated baseline failures remain visible and unwaived.
+
+**Next action:** obtain the operator's disposition on those two admission
+corrections. Do not start SC3 resource adapters, broaden activation, or remove
+snapshots while SC2 remains unaccepted. If a further localized patch is approved,
+test these exact sequences red first, settle it, then obtain independent
+original-counterexample closure and a new verdict. No architecture, manager,
+resource protocol, or dependency change is implied by that proposal.
+
+Artifact whitespace note: the verbatim State report retains a Markdown
+hard-break space on its review-object line. This is preserved testimony,
+not an owned-source whitespace defect. Reviewed source/test bytes remain
+unchanged; the filing commit changes process records only.
