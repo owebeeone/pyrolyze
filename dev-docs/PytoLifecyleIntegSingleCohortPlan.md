@@ -24,7 +24,9 @@ For render-owned lifecycle candidate values, the following clauses are replaced:
 | Integration plan: Migration First, Checkpoint, Architecture Contract / Existing Boundaries First; One Manager Later, Construction And Initialization, I1, I2, U1/U2 | Preserve nested render managers throughout holder replacement; unify only afterward | One stable manager per root graph; nested renders receive it before initialization. Introduce this through the gated checkpoints below, not a private-slot patch |
 | Integration plan: Completion Contract, Proposed Key Assignment, Boundary Ownership, Child Failure Compatibility (D2), Context Pass Orchestration, I0, I2, I3, I5, Test Strategy, Acceptance Checklist, Decisions Required Before Execution (D1/D2) | Preserve early child publication and caught-child recovery | Nested success remains provisional. A failed entered pass poisons the participating render attempt even if caught; outer success cannot publish it |
 | Integration plan: Deferred Post-Integration Work (D1), U1/U2 | Outer render publication is a deferred alternative; later unification must preserve independent nested completion | Outer render-value publication is the selected target. No savepoints, child-selective completion, per-child keys, or replacement cohorts are required |
+| Integration plan: Existing TM Limits To Respect, final paragraph | Single outer publication-key design is deferred | Its render-owned-value deferral is replaced by the selected outer `PASS_TX_KEY` owner. The same paragraph's prohibition on inferring all-key/whole-graph atomicity from one manager remains |
 | Integration plan: Resources And Bindings, Field And Hook Migration Map, Replacement And Deletion Ledger, I4, I5, I6, Test Strategy, Acceptance Checklist | Independent call-site/render publication is the final compatibility requirement | Render-owned resources must eventually participate in the outer decision through supported adapters. Their current separate implementation remains an explicit migration gate, not the selected end state |
+| Integration plan: Event Callback Selection, final deactivation paragraph | I5/I6 must not move retirement to outer success | The render-owned removal decision follows the outer attempt after the SC3/D5 audit. Callback visibility, dispatch closure lifetime, supported cleanup, and the ban on field writes from after-commit remain; unrelated accepted removal still has its own owner |
 | I3a addendum: Status And Authority; Completion And Local Pass Contract; Permission And Isolation Gates; Canonical Test Package; Implementation Steps And Exit | No manager sharing/library design; preserve earlier published child UI and local caught recovery | This amendment permits the bounded sharing/owner design; replace those two acceptance outcomes with the new observations below. Other I3a field/writer/removal gates remain |
 
 The replacement is limited to values and actions participating in the same
@@ -216,6 +218,25 @@ keys are not poisoned by a render failure. If an application deliberately
 requires atomic multi-key completion, that is a separate contract/design; the
 current sequential multi-key API does not provide it.
 
+### Non-Render Registration And Callback Work
+
+The user clarified that registration, attachment, and callback-originated work
+can be independently accepted outside rendering. Multiple keys are semantic
+permission/completion spaces on the root manager, not multiple nested render
+cohorts. An independently completed registration is not undone because a later
+render fails. Render-driven removal must remain provisional until that render's
+outer decision; immediate detachment cannot be repaired by membership rollback.
+
+SC3's writer audit must name the actual field/registry, entry point, governing
+key, and completion owner for both directions. A field has one governing key;
+different entry points do not give the same field two independent overlays.
+Where both paths touch the same accepted registry, settle explicit write
+authorization and removal ordering before routing it live. Do not silently
+activate another key, finish its transaction, introduce a new key API, or assume
+that independent key completion alone protects a stale render-time removal.
+This is a concrete audit requirement, not certification that current registries
+already implement the policy or that cross-key transactions are atomic.
+
 ## Resource And Field Migration Gates
 
 This amendment chooses the target owner; it does not magically absorb legacy
@@ -280,6 +301,32 @@ the old decomposed preflight outcome with the target fixture. Preserve the old
 script/JSON and source revision for historical reproduction; do not regenerate
 it, leave a known-red legacy expectation in the live suite, or hide it behind
 an unexplained skip. Keep original-runtime characterization runnable unchanged.
+
+#### Live-Test Transition Ledger
+
+All entries remain unchanged during this design checkpoint and SC1's unwired
+mechanics. Transition them in the same implementation checkpoint that changes
+their route, never in advance to make a baseline green:
+
+| Live Entry | Checkpoint And Disposition |
+| --- | --- |
+| `test_context_factories_keep_nested_render_completion_independent` in `tests/test_runtime_context_state_lcm_context_base.py` | SC2 constructor wiring: replace the independent-manager assertion with the root-manager sharing assertion. Keep independent-root isolation as a separate invariant |
+| `test_scope_activity_tracks_transaction_state` in that file | SC2 local-scope wiring: active key alone is not local activity; require a genuine entered scope for `require_active_scope`. Preserve a narrow external-active-key rejection diagnostic |
+| `_run_leaf_pass` in `tests/test_runtime_context_state_lcm_leaf_rerender.py` | SC2 standalone routing: use the supported outer pass/attempt path instead of externally beginning the TM; retain the existing order/UI success assertions and prove repeated local resets |
+| `test_common_pass_preflight_baseline[bare_refactor_lcm]` | SC2: retire its old-current-checkout assertion in favor of the target canonical fixture; retain the old script/JSON as historical reproduction. The original parameter stays live |
+| `test_lcm_integration_characterization_baseline[bare_refactor_lcm]` and `baselines/bare_refactor_lcm.json` | Before any changed caught-failure route runs this mixed-resource fixture, split its supported target observations from still-unmigrated resource cases. Preserve the old whole observation at its source revision. Target abort expectations belong to the new canonical fixture; unaffected observations stay live. A still-unmigrated production route keeps its existing expectation until SC3/I4 actually replace it; never mask this with an unconditional skip |
+
+Historical reproduction uses the Pyrolyze source and fixture at
+`bad7b1c7eaae6b09eaede3803f036a1cbb9d05d7`, with the pinned dependencies above.
+Export the whole repository at that revision into a temporary directory using
+`git archive`, then run its documented harness with the pinned source exports.
+Do not run its historical expected JSON against a changed current runtime and
+call the approved difference one of the unrelated 13/14 failures. Original and
+monolithic-runtime characterization remain live and unchanged.
+
+During the transition also audit the rest of the focused suite for key-activity
+or direct TM-begin assumptions; this ledger is the known minimum, not permission
+to leave a newly discovered opposite-contract assertion unexplained.
 
 Acceptance requires the scenarios below and the field-only participant audit.
 It accepts render-value ownership for the proof only, not callback/resource
