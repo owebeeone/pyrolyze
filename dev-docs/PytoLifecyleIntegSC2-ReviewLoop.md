@@ -1,10 +1,28 @@
 # SC2 Field-Only Render Wiring Review
 
-Status: **round 2 NO-GO; operator approved a strictly localized follow-up
-on 2026-10-04. Independent closure pending; SC2 remains unaccepted.**
+Status: **accepted at Pyrolyze `a7bf0e92001f1c881ed81cd6e58064d8e8b4da51`
+with the pinned dependency tuple below, after fresh Code/State round-3 reports
+both returned GO. This accepts only the private SC2 field-only checkpoint.**
 Date: 2026-10-04. This does not activate production or resource-bearing routes.
 
-## Settled Tuple
+## Accepted Tuple
+
+| Repository | Revision |
+| --- | --- |
+| Pyrolyze implementation | `a7bf0e92001f1c881ed81cd6e58064d8e8b4da51` |
+| yidl-lifecycle | `335d2795cdd65b2542e0ac9ec70b7f16ee0b1901` |
+| YIDL | `95a6e3e52fc3d710d25c5d59315e791a3ed75cc4` |
+| Astichi | `387ca5e1da76204ee60922094734c13ee36383c0` |
+| Parent context only | `a20f8cfb633a268925464eb27728d1934a70aea9` |
+
+Reports: `PytoLifecyleIntegSC2-ReviewCode-3.md` and
+`PytoLifecyleIntegSC2-ReviewState-3.md`. The reviewed controlling document
+remains a DRAFT snapshot; this adjacent ledger supplies acceptance without
+rewriting reviewed source/test bytes. Earlier NO-GO/pending entries below are
+historical and superseded by the final verdict merge. Existing live routes
+remain unactivated until their own SC3 gates; I3a completion is not claimed.
+
+## Initial Settled Tuple (Historical)
 
 | Repository | Revision |
 | --- | --- |
@@ -245,3 +263,64 @@ selected by the unseen filter now receives the existing retirement preflight.
 Neither correction introduces another field authority or resource callback.
 Fresh dual review is required because those entry call graphs changed. Original
 P2-9 closures and preservation of all earlier closures remain reviewer-owned.
+
+### Follow-Up Tuple And Dispatch
+
+Settled implementation: `a7bf0e92001f1c881ed81cd6e58064d8e8b4da51`.
+Correction diff: `4d1b9b08..a7bf0e92`; settlement diff:
+`85ee82a8..a7bf0e92`; cumulative SC2: `1b246d47..a7bf0e92`.
+Lifecycle/YIDL/Astichi and parent revisions in the pinned tuple are unchanged.
+The controlling document and RemPlan-3 are committed in this correction.
+
+Fresh strongest-inherited McClintock (Code) and Harvey (State) were dispatched
+together in isolated, peer-blind contexts using mechanically generated canonical
+prompts `PytoLifecyleIntegSC2-PromptCode-3.md` and
+`PytoLifecyleIntegSC2-PromptState-3.md`. Previous reports are legitimate common
+inputs; neither current prompt/report is shared. Reports are held until both
+finish. Source/test bytes and HEAD remain frozen; process evidence may appear
+or change. Any new architectural root stops this localized follow-up.
+The settled narrow/canonical subset passed **63 tests in 4.48s** with the
+same committed dependency exports; source/tests and HEAD remained unchanged.
+
+## Final Verdict Merge And Acceptance
+
+McClintock (Code) and Harvey (State) both returned **GO**, with zero open
+P0/P1/P2/P3 findings. Reports were held until both finished and filed verbatim.
+Both verified every tuple HEAD unchanged at start/end, independently reran
+both original P2-9 counterexamples, and preserved all earlier closures through
+execution or source retracing. Their narrow/canonical runs passed **63 tests
+in 4.44s** (Code) and **63 tests in 4.27s** (State).
+
+Independent convergence here is on successful closure and the retained scope,
+not discovery of another shared defect. Code additionally exercised a first
+uninstalled root retained across actual child installation and queued stale
+delivery; State checked the unseen filter before membership mutation and
+recovery/generation behavior. Neither found a new architectural root or scope
+widening. The implementer did not self-close the P2 findings.
+
+Counts: four dual review rounds (initial plus three numbered follow-ups),
+two prior remediation rounds and one operator-authorized strictly localized
+follow-up; **all seventeen recorded P2 counterexamples verified closed** and
+zero open SC2 review findings. The original execution-ownership architectural
+root remains the only recorded one. This does not waive the unrelated default
+13/broader 14 baseline failures or certify a fully green integration suite.
+
+Acceptance is limited to the private, graph-level field-only proof on the
+exact accepted tuple above. Root/leaf/plain/component value publication,
+sticky caught failure, manager sharing, admission, and clean discard/retry are
+covered. Resource-bearing routes, broad/default activation, L0/D5 completion
+prerequisites, dirty/site metadata policy, and snapshot removal remain gated.
+Lifecycle/dependency source and parent pointers are unchanged. No tag, push,
+merge, worktree, or selector/default change is included.
+
+**Next checkpoint: SC3.** Inventory binding/handler/component resource
+completion, notifications, and registration/removal writers; settle each
+pending L0/D5 prerequisite before activating its route. Move participating
+render-owned delivery to the outer decision without duplicating lifecycle
+field application or inventing resource rollback. SC4 follows only after
+that proof, to remove redundant snapshots and finish I3a. Acceptance here is
+not authorization to implement those separate checkpoints.
+
+The filing commit changes review/status records only; accepted runtime/test
+bytes stay at `a7bf0e92`. Reports and dispatched prompts retain their exact
+text (with a terminal newline); owned-source whitespace/path checks passed.

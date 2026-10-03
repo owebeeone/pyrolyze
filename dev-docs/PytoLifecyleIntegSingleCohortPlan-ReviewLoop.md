@@ -128,3 +128,15 @@ counterexamples; all original blocking roots are closed, with no new finding.
 This accepts private SC1 mechanics and its bounded manager prerequisite only.
 Live integration remains accepted through I1b; SC2 render wiring, resources,
 registration/removal policy, field migration, and activation are not accepted.
+
+### SC2 Private Proof Accepted
+
+On 2026-10-04, fresh Code/State reports both returned GO at Pyrolyze
+`a7bf0e92001f1c881ed81cd6e58064d8e8b4da51`, with the same pinned dependencies.
+The exact tuple, original-counterexample closures, and verification evidence
+are recorded in `PytoLifecyleIntegSC2-ReviewLoop.md`. This supersedes the earlier
+SC2-pending status only for the private graph-level field-only proof.
+Live resource-bearing routes remain at their earlier acceptance boundary;
+broader activation, resource completion, registration/removal policy, and
+snapshot removal are not accepted. SC3's bounded resource/notification audit
+is the next checkpoint, subject to its own prerequisites and authorization.

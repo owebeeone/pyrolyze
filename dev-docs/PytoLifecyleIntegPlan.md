@@ -11,22 +11,27 @@ field snapshots, field restoration, and class-name-based child field-transfer
 dispatch. The current completion direction is the single-cohort amendment
 below; the earlier holder-first sequence is retained as historical planning.
 
-### Current Completion Authority (2026-10-03)
+### Current Completion Authority (2026-10-04)
 
 The user subsequently chose **one outer render completion owner, including
 nested work**, while retaining multiple semantic transaction keys and their
 write permissions. `dev-docs/PytoLifecyleIntegSingleCohortPlan.md` is the current
-DRAFT amendment and gives the exact supersession table, gated implementation
-sequence, and new acceptance observations. Review of that amendment must finish
-before runtime changes. Other keys retain application-specific completion;
-no atomic multi-key operation is assumed.
+DRAFT amendment snapshot and gives the exact supersession table, gated
+implementation sequence, and acceptance observations. Its gated design,
+private SC1 owner, and private SC2 field-only proof have now passed review;
+the exact implementation tuple and scope are recorded in
+`dev-docs/PytoLifecyleIntegSC2-ReviewLoop.md`. Next is SC3's resource/notification
+and registration/removal audit, not broad activation or snapshot deletion.
+Other keys retain application-specific completion; no atomic multi-key
+operation is assumed.
 
 Where the earlier body below requires independent nested publication,
 caught-child recovery without outer abort, or postpones render-manager sharing
 until U1/U2, those rules are superseded as enumerated in the amendment. They
 must not be used to reject the newly chosen target or to accept incompatible
 runtime behavior. Historical review reports remain unchanged. I1b construction
-acceptance is intact; I3a implementation and runtime activation are not accepted.
+acceptance is intact; full I3a completion and broad runtime activation are not
+accepted. The privately gated SC2 proof is accepted only at its recorded tuple.
 Resource lifetime, dirty/metadata permissions, and generic failure-draining
 gates not replaced by the amendment remain mandatory.
 
