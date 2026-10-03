@@ -1,6 +1,6 @@
 # SC3-L0 Design Review Ledger
 
-Status: **DRAFT; dual Consistency/Safety design review pending**.
+Status: **DRAFT; initial dual NO-GO; merged remediation 1 awaiting verification**.
 Date: 2026-10-04. The operator approved continuation of the original proposal:
 a bounded, reviewed lifecycle-library prerequisite before resource adapters.
 
@@ -43,3 +43,101 @@ Unrelated rendering-backend documents, dirty lifecycle lazy/mutable work,
 YIDL docs/extraction/paper work, and parent/submodule pointer changes are
 excluded. Reviewers modify nothing. Process prompts/ledger/report files may
 appear while document/source/test bytes and all tuple HEADs are frozen.
+
+## Round 1 Dispatch
+
+Settled Pyrolyze DRAFT: `2dc64f19542180e9c68f58073eeb484e1b9a2ed0`.
+The dependency HEADs above are unchanged. Fresh strongest-inherited Gauss
+(Consistency) and Turing (Safety) were dispatched together with isolated
+contexts and canonical generated prompts
+`PytoLifecyleIntegSC3-L0Plan-PromptConsistency.md` and
+`PytoLifecyleIntegSC3-L0Plan-PromptSafety.md`. Host filesystem locations were
+supplied separately as ephemeral inspection context, not committed prompt data.
+Both reviews are read-only design attacks, not runtime/code acceptance tests.
+
+The reviewed documents and runtime/test bytes remain frozen during dispatch.
+Complete reports are held until both reviewers finish. No original finding is
+closed by the drafter; remediation, if needed, requires the originating axis's
+verification against the corrected tuple.
+
+## Parked / Restart Checkpoint
+
+Parked at the operator's request on 2026-10-04 for a Codex session restart.
+Both Round 1 reviewers were stopped while still running. Neither delivered a
+report or verdict. This is an interrupted dispatch, not a completed review or
+remediation round; the SC3-L0 design remains DRAFT and unaccepted.
+
+The settled draft is committed at Pyrolyze
+`2dc64f19542180e9c68f58073eeb484e1b9a2ed0` on `lcm-resume`. The reviewed objects
+are `PytoLifecyleIntegSC3-L0Plan.md`, `PytoLifecyleIntegSC3.md`, and the status
+pointer in `PytoLifecyleIntegPlan.md`. All three dependency HEADs in Evidence
+And Exclusions were rechecked and remain unchanged. Runtime/test bytes remain
+at accepted SC2 commit `a7bf0e92001f1c881ed81cd6e58064d8e8b4da51`; no SC3-L0
+implementation has started.
+
+Restart evidence is saved on disk but left uncommitted: this ledger's dispatch
+and parking entries, plus the two canonical prompt files named above. Those
+prompts preserve the dispatched text, including harmless trailing whitespace
+and an extra blank line at EOF. No report files exist. Unrelated rendering
+documents and dirty dependency work remain untouched. No tags, pushes, or
+parent/submodule pointer changes were made.
+
+Resume sequence:
+
+1. Read repository instructions and the review-loop skill. Verify the branch,
+   draft SHA, dependency tuple, and working-tree exclusions before proceeding.
+2. Re-launch fresh, isolated, peer-blind Consistency and Safety design reviewers
+   from the canonical template against the same draft, unless a reviewed
+   object or tuple member changed. Do not reuse the canceled reviewers or
+   infer a verdict from their partial progress.
+3. Hold both full reports until both finish, then file them verbatim and merge
+   findings using the review gate above. There is no implementation approval
+   merely because the audit and draft were committed.
+4. After design acceptance, take the bounded library checkpoint first, then
+   review the private consumer integration separately. Resource activation
+   remains blocked on its completion policy and legacy call-site ownership
+   boundaries; do not resume pass migration or resource adapters directly.
+
+Verification remains the focused 127-pass run recorded above. No new full-suite
+or broader-suite result is claimed for this documentation checkpoint.
+
+## Round 1 Restart
+
+Resumed at the operator's request on 2026-10-04. The branch and all four HEADs
+were verified unchanged from the parked tuple. The canceled dispatch produced
+no reports and does not consume a completed review/remediation round.
+
+The canonical prompt bodies were retained, whitespace-normalized, and completed
+with the canonical report template for this fresh dispatch. Only process files
+changed; the committed draft, audit, controlling status pointer, runtime, and
+tests are unchanged. Fresh peer-blind Consistency/Safety reviewers will receive
+the same exact draft and pinned dependency tuple. No runtime implementation is
+authorized by restarting the document review.
+
+Mendel (Consistency) and Aquinas (Safety) were dispatched as fresh isolated
+reviewers using the lane owner's inherited model. Both received the committed
+draft tuple and their own canonical prompt, not the peer's prompt or report.
+The parked runtime/test diff was rechecked as empty. The library working tree
+still contains the excluded lazy/mutable work, including core YIDL, generated
+decorator, and goldens; no part of that work was staged or altered here.
+
+## Round 1 Verdict Merge
+
+Both full reports returned against the unchanged draft tuple and were filed
+verbatim before remediation. Consistency reported three P2 findings and one
+P3; Safety reported one P2. Both independently found the same late preparation
+write root: a captured, already-prepared target can lose a later candidate
+write without tripping enlistment guards. This blind convergence is the
+highest-confidence defect in the review.
+
+The additional Consistency findings concern disjoint empty completion evidence,
+exact Phase F-1 supersession, and the effective generated-hook layer. No report
+claimed new active runtime corruption or implementation acceptance. Both
+pre-committed to GO on bounded corrections as specified; neither finding is
+closed merely by that pre-commit.
+
+`PytoLifecyleIntegSC3-L0Plan-RemPlan-1.md` maps every axis-qualified finding to
+one disposition and a closure obligation. One merged document patch addresses
+them. The material preparation-write boundary correction requires fresh dual
+review of the corrected tuple, plus originating-counterexample verification.
+Resource admission and runtime implementation remain blocked during this gate.

@@ -754,6 +754,12 @@ logic. I0 must approve its scope and any unresolved policy choices before code
 changes. It reconciles the existing Phase F-1 manager contract with the pinned
 implementation; review-loop acceptance of this plan does not authorize it.
 
+The SC3 specialization is `dev-docs/PytoLifecyleIntegSC3-L0Plan.md`. Its Exact
+Phase F-1 Supersession table proposes the precise bounded D4 policy differences
+for preparation and after-action eligibility. If accepted, that table controls
+these requirements where they differ from historical Phase F-1 wording; it
+does not accept the library implementation, resource routing, or D5 timing.
+
 1. Specify phase-draining and failure reporting for prepare, unexpected apply,
    after-commit, rollback, and after-rollback. Preserve the original failure
    context when cleanup also fails; do not let a first callback exception hide

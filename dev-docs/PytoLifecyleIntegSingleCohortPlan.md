@@ -43,6 +43,12 @@ redesign, and D4/L0's generic failure-draining proposal remain separate. D5 is
 affected only where local completion must move to the outer decision; do not
 infer approval of a new resource delivery/retirement order without its audit.
 
+SC3-L0 refinement (2026-10-04): `dev-docs/PytoLifecyleIntegSC3-L0Plan.md` names
+the exact preparation/after-eligibility clauses it proposes to supersede in
+the pinned Phase F-1 plan. Its design gate controls only those bounded D4
+differences. The generic library implementation and private consumer still
+need their own acceptance; this does not grant D5 or resource activation.
+
 ## Evidence And Baseline
 
 Planning source: Pyrolyze `4a2b416afa8dbc7d6c21f4263f2964c69c086676`.
