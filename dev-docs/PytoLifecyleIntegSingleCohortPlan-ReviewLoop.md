@@ -108,3 +108,12 @@ See `PytoLifecyleIntegSC1-ReviewLoop.md` and
 whether to authorize that bounded library prerequisite, not to start SC2.
 This does not revoke the single-cohort design choice or certify the plan's
 original no-library-change feasibility assertion.
+
+### Authorized SC1 Remediation
+
+On 2026-10-04 the operator approved the bounded ownership-observation and
+stale-scope manager prerequisite plus private helper corrections. The controlling
+plan now replaces its original no-library-change assertion explicitly. A fresh
+dual implementation review is required because that shared boundary changed;
+the original NO-GO reports remain verbatim. SC2 remains gated until correction,
+tests, and reviewer closure agree on the same settled tuple.

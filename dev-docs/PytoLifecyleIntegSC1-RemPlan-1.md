@@ -2,10 +2,10 @@
 
 ## Status
 
-Blocked before remediation pending an explicit manager-observation decision.
+Remediation authorized on 2026-10-04; fresh acceptance review is pending.
 Both reviewers returned NO-GO at Pyrolyze
 `84d4ab6116e0a743394a6269f09e026607402d80`. No finding is self-closed and no
-remediation patch or architectural remediation round has been completed.
+architectural remediation round has been accepted.
 SC1 remains unaccepted and unwired. SC2 cannot begin on this checkpoint.
 
 ## Merged Finding Map
@@ -55,7 +55,9 @@ is needed" assertion must be amended if that prerequisite is approved.
 
 This is not permission to implement a generic manager redesign. The alternative
 is an explicitly reviewed narrowing of the reuse guarantee. The lane owner
-requests a decision rather than silently picking either route.
+requested a decision rather than silently picking either route. The operator
+subsequently approved the bounded prerequisite ("Good catch. Let's fix it",
+then "Go"). The initial blocked status is historical, not a current request.
 
 ## Remediation And Re-Review After The Decision
 
@@ -69,3 +71,33 @@ The original reports remain filed verbatim. Existing live routing, historical
 assertions, resource/registration gates, and unrelated dirty repository work
 remain untouched. No acceptance, activation, or I3a completion follows from
 passing the current 26 mechanics tests.
+
+## Authorized Remediation Shape
+
+The 2026-10-04 authorization permits changes only to the private owner and its
+tests plus the bounded `yidl-lifecycle` manager prerequisite. Live context
+classes, selectors, historical characterizations, resource/registration
+completion, and unrelated lazy/static feature changes remain excluded.
+
+The manager now offers `require_sole_transaction_owner(transaction)` and binds
+single/multi-key scope exits to original token identities. Normal stale exits
+raise without touching replacements; exceptional stale exits preserve the body
+error. Same-key terminal callback reentry is rejected, and multi-key begin
+preflights completion barriers before changing any count. Normal commit fences
+the original token after validation. This is not cross-key atomicity or a
+phase-aware publication-result redesign.
+
+The owner observes identity and sole ownership before both successful finish
+and discard, including exceptional validation. Ownership loss is recorded once,
+preserves the first failure, and blocks reuse. A local terminal transition is
+guarded before callbacks; recursive finish/abort and owner completion from a
+local terminal callback cannot release or complete twice. Release failures are
+cleanup failures, not successful completion.
+
+Red evidence: eight manager cases failed before token fencing/observation;
+two callback-time partial multi-key begins failed before preflight. Seven
+owner cases failed before exceptional-ownership/local-terminal corrections;
+an owner-finish-from-local-callback case failed before the final guard.
+The revised mechanics targets pass 18 manager and 35 owner cases. These are
+implementation evidence, not reviewer closure. Fresh reviewers must verify the
+original counterexamples at the corrected settled tuple.

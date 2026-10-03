@@ -392,10 +392,12 @@ def test_external_nested_begin_cannot_turn_finish_into_success() -> None:
     manager = _manager()
     values = RenderValues(transaction_manager=manager)
     attempt = _RenderAttempt.start(manager, RENDER_KEY)
-    with pytest.raises(RuntimeError, match="external nested begin"):
+    with pytest.raises(RenderAttemptIncomplete) as raised:
         with attempt:
             manager.begin(RENDER_KEY)
             values.working.value = 9
+    assert raised.value.__cause__ is attempt.first_failure
+    assert "external nested begin" in str(attempt.first_failure)
     assert values.current.value == 1
     assert manager.active_transaction_for(RENDER_KEY) is None
     assert not attempt.reuse_ready
@@ -597,3 +599,172 @@ def test_manager_rollback_failure_is_reported_and_blocks_reuse() -> None:
     assert participant.events == ["rollback"]
     assert not attempt.reuse_ready
     assert manager.active_transaction_for(RENDER_KEY) is None
+
+
+@pytest.mark.parametrize("action", ("commit", "discard", "replace"))
+def test_validator_exception_after_ownership_loss_blocks_reuse(action: str) -> None:
+    manager = _manager()
+    values = RenderValues(transaction_manager=manager)
+    primary = ValueError("validator failed after external completion")
+    replacements: list[object] = []
+
+    def validate() -> None:
+        if action == "commit":
+            manager.commit_only(RENDER_KEY)
+        else:
+            manager.rollback(RENDER_KEY)
+            if action == "replace":
+                replacements.append(manager.begin(RENDER_KEY))
+        raise primary
+
+    participant = _FaultParticipant(manager, on_validate=validate)
+    attempt = _RenderAttempt.start(manager, RENDER_KEY)
+    with pytest.raises(ExceptionGroup) as raised:
+        with attempt:
+            values.working.value = 9
+            manager.enlist(participant, RENDER_KEY)
+    assert primary in raised.value.exceptions[0].exceptions
+    assert attempt.first_failure is raised.value.exceptions[0]
+    assert attempt.publication_uncertain and not attempt.reuse_ready
+    assert values.current.value == (9 if action == "commit" else 1)
+    assert manager.active_transaction_for(RENDER_KEY) is (
+        replacements[0] if replacements else None
+    )
+    with pytest.raises(RuntimeError, match="not ready for reuse"):
+        attempt.next_attempt()
+    if replacements:
+        manager.rollback(RENDER_KEY)
+
+
+def test_failed_attempt_with_external_borrower_cannot_certify_reuse() -> None:
+    manager = _manager()
+    values = RenderValues(transaction_manager=manager)
+    attempt = _RenderAttempt.start(manager, RENDER_KEY)
+    with pytest.raises((RenderAttemptIncomplete, ExceptionGroup)):
+        with attempt:
+            old_scope = manager.begin(RENDER_KEY)
+            values.working.value = 9
+            attempt.fail(ValueError("render failed"))
+    assert values.current.value == 1
+    assert not attempt.reuse_ready
+    with pytest.raises(RuntimeError, match="not ready for reuse"):
+        attempt.next_attempt()
+    replacement = manager.begin(RENDER_KEY)
+    values.working.value = 10
+    with pytest.raises(RuntimeError, match="stale yidl transaction scope"):
+        old_scope.__exit__(None, None, None)
+    assert values.current.value == 1
+    assert manager.active_transaction_for(RENDER_KEY) is replacement
+    manager.rollback(RENDER_KEY)
+
+
+def test_recursive_local_finish_poison_prevents_publication_when_caught() -> None:
+    manager = _manager()
+    values = RenderValues(transaction_manager=manager)
+    calls: list[str] = []
+
+    def finish() -> None:
+        calls.append("finish")
+        if len(calls) == 1:
+            scope.finish()
+
+    attempt = _RenderAttempt.start(manager, RENDER_KEY)
+    with pytest.raises(RenderAttemptAborted):
+        with attempt:
+            scope = attempt.begin_scope(
+                object(),
+                manager=manager,
+                on_enter=lambda: None,
+                on_exit=finish,
+                on_abort=lambda: calls.append("abort"),
+            )
+            values.working.value = 9
+            with pytest.raises(RuntimeError, match="already completing"):
+                scope.finish()
+    assert calls == ["finish", "abort"]
+    assert attempt.first_failure is not None
+    assert values.current.value == 1
+
+
+@pytest.mark.parametrize("recursive_finish", (False, True))
+def test_recursive_local_abort_preserves_primary_and_blocks_reuse(
+    recursive_finish: bool,
+) -> None:
+    manager = _manager()
+    primary = ValueError("body failed")
+    calls: list[str] = []
+
+    def abort() -> None:
+        calls.append("abort")
+        if len(calls) == 1:
+            if recursive_finish:
+                scope.finish()
+            else:
+                scope.abort(primary)
+
+    attempt = _RenderAttempt.start(manager, RENDER_KEY)
+    with pytest.raises(ExceptionGroup) as raised:
+        with attempt:
+            scope = attempt.begin_scope(
+                object(),
+                manager=manager,
+                on_enter=lambda: None,
+                on_exit=lambda: calls.append("finish"),
+                on_abort=abort,
+            )
+            raise primary
+    assert calls == ["abort"]
+    assert raised.value.exceptions[0] is primary
+    assert "already completing" in str(raised.value.exceptions[1])
+    assert attempt.first_failure is primary
+    assert not attempt.reuse_ready
+
+
+def test_rollback_callback_cannot_start_replacement_during_cleanup() -> None:
+    manager = _manager()
+    values = RenderValues(transaction_manager=manager)
+    attempt = _RenderAttempt.start(manager, RENDER_KEY)
+    entered: list[bool] = []
+
+    class Participant(_FaultParticipant):
+        def _rollback_tx_by_key(self, tx_key: Hashable, tx_token: int | None) -> None:
+            with pytest.raises(RuntimeError, match="completing"):
+                manager.begin(RENDER_KEY)
+            entered.append(True)
+
+    with pytest.raises(RenderAttemptAborted):
+        with attempt:
+            values.working.value = 9
+            manager.enlist(Participant(manager), RENDER_KEY)
+            attempt.fail(ValueError("failed"))
+    assert entered == [True]
+    assert attempt.reuse_ready
+    assert values.current.value == 1
+
+
+def test_local_callback_cannot_finish_owner_before_local_release() -> None:
+    manager = _manager()
+    values = RenderValues(transaction_manager=manager)
+    attempt = _RenderAttempt.start(manager, RENDER_KEY)
+    calls: list[str] = []
+
+    def finish() -> None:
+        calls.append("finish")
+        with pytest.raises(RuntimeError, match="local render scope is completing"):
+            attempt.finish()
+        assert not attempt.finished
+
+    with pytest.raises(RenderAttemptAborted):
+        with attempt:
+            scope = attempt.begin_scope(
+                object(),
+                manager=manager,
+                on_enter=lambda: None,
+                on_exit=finish,
+                on_abort=lambda: calls.append("abort"),
+            )
+            values.working.value = 9
+            scope.finish()
+    assert calls == ["finish"]
+    assert values.current.value == 1
+    assert attempt.reuse_ready

@@ -3,8 +3,8 @@
 ## Status
 
 Status: **NO-GO at the implementation tuple below after both independent
-Code/State reviews. Three unique P2 roots remain open; scope approval is needed
-before the manager-observation prerequisite can be implemented.**
+Code/State reviews. The operator authorized bounded remediation on 2026-10-04;
+three unique P2 roots remain open pending fresh reviewer closure.**
 The implementation document remains a pending-review snapshot; this adjacent
 ledger records gates and later acceptance without rewriting reviewed bytes.
 Only private mechanics were reviewed. Live implementation acceptance stays
@@ -94,3 +94,13 @@ SC1. SC2 can proceed only after that private mechanics gate is accepted: actual
 root/local-pass wiring and the canonical resource-free render proof. Resource
 completion, registration/removal writer policy, generation notifications,
 dirty/metadata field authority, and snapshot removal remain later gated work.
+
+## Remediation Round 1 Pending Review
+
+The operator approved the library prerequisite and helper corrections. See
+`PytoLifecyleIntegSC1-Remediation.md` for the exact corrected contract, TDD
+counterexamples, clean-source commands, and regression evidence. Manager
+checkpoint is `335d2795cdd65b2542e0ac9ec70b7f16ee0b1901`; YIDL/Astichi remain
+pinned. Fresh Code/State reviewers are required because the supported ownership
+boundary changed. No original finding is self-closed and no live context path
+has been wired. Original reports/prompts remain immutable historical evidence.

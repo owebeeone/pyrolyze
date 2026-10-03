@@ -89,9 +89,12 @@ The same child, when invoked inside a parent attempt, is only a borrower.
 Do not give that child a different manager just to make its local exit publish.
 
 No new author-facing decorator, context option, transaction-key API, enum,
-YIDL grammar, dynamic key registration, or transaction library change is
-proposed by this bounded amendment. If the implementation needs one, stop and
-propose it before changing that surface.
+YIDL grammar, or dynamic key registration is proposed by this bounded amendment.
+The original no-library-change assumption was refuted by the SC1 dual review.
+On 2026-10-04 the operator authorized the bounded ownership observation and
+stale-scope fencing in `PytoLifecyleIntegSC1-RemPlan-1.md`. That prerequisite
+requires fresh Code/State review; it does not authorize a generic manager
+redesign or live render wiring.
 
 ## Ownership And Admission
 
@@ -277,7 +280,10 @@ Add the private dataclass/owner with one explicit key begin, identity admission,
 borrower tracking, sticky failure, and exactly-once pre-publication finish.
 Test against the real lifecycle manager with narrow failure/recognition tests;
 do not invent a replacement TM. Initially keep it off unreviewed live resource
-paths. No generic library API change is needed for this scope.
+paths. SC1 now requires the approved manager ownership prerequisite: observe
+sole ownership without publication, fence stale scope callbacks by original
+transaction identity, and reject same-key completion reentry. Recheck both
+normal and exceptional validation outcomes before certifying reuse.
 
 Cover caught failure, no-op re-entry, leaked borrower, replaced/missing token,
 externally active admission rejection, repeated attempts, and cleanup errors.

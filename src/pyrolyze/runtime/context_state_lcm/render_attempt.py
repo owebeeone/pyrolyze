@@ -54,6 +54,9 @@ class _RenderAttempt:
     _reuse_ready: bool = field(default=False, init=False, repr=False)
     _integrity_lost: bool = field(default=False, init=False, repr=False)
     _identity_failure: RuntimeError | None = field(default=None, init=False, repr=False)
+    _ownership_failure: RuntimeError | None = field(
+        default=None, init=False, repr=False
+    )
     _scopes: list[_LocalRenderScope] = field(
         default_factory=list, init=False, repr=False
     )
@@ -99,6 +102,19 @@ class _RenderAttempt:
             error = self._identity_failure
             self.fail(error)
             raise error
+
+    def _check_ownership(self) -> None:
+        if self._ownership_failure is not None:
+            return
+        try:
+            self._require_identity()
+            self.manager.require_sole_transaction_owner(self.transaction)
+        except RuntimeError as error:
+            self._ownership_failure = error
+            self._integrity_lost = True
+            self.fail(error)
+            if self.first_failure is not error and error not in self._cleanup_errors:
+                self._cleanup_errors.append(error)
 
     def is_scope_active(self, context: object) -> bool:
         return any(scope.context is context for scope in self._scopes)
@@ -156,6 +172,7 @@ class _RenderAttempt:
 
     def _discard_owned(self) -> None:
         # Identity, not the per-key integer token, fences external replacements.
+        self._check_ownership()
         if self.manager.active_transaction_for(self.tx_key) is self.transaction:
             try:
                 self.manager.rollback(self.tx_key)
@@ -180,6 +197,10 @@ class _RenderAttempt:
 
     def finish(self, propagating: BaseException | None = None) -> None:
         self._require_open()
+        if any(scope._completing for scope in self._scopes):
+            error = RuntimeError("local render scope is completing")
+            self.fail(error)
+            raise error
         if propagating is not None:
             self.fail(propagating)
         self._finishing = True
@@ -193,17 +214,12 @@ class _RenderAttempt:
                 except BaseException:
                     # abort records its cleanup error; keep unwinding siblings.
                     pass
-            try:
-                self._require_identity()
-            except RuntimeError as error:
-                if self.first_failure is not error:
-                    self._cleanup_errors.append(error)
+            self._check_ownership()
             if self.first_failure is not None:
                 self._finish_failed(propagating)
                 return
             try:
                 self.manager.validate(self.tx_key)
-                self._require_identity()
             except BaseException as error:
                 self.fail(error)
                 self._discard_owned()
@@ -211,6 +227,7 @@ class _RenderAttempt:
                     not self._integrity_lost and not self._cleanup_errors
                 )
                 _raise_with_cleanup(error, self._cleanup_errors)
+            self._check_ownership()
             if self.first_failure is not None:
                 self._finish_failed(None)
                 return
@@ -281,6 +298,7 @@ class _LocalRenderScope:
     on_abort: Callable[[], None]
     _entered: bool = field(default=False, init=False, repr=False)
     _active: bool = field(default=False, init=False, repr=False)
+    _completing: bool = field(default=False, init=False, repr=False)
 
     def _enter(self, *, allow_reentry: bool) -> None:
         if self._entered:
@@ -294,31 +312,62 @@ class _LocalRenderScope:
                 self.abort(error)
                 raise
 
-    def finish(self) -> None:
+    def _require_active(self) -> None:
+        if self._completing:
+            error = RuntimeError("local render scope is already completing")
+            self.owner.fail(error)
+            raise error
         if not self._active:
             raise RuntimeError("local render scope is not active")
+
+    def _release(self) -> None:
+        self._active = False
+        try:
+            self.owner._release(self)
+        except BaseException as error:
+            self.owner.fail(error)
+            self.owner._cleanup_errors.append(error)
+            raise
+
+    def finish(self) -> None:
+        self._require_active()
+        self._completing = True
         try:
             self.owner._require_open()
             self.owner._require_identity()
             self.on_exit()
         except BaseException as error:
-            self.abort(error)
+            self.owner.fail(error)
+            self._abort(error)
             raise
-        self._active = False
-        self.owner._release(self)
+        else:
+            self._release()
+        finally:
+            self._completing = False
 
     def abort(self, cause: BaseException) -> None:
-        if not self._active:
-            raise RuntimeError("local render scope is not active")
+        self._require_active()
+        self._completing = True
+        try:
+            self._abort(cause)
+        finally:
+            self._completing = False
+
+    def _abort(self, cause: BaseException) -> None:
         self.owner.fail(cause)
+        errors: list[BaseException] = []
         try:
             self.on_abort()
         except BaseException as error:
             self.owner._cleanup_errors.append(error)
-            _raise_with_cleanup(cause, [error])
+            errors.append(error)
         finally:
-            self._active = False
-            self.owner._release(self)
+            try:
+                self._release()
+            except BaseException as error:
+                errors.append(error)
+        if errors:
+            _raise_with_cleanup(cause, errors)
 
     def __enter__(self) -> _LocalRenderScope:
         self._enter(allow_reentry=True)
