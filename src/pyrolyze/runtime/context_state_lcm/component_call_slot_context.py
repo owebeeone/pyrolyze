@@ -22,6 +22,7 @@ from ._support import (
 from pyrolyze.runtime.function_arg_helpers import build_function_arg_dirty_map, pack_function_args
 
 from .context_base import PASS_TX_KEY
+from .field_only_render import _field_only_completion
 from .rerunnable_slot_context import RerunnableSlotContextStateMgr
 
 
@@ -103,6 +104,9 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
 
         schema = (len(args), tuple(sorted(kwargs)))
         if self._child_context_state_mgr is None or self._component_identity != identity_key or self._schema != schema:
+            completion = _field_only_completion(self)
+            if completion is not None and self._child_context_state_mgr is not None:
+                completion.reject("component replacement is not admitted by SC2")
             self._dispose_child_context()
             child_context = render_context_factory(
                 owner_slot=owner_slot_facade,

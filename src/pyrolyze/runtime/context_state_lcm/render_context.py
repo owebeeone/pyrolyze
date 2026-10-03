@@ -10,6 +10,7 @@ from pyrolyze.runtime.trace import TraceChannel, emit_trace, trace_enabled
 from ._base import USE_OWNER
 from .context_base import ContextBaseStateMgr
 from .context_base import PASS_TX_KEY
+from .field_only_render import _field_only_completion
 from ._support import (
     DuplicateMountAdvertisementError,
     MountAdvertisementContextError,
@@ -32,9 +33,28 @@ class RenderContextStateMgr(ContextBaseStateMgr):
         scheduler: Any | None = None,
         **kwargs: Any,
     ) -> None:
+        shared_completion = (
+            None if scheduler_root_state_mgr is None else _field_only_completion(scheduler_root_state_mgr)
+        )
+        if shared_completion is not None:
+            from pyrolyze.runtime.context_bare_refactor_lcm import RenderContext
+            from .component_call_slot_context import ComponentCallSlotContextStateMgr
+
+            if (
+                type(self) is not RenderContextStateMgr or type(owner) is not RenderContext
+                or type(owner_slot_state_mgr) is not ComponentCallSlotContextStateMgr
+                or _field_only_completion(owner_slot_state_mgr) is not shared_completion
+                or owner_slot_state_mgr._parent_state_mgr.children_state.get(
+                    owner_slot_state_mgr.current_slot_id()
+                ) is not owner_slot_state_mgr
+            ):
+                shared_completion.reject("nested render requires an owned component")
         super().__init__(
             owner=owner,
-            transaction_manager=TransactionManager(tx_keys={PASS_TX_KEY}),
+            transaction_manager=(
+                shared_completion.root._transaction_manager if shared_completion is not None
+                else TransactionManager(tx_keys={PASS_TX_KEY})
+            ),
             render_context_state_mgr=None,
             **kwargs,
         )
@@ -90,6 +110,11 @@ class RenderContextStateMgr(ContextBaseStateMgr):
         self._run_boundary(boundary_facade)
 
     def _run_boundary(self, boundary_facade: Any = USE_OWNER) -> None:
+        completion = _field_only_completion(self)
+        if completion is not None:
+            with completion.attempt_scope():
+                self._run_field_only_boundary(boundary_facade)
+            return
         boundary_facade = self._resolve_owner_arg(boundary_facade)
         callback = self._mounted_callback
         if callback is None:
@@ -130,6 +155,17 @@ class RenderContextStateMgr(ContextBaseStateMgr):
                     "end",
                     boundary=self._debug_boundary_id(),
                 )
+
+    def _run_field_only_boundary(self, boundary_facade: Any) -> None:
+        boundary_facade = self._resolve_owner_arg(boundary_facade)
+        callback = self._mounted_callback
+        if callback is None:
+            raise RuntimeError("render context is not mounted")
+        self._scheduler.enter_active(boundary_facade)
+        try:
+            callback()
+        finally:
+            self._scheduler.exit_active(boundary_facade)
 
     def pass_scope(self) -> Any:
         return super().pass_scope()
@@ -173,17 +209,21 @@ class RenderContextStateMgr(ContextBaseStateMgr):
 
     def end_pass(self) -> None:
         super().end_pass()
+        if _field_only_completion(self) is not None:
+            return
         self._rebuild_mount_advertisement_surface()
         self._flush_post_commit()
 
-    def rollback_pass(self) -> None:
-        super().rollback_pass()
+    def rollback_pass(self, cause: BaseException | None = None) -> None:
+        super().rollback_pass(cause)
+        if _field_only_completion(self) is not None:
+            return
         self._rebuild_mount_advertisement_surface()
         self._post_commit_callbacks.clear()
 
     def debug_children_of(self, slot_id: Any = None) -> tuple[Any, ...]:
         if slot_id is None:
-            children = self.children_state
+            children = self.current.children_state if _field_only_completion(self) is not None else self.children_state
         else:
             slot = self.get_registered_slot(slot_id)
             if slot is None:
@@ -203,7 +243,7 @@ class RenderContextStateMgr(ContextBaseStateMgr):
 
     def debug_ui(self, slot_id: Any = None) -> tuple[Any, ...]:
         if slot_id is None:
-            return self.ui_state
+            return self.committed_ui()
         else:
             slot = self.get_registered_slot(slot_id)
             if slot is None:
@@ -211,7 +251,7 @@ class RenderContextStateMgr(ContextBaseStateMgr):
             return slot._state_mgr.committed_ui()
 
     def committed_ui(self) -> tuple[Any, ...]:
-        return self.ui_state
+        return super().committed_ui()
 
     def refresh_committed_ui_from_children(self) -> None:
         self.ui_state = self.build_committed_ui()

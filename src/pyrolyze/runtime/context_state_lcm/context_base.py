@@ -12,6 +12,7 @@ from pyrolyze.runtime.slot_kinds import ContextKind
 from pyrolyze.runtime.slot_call_semantics import ExternalStoreRef
 from pyrolyze.runtime.slot_expr import SlotExpr
 from ._base import StateMgrBase, USE_OWNER, _resolve_render_context_state_mgr_initvar
+from .field_only_render import _field_only_completion
 from ._support import (
     PendingEventHandlerBinding,
     REFRACTOR_CLASSES,
@@ -99,9 +100,8 @@ class ContextBaseStateMgr(StateMgrBase):
 
     # Integration note:
     # The field declarations above are the lifecycle target semantics.
-    # The methods below are still the legacy imperative implementation and do
-    # not yet respect these state units. That mismatch is intentional in this
-    # step: lock the field model first, then rewrite the methods against it.
+    # Production still uses legacy local completion. SC2's private field-only
+    # graph gate exercises outer ownership without activating resource routes.
 
     def root_context_state_mgr(self) -> Any:
         if self._render_context_state_mgr is None:
@@ -109,19 +109,19 @@ class ContextBaseStateMgr(StateMgrBase):
         return self._render_context_state_mgr
 
     def children_by_slot_id(self) -> dict[Any, Any]:
-        return self.children_state
+        return self.current.children_state if _field_only_completion(self) is not None else self.children_state
 
     def iter_children(self) -> tuple[Any, ...]:
-        return tuple(child_state_mgr.owner for child_state_mgr in self.children_state.values())
+        return tuple(child_state_mgr.owner for child_state_mgr in self.children_by_slot_id().values())
 
     def committed_ui(self) -> tuple[Any, ...]:
-        return self.ui_state
+        return self.current.ui_state if _field_only_completion(self) is not None else self.ui_state
 
     def own_committed_ui(self) -> tuple[Any, ...]:
-        return self.own_ui_state
+        return self.current.own_ui_state if _field_only_completion(self) is not None else self.own_ui_state
 
     def own_committed_ui_entries(self) -> tuple[Any, ...]:
-        return self.own_ui_entries_state
+        return self.current.own_ui_entries_state if _field_only_completion(self) is not None else self.own_ui_entries_state
 
     def parent_context(self) -> Any | None:
         parent_state_mgr = getattr(self, "_parent_state_mgr", None)
@@ -184,6 +184,9 @@ class ContextBaseStateMgr(StateMgrBase):
         return self._context_kind
 
     def pass_scope(self) -> Any:
+        completion = _field_only_completion(self)
+        if completion is not None:
+            return completion.pass_scope(self)
         return self._pass_scope_handle_cls(context=self, activate=not self.is_scope_active())
 
     def require_active_scope(self) -> None:
@@ -191,10 +194,18 @@ class ContextBaseStateMgr(StateMgrBase):
             raise RuntimeError("scope is not active")
 
     def is_scope_active(self) -> bool:
+        completion = _field_only_completion(self)
+        if completion is not None:
+            return completion.active is not None and completion.active.is_scope_active(self)
         return self._transaction_manager.active_transaction_for(PASS_TX_KEY) is not None
 
     @contextmanager
     def publish_write_scope(self) -> Iterator[None]:
+        completion = _field_only_completion(self)
+        if completion is not None:
+            with completion.attempt_scope():
+                yield
+            return
         if self.is_scope_active():
             yield
             return
@@ -223,6 +234,11 @@ class ContextBaseStateMgr(StateMgrBase):
         return len(self.own_ui_state)
 
     def begin_pass(self) -> None:
+        self._has_entered_pass = True
+        completion = _field_only_completion(self)
+        if completion is not None:
+            completion.begin_pass(self)
+            return
         if self._pass_child_order:
             raise RuntimeError("scope already active")
         txm = self._transaction_manager
@@ -243,6 +259,10 @@ class ContextBaseStateMgr(StateMgrBase):
             child_state_mgr._seen_in_pass = False
 
     def end_pass(self) -> None:
+        completion = _field_only_completion(self)
+        if completion is not None:
+            completion.finish_pass(self)
+            return
         self.require_active_scope()
         unseen_slots = [
             slot_id
@@ -277,7 +297,11 @@ class ContextBaseStateMgr(StateMgrBase):
         self._pass_child_order = ()
         self._pass_child_dirty = {}
 
-    def rollback_pass(self) -> None:
+    def rollback_pass(self, cause: BaseException | None = None) -> None:
+        completion = _field_only_completion(self)
+        if completion is not None:
+            completion.finish_pass(self, cause or RuntimeError("local render pass aborted"))
+            return
         if not self.is_scope_active():
             raise RuntimeError("scope is not active")
         committed_ids = set(self._pass_child_order)
@@ -303,6 +327,54 @@ class ContextBaseStateMgr(StateMgrBase):
         self._pass_started_tx = False
         self._pass_child_order = ()
         self._pass_child_dirty = {}
+
+    def _begin_field_only_pass(self) -> None:
+        self._has_entered_pass = True
+        children = self.children_state
+        if not getattr(self, "_field_only_has_snapshot", False):
+            self._pass_child_order = tuple(children)
+            self._pass_child_dirty = {
+                slot_id: child._invoke_dirty for slot_id, child in children.items()
+            }
+            self._field_only_has_snapshot = True
+        self.own_ui_entries_state = ()
+        self.own_ui_state = ()
+        for child in children.values():
+            child._seen_in_pass = False
+        self.children_state = {}
+
+    def _end_field_only_pass(self) -> None:
+        self.require_active_scope()
+        from .component_call_slot_context import ComponentCallSlotContextStateMgr
+
+        for slot_id, child in self.current.children_state.items():
+            if isinstance(child, ComponentCallSlotContextStateMgr) and (
+                self.children_state.get(slot_id) is not child or not child._seen_in_pass
+            ):
+                completion = _field_only_completion(self)
+                assert completion is not None
+                completion.reject("component retirement is not admitted by SC2")
+        self.children_state = {
+            slot_id: child for slot_id, child in self.children_state.items() if child._seen_in_pass
+        }
+        self.ui_state = self.build_committed_ui()
+        for child in self.children_state.values():
+            child._invoke_dirty = False
+
+    def _abort_field_only_pass(self) -> None:
+        # Lifecycle discards candidate maps/values once, at the outer boundary.
+        return None
+
+    def _clear_field_only_pass(self, *, published: bool) -> None:
+        if not published:
+            for slot_id, child in self.current.children_state.items():
+                child._invoke_dirty = self._pass_child_dirty.get(slot_id, child._invoke_dirty)
+                child._seen_in_pass = True
+        self._pass_child_order = ()
+        self._pass_child_dirty = {}
+        self._field_only_has_snapshot = False
+        self._field_only_local_scope = None
+        self._field_only_outer_pass = False
 
     def runtime_key_path(self) -> tuple[Any, ...]:
         owner_kind = self.context_kind()
@@ -338,6 +410,9 @@ class ContextBaseStateMgr(StateMgrBase):
         *,
         parent_facade: Any = USE_OWNER,
     ) -> T:
+        completion = _field_only_completion(self)
+        if completion is not None:
+            completion.require_slot_type(slot_type)
         parent_facade = self._resolve_owner_arg(parent_facade)
         root_context_state_mgr = self.root_context_state_mgr()
         root_context = root_context_state_mgr.owner
@@ -348,6 +423,8 @@ class ContextBaseStateMgr(StateMgrBase):
                 f"not {self._owner_type_name}"
             )
         if existing is not None and not isinstance(existing, slot_type):
+            if completion is not None:
+                completion.reject("slot replacement is not admitted by SC2")
             existing.deactivate()
             existing = None
         if existing is None:
@@ -380,7 +457,11 @@ class ContextBaseStateMgr(StateMgrBase):
         child_elements = tuple(
             element
             for child_state_mgr in self.children_state.values()
-            for element in child_state_mgr.ui_state
+            for element in (
+                child_state_mgr.ui_state
+                if _field_only_completion(self) is None or isinstance(child_state_mgr, ContextBaseStateMgr)
+                else child_state_mgr.committed_ui()
+            )
         )
         if hasattr(self, "_expects_native_root") and (
             self._expects_native_root or self._committed_native_root
@@ -634,6 +715,9 @@ class ContextBaseStateMgr(StateMgrBase):
 
     def event_handler_binding(self, slot_id: Any, *, dirty: bool, callback: Callable[..., Any]) -> Any:
         self.require_active_scope()
+        completion = _field_only_completion(self)
+        if completion is not None:
+            completion.reject("event handler registration is not admitted by SC2")
         return PendingEventHandlerBinding(
             slot_id=self.resolve_slot_id(slot_id),
             dirty=dirty,

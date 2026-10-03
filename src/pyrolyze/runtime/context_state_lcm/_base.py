@@ -86,6 +86,11 @@ class StateMgrBase:
         )
         manager = getattr(render_state, "_transaction_manager", None)
         if manager is not None:
+            from .field_only_render import _field_only_completion
+
+            completion = _field_only_completion(render_state)
+            if completion is not None:
+                completion.require_slot_type(type(owner))
             kwargs["transaction_manager"] = manager
         return cls(owner=owner, **kwargs)
 

@@ -32,6 +32,10 @@ def test_common_slot_construction_golden() -> None:
     _check_baseline("slot_construction.py", "slot_construction", dict(os.environ))
 
 
+def test_common_pass_single_cohort_golden() -> None:
+    _check_baseline("common_pass_single_cohort.py", "common_pass_single_cohort", dict(os.environ))
+
+
 @pytest.mark.parametrize("implementation", ("original", "bare_refactor_lcm"))
 def test_common_pass_preflight_baseline(implementation: str) -> None:
     environment = dict(os.environ)

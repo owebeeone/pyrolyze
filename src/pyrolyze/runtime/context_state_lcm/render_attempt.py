@@ -39,8 +39,8 @@ def _raise_with_cleanup(
 class _RenderAttempt:
     """Own one explicit key; local scopes never complete its transaction.
 
-    This helper is deliberately unwired. A future root owner must retain a
-    failed completion with reuse_ready=False rather than replace it on retry.
+    SC2's private field-only gate uses this helper; production routes do not.
+    Root owners retain failed, uncertified completions instead of retrying.
     """
 
     manager: TransactionManager

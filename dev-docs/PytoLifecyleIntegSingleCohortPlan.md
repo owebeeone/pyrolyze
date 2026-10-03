@@ -8,6 +8,12 @@ including nested rendering. Other transaction keys retain application-specific
 completion rules. This is a deliberate change from the earlier holder-first
 compatibility decision, not a claim that the original runtime behaved this way.
 
+SC2 activation refinement (2026-10-04): the operator selected the private
+graph-level field-only gate in `PytoLifecyleIntegSC2.md`. That addendum controls
+SC2's activation and live-test transition: existing unactivated routes and
+historical expectations remain live until SC3. The selected outer ownership
+contract below is unchanged; a field-only acceptance is not broad activation.
+
 This amendment controls the completion-owner portions of
 `dev-docs/PytoLifecyleIntegPlan.md` and
 `dev-docs/PytoLifecyleIntegI3aPlan.md`. Historical reviews remain evidence for

@@ -36,8 +36,8 @@ class LeafSlotContextStateMgr(RerunnableSlotContextStateMgr):
             result = leaf_fn(context_facade, *args, **kwargs)
             if result is not None:
                 raise TypeError("@pyrolyze functions must return None")
-        except BaseException:
-            self.rollback_pass()
+        except BaseException as error:
+            self.rollback_pass(error)
             raise
         self.end_pass()
         return None

@@ -1,0 +1,196 @@
+{
+  "clean_and_failures": {
+    "participant_audit": true,
+    "clean_inside": {
+      "shared_manager": true,
+      "current": [
+        "old",
+        "nested-old"
+      ],
+      "leaf_current": [
+        "old"
+      ],
+      "nested_current": [
+        "nested-old"
+      ],
+      "candidate": [
+        "new",
+        "nested-new"
+      ],
+      "local_released": true,
+      "same_token": true,
+      "generation": 1
+    },
+    "clean_after": {
+      "ui": [
+        "new",
+        "nested-new"
+      ],
+      "generation": 2
+    },
+    "caught": "leaf failed after emission",
+    "caught_current": [
+      "new",
+      "nested-new"
+    ],
+    "outer_abort": {
+      "type": "RenderAttemptAborted",
+      "cause": "leaf failed after emission"
+    },
+    "caught_after": {
+      "ui": [
+        "new",
+        "nested-new"
+      ],
+      "generation": 2
+    },
+    "parent_error": "parent failed after child",
+    "parent_after": {
+      "ui": [
+        "new",
+        "nested-new"
+      ],
+      "nested_ui": [
+        "nested-new"
+      ],
+      "new_slot_registered": false,
+      "children": [
+        1,
+        2
+      ],
+      "generation": 2
+    },
+    "retry": {
+      "ui": [
+        "retry",
+        "nested-retry"
+      ],
+      "new_token": true,
+      "inactive": true,
+      "no_local_scope": true,
+      "generation": 3
+    }
+  },
+  "entry_and_isolation": {
+    "different_managers": true,
+    "external_not_local": true,
+    "external_rejected": "render transaction key is already active",
+    "external_preserved": true,
+    "reentry_ui": [
+      "one-reset"
+    ],
+    "other_preserved": true,
+    "default_preserved": true,
+    "duplicate_rejected": "local render scope is already active",
+    "duplicate_ui": [
+      "one-reset"
+    ]
+  },
+  "standalone_and_boundaries": {
+    "ui": [
+      "standalone",
+      "mounted-nested",
+      "mounted-other"
+    ],
+    "generation": 5,
+    "pending": 0,
+    "active": false
+  },
+  "validation_and_permissions": {
+    "other_key_rejected": true,
+    "validation_error": "validation failed",
+    "after_validation": {
+      "events": [
+        "validate",
+        "rollback",
+        "after rollback"
+      ],
+      "ui": [],
+      "generation": 0,
+      "inactive": true
+    },
+    "retry": {
+      "ui": [
+        "retry"
+      ],
+      "generation": 1,
+      "other_current": 1,
+      "other_candidate": 3,
+      "other_token_preserved": true
+    }
+  },
+  "membership_and_order": {
+    "structural_slot": {
+      "ui": [],
+      "children": [
+        9
+      ]
+    },
+    "orders": [
+      {
+        "children": [
+          1,
+          2
+        ],
+        "ui": [
+          "1",
+          "2"
+        ]
+      },
+      {
+        "children": [
+          2,
+          1
+        ],
+        "ui": [
+          "2",
+          "1"
+        ]
+      },
+      {
+        "children": [
+          3
+        ],
+        "ui": [
+          "3"
+        ]
+      },
+      {
+        "children": [
+          1,
+          2,
+          3
+        ],
+        "ui": [
+          "1",
+          "2",
+          "3"
+        ]
+      },
+      {
+        "children": [
+          3,
+          2,
+          1
+        ],
+        "ui": [
+          "3",
+          "2",
+          "1"
+        ]
+      },
+      {
+        "children": [
+          3,
+          2,
+          1
+        ],
+        "ui": [
+          "3",
+          "2",
+          "1"
+        ]
+      }
+    ]
+  }
+}
