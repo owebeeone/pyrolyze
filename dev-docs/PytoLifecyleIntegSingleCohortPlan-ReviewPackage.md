@@ -62,3 +62,16 @@ accepted non-render registration/callback work as an SC3 field/key/writer audit
 requirement. It does not change the one-render-owner architecture, implicitly
 activate other keys, or add a public/library API. Both reviewers will check the
 changed range at the corrected exact tuple before final acceptance is recorded.
+
+## Final Verdict
+
+Corrected object: Pyrolyze `3c8a8167830c3c057b91f4ad7b2a0679d13e9ba5`; all dependency/context
+revisions above unchanged. Both original reviewers returned GO in reports with
+suffix `-1`. Consistency independently closed both P3 counterexamples; Safety
+found no new P0-P3. Both classified the delta as bounded clarification, not a
+new architecture. Exact acceptance, verification provenance, and the report
+output/status discrepancy are recorded in
+`PytoLifecyleIntegSingleCohortPlan-ReviewLoop.md`.
+
+This acceptance is of the gated design only. SC1 implementation and all later
+wiring/field/resource gates remain unimplemented and require their own evidence.
