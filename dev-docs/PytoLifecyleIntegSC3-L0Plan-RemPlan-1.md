@@ -1,6 +1,8 @@
 # SC3-L0 Merged Document Remediation 1
 
-Status: **DRAFT corrections; reviewer verification pending**.
+Status: **Document corrections verified at Pyrolyze
+`715a0074625844afae05d08afc86557d196bdecd`; originating closures and fresh dual
+GO/GO recorded in the adjacent review ledger. No implementation acceptance**.
 Date: 2026-10-04. Reviewed draft:
 `2dc64f19542180e9c68f58073eeb484e1b9a2ed0`. Dependency revisions remain the
 exact tuple in the review ledger; no runtime, tests, or library files change.
@@ -20,8 +22,10 @@ each report has its own severity numbering.
 | Consistency P2-3 | Add the exact historical Phase F-1 supersession table and precedence pointers in both controlling integration documents, plus explicit callback/error traces | Trace two potential preparation failures (only the first occurs), failed application, and failed discard. Each has exactly one controlling attempt/eligibility policy; no blanket Phase F-1 implementation or D5 acceptance follows |
 | Consistency P3-1 | Correct the ownership map to include the effective managed-layer hook helpers/contributions and full-decorator regeneration obligations | Follow matcher overrides to effective helper calls, not only core resources. The planned inherited/local golden must show one wrapper per effective independent after hook |
 
-All findings remain open pending reviewer verification. Source-traced document
-closure is not execution or an implementation regression-test result.
+All listed findings were verified closed for the document gate by their
+originating reviewers and the fresh dual gate at the recorded tuple.
+Source-traced document closure is not execution or an implementation
+regression-test result.
 
 ## One Bounded Patch
 

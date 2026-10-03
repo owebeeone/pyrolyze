@@ -23,7 +23,10 @@ the exact implementation tuple and scope are recorded in
 `dev-docs/PytoLifecyleIntegSC2-ReviewLoop.md`. SC3's concrete resource/notification
 and registration/removal audit is now recorded in
 `dev-docs/PytoLifecyleIntegSC3.md`; its first bounded library prerequisite is
-`dev-docs/PytoLifecyleIntegSC3-L0Plan.md`, still a DRAFT pending dual review.
+`dev-docs/PytoLifecyleIntegSC3-L0Plan.md`, accepted as a design at Pyrolyze
+`715a0074625844afae05d08afc86557d196bdecd` after dual review and original-finding
+closure; its exact scope/tuple are in the adjacent review ledger. The library
+implementation and private consumer adoption are not yet accepted.
 Neither document activates resource routes or authorizes snapshot deletion.
 Other keys retain application-specific completion; no atomic multi-key
 operation is assumed.

@@ -1,6 +1,8 @@
 # SC3-L0 Design Review Ledger
 
-Status: **DRAFT; initial dual NO-GO; merged remediation 1 awaiting verification**.
+Status: **Design accepted at Pyrolyze `715a0074625844afae05d08afc86557d196bdecd`
+after originating Consistency/Safety closures and fresh dual GO/GO; acceptance
+is limited to the bounded library design, not runtime or resource activation**.
 Date: 2026-10-04. The operator approved continuation of the original proposal:
 a bounded, reviewed lifecycle-library prerequisite before resource adapters.
 
@@ -141,3 +143,68 @@ one disposition and a closure obligation. One merged document patch addresses
 them. The material preparation-write boundary correction requires fresh dual
 review of the corrected tuple, plus originating-counterexample verification.
 Resource admission and runtime implementation remain blocked during this gate.
+
+## Remediation 1 / Fresh Round 2 Dispatch
+
+Corrected document checkpoint: Pyrolyze
+`715a0074625844afae05d08afc86557d196bdecd`; dependency tuple unchanged.
+One merged remediation is committed. Original reports were fidelity-checked
+against returned testimony. Source/test diffs and document whitespace checks
+passed; no runtime verification was run or claimed.
+
+The originating reviewers receive focused counterexample re-verification using
+`ClosurePromptConsistency-1` / `ClosurePromptSafety-1` process files. Fresh dual
+reviewers receive canonical `PromptConsistency-2` / `PromptSafety-2` process
+files against the corrected mutation boundary. Each sees the initial reports
+and merged remediation, not any current-round peer or closure report. No
+findings are self-closed. Complete current reports are held until all finish.
+All reviewed documents and tuple HEADs remain frozen during this dispatch.
+
+## Remediation 1 Closure / Fresh Round 2 Verdict Merge
+
+All four complete reports returned on the same unchanged corrected tuple and
+were held until all involved reviewers finished, then filed verbatim and
+fidelity-checked against the returned testimony:
+
+| Report | Role | Verdict |
+| --- | --- | --- |
+| `PytoLifecyleIntegSC3-L0Plan-ReviewConsistency-1.md` | Originating Consistency: original counterexamples | GO; its three P2 and one P3 verified closed for the document gate |
+| `PytoLifecyleIntegSC3-L0Plan-ReviewSafety-1.md` | Originating Safety: original counterexamples | GO; its shared preparation-write P2 verified closed for the document gate |
+| `PytoLifecyleIntegSC3-L0Plan-ReviewConsistency-2.md` | Fresh full Consistency gate | GO; zero open findings |
+| `PytoLifecyleIntegSC3-L0Plan-ReviewSafety-2.md` | Fresh full Safety gate | GO; zero open findings |
+
+Accepted design tuple:
+
+- Pyrolyze: `715a0074625844afae05d08afc86557d196bdecd`.
+- yidl-lifecycle: `335d2795cdd65b2542e0ac9ec70b7f16ee0b1901`.
+- YIDL: `95a6e3e52fc3d710d25c5d59315e791a3ed75cc4`.
+- Astichi: `387ca5e1da76204ee60922094734c13ee36383c0`.
+
+One merged remediation was used. The canceled dispatch consumed no completed
+review/remediation round. Both fresh reviewers classified the refined write
+boundary as the original shared root, not a new architectural root, and found
+no new architectural roots. No blocking finding was self-closed by the drafter.
+All reviewers are stopped; no agent review or implementation session remains
+running.
+
+This accepts the token-bound completion evidence, disjoint outcome predicates,
+bounded Phase F-1/D4 supersession, preparation-write window, independent-hook
+draining, planned tests, and explicit implementation stop boundaries as a
+design. It does not assert that pinned library code implements them. Runtime,
+tests, goldens, and the SC3 audit remain unchanged. The status/receipt commit
+records acceptance without changing the reviewed substantive contract.
+
+Next action is the separately verified library implementation, starting with
+L0-1 and then generated enforcement/goldens in L0-2. Existing excluded
+lazy/mutable changes overlap core YIDL, the generated artifact, and goldens;
+their prerequisite checkpoint must be explicitly settled if they cannot be
+isolated. Do not silently include or revert them. No library/consumer adoption
+or resource route is activated by this receipt. After library acceptance,
+the private consumer gate still precedes D5/category adapters and activation.
+
+The review was read-only/source-traced. No tests/builds were run in this resumed
+document checkpoint; the earlier focused 127-pass result and separate full
+default 13/broader 14 failures are historical evidence, not fresh green gates.
+Only Pyrolyze-owned plan/process documents were committed. Unrelated backend
+documents, dirty dependency work, and parent/submodule pointers were excluded.
+No tags, pushes, merges, or worktrees were created.

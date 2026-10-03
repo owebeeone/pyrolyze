@@ -2,7 +2,11 @@
 
 ## Status And Authority
 
-Status: **DRAFT, merged remediation 1; design re-review pending; no implementation yet**.
+Status: **Design accepted at Pyrolyze `715a0074625844afae05d08afc86557d196bdecd`
+after fresh Consistency/Safety GO/GO and originating-reviewer closure; no
+implementation yet**. Reports and exact dependency tuple are recorded in
+`PytoLifecyleIntegSC3-L0Plan-ReviewLoop.md`. Acceptance covers this bounded
+library design only, not implementation, private consumer adoption, or activation.
 Date: 2026-10-04. The operator approved the original proposal: a reviewed,
 bounded lifecycle-library prerequisite before resource publication adapters.
 
