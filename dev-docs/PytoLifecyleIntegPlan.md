@@ -20,8 +20,11 @@ DRAFT amendment snapshot and gives the exact supersession table, gated
 implementation sequence, and acceptance observations. Its gated design,
 private SC1 owner, and private SC2 field-only proof have now passed review;
 the exact implementation tuple and scope are recorded in
-`dev-docs/PytoLifecyleIntegSC2-ReviewLoop.md`. Next is SC3's resource/notification
-and registration/removal audit, not broad activation or snapshot deletion.
+`dev-docs/PytoLifecyleIntegSC2-ReviewLoop.md`. SC3's concrete resource/notification
+and registration/removal audit is now recorded in
+`dev-docs/PytoLifecyleIntegSC3.md`; its first bounded library prerequisite is
+`dev-docs/PytoLifecyleIntegSC3-L0Plan.md`, still a DRAFT pending dual review.
+Neither document activates resource routes or authorizes snapshot deletion.
 Other keys retain application-specific completion; no atomic multi-key
 operation is assumed.
 
