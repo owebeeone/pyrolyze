@@ -34,6 +34,26 @@ The compiler does not lower authored `try` statements. The caught-child case
 therefore catches the authored child's exception in an ordinary runtime
 boundary callback; it does not introduce an unsupported author-facing form.
 
+## Construction Golden
+
+`slot_construction.py` is I1b coverage for ordinary, decorated, and
+multiple-inheritance slots. It pins the single inherited common field set,
+injected manager identity, completed initialization before root/parent
+registration, and detached direct constructors. This is new migration coverage,
+not a regeneration of the historical runtime observations.
+
+Inspect it using the same environment:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 \
+PYTHONPATH=src:../yidl-lifecycle/src:../yidl/src:../astichi/src \
+  ../.venv/bin/python tests/data/lcm_integration/slot_construction.py
+```
+
+The expected JSON is authored against the accepted construction contract.
+Review a proposed change before updating `baselines/slot_construction.json`;
+the script prints observations and does not rewrite the golden.
+
 ## Run
 
 From the Pyrolyze repository root, using the existing workspace environment:

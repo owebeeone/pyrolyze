@@ -29,7 +29,6 @@ class SlotCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
         self._last_args: tuple[Any, ...] = ()
         self._last_kwargs: tuple[tuple[str, Any], ...] = ()
         self._binding: Any = None
-        self._site_metadata: tuple[Any, ...] = ()
         self._runtime_locals: dict[str, Any] = {}
 
     def evaluate(

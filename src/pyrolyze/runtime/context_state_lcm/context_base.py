@@ -3,15 +3,15 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass
 import os
-from typing import Any, Callable, Iterator, Self, TYPE_CHECKING, TypeVar
+from typing import Any, Callable, Iterator, TYPE_CHECKING, TypeVar
 
 from pyrolyze.api import MountDirective, UIElement
-from .lifecycle_adapter import TransactionManager, const, initvar, local_store, managed, managed_context
+from .lifecycle_adapter import const, local_store, managed, managed_context
 from pyrolyze.runtime.app_context import APP_CONTEXT_MISSING, EMPTY_APP_CONTEXT_LOOKUP
 from pyrolyze.runtime.slot_kinds import ContextKind
 from pyrolyze.runtime.slot_call_semantics import ExternalStoreRef
 from pyrolyze.runtime.slot_expr import SlotExpr
-from ._base import StateMgrBase, USE_OWNER
+from ._base import StateMgrBase, USE_OWNER, _resolve_render_context_state_mgr_initvar
 from ._support import (
     PendingEventHandlerBinding,
     REFRACTOR_CLASSES,
@@ -40,8 +40,6 @@ from ._support import (
 T = TypeVar("T")
 if TYPE_CHECKING:
     from pyrolyze.runtime.app_context import AppContextKey, GenerationTracker
-    from pyrolyze.runtime.context_bare_refactor_lcm import RenderContext
-    from pyrolyze.runtime.context_state_lcm.render_context import RenderContextStateMgr
 
 
 PASS_TX_KEY = "context_pass"
@@ -52,37 +50,12 @@ def _default_generation_tracker_key(self: ContextBaseStateMgr) -> Any:
     return type(self.owner)._generation_tracker_key_const
 
 
-def _default_context_kind(self: ContextBaseStateMgr) -> ContextKind:
-    return getattr(self.owner, "_context_kind", getattr(type(self.owner), "_context_kind", ContextKind.SLOT))
-
-
 def _default_pass_scope_handle_cls(self: ContextBaseStateMgr) -> Any:
     return type(self.owner)._pass_scope_handle_cls
 
 
 def _default_owner_type_name(self: ContextBaseStateMgr) -> str:
     return type(self.owner).__name__
-
-
-def _resolve_render_context_state_mgr_initvar(
-    cls: type[ContextBaseStateMgr],
-    render_context_state_mgr: RenderContextStateMgr | None,
-    render_context: RenderContext | None,
-) -> RenderContextStateMgr | None:
-    del cls
-    if render_context_state_mgr is not None:
-        return render_context_state_mgr
-    if render_context is not None and hasattr(render_context, "_state_mgr"):
-        return render_context._state_mgr
-    return None
-
-
-def _default_render_context_state_mgr(
-    self: ContextBaseStateMgr,
-    _resolved_render_context_state_mgr: RenderContextStateMgr | None,
-) -> RenderContextStateMgr | None:
-    del self
-    return _resolved_render_context_state_mgr
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,21 +66,12 @@ class UiSnapshotEntry:
 
 @managed_context
 class ContextBaseStateMgr(StateMgrBase):
-    # Constructor-only inputs for values that cannot yet be derived from owner at
-    # initialization time. Keep them out of steady-state lifecycle fields.
-    render_context_state_mgr: RenderContextStateMgr | None = initvar(default=None)
-    render_context: RenderContext | None = initvar(default=None)
-    _resolved_render_context_state_mgr: RenderContextStateMgr | None = initvar(
+    _render_context_state_mgr: Any = const(
         init=False,
         default_factory=_resolve_render_context_state_mgr_initvar,
     )
-
     _generation_tracker_key: AppContextKey[GenerationTracker] = const(
         default_factory=_default_generation_tracker_key,
-        allow_self_factory=True,
-    )
-    _context_kind: ContextKind = const(
-        default_factory=_default_context_kind,
         allow_self_factory=True,
     )
     _pass_scope_handle_cls: Any = const(
@@ -116,10 +80,6 @@ class ContextBaseStateMgr(StateMgrBase):
     )
     _owner_type_name: str = const(
         default_factory=_default_owner_type_name,
-        allow_self_factory=True,
-    )
-    _render_context_state_mgr: RenderContextStateMgr | None = const(
-        default_factory=_default_render_context_state_mgr,
         allow_self_factory=True,
     )
     children_state: dict[Any, Any] = managed(
@@ -142,24 +102,6 @@ class ContextBaseStateMgr(StateMgrBase):
     # The methods below are still the legacy imperative implementation and do
     # not yet respect these state units. That mismatch is intentional in this
     # step: lock the field model first, then rewrite the methods against it.
-
-    @classmethod
-    def create(cls, owner: Any, **kwargs: Any) -> Self:
-        render_state = _resolve_render_context_state_mgr_initvar(
-            cls,
-            kwargs.get("render_context_state_mgr"),
-            kwargs.get("render_context"),
-        )
-        if render_state is not None:
-            manager = getattr(render_state, "_transaction_manager", None)
-            if manager is not None:
-                # Preserve the bootstrap's boundary-manager precedence, before initialization.
-                kwargs["transaction_manager"] = manager
-        return super().create(owner=owner, **kwargs)
-
-    @property
-    def _transaction_manager(self) -> TransactionManager | None:
-        return self._y_get_transaction_manager()
 
     def root_context_state_mgr(self) -> Any:
         if self._render_context_state_mgr is None:

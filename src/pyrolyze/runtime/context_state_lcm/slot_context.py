@@ -1,42 +1,19 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
-from typing import Any
+from typing import Any, Self
 
 from pyrolyze.runtime.slot_kinds import ContextKind
-from ._base import StateMgrBase, unavailable
+from ._base import StateMgrBase
 from .context_base import ContextBaseStateMgr
 
 
 class SlotContextStateMgr(StateMgrBase):
-    def __init__(
-        self,
-        owner: Any,
-        *,
-        render_context_state_mgr: Any,
-        parent_state_mgr: Any,
-        slot_id: Any,
-        invoke_dirty: bool,
-        seen_in_pass: bool,
-        **kwargs: Any,
-    ) -> None:
-        if isinstance(self, ContextBaseStateMgr):
-            ContextBaseStateMgr.__init__(
-                self,
-                owner=owner,
-                render_context_state_mgr=render_context_state_mgr,
-                **kwargs,
-            )
-        else:
-            StateMgrBase.__init__(self, owner=owner)
-            self._render_context_state_mgr = render_context_state_mgr
-            self._context_kind = type(owner)._context_kind
-        self._parent_state_mgr = parent_state_mgr
-        self._slot_id = slot_id
-        self._invoke_dirty = invoke_dirty
-        self._seen_in_pass = seen_in_pass
-        self._site_metadata: tuple[Any, ...] = ()
-        self.attach_to_graph()
+    @classmethod
+    def create(cls, owner: Any, **kwargs: Any) -> Self:
+        state = super().create(owner=owner, **kwargs)
+        state.attach_to_graph()
+        return state
 
     def attach_to_graph(self) -> None:
         self._render_context_state_mgr.register_slot_state_mgr(self)

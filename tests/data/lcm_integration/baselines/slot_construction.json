@@ -1,0 +1,205 @@
+[
+  {
+    "common_field_counts": {
+      "_invoke_dirty": 1,
+      "_parent_state_mgr": 1,
+      "_seen_in_pass": 1,
+      "_site_metadata": 1,
+      "_slot_id": 1
+    },
+    "complete_at_registration": true,
+    "direct_constructor_detached": true,
+    "flags": [
+      false,
+      true
+    ],
+    "identity_writes": {
+      "_parent_state_mgr": true,
+      "_render_context_state_mgr": true,
+      "_slot_id": true
+    },
+    "inputs_not_stored": true,
+    "owner_and_inputs": true,
+    "registered_identity": true,
+    "registration_order": [
+      "root",
+      "parent"
+    ],
+    "shared_manager": true,
+    "type": "SlotContextStateMgr"
+  },
+  {
+    "common_field_counts": {
+      "_invoke_dirty": 1,
+      "_parent_state_mgr": 1,
+      "_seen_in_pass": 1,
+      "_site_metadata": 1,
+      "_slot_id": 1
+    },
+    "complete_at_registration": true,
+    "direct_constructor_detached": true,
+    "flags": [
+      false,
+      true
+    ],
+    "identity_writes": {
+      "_parent_state_mgr": true,
+      "_render_context_state_mgr": false,
+      "_slot_id": true
+    },
+    "inputs_not_stored": true,
+    "owner_and_inputs": true,
+    "registered_identity": true,
+    "registration_order": [
+      "root",
+      "parent"
+    ],
+    "shared_manager": true,
+    "type": "RerunnableSlotContextStateMgr"
+  },
+  {
+    "common_field_counts": {
+      "_invoke_dirty": 1,
+      "_parent_state_mgr": 1,
+      "_seen_in_pass": 1,
+      "_site_metadata": 1,
+      "_slot_id": 1
+    },
+    "complete_at_registration": true,
+    "direct_constructor_detached": true,
+    "flags": [
+      false,
+      true
+    ],
+    "identity_writes": {
+      "_parent_state_mgr": true,
+      "_render_context_state_mgr": true,
+      "_slot_id": true
+    },
+    "inputs_not_stored": true,
+    "owner_and_inputs": true,
+    "registered_identity": true,
+    "registration_order": [
+      "root",
+      "parent"
+    ],
+    "shared_manager": true,
+    "type": "EventHandlerSlotContextStateMgr"
+  },
+  {
+    "common_field_counts": {
+      "_invoke_dirty": 1,
+      "_parent_state_mgr": 1,
+      "_seen_in_pass": 1,
+      "_site_metadata": 1,
+      "_slot_id": 1
+    },
+    "complete_at_registration": true,
+    "direct_constructor_detached": true,
+    "flags": [
+      false,
+      true
+    ],
+    "identity_writes": {
+      "_parent_state_mgr": true,
+      "_render_context_state_mgr": false,
+      "_slot_id": true
+    },
+    "inputs_not_stored": true,
+    "owner_and_inputs": true,
+    "registered_identity": true,
+    "registration_order": [
+      "root",
+      "parent"
+    ],
+    "shared_manager": true,
+    "type": "LeafSlotContextStateMgr"
+  },
+  {
+    "common_field_counts": {
+      "_invoke_dirty": 1,
+      "_parent_state_mgr": 1,
+      "_seen_in_pass": 1,
+      "_site_metadata": 1,
+      "_slot_id": 1
+    },
+    "complete_at_registration": true,
+    "direct_constructor_detached": true,
+    "flags": [
+      false,
+      true
+    ],
+    "identity_writes": {
+      "_parent_state_mgr": true,
+      "_render_context_state_mgr": false,
+      "_slot_id": true
+    },
+    "inputs_not_stored": true,
+    "owner_and_inputs": true,
+    "registered_identity": true,
+    "registration_order": [
+      "root",
+      "parent"
+    ],
+    "shared_manager": true,
+    "type": "ContainerSlotContextStateMgr"
+  },
+  {
+    "common_field_counts": {
+      "_invoke_dirty": 1,
+      "_parent_state_mgr": 1,
+      "_seen_in_pass": 1,
+      "_site_metadata": 1,
+      "_slot_id": 1
+    },
+    "complete_at_registration": true,
+    "direct_constructor_detached": true,
+    "flags": [
+      false,
+      true
+    ],
+    "identity_writes": {
+      "_parent_state_mgr": false,
+      "_render_context_state_mgr": false,
+      "_slot_id": false
+    },
+    "inputs_not_stored": true,
+    "owner_and_inputs": true,
+    "registered_identity": true,
+    "registration_order": [
+      "root",
+      "parent"
+    ],
+    "shared_manager": true,
+    "type": "SlotExprSlotContextStateMgr"
+  },
+  {
+    "common_field_counts": {
+      "_invoke_dirty": 1,
+      "_parent_state_mgr": 1,
+      "_seen_in_pass": 1,
+      "_site_metadata": 1,
+      "_slot_id": 1
+    },
+    "complete_at_registration": true,
+    "direct_constructor_detached": true,
+    "flags": [
+      false,
+      true
+    ],
+    "identity_writes": {
+      "_parent_state_mgr": false,
+      "_render_context_state_mgr": false,
+      "_slot_id": false
+    },
+    "inputs_not_stored": true,
+    "owner_and_inputs": true,
+    "registered_identity": true,
+    "registration_order": [
+      "root",
+      "parent"
+    ],
+    "shared_manager": true,
+    "type": "ComponentCallSlotContextStateMgr"
+  }
+]

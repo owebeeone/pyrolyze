@@ -5,8 +5,4 @@ from .slot_context import SlotContextStateMgr
 
 
 class RerunnableSlotContextStateMgr(SlotContextStateMgr, ContextBaseStateMgr):
-    def __init__(self, owner: object, **kwargs: object) -> None:
-        super().__init__(
-            owner=owner,
-            **kwargs,
-        )
+    pass

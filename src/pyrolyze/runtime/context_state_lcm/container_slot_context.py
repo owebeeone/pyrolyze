@@ -8,4 +8,3 @@ class ContainerSlotContextStateMgr(RerunnableSlotContextStateMgr):
         super().__init__(owner=owner, **kwargs)
         self._expects_native_root = False
         self._committed_native_root = False
-        self._site_metadata = ()

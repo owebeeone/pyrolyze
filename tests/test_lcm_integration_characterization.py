@@ -28,6 +28,10 @@ def test_lifecycle_shared_completion_characterization_baseline() -> None:
     _check_baseline("shared_completion.py", "shared_completion", dict(os.environ))
 
 
+def test_common_slot_construction_golden() -> None:
+    _check_baseline("slot_construction.py", "slot_construction", dict(os.environ))
+
+
 @pytest.mark.parametrize("implementation", ("original", "lcm"))
 def test_reference_callback_selection_baseline(implementation: str) -> None:
     environment = dict(os.environ)

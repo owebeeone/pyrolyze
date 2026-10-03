@@ -4,10 +4,10 @@ from dataclasses import replace
 from typing import Any, Callable
 
 from pyrolyze.freezable import freezable_dataclass, frozen_dataclass
-from .lifecycle_adapter import const, field as lifecycle_field, initvar, local_store, managed, managed_context
+from .lifecycle_adapter import const, local_store, managed, managed_context
 from pyrolyze.runtime.slot_kinds import ContextKind
 
-from ._base import USE_FACTORY, USE_OWNER
+from ._base import USE_FACTORY, USE_OWNER, _copy_parent_state_mgr, _copy_slot_id
 from ._support import REFRACTOR_CLASSES
 from ._support import (
     _BOUND_METHOD_SELF_MISSING,
@@ -23,31 +23,6 @@ from pyrolyze.runtime.function_arg_helpers import build_function_arg_dirty_map, 
 
 from .context_base import PASS_TX_KEY
 from .rerunnable_slot_context import RerunnableSlotContextStateMgr
-
-
-def _copy_parent_state_mgr(cls: type[object], parent_state_mgr: Any) -> Any:
-    del cls
-    return parent_state_mgr
-
-
-def _copy_slot_id(cls: type[object], slot_id: Any) -> Any:
-    del cls
-    return slot_id
-
-
-def _copy_invoke_dirty(cls: type[object], invoke_dirty: bool) -> bool:
-    del cls
-    return invoke_dirty
-
-
-def _copy_seen_in_pass(cls: type[object], seen_in_pass: bool) -> bool:
-    del cls
-    return seen_in_pass
-
-
-def _attach_component_call_to_graph(self: object) -> None:
-    self.attach_to_graph()
-    return None
 
 
 @freezable_dataclass(frozen_type="FrozenComponentCallInvocationState")
@@ -73,35 +48,11 @@ class FrozenComponentCallInvocationState:
 
 @managed_context
 class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
-    parent_state_mgr: Any = initvar(default=None)
-    slot_id: Any = initvar(default=None)
-    invoke_dirty: bool = initvar(default=True)
-    seen_in_pass: bool = initvar(default=False)
-    _parent_state_mgr: Any = const(
-        init=False,
-        default_factory=_copy_parent_state_mgr,
-    )
-    _slot_id: Any = const(
-        init=False,
-        default_factory=_copy_slot_id,
-    )
-    _invoke_dirty: bool = lifecycle_field(
-        init=False,
-        default_factory=_copy_invoke_dirty,
-    )
-    _seen_in_pass: bool = lifecycle_field(
-        init=False,
-        default_factory=_copy_seen_in_pass,
-    )
-    _attach_to_graph_bad_program: None = const(
-        init=False,
-        default_factory=_attach_component_call_to_graph,
-        allow_self_factory=True,
-    )
+    _parent_state_mgr: Any = const(init=False, default_factory=_copy_parent_state_mgr)
+    _slot_id: Any = const(init=False, default_factory=_copy_slot_id)
     _component_identity: Any = local_store(default=None)
     _schema: tuple[int, tuple[str, ...]] = local_store(default=(0, ()))
     _child_context_state_mgr: Any = local_store(default=None)
-    _site_metadata: tuple[Any, ...] = local_store(default_factory=tuple)
     _pass_owned_event_handler_order: tuple[Any, ...] = local_store(default_factory=tuple)
     _call_state: FrozenComponentCallInvocationState = managed(
         default_factory=FrozenComponentCallInvocationState,

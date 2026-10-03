@@ -2,61 +2,18 @@ from __future__ import annotations
 
 from typing import Any, Callable, Hashable
 
-from .lifecycle_adapter import const, field as lifecycle_field, initvar, local_store, managed_context, transient
+from .lifecycle_adapter import const, local_store, managed_context, transient
 from pyrolyze.runtime.call_site_context import CallSiteContextManager
 from pyrolyze.runtime.slot_call_semantics import PyrolyzeMountAdvertisementBinding
 from .context_base import PASS_TX_KEY
+from ._base import _copy_parent_state_mgr, _copy_slot_id
 from .rerunnable_slot_context import RerunnableSlotContextStateMgr
-
-
-def _copy_parent_state_mgr(cls: type[object], parent_state_mgr: Any) -> Any:
-    del cls
-    return parent_state_mgr
-
-
-def _copy_slot_id(cls: type[object], slot_id: Any) -> Any:
-    del cls
-    return slot_id
-
-
-def _copy_invoke_dirty(cls: type[object], invoke_dirty: bool) -> bool:
-    del cls
-    return invoke_dirty
-
-
-def _copy_seen_in_pass(cls: type[object], seen_in_pass: bool) -> bool:
-    del cls
-    return seen_in_pass
-
-
-def _attach_slot_expr_to_graph(self: object) -> None:
-    self.attach_to_graph()
-    return None
 
 
 @managed_context
 class SlotExprSlotContextStateMgr(RerunnableSlotContextStateMgr):
-    parent_state_mgr: Any = initvar(default=None)
-    slot_id: Any = initvar(default=None)
-    invoke_dirty: bool = initvar(default=True)
-    seen_in_pass: bool = initvar(default=False)
-    _parent_state_mgr: Any = const(
-        init=False,
-        default_factory=_copy_parent_state_mgr,
-    )
-    _slot_id: Any = const(
-        init=False,
-        default_factory=_copy_slot_id,
-    )
-    _invoke_dirty: bool = lifecycle_field(
-        init=False,
-        default_factory=_copy_invoke_dirty,
-    )
-    _seen_in_pass: bool = lifecycle_field(
-        init=False,
-        default_factory=_copy_seen_in_pass,
-    )
-    _site_metadata: tuple[Any, ...] = local_store(default_factory=tuple)
+    _parent_state_mgr: Any = const(init=False, default_factory=_copy_parent_state_mgr)
+    _slot_id: Any = const(init=False, default_factory=_copy_slot_id)
     _call_site_context_manager: CallSiteContextManager = local_store(
         default_factory=CallSiteContextManager,
     )
@@ -65,11 +22,6 @@ class SlotExprSlotContextStateMgr(RerunnableSlotContextStateMgr):
     _staged_post_commit_callbacks: tuple[Callable[[], None], ...] = transient(
         default_factory=tuple,
         tx_key=PASS_TX_KEY,
-    )
-    _attach_to_graph_bad_program: None = const(
-        init=False,
-        default_factory=_attach_slot_expr_to_graph,
-        allow_self_factory=True,
     )
     _mount_advertisement_binding_type = PyrolyzeMountAdvertisementBinding
 
