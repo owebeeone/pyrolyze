@@ -95,9 +95,35 @@ eight-file decomposed subset still has **41 passed and 14 failed** in the same
 override, mount, generation, and event-UI clusters. I0's pre-existing failures
 are not treated as repaired by construction changes.
 
-The exact implementation revision and final independent review outcome are
-recorded after the settled checkpoint's review. These suite results alone do
-not claim acceptance or activation.
+## Independent Acceptance
+
+Status: **I1b accepted at Pyrolyze
+`7676cc975cb72c6dcb97a29e13f7a41838864312` after
+`dev-docs/PytoLifecyleIntegI1b-ReviewState.md` reported GO; this accepts common
+construction and explicit post-initialization attachment only.**
+
+Settled dependencies: yidl-lifecycle
+`cdf08544deea846bca4fa7e0c468ebee8d41e138`, YIDL
+`95a6e3e52fc3d710d25c5d59315e791a3ed75cc4` (committed view only), Astichi
+`387ca5e1da76204ee60922094734c13ee36383c0`, and parent
+`a20f8cfb633a268925464eb27728d1934a70aea9` (context only). The reviewer checked
+all five HEADs and statuses at both ends; the tuple and excluded status listings
+were unchanged.
+
+- Independent State review: zero P0/P1/P2/P3 findings, **27 passed in 3.15s**
+  in the five-file command below. Broader/full counts above are lane-owner
+  verification, not reviewer-executed checks.
+- No blocker or reviewer request triggered Code escalation. Remediation rounds:
+  0. The report is filed verbatim, with the generated prompt adjacent.
+- Discovery during drafting: the golden caught an overly strict identity-write
+  policy before review; the compatibility override correction passed all gates.
+  No I1b defect was found by independent review. Existing I0 debt remains open.
+- The accepted plan bytes, all historical snapshots, libraries, runtime routing,
+  parent pointer, and existing completion cohorts are unchanged.
+
+Acceptance does not cover the rest of I3a, callback/invocation/resource holders,
+L0/D4/D5 behavior, U1/U2 unification, or activation. No tag, push, or merge was
+requested or performed.
 
 ## Reproduction And Next Work
 
