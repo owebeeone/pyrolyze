@@ -53,4 +53,3 @@ Product and dependency source inspection used `git show <exact-sha>:<path>`, nev
 The remaining risks are implementation obligations, not demonstrated text-authorized defects: proving complete field-only discard against the actual manager, preserving failure causes when cleanup raises, enforcing reuse-readiness after incomplete cleanup, and accounting for component replacement, registries, resource retirement, and invalidations during a pass. A green proof must not bypass these gates.
 
 The next action is for the lane owner to file this report and evaluate the independent dual-review acceptance gate. No runtime implementation or activation follows from this verdict alone.
-

@@ -65,4 +65,3 @@
 No blocking consistency defect was established. Feasibility of complete field-only failure cleanup, subsequent bounded adapters, and dirty/metadata policies remains unproven and explicitly gated; this review does not close those implementation questions.
 
 **Next action:** Record the two bounded documentation corrections in the amendment and transition ledger, preserving the existing implementation and activation gates.
-

@@ -112,4 +112,3 @@ part of the result; they are what a GO rests on.}
 ## 3. Risks and next action
 {Residual risks below the finding bar; the single next action this verdict
 implies.}
-
