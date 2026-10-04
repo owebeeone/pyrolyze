@@ -10,6 +10,10 @@ evidence. L0-1 manager implementation, L0-2 generated guards/hooks/goldens,
 library acceptance, and private consumer adoption are still pending. The SC2
 field-only proof remains privately gated; resource routes are not activated.
 
+[Resume handoff](YidlLifecycleIntegrationHandoff.md) records the repository
+checkpoint, published compiler fixes, verification commands, and the next
+bounded library implementation steps. It supplements, not replaces, the plans.
+
 Read these documents in order:
 
 | Document | Purpose |
