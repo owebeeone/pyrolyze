@@ -21,7 +21,7 @@ Migration First, Completion Contract, I2, and I3a. This addendum makes the next
 checkpoint concrete; it does not supersede those contracts. I1b accepted
 construction and post-construction attachment only. Dirty/seen/site metadata
 and pass publication were expressly left unfinished in
-`dev-docs/PytoLifecyleIntegI1bEvidence.md`.
+`dev-docs/history/lifecycle-integration/PytoLifecyleIntegI1bEvidence.md`.
 
 Implement only the decomposed path: `src/pyrolyze/runtime/context_state_lcm/`
 and its owner facade in `src/pyrolyze/runtime/context_bare_refactor_lcm.py`.

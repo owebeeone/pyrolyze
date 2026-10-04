@@ -20,7 +20,7 @@ DRAFT amendment snapshot and gives the exact supersession table, gated
 implementation sequence, and acceptance observations. Its gated design,
 private SC1 owner, and private SC2 field-only proof have now passed review;
 the exact implementation tuple and scope are recorded in
-`dev-docs/PytoLifecyleIntegSC2-ReviewLoop.md`. SC3's concrete resource/notification
+`dev-docs/history/lifecycle-integration/PytoLifecyleIntegSC2-ReviewLoop.md`. SC3's concrete resource/notification
 and registration/removal audit is now recorded in
 `dev-docs/PytoLifecyleIntegSC3.md`; its first bounded library prerequisite is
 `dev-docs/PytoLifecyleIntegSC3-L0Plan.md`, accepted as a design at Pyrolyze
@@ -42,8 +42,8 @@ Resource lifetime, dirty/metadata permissions, and generic failure-draining
 gates not replaced by the amendment remain mandatory.
 
 This document updates the integration direction in
-`dev-docs/ContextLifecyleMetaprogrammingPlan.md` and
-`dev-docs/LifecyleAdoptionPatterns.md`. Their behavioral goals remain useful, but
+`dev-docs/history/legacy-lifecycle/ContextLifecyleMetaprogrammingPlan.md` and
+`dev-docs/history/legacy-lifecycle/LifecyleAdoptionPatterns.md`. Their behavioral goals remain useful, but
 their references to `pyrolyze.lifecycle`, record internals, and transactional
 `binding()` fields do not describe the extracted library exactly.
 
@@ -55,10 +55,10 @@ Completion detail added on 2026-10-03 after the I0 investigation. The earlier
 review-loop acceptance covered the preceding plan revision, not approval of
 the outstanding semantic decisions or independent review of this revision.
 Historical completion-review tuples are recorded in
-`dev-docs/PytoLifecyleIntegCompletionPlan-ReviewLoop.md`. The user-directed scope
+`dev-docs/history/lifecycle-integration/PytoLifecyleIntegCompletionPlan-ReviewLoop.md`. The user-directed scope
 and sequencing revisions below supersede that acceptance for the current plan;
 historical reports remain unchanged. The holder-first campaign is recorded in
-`dev-docs/PytoLifecyleIntegHolderFirstPlan-ReviewLoop.md`.
+`dev-docs/history/lifecycle-integration/PytoLifecyleIntegHolderFirstPlan-ReviewLoop.md`.
 
 ### Migration First: Scope Decision
 
@@ -123,8 +123,8 @@ dependencies are reproducible from the parent commit alone. Record the YIDL and
 Astichi revisions and any dirty dependency changes during preflight.
 
 I0 baseline and characterization are now recorded in
-`dev-docs/PytoLifecyleIntegI0Findings.md`, with the field/resource inventory in
-`dev-docs/PytoLifecyleIntegI0Inventory.md`. The original runtime permits early
+`dev-docs/history/lifecycle-integration/PytoLifecyleIntegI0Findings.md`, with the field/resource inventory in
+`dev-docs/history/lifecycle-integration/PytoLifecyleIntegI0Inventory.md`. The original runtime permits early
 child publication and caught-child recovery. Preserve those observations as
 the migration compatibility contract; the atomic outer-boundary alternative is
 deferred. I0's bounded completion probe is sufficient to choose the holder-first
@@ -670,7 +670,7 @@ under the label of a notification batch.
 
 ## Replacement And Deletion Ledger
 
-Use `dev-docs/PytoLifecyleIntegI0Inventory.md` for the full field/resource
+Use `dev-docs/history/lifecycle-integration/PytoLifecyleIntegI0Inventory.md` for the full field/resource
 inventory. This ledger states the completion obligations rather than repeating
 all field facts. State-manager filenames below are relative to
 `src/pyrolyze/runtime/context_state_lcm/`; other paths are repository-relative.

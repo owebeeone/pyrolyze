@@ -3,6 +3,13 @@
 ## Scope
 This file defines repository-specific coding instructions for `py-rolyze`.
 
+## Developer Documentation
+- Start with `dev-docs/README.md` for current plans and their precedence.
+- `dev-docs/history/` preserves completed checkpoints, superseded designs, and
+  review evidence. Do not treat archived instructions as current authority.
+- Preserve archived verdicts/revisions when moving files; update current links
+  and record any still-pending obligation in the active plan.
+
 ## Design Rules
 - Prefer `@dataclass` for classes that primarily hold state.
 - Do not introduce enums without explicit project-owner approval. Do not work

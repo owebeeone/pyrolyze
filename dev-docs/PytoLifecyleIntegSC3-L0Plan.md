@@ -5,7 +5,7 @@
 Status: **Design accepted at Pyrolyze `715a0074625844afae05d08afc86557d196bdecd`
 after fresh Consistency/Safety GO/GO and originating-reviewer closure; no
 implementation yet**. Reports and exact dependency tuple are recorded in
-`PytoLifecyleIntegSC3-L0Plan-ReviewLoop.md`. Acceptance covers this bounded
+`history/lifecycle-integration/PytoLifecyleIntegSC3-L0Plan-ReviewLoop.md`. Acceptance covers this bounded
 library design only, not implementation, private consumer adoption, or activation.
 Date: 2026-10-04. The operator approved the original proposal: a reviewed,
 bounded lifecycle-library prerequisite before resource publication adapters.
@@ -27,6 +27,10 @@ The reference is `yidl-lifecycle/dev-docs/YidlTransactionalYidlPhaseF-1Plan.md`
 at library revision `335d2795cdd65b2542e0ac9ec70b7f16ee0b1901`. Line numbers
 below identify that historical revision, not a moving working copy. This draft
 does not claim its pinned implementation already implements Phase F-1 draining.
+
+The unchanged working-copy document now lives in
+`yidl-lifecycle/dev-docs/history/transactional-rollout/YidlTransactionalYidlPhaseF-1Plan.md`.
+The original path above remains the path to use at the pinned revision.
 
 | Historical Clause | Replacement In This L0 Contract |
 | --- | --- |

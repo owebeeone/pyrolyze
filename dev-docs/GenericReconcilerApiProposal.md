@@ -1106,7 +1106,7 @@ This is a breaking rename and should be done directly rather than via aliases.
   [MountableSpecModel.md](MountableSpecModel.md)
   as the lower-level runtime model note
 - keep
-  [UiWidgetSpecModel.md](obsolete/UiWidgetSpecModel.md)
+  [UiWidgetSpecModel.md](history/obsolete/UiWidgetSpecModel.md)
   archived only as historical context
 
 

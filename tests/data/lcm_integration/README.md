@@ -85,7 +85,7 @@ Inspect without rewriting a baseline by running `common_pass_preflight.py`
 with `PYROLYZE_CONTEXT_IMPL=original` or `bare_refactor_lcm`. It prints JSON
 only; it has no regeneration option. Committed-dependency reproduction and the
 writer/completion-owner audit are in
-`dev-docs/PytoLifecyleIntegI3aPreflight.md`.
+`dev-docs/history/lifecycle-integration/PytoLifecyleIntegI3aPreflight.md`.
 
 ## Run
 

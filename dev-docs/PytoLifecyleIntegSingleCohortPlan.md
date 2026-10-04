@@ -9,7 +9,7 @@ completion rules. This is a deliberate change from the earlier holder-first
 compatibility decision, not a claim that the original runtime behaved this way.
 
 SC2 activation refinement (2026-10-04): the operator selected the private
-graph-level field-only gate in `PytoLifecyleIntegSC2.md`. That addendum controls
+graph-level field-only gate in `history/lifecycle-integration/PytoLifecyleIntegSC2.md`. That addendum controls
 SC2's activation and live-test transition: existing unactivated routes and
 historical expectations remain live until SC3. The selected outer ownership
 contract below is unchanged; a field-only acceptance is not broad activation.
@@ -60,7 +60,7 @@ Read dependency code at the committed views below, not dirty working files:
 | YIDL | `95a6e3e52fc3d710d25c5d59315e791a3ed75cc4` |
 | Astichi | `387ca5e1da76204ee60922094734c13ee36383c0` |
 
-`dev-docs/PytoLifecyleIntegI3aPreflight.md` records the failed-candidate
+`dev-docs/history/lifecycle-integration/PytoLifecyleIntegI3aPreflight.md` records the failed-candidate
 publication, permission, and borrowed-entry probes. Its JSON baselines are
 historical characterization and must not be rewritten as the target contract.
 The final focused preflight passed 29 tests; the full default suite had 819
@@ -104,7 +104,7 @@ No new author-facing decorator, context option, transaction-key API, enum,
 YIDL grammar, or dynamic key registration is proposed by this bounded amendment.
 The original no-library-change assumption was refuted by the SC1 dual review.
 On 2026-10-04 the operator authorized the bounded ownership observation and
-stale-scope fencing in `PytoLifecyleIntegSC1-RemPlan-1.md`. That prerequisite
+stale-scope fencing in `history/lifecycle-integration/PytoLifecyleIntegSC1-RemPlan-1.md`. That prerequisite
 requires fresh Code/State review; it does not authorize a generic manager
 redesign or live render wiring.
 
@@ -416,7 +416,7 @@ and parent/unrelated submodule changes. No dependency edits, parent pointer,
 tags, push, merge, worktree, or default switch are authorized here.
 
 For implementation checkpoints, use the focused five-file suite documented in
-`dev-docs/PytoLifecyleIntegI3aPreflight.md`, adding the canonical target entry;
+`dev-docs/history/lifecycle-integration/PytoLifecyleIntegI3aPreflight.md`, adding the canonical target entry;
 run the full default and broader decomposed suites and classify exact failure
 name deltas. Keep the existing 13/14 failure debt visible. Documentation-only
 review acceptance is not a new full-suite green claim.
