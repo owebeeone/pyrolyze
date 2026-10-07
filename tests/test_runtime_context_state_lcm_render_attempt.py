@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Hashable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import NoReturn
 
 import pytest
@@ -562,7 +562,9 @@ def test_validator_reported_failure_prevents_commit_even_without_raising() -> No
 
 
 @pytest.mark.parametrize("phase", ("prepare_error", "apply_error", "after_error"))
-def test_unclassified_commit_failure_is_not_rolled_back_or_retried(phase: str) -> None:
+def test_commit_failure_uses_recorded_outcome_without_second_completion(
+    phase: str,
+) -> None:
     manager = _manager()
     values = RenderValues(transaction_manager=manager)
     failure = ValueError("commit failed")
@@ -573,14 +575,117 @@ def test_unclassified_commit_failure_is_not_rolled_back_or_retried(phase: str) -
             values.working.value = 9
             manager.enlist(participant, RENDER_KEY)
     assert raised.value is failure
-    assert attempt.publication_uncertain
-    assert attempt.finished and not attempt.reuse_ready
-    assert participant.events.count("rollback") == (
-        1 if phase == "prepare_error" else 0
-    )
+    assert attempt.publication_uncertain is (phase == "apply_error")
+    assert attempt.finished
+    assert attempt.reuse_ready is (phase == "prepare_error")
+    assert participant.events.count("rollback") == (0 if phase == "after_error" else 1)
     assert values.current.value == (1 if phase == "prepare_error" else 9)
-    with pytest.raises(RuntimeError, match="not ready for reuse"):
-        attempt.next_attempt()
+    if phase != "prepare_error":
+        with pytest.raises(RuntimeError, match="not ready for reuse"):
+            attempt.next_attempt()
+    with pytest.raises(RuntimeError, match="already finished"):
+        attempt.finish()
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    (
+        "missing",
+        "wrong_key",
+        "wrong_id",
+        "not_finalized",
+        "ownership_lost",
+        "conflicting_flags",
+        "invalid_flag",
+        "invalid_failures",
+    ),
+)
+def test_missing_or_incoherent_evidence_quarantines_published_values(
+    corruption: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager = _manager()
+    values = RenderValues(transaction_manager=manager)
+    attempt = _RenderAttempt.start(manager, RENDER_KEY)
+    original = manager.commit_only
+    calls = []
+
+    def corrupt(self: TransactionManager, tx_key: Hashable) -> int | None:
+        calls.append(tx_key)
+        result = original(tx_key)
+        record = attempt.transaction.completion
+        assert record is not None
+        changes = {
+            "wrong_key": {"tx_key": OTHER_KEY},
+            "wrong_id": {"tx_id": record.tx_id + 1},
+            "not_finalized": {"finalized": False},
+            "ownership_lost": {"ownership_preserved": False},
+            "conflicting_flags": {"discard_complete": True},
+            "invalid_flag": {"publication_complete": 1},
+            "invalid_failures": {"failures": ("not an exception",)},
+        }
+        attempt.transaction._completion = (
+            None if corruption == "missing" else replace(record, **changes[corruption])
+        )
+        return result
+
+    monkeypatch.setattr(TransactionManager, "commit_only", corrupt)
+    with pytest.raises(RenderAttemptIncomplete, match="completion evidence"):
+        with attempt:
+            values.working.value = 9
+    assert values.current.value == 9
+    assert attempt.publication_uncertain and not attempt.reuse_ready
+    assert calls == [RENDER_KEY]
+    with pytest.raises(RuntimeError, match="already finished"):
+        attempt.finish()
+    assert calls == [RENDER_KEY]
+
+
+def test_missing_evidence_after_error_preserves_primary_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager = _manager()
+    failure = ValueError("after failed")
+    participant = _FaultParticipant(manager, after_error=failure)
+    attempt = _RenderAttempt.start(manager, RENDER_KEY)
+    original = manager.commit_only
+
+    def corrupt(self: TransactionManager, tx_key: Hashable) -> int | None:
+        try:
+            return original(tx_key)
+        finally:
+            attempt.transaction._completion = None
+
+    monkeypatch.setattr(TransactionManager, "commit_only", corrupt)
+    with pytest.raises(ExceptionGroup) as raised:
+        with attempt:
+            manager.enlist(participant, RENDER_KEY)
+    assert raised.value.exceptions[0] is failure
+    assert isinstance(raised.value.exceptions[1], RenderAttemptIncomplete)
+    assert participant.events == ["prepare", "apply", "after"]
+    assert not attempt.reuse_ready
+
+
+def test_replacement_after_finalization_cannot_supply_completion_authority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager = _manager()
+    attempt = _RenderAttempt.start(manager, RENDER_KEY)
+    original = manager.commit_only
+    replacements = []
+
+    def replace_owner(self: TransactionManager, tx_key: Hashable) -> int | None:
+        result = original(tx_key)
+        replacements.append(manager.begin(tx_key))
+        return result
+
+    monkeypatch.setattr(TransactionManager, "commit_only", replace_owner)
+    with pytest.raises(RenderAttemptIncomplete):
+        with attempt:
+            pass
+    assert attempt.transaction.completion.finalized
+    assert manager.active_transaction_for(RENDER_KEY) is replacements[0]
+    assert attempt.published is None and not attempt.reuse_ready
+    manager.rollback(RENDER_KEY)
 
 
 def test_manager_rollback_failure_is_reported_and_blocks_reuse() -> None:

@@ -110,6 +110,185 @@
       "generation": 3
     }
   },
+  "completion_evidence": {
+    "after commit": {
+      "after_actions_complete": false,
+      "discard_complete": false,
+      "error": "ValueError",
+      "events": [
+        "prepare",
+        "apply",
+        "after commit"
+      ],
+      "generation": 1,
+      "generation_decisions": [
+        "commit"
+      ],
+      "generation_pending": false,
+      "publication_complete": true,
+      "publication_started": true,
+      "publication_uncertain": false,
+      "registered": true,
+      "reuse_ready": false,
+      "ui": [
+        "candidate"
+      ]
+    },
+    "after rollback": {
+      "after_actions_complete": false,
+      "discard_complete": true,
+      "error": "ExceptionGroup",
+      "events": [
+        "rollback",
+        "after rollback"
+      ],
+      "generation": 0,
+      "generation_decisions": [
+        "rollback"
+      ],
+      "generation_pending": false,
+      "publication_complete": false,
+      "publication_started": false,
+      "publication_uncertain": false,
+      "registered": false,
+      "reuse_ready": false,
+      "ui": []
+    },
+    "apply": {
+      "after_actions_complete": true,
+      "discard_complete": true,
+      "error": "ValueError",
+      "events": [
+        "prepare",
+        "apply",
+        "rollback",
+        "after rollback"
+      ],
+      "generation": 0,
+      "generation_decisions": [],
+      "generation_pending": true,
+      "publication_complete": false,
+      "publication_started": true,
+      "publication_uncertain": true,
+      "registered": true,
+      "reuse_ready": false,
+      "ui": [
+        "candidate"
+      ]
+    },
+    "empty abort": {
+      "after_actions_complete": true,
+      "discard_complete": true,
+      "error": "ValueError",
+      "events": [],
+      "generation": 0,
+      "generation_decisions": [
+        "rollback"
+      ],
+      "generation_pending": false,
+      "publication_complete": false,
+      "publication_started": false,
+      "publication_uncertain": false,
+      "registered": false,
+      "reuse_ready": true,
+      "ui": []
+    },
+    "empty commit": {
+      "after_actions_complete": true,
+      "discard_complete": false,
+      "error": null,
+      "events": [],
+      "generation": 1,
+      "generation_decisions": [
+        "commit"
+      ],
+      "generation_pending": false,
+      "publication_complete": true,
+      "publication_started": false,
+      "publication_uncertain": false,
+      "registered": false,
+      "reuse_ready": true,
+      "ui": []
+    },
+    "empty rollback": {
+      "after_actions_complete": true,
+      "discard_complete": true,
+      "error": "RenderAttemptAborted",
+      "events": [],
+      "generation": 0,
+      "generation_decisions": [
+        "rollback"
+      ],
+      "generation_pending": false,
+      "publication_complete": false,
+      "publication_started": false,
+      "publication_uncertain": false,
+      "registered": false,
+      "reuse_ready": true,
+      "ui": []
+    },
+    "prepare": {
+      "after_actions_complete": true,
+      "discard_complete": true,
+      "error": "ValueError",
+      "events": [
+        "prepare",
+        "rollback",
+        "after rollback"
+      ],
+      "generation": 0,
+      "generation_decisions": [
+        "rollback"
+      ],
+      "generation_pending": false,
+      "publication_complete": false,
+      "publication_started": false,
+      "publication_uncertain": false,
+      "registered": false,
+      "reuse_ready": true,
+      "ui": []
+    },
+    "rollback": {
+      "after_actions_complete": true,
+      "discard_complete": false,
+      "error": "ExceptionGroup",
+      "events": [
+        "rollback"
+      ],
+      "generation": 0,
+      "generation_decisions": [
+        "rollback"
+      ],
+      "generation_pending": false,
+      "publication_complete": false,
+      "publication_started": false,
+      "publication_uncertain": false,
+      "registered": false,
+      "reuse_ready": false,
+      "ui": []
+    },
+    "validate": {
+      "after_actions_complete": true,
+      "discard_complete": true,
+      "error": "ExceptionGroup",
+      "events": [
+        "validate",
+        "rollback",
+        "after rollback"
+      ],
+      "generation": 0,
+      "generation_decisions": [
+        "rollback"
+      ],
+      "generation_pending": false,
+      "publication_complete": false,
+      "publication_started": false,
+      "publication_uncertain": false,
+      "registered": false,
+      "reuse_ready": true,
+      "ui": []
+    }
+  },
   "entry_and_isolation": {
     "different_managers": true,
     "external_not_local": true,

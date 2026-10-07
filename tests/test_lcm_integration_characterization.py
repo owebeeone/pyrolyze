@@ -20,8 +20,12 @@ def test_lcm_integration_characterization_baseline(implementation: str) -> None:
     _check_baseline("characterize.py", implementation, environment)
 
 
-def test_lifecycle_failure_completion_characterization_baseline() -> None:
-    _check_baseline("transaction_failures.py", "transaction_failures", dict(os.environ))
+def test_lifecycle_completion_outcomes_l0_target() -> None:
+    _check_baseline(
+        "transaction_completion_outcomes.py",
+        "transaction_completion_outcomes",
+        dict(os.environ),
+    )
 
 
 def test_lifecycle_shared_completion_characterization_baseline() -> None:
@@ -33,7 +37,9 @@ def test_common_slot_construction_golden() -> None:
 
 
 def test_common_pass_single_cohort_golden() -> None:
-    _check_baseline("common_pass_single_cohort.py", "common_pass_single_cohort", dict(os.environ))
+    _check_baseline(
+        "common_pass_single_cohort.py", "common_pass_single_cohort", dict(os.environ)
+    )
 
 
 @pytest.mark.parametrize("implementation", ("original", "bare_refactor_lcm"))
@@ -42,7 +48,9 @@ def test_common_pass_preflight_baseline(implementation: str) -> None:
     environment.pop("PYROLYZE_USE_CONTEXT_LCM", None)
     environment["PYROLYZE_CONTEXT_IMPL"] = implementation
     _check_baseline(
-        "common_pass_preflight.py", f"common_pass_preflight_{implementation}", environment
+        "common_pass_preflight.py",
+        f"common_pass_preflight_{implementation}",
+        environment,
     )
 
 

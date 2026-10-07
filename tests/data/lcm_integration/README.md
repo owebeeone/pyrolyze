@@ -16,6 +16,11 @@ Never regenerate a baseline merely to hide an unapproved semantic change.
   This probes callback mechanics, not generated lifecycle field correctness or
   external resource ownership. Recovery explicitly restages every participant;
   it does not imply skipped cleanup repaired itself.
+- `transaction_completion_outcomes.py`: the separately named L0 target trace
+  for the same participants. Independent callbacks drain after failures, failed
+  applications receive pending discard (not undo of applied current values),
+  and grouped errors retain both preparation and cleanup failures. Its JSON is
+  the current-library test; `baselines/transaction_failures.json` stays historical.
 - `shared_completion.py`: two instances of a generated lifecycle class share
   one TM and one key. It observes nested commit, direct child-facade commit,
   and caught-child rollback. The snapshot demonstrates that the current API
@@ -159,3 +164,31 @@ PYTHONPATH=src:../yidl-lifecycle/src:../yidl/src:../astichi/src \
 Normal pytest execution never rewrites expected files. External-store, effect,
 async-effect, mount, and call-site retirement coverage remains in its existing
 canonical tests; this fixture does not duplicate those success assertions.
+
+## Completion-Evidence Adoption
+
+`common_pass_single_cohort.py` now extends the accepted SC2 fixture with the
+SC3-L0 consumer matrix: empty commit, empty rollback/abort, validation/prepare
+abort, full publication with after-action failure, incomplete discard/after
+cleanup, and partial application. Generation follows authoritative publication
+evidence, independently of exception shape and reuse readiness. These protocol
+faults are test participants, not admission of production resource routes.
+The previous seven sections of the SC2 JSON are unchanged.
+
+The old failure trace is preserved against yidl-lifecycle
+`371dfa530a975c27f7a6c09a7648f7f00532ab29`. Reproduce it without changing a
+checkout or overwriting a baseline (bash/zsh process substitution):
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 \
+PYTHONPATH=src:../yidl-lifecycle/src:../yidl/src:../astichi/src \
+  ../.venv/bin/python tests/data/lcm_integration/transaction_failures.py \
+  --historical-manager-source <(git -C ../yidl-lifecycle show \
+    371dfa530a975c27f7a6c09a7648f7f00532ab29:src/yidl_lifecycle/transaction_yidl.py)
+```
+
+This option executes trusted local Python source; do not supply untrusted files.
+Compare its JSON with `baselines/transaction_failures.json`. To inspect the
+current target, run `transaction_completion_outcomes.py` with the same exports.
+The historical `--output transaction_failures.json` command above is only for
+that pinned pre-L0 manager, never for blessing current behavior into history.

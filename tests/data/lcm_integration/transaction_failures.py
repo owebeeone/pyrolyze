@@ -7,6 +7,8 @@ from collections.abc import Hashable
 from dataclasses import dataclass, field
 import json
 from pathlib import Path
+import sys
+from types import ModuleType
 from typing import Any
 
 from yidl_lifecycle.transaction_yidl import DEFAULT_TRANSACTION, TransactionManager
@@ -65,6 +67,8 @@ def _error(exc: BaseException) -> dict[str, Any]:
     result: dict[str, Any] = {"type": type(exc).__name__, "message": str(exc)}
     if exc.__context__ is not None:
         result["context"] = _error(exc.__context__)
+    if isinstance(exc, BaseExceptionGroup):
+        result["exceptions"] = [_error(child) for child in exc.exceptions]
     return result
 
 
@@ -139,7 +143,26 @@ def characterize() -> dict[str, Any]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--historical-manager-source",
+        type=Path,
+        help="Load a trusted local pre-L0 manager source for historical reproduction",
+    )
     options = parser.parse_args()
+    if options.historical_manager_source is not None:
+        module = ModuleType("_historical_lifecycle_transaction")
+        sys.modules[module.__name__] = module
+        exec(
+            compile(
+                options.historical_manager_source.read_text(encoding="utf-8"),
+                str(options.historical_manager_source),
+                "exec",
+            ),
+            module.__dict__,
+        )
+        global TransactionManager, DEFAULT_TRANSACTION
+        TransactionManager = module.TransactionManager
+        DEFAULT_TRANSACTION = module.DEFAULT_TRANSACTION
     source = json.dumps(characterize(), indent=2, sort_keys=True) + "\n"
     if options.output is None:
         print(source, end="")

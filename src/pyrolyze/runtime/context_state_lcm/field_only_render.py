@@ -266,18 +266,20 @@ class _FieldOnlyRenderCompletion:
         finally:
             self.last = owner
             try:
-                if owner.reuse_ready:
-                    published = owner.first_failure is None
-                    for context in self.contexts:
-                        context._clear_field_only_pass(published=published)
-                    self._reconcile_registry()
+                published = owner.published
+                if published is not None:
                     tracker = self.root.get_app_context(
                         self.root._generation_tracker_key
                     )
+                    # Generation records actual value publication, not readiness
+                    # for another attempt or success of after actions/cache cleanup.
                     if published:
                         tracker.commit()
                     else:
                         tracker.rollback()
+                    for context in self.contexts:
+                        context._clear_field_only_pass(published=published)
+                    self._reconcile_registry()
             except BaseException as error:
                 self._cleanup_failure = error
                 primary = failure or propagating

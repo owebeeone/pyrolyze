@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from types import TracebackType
 from typing import NoReturn
 
+from yidl_lifecycle.transaction_yidl import TransactionCompletion
+
 from .lifecycle_adapter import LifecycleTransaction, TransactionManager
 
 
@@ -13,7 +15,7 @@ class RenderAttemptAborted(RuntimeError):
 
 
 class RenderAttemptIncomplete(RuntimeError):
-    """Transaction ownership was lost; neither undo nor reuse is certified."""
+    """Completion authority is missing; neither undo nor reuse is certified."""
 
 
 def _contains_exception(primary: BaseException, error: BaseException) -> bool:
@@ -53,6 +55,9 @@ class _RenderAttempt:
     _entered: bool = field(default=False, init=False, repr=False)
     _reuse_ready: bool = field(default=False, init=False, repr=False)
     _integrity_lost: bool = field(default=False, init=False, repr=False)
+    _tx_id: int = field(init=False, repr=False)
+    _tx_key: Hashable = field(init=False, repr=False)
+    _completion: TransactionCompletion | None = field(default=None, init=False)
     _identity_failure: RuntimeError | None = field(default=None, init=False, repr=False)
     _ownership_failure: RuntimeError | None = field(
         default=None, init=False, repr=False
@@ -63,6 +68,20 @@ class _RenderAttempt:
     _cleanup_errors: list[BaseException] = field(
         default_factory=list, init=False, repr=False
     )
+
+    def __post_init__(self) -> None:
+        self._tx_id = self.transaction.tx_id
+        self._tx_key = self.transaction.tx_key
+
+    @property
+    def published(self) -> bool | None:
+        """Known full publication/nonpublication, or an uncertified outcome."""
+        record = self._completion
+        if record is None:
+            return None
+        if record.publication_complete:
+            return True
+        return None if record.publication_started else False
 
     @classmethod
     def start(cls, manager: TransactionManager, tx_key: Hashable) -> _RenderAttempt:
@@ -178,13 +197,75 @@ class _RenderAttempt:
                 self.manager.rollback(self.tx_key)
             except BaseException as error:
                 self._cleanup_errors.append(error)
+        self._observe_completion()
+
+    def _observe_completion(self) -> None:
+        record = self.transaction.completion
+        if self._integrity_lost:
+            self.publication_uncertain = True
+            return
+        valid = isinstance(record, TransactionCompletion)
+        if valid:
+            flags = (
+                record.publication_started,
+                record.publication_complete,
+                record.discard_complete,
+                record.after_actions_complete,
+                record.ownership_preserved,
+                record.finalized,
+            )
+            valid = (
+                record.tx_key is self._tx_key
+                and type(record.tx_id) is int
+                and record.tx_id == self._tx_id
+                and all(type(flag) is bool for flag in flags)
+                and record.finalized
+                and record.ownership_preserved
+                and not (record.publication_complete and record.discard_complete)
+                and isinstance(record.failures, tuple)
+                and all(isinstance(error, BaseException) for error in record.failures)
+                and (record.after_actions_complete or bool(record.failures))
+                and (
+                    record.publication_complete
+                    or record.discard_complete
+                    or bool(record.failures)
+                )
+            )
+        if (
+            not valid
+            or self.manager.active_transaction_for(self.tx_key) is not None
+            or self.transaction.tx_id != self._tx_id
+            or self.transaction.tx_key is not self._tx_key
+        ):
+            self._integrity_lost = True
+            self.publication_uncertain = True
+            error = RenderAttemptIncomplete(
+                "render completion evidence is missing or incoherent"
+            )
+            self.fail(error)
+            if self.first_failure is not error:
+                self._cleanup_errors.append(error)
+            return
+        self._completion = record
+        self.publication_uncertain = self.published is None
+        self._reuse_ready = record.after_actions_complete and (
+            record.publication_complete
+            or (not record.publication_started and record.discard_complete)
+        )
+
+    def _completion_errors(self) -> list[BaseException]:
+        record = self._completion
+        errors = list(self._cleanup_errors)
+        for error in record.failures if record is not None else ():
+            if not any(_contains_exception(existing, error) for existing in errors):
+                errors.append(error)
+        return errors
 
     def _finish_failed(self, propagating: BaseException | None) -> None:
         self._discard_owned()
-        self._reuse_ready = not self._integrity_lost and not self._cleanup_errors
         if propagating is not None:
-            if self._cleanup_errors:
-                _raise_with_cleanup(propagating, self._cleanup_errors)
+            if self._completion_errors():
+                _raise_with_cleanup(propagating, self._completion_errors())
             return
         if self._integrity_lost:
             aborted: RuntimeError = RenderAttemptIncomplete(
@@ -193,7 +274,7 @@ class _RenderAttempt:
         else:
             aborted = RenderAttemptAborted("render attempt aborted before publication")
         aborted.__cause__ = self.first_failure
-        _raise_with_cleanup(aborted, self._cleanup_errors)
+        _raise_with_cleanup(aborted, self._completion_errors())
 
     def finish(self, propagating: BaseException | None = None) -> None:
         self._require_open()
@@ -223,10 +304,7 @@ class _RenderAttempt:
             except BaseException as error:
                 self.fail(error)
                 self._discard_owned()
-                self._reuse_ready = (
-                    not self._integrity_lost and not self._cleanup_errors
-                )
-                _raise_with_cleanup(error, self._cleanup_errors)
+                _raise_with_cleanup(error, self._completion_errors())
             self._check_ownership()
             if self.first_failure is not None:
                 self._finish_failed(None)
@@ -234,11 +312,9 @@ class _RenderAttempt:
             try:
                 result = self.manager.commit_only(self.tx_key)
             except BaseException as error:
-                # The pinned TM cannot distinguish prepare, apply, or after
-                # failures here. Never invent an undo or certify a retry.
                 self.fail(error)
-                self.publication_uncertain = True
-                raise
+                self._observe_completion()
+                _raise_with_cleanup(error, self._completion_errors())
             if result is None:
                 error = RuntimeError(
                     "render transaction acquired an external nested begin"
@@ -247,20 +323,21 @@ class _RenderAttempt:
                 self._integrity_lost = True
                 self._discard_owned()
                 _raise_with_cleanup(error, self._cleanup_errors)
-            if (
-                result != self.transaction.tx_id
-                or self.manager.active_transaction_for(self.tx_key) is not None
-                or self.first_failure is not None
-            ):
-                self.publication_uncertain = True
+            if type(result) is not int or result != self._tx_id:
                 self._integrity_lost = True
-                error = RuntimeError(
-                    "render completion changed ownership during publication"
+            self._observe_completion()
+            errors = self._completion_errors()
+            if self.first_failure is not None:
+                _raise_with_cleanup(self.first_failure, errors)
+            if errors:
+                self.fail(errors[0])
+                _raise_with_cleanup(errors[0], errors[1:])
+            if self.published is not True:
+                error = RenderAttemptIncomplete(
+                    "render commit returned without publication evidence"
                 )
-                cause = self.first_failure
                 self.fail(error)
-                raise error from cause
-            self._reuse_ready = True
+                raise error
         finally:
             self.finished = True
             self._finishing = False

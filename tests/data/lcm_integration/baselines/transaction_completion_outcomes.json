@@ -1,0 +1,780 @@
+{
+  "after_commit": {
+    "after_explicit_restaging": {
+      "active_token": null,
+      "events": [
+        [
+          "participant_1",
+          "prepare"
+        ],
+        [
+          "participant_2",
+          "prepare"
+        ],
+        [
+          "participant_3",
+          "prepare"
+        ],
+        [
+          "participant_1",
+          "apply"
+        ],
+        [
+          "participant_2",
+          "apply"
+        ],
+        [
+          "participant_3",
+          "apply"
+        ],
+        [
+          "participant_1",
+          "after_commit"
+        ],
+        [
+          "participant_2",
+          "after_commit"
+        ],
+        [
+          "participant_3",
+          "after_commit"
+        ]
+      ],
+      "participants": [
+        {
+          "current": 10,
+          "name": "participant_1",
+          "staged": null,
+          "token": null,
+          "working": null
+        },
+        {
+          "current": 11,
+          "name": "participant_2",
+          "staged": null,
+          "token": null,
+          "working": null
+        },
+        {
+          "current": 12,
+          "name": "participant_3",
+          "staged": null,
+          "token": null,
+          "working": null
+        }
+      ]
+    },
+    "after_failure": {
+      "active_token": null,
+      "events": [
+        [
+          "participant_1",
+          "prepare"
+        ],
+        [
+          "participant_2",
+          "prepare"
+        ],
+        [
+          "participant_3",
+          "prepare"
+        ],
+        [
+          "participant_1",
+          "apply"
+        ],
+        [
+          "participant_2",
+          "apply"
+        ],
+        [
+          "participant_3",
+          "apply"
+        ],
+        [
+          "participant_1",
+          "after_commit"
+        ],
+        [
+          "participant_2",
+          "after_commit"
+        ],
+        [
+          "participant_3",
+          "after_commit"
+        ]
+      ],
+      "participants": [
+        {
+          "current": 1,
+          "name": "participant_1",
+          "staged": null,
+          "token": null,
+          "working": null
+        },
+        {
+          "current": 1,
+          "name": "participant_2",
+          "staged": null,
+          "token": null,
+          "working": null
+        },
+        {
+          "current": 1,
+          "name": "participant_3",
+          "staged": null,
+          "token": null,
+          "working": null
+        }
+      ]
+    },
+    "error": {
+      "message": "participant_1: after_commit failed",
+      "type": "RuntimeError"
+    }
+  },
+  "after_rollback": {
+    "after_explicit_restaging": {
+      "active_token": null,
+      "events": [
+        [
+          "participant_1",
+          "prepare"
+        ],
+        [
+          "participant_2",
+          "prepare"
+        ],
+        [
+          "participant_3",
+          "prepare"
+        ],
+        [
+          "participant_1",
+          "apply"
+        ],
+        [
+          "participant_2",
+          "apply"
+        ],
+        [
+          "participant_3",
+          "apply"
+        ],
+        [
+          "participant_1",
+          "after_commit"
+        ],
+        [
+          "participant_2",
+          "after_commit"
+        ],
+        [
+          "participant_3",
+          "after_commit"
+        ]
+      ],
+      "participants": [
+        {
+          "current": 10,
+          "name": "participant_1",
+          "staged": null,
+          "token": null,
+          "working": null
+        },
+        {
+          "current": 11,
+          "name": "participant_2",
+          "staged": null,
+          "token": null,
+          "working": null
+        },
+        {
+          "current": 12,
+          "name": "participant_3",
+          "staged": null,
+          "token": null,
+          "working": null
+        }
+      ]
+    },
+    "after_failure": {
+      "active_token": null,
+      "events": [
+        [
+          "participant_1",
+          "rollback"
+        ],
+        [
+          "participant_2",
+          "rollback"
+        ],
+        [
+          "participant_3",
+          "rollback"
+        ],
+        [
+          "participant_1",
+          "after_rollback"
+        ],
+        [
+          "participant_2",
+          "after_rollback"
+        ],
+        [
+          "participant_3",
+          "after_rollback"
+        ]
+      ],
+      "participants": [
+        {
+          "current": 0,
+          "name": "participant_1",
+          "staged": null,
+          "token": null,
+          "working": null
+        },
+        {
+          "current": 0,
+          "name": "participant_2",
+          "staged": null,
+          "token": null,
+          "working": null
+        },
+        {
+          "current": 0,
+          "name": "participant_3",
+          "staged": null,
+          "token": null,
+          "working": null
+        }
+      ]
+    },
+    "error": {
+      "message": "participant_1: after_rollback failed",
+      "type": "RuntimeError"
+    }
+  },
+  "apply": {
+    "after_explicit_restaging": {
+      "active_token": null,
+      "events": [
+        [
+          "participant_1",
+          "prepare"
+        ],
+        [
+          "participant_2",
+          "prepare"
+        ],
+        [
+          "participant_3",
+          "prepare"
+        ],
+        [
+          "participant_1",
+          "apply"
+        ],
+        [
+          "participant_2",
+          "apply"
+        ],
+        [
+          "participant_3",
+          "apply"
+        ],
+        [
+          "participant_1",
+          "after_commit"
+        ],
+        [
+          "participant_2",
+          "after_commit"
+        ],
+        [
+          "participant_3",
+          "after_commit"
+        ]
+      ],
+      "participants": [
+        {
+          "current": 10,
+          "name": "participant_1",
+          "staged": null,
+          "token": null,
+          "working": null
+        },
+        {
+          "current": 11,
+          "name": "participant_2",
+          "staged": null,
+          "token": null,
+          "working": null
+        },
+        {
+          "current": 12,
+          "name": "participant_3",
+          "staged": null,
+          "token": null,
+          "working": null
+        }
+      ]
+    },
+    "after_failure": {
+      "active_token": null,
+      "events": [
+        [
+          "participant_1",
+          "prepare"
+        ],
+        [
+          "participant_2",
+          "prepare"
+        ],
+        [
+          "participant_3",
+          "prepare"
+        ],
+        [
+          "participant_1",
+          "apply"
+        ],
+        [
+          "participant_2",
+          "apply"
+        ],
+        [
+          "participant_3",
+          "apply"
+        ],
+        [
+          "participant_2",
+          "rollback"
+        ],
+        [
+          "participant_1",
+          "after_commit"
+        ],
+        [
+          "participant_2",
+          "after_rollback"
+        ],
+        [
+          "participant_3",
+          "after_commit"
+        ]
+      ],
+      "participants": [
+        {
+          "current": 1,
+          "name": "participant_1",
+          "staged": null,
+          "token": null,
+          "working": null
+        },
+        {
+          "current": 0,
+          "name": "participant_2",
+          "staged": null,
+          "token": null,
+          "working": null
+        },
+        {
+          "current": 1,
+          "name": "participant_3",
+          "staged": null,
+          "token": null,
+          "working": null
+        }
+      ]
+    },
+    "error": {
+      "message": "participant_2: apply failed",
+      "type": "RuntimeError"
+    }
+  },
+  "prepare": {
+    "after_explicit_restaging": {
+      "active_token": null,
+      "events": [
+        [
+          "participant_1",
+          "prepare"
+        ],
+        [
+          "participant_2",
+          "prepare"
+        ],
+        [
+          "participant_3",
+          "prepare"
+        ],
+        [
+          "participant_1",
+          "apply"
+        ],
+        [
+          "participant_2",
+          "apply"
+        ],
+        [
+          "participant_3",
+          "apply"
+        ],
+        [
+          "participant_1",
+          "after_commit"
+        ],
+        [
+          "participant_2",
+          "after_commit"
+        ],
+        [
+          "participant_3",
+          "after_commit"
+        ]
+      ],
+      "participants": [
+        {
+          "current": 10,
+          "name": "participant_1",
+          "staged": null,
+          "token": null,
+          "working": null
+        },
+        {
+          "current": 11,
+          "name": "participant_2",
+          "staged": null,
+          "token": null,
+          "working": null
+        },
+        {
+          "current": 12,
+          "name": "participant_3",
+          "staged": null,
+          "token": null,
+          "working": null
+        }
+      ]
+    },
+    "after_failure": {
+      "active_token": null,
+      "events": [
+        [
+          "participant_1",
+          "prepare"
+        ],
+        [
+          "participant_2",
+          "prepare"
+        ],
+        [
+          "participant_1",
+          "rollback"
+        ],
+        [
+          "participant_2",
+          "rollback"
+        ],
+        [
+          "participant_3",
+          "rollback"
+        ],
+        [
+          "participant_1",
+          "after_rollback"
+        ],
+        [
+          "participant_2",
+          "after_rollback"
+        ],
+        [
+          "participant_3",
+          "after_rollback"
+        ]
+      ],
+      "participants": [
+        {
+          "current": 0,
+          "name": "participant_1",
+          "staged": null,
+          "token": null,
+          "working": null
+        },
+        {
+          "current": 0,
+          "name": "participant_2",
+          "staged": null,
+          "token": null,
+          "working": null
+        },
+        {
+          "current": 0,
+          "name": "participant_3",
+          "staged": null,
+          "token": null,
+          "working": null
+        }
+      ]
+    },
+    "error": {
+      "message": "participant_2: prepare failed",
+      "type": "RuntimeError"
+    }
+  },
+  "prepare_and_rollback": {
+    "after_explicit_restaging": {
+      "active_token": null,
+      "events": [
+        [
+          "participant_1",
+          "prepare"
+        ],
+        [
+          "participant_2",
+          "prepare"
+        ],
+        [
+          "participant_3",
+          "prepare"
+        ],
+        [
+          "participant_1",
+          "apply"
+        ],
+        [
+          "participant_2",
+          "apply"
+        ],
+        [
+          "participant_3",
+          "apply"
+        ],
+        [
+          "participant_1",
+          "after_commit"
+        ],
+        [
+          "participant_2",
+          "after_commit"
+        ],
+        [
+          "participant_3",
+          "after_commit"
+        ]
+      ],
+      "participants": [
+        {
+          "current": 10,
+          "name": "participant_1",
+          "staged": null,
+          "token": null,
+          "working": null
+        },
+        {
+          "current": 11,
+          "name": "participant_2",
+          "staged": null,
+          "token": null,
+          "working": null
+        },
+        {
+          "current": 12,
+          "name": "participant_3",
+          "staged": null,
+          "token": null,
+          "working": null
+        }
+      ]
+    },
+    "after_failure": {
+      "active_token": null,
+      "events": [
+        [
+          "participant_1",
+          "prepare"
+        ],
+        [
+          "participant_2",
+          "prepare"
+        ],
+        [
+          "participant_1",
+          "rollback"
+        ],
+        [
+          "participant_2",
+          "rollback"
+        ],
+        [
+          "participant_3",
+          "rollback"
+        ],
+        [
+          "participant_2",
+          "after_rollback"
+        ],
+        [
+          "participant_3",
+          "after_rollback"
+        ]
+      ],
+      "participants": [
+        {
+          "current": 0,
+          "name": "participant_1",
+          "staged": 1,
+          "token": 1,
+          "working": 1
+        },
+        {
+          "current": 0,
+          "name": "participant_2",
+          "staged": null,
+          "token": null,
+          "working": null
+        },
+        {
+          "current": 0,
+          "name": "participant_3",
+          "staged": null,
+          "token": null,
+          "working": null
+        }
+      ]
+    },
+    "error": {
+      "exceptions": [
+        {
+          "message": "participant_2: prepare failed",
+          "type": "RuntimeError"
+        },
+        {
+          "message": "participant_1: rollback failed",
+          "type": "RuntimeError"
+        }
+      ],
+      "message": "yidl transaction completion failed (2 sub-exceptions)",
+      "type": "ExceptionGroup"
+    }
+  },
+  "rollback": {
+    "after_explicit_restaging": {
+      "active_token": null,
+      "events": [
+        [
+          "participant_1",
+          "prepare"
+        ],
+        [
+          "participant_2",
+          "prepare"
+        ],
+        [
+          "participant_3",
+          "prepare"
+        ],
+        [
+          "participant_1",
+          "apply"
+        ],
+        [
+          "participant_2",
+          "apply"
+        ],
+        [
+          "participant_3",
+          "apply"
+        ],
+        [
+          "participant_1",
+          "after_commit"
+        ],
+        [
+          "participant_2",
+          "after_commit"
+        ],
+        [
+          "participant_3",
+          "after_commit"
+        ]
+      ],
+      "participants": [
+        {
+          "current": 10,
+          "name": "participant_1",
+          "staged": null,
+          "token": null,
+          "working": null
+        },
+        {
+          "current": 11,
+          "name": "participant_2",
+          "staged": null,
+          "token": null,
+          "working": null
+        },
+        {
+          "current": 12,
+          "name": "participant_3",
+          "staged": null,
+          "token": null,
+          "working": null
+        }
+      ]
+    },
+    "after_failure": {
+      "active_token": null,
+      "events": [
+        [
+          "participant_1",
+          "rollback"
+        ],
+        [
+          "participant_2",
+          "rollback"
+        ],
+        [
+          "participant_3",
+          "rollback"
+        ],
+        [
+          "participant_2",
+          "after_rollback"
+        ],
+        [
+          "participant_3",
+          "after_rollback"
+        ]
+      ],
+      "participants": [
+        {
+          "current": 0,
+          "name": "participant_1",
+          "staged": null,
+          "token": 1,
+          "working": 1
+        },
+        {
+          "current": 0,
+          "name": "participant_2",
+          "staged": null,
+          "token": null,
+          "working": null
+        },
+        {
+          "current": 0,
+          "name": "participant_3",
+          "staged": null,
+          "token": null,
+          "working": null
+        }
+      ]
+    },
+    "error": {
+      "message": "participant_1: rollback failed",
+      "type": "RuntimeError"
+    }
+  }
+}

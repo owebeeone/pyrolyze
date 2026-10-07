@@ -674,3 +674,31 @@ def test_new_unseen_component_subtree_cannot_be_silently_retired(
     assert tracker.committed_generation_id == 0
     with root.pass_scope():
         _component(root)
+
+
+def test_published_generation_survives_local_scratch_cleanup_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pyrolyze.runtime.context_state_lcm.context_base import ContextBaseStateMgr
+
+    root = _root()
+    state = root._state_mgr
+    tracker = state.get_app_context(state._generation_tracker_key)
+    failure = ValueError("scratch cleanup failed")
+
+    def fail_cleanup(self: Any, *, published: bool) -> None:
+        assert published
+        raise failure
+
+    monkeypatch.setattr(ContextBaseStateMgr, "_clear_field_only_pass", fail_cleanup)
+    with pytest.raises(ValueError) as raised:
+        with root.pass_scope():
+            _emit(root, "published")
+    assert raised.value is failure
+    assert state.current.ui_state[0].kind == "published"
+    assert tracker.committed_generation_id == 1
+    assert tracker.active_generation_id is None
+    with pytest.raises(RuntimeError, match="not ready for reuse"):
+        with root.pass_scope():
+            pytest.fail("quarantined graph entered")
+    assert tracker.committed_generation_id == 1

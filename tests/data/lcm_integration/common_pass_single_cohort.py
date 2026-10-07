@@ -6,6 +6,7 @@ import json
 from collections.abc import Hashable
 from dataclasses import dataclass, field
 from typing import Any
+from unittest.mock import patch
 
 from pyrolyze.api import UIElement
 from pyrolyze.runtime import context_bare_refactor_lcm as runtime
@@ -403,6 +404,138 @@ def _candidate_retirement() -> dict[str, Any]:
     return result
 
 
+@dataclass
+class _CompletionFault(_RejectingValidator):
+    failure_phase: str | None = None
+
+    def requires_validation_for(self, tx_key: Hashable) -> bool:
+        return self.failure_phase == "validate"
+
+    def _visit(self, phase: str) -> None:
+        self.events.append(phase)
+        if phase == self.failure_phase:
+            raise ValueError(f"{phase} failed")
+
+    def validate_commit_for(self, tx_key: Hashable) -> bool:
+        self._visit("validate")
+        return True
+
+    def _prepare_commit_tx_by_key(self, tx_key: Hashable, tx_token: int | None) -> None:
+        self._visit("prepare")
+
+    def _apply_prepared_commit_tx_by_key(
+        self, tx_key: Hashable, tx_token: int | None
+    ) -> None:
+        self._visit("apply")
+
+    def _after_commit_tx_by_key(self, tx_key: Hashable, tx_token: int | None) -> None:
+        self._visit("after commit")
+
+    def _rollback_tx_by_key(self, tx_key: Hashable, tx_token: int | None) -> None:
+        self._visit("rollback")
+
+    def _after_rollback_tx_by_key(self, tx_key: Hashable, tx_token: int | None) -> None:
+        self._visit("after rollback")
+
+
+def _completion_evidence() -> dict[str, Any]:
+    results: dict[str, Any] = {}
+    cases = (
+        "empty commit",
+        "empty rollback",
+        "empty abort",
+        "validate",
+        "prepare",
+        "apply",
+        "after commit",
+        "rollback",
+        "after rollback",
+    )
+    for case in cases:
+        root = _root()
+        completion = root._state_mgr._field_only_completion
+        tracker = _tracker(root)
+        manager = root._state_mgr._transaction_manager
+        decisions = []
+        commit, rollback = tracker.commit, tracker.rollback
+
+        def record_commit(self: Any) -> int:
+            decisions.append("commit")
+            return commit()
+
+        def record_rollback(self: Any) -> int:
+            decisions.append("rollback")
+            return rollback()
+
+        fault = _CompletionFault(failure_phase=case)
+        error = None
+        try:
+            # Direct owner entry leaves the empty cases genuinely participant-free.
+            with (
+                patch.object(type(tracker), "commit", record_commit),
+                patch.object(type(tracker), "rollback", record_rollback),
+                completion.attempt_scope(),
+            ):
+                owner = completion.active
+                if not case.startswith("empty"):
+                    with root.pass_scope():
+                        _leaf(root, "candidate")
+                        manager.enlist(fault, PASS_TX_KEY)
+                        if case in ("rollback", "after rollback"):
+                            raise ValueError("body failed")
+                elif case == "empty rollback":
+                    owner.fail(ValueError("caught body failure"))
+                elif case == "empty abort":
+                    raise ValueError("body failed")
+        except BaseException as exc:
+            error = type(exc).__name__
+        owner = completion.last
+        record = owner.transaction.completion
+        assert record is not None
+        published = case in ("empty commit", "after commit")
+        uncertain = case == "apply"
+        reusable = case in (
+            "empty commit",
+            "empty rollback",
+            "empty abort",
+            "validate",
+            "prepare",
+        )
+        assert owner.publication_uncertain is uncertain, case
+        assert owner.reuse_ready is reusable, case
+        assert decisions == (
+            [] if uncertain else ["commit" if published else "rollback"]
+        ), case
+        assert tracker.committed_generation_id == int(published), case
+        assert (tracker.active_generation_id is not None) is uncertain, case
+        assert _ui(root) == (
+            ["candidate"] if case in ("apply", "after commit") else []
+        ), case
+        results[case] = {
+            "publication_started": record.publication_started,
+            "publication_complete": record.publication_complete,
+            "discard_complete": record.discard_complete,
+            "after_actions_complete": record.after_actions_complete,
+            "generation_decisions": list(decisions),
+            "generation": tracker.committed_generation_id,
+            "generation_pending": tracker.active_generation_id is not None,
+            "reuse_ready": owner.reuse_ready,
+            "publication_uncertain": owner.publication_uncertain,
+            "ui": _ui(root),
+            "error": error,
+            "events": fault.events,
+            "registered": root.debug_is_active(_slot_id(1)),
+        }
+        if not reusable:
+            try:
+                with root.pass_scope():
+                    raise AssertionError("quarantined graph admitted retry")
+            except RuntimeError as exc:
+                assert "reuse" in str(exc), case
+        assert decisions == results[case]["generation_decisions"], case
+    return results
+
+
 def characterize() -> dict[str, Any]:
     return {
         "clean_and_failures": _clean_and_failures(),
@@ -412,6 +545,7 @@ def characterize() -> dict[str, Any]:
         "membership_and_order": _membership_and_order(),
         "published_membership": _published_membership(),
         "candidate_retirement": _candidate_retirement(),
+        "completion_evidence": _completion_evidence(),
     }
 
 
