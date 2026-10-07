@@ -1,9 +1,15 @@
 # SC3-L0 Private Completion-Evidence Adoption
 
-Status: implementation candidate, 2026-10-08; independent Code/State acceptance
-pending. This checkpoint consumes the accepted L0 library, not resource-route
-activation. Contract: `PytoLifecyleIntegSC3-L0Plan.md`, Consumer Contract and
-SC3-L0 Consumer sections. No contract amendments are proposed here.
+Status: **accepted at Pyrolyze `b1461a1128da15c21dad482d41bd5792253904cd`
+after independent Code/State GO/GO, 2026-10-08; private consumer only**.
+Dependencies: lifecycle `05554397d1837ecbeafa36e4685477dd5ff30fc6`, YIDL
+`a7cc1de7b630b55bd194940ecad83f3f1738cf8a`, Astichi
+`1c47f781d3804130fdd61cbee07a3b2e4529158a`. Verbatim acceptance reports:
+[Code](history/lifecycle-integration/PytoLifecyleIntegSC3-L0Consumer-ReviewCode-2.md)
+and [State](history/lifecycle-integration/PytoLifecyleIntegSC3-L0Consumer-ReviewState-2.md).
+This consumes the accepted L0 library, not resource-route activation. Contract:
+`PytoLifecyleIntegSC3-L0Plan.md`, Consumer Contract and SC3-L0 Consumer sections.
+No contract amendment is included.
 
 ## Boundary
 
@@ -134,9 +140,15 @@ warning**; broader unactivated is **41 passed, the same 14 failures**. No
 goldens changed. Black and diff checks pass. The original observations above
 are retained as initial-candidate evidence, not the latest test counts.
 
-Commit this combined correction and request focused re-verdicts from the same
-Code and State reviewers. Remediation rounds used: 1/2. Acceptance is still
-pending those verdicts. No pushes/tags/parent-pointer updates are part of this step.
-After acceptance, design the concrete D5/category adapter timeline before
-admitting any resource-bearing route. Do not skip directly to event-handler
-holder replacement or general activation.
+The same Code and State reviewers independently replayed their original
+counterexamples on the corrected settled tuple and returned GO. All three P2s
+are closed, with no new findings; no blind convergence was claimed for the
+distinct original defects. Remediation rounds used: **1/2**. Both reviewers
+independently ran the 128-test subset on native and Python assembly and verified
+historical reproduction. Full/default/broader counts above remain implementer
+evidence, not independently repeated broad acceptance.
+
+Next: design and review the concrete D5/category adapter timeline before
+admitting any resource-bearing route. Callback selection is the first suggested
+bounded category. Do not skip directly to event-handler holder replacement or
+general activation. No pushes/tags/parent-pointer updates are part of this step.

@@ -30,6 +30,15 @@ pins the exact tuple, one combined remediation, and original-counterexample
 closures. Private consumer adoption and L0-3's historical probe transition
 remain pending. This status update changes no contract clause or activation gate.
 
+Private-consumer update, 2026-10-08: the subsequent Pyrolyze owner adoption and
+historical probe transition are **accepted at
+`b1461a1128da15c21dad482d41bd5792253904cd`** after Code/State GO/GO, with the
+exact dependencies, remediation closures, and tests in
+[the consumer checkpoint](PytoLifecyleIntegSC3-L0Consumer.md). The library-only
+status above records the earlier checkpoint. Runtime resource admission remains
+blocked. The next gate is D5/category adapter design; no contract clause or
+activation policy changes with this acceptance update.
+
 ### Exact Phase F-1 Supersession
 
 The reference is `yidl-lifecycle/dev-docs/YidlTransactionalYidlPhaseF-1Plan.md`

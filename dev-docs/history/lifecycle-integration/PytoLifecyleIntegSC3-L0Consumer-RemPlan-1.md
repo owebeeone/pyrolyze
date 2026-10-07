@@ -34,3 +34,13 @@ owner/field-only/characterization tests. Full default native reports 937 passed,
 comparison reports 41 passed and the same 14 failures. No golden changes.
 Black and `git diff --check` pass. This is implementation evidence, not closure
 of either reviewer's findings; focused re-verdicts remain required.
+
+## Reviewed Disposition
+
+The corrected settled consumer is
+`b1461a1128da15c21dad482d41bd5792253904cd`, with the same dependency tuple.
+Code and State each independently replayed their original counterexamples and
+returned GO; the verbatim `-ReviewCode-2.md` and `-ReviewState-2.md` reports close
+all three P2s. No new finding or architectural root cause was reported. One
+remediation round was used. Acceptance is private-consumer-only; the resource
+activation and D5 adapter-design gates are unchanged.

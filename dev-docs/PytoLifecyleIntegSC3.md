@@ -13,6 +13,14 @@ I3a completion, I4 legacy-holder replacement, or a default-runtime switch.
 `PytoLifecyleIntegSC3-L0Plan.md` specifies the first prerequisite. Domain
 completion ordering and individual resource adapters require their own review.
 
+Prerequisite update, 2026-10-08: the L0 library and private owner-consumption
+gates below are accepted. The consumer checkpoint is Pyrolyze
+`b1461a1128da15c21dad482d41bd5792253904cd`, after Code/State GO/GO; see
+[its exact tuple and verification](PytoLifecyleIntegSC3-L0Consumer.md).
+The inspection, observations, and initial gate sequence below remain the
+historical audit. D5/category adapter design is next, with resource admission
+and every unreviewed retirement/delivery path still blocked.
+
 ## Inspected Tuple
 
 | Repository | Revision |

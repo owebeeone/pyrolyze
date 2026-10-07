@@ -7,14 +7,18 @@ Original handoff snapshots below remain historical evidence, not current status.
 
 ## Resume Point
 
-**Next implementation checkpoint: SC3-L0 private Pyrolyze owner adoption.**
+**Next checkpoint: D5/category adapter design, starting with callback selection.**
 
 The lifecycle manager, generated guards/hooks, and canonical failure goldens are
 implemented and accepted at library `4b86eec179942d96012aa4a1d92752a34cae87ef`
 after independent Code/State GO/GO. Read the
 [acceptance record](../../yidl-lifecycle/dev-docs/L0CompletionVerification.md).
-Private Pyrolyze adoption has **not** landed. Do not rerun L0-1/L0-2 as new work
-or treat library acceptance as live resource activation.
+Private Pyrolyze adoption and the historical probe transition have now landed
+and passed Code/State GO/GO at
+`b1461a1128da15c21dad482d41bd5792253904cd`; see the
+[private consumer acceptance](PytoLifecyleIntegSC3-L0Consumer.md). Do not rerun
+L0-1/L0-2 or private adoption as new work, and do not treat either acceptance
+as live resource activation.
 
 | Area | Actual State |
 | --- | --- |
@@ -22,7 +26,7 @@ or treat library acceptance as live resource activation.
 | Single render completion | SC1 owner and SC2 real field-only render wiring are implemented; the accepted SC2 proof is private and graph-gated |
 | Resource routes | Existing resource-bearing routes remain unactivated; SC2 deliberately rejects unsupported admission/retirement |
 | Resource audit | SC3 caller/writer/resource audit is recorded, not an activated migration |
-| Completion contract | L0-1/L0-2 and library verification/review accepted; historical probe transition and private consumer adoption remain pending |
+| Completion contract | Library and private consumer accepted; completion evidence now drives generation independently of cleanup/reuse; historical observation retained with a separately named current target |
 | Full field migration | I3a is not complete; callback selection, invocation values, resource holders, and remaining snapshot/transfer deletion remain unfinished |
 | Generator detour | Astichi/YIDL native materialization regressions are fixed, committed, and pushed; original YIDL goldens are unchanged |
 
@@ -78,6 +82,24 @@ says draft; use the exact recorded acceptance scope rather than that label alone
 
 ## Repository Checkpoint
 
+### Accepted Private Consumer Tuple, 2026-10-08
+
+| Repository | Revision |
+| --- | --- |
+| `pyrolyze` runtime/fixtures | `b1461a1128da15c21dad482d41bd5792253904cd` |
+| `yidl-lifecycle` | `05554397d1837ecbeafa36e4685477dd5ff30fc6` (docs-only after accepted runtime `4b86eec179942d96012aa4a1d92752a34cae87ef`) |
+| `yidl` | `a7cc1de7b630b55bd194940ecad83f3f1738cf8a` |
+| `astichi` | `1c47f781d3804130fdd61cbee07a3b2e4529158a` (released 1.1.3) |
+
+Code and State independently reproduced their original counterexamples and
+returned GO after one combined remediation. Three P2s closed: exception
+truthiness must not mask errors, captured token metadata must fence admission
+with sticky rejection, and contradictory completion records must not certify
+generation or reuse. No new findings. Verbatim reports and exact verification
+are linked from the consumer checkpoint. Subsequent acceptance/index filing is
+documentation-only. Resource routes remain blocked; no tag/push/parent-pointer
+update is part of this consumer checkpoint.
+
 ### Accepted Library Tuple, 2026-10-08
 
 | Repository | Revision |
@@ -87,8 +109,9 @@ says draft; use the exact recorded acceptance scope rather than that label alone
 | `yidl` | `a7cc1de7b630b55bd194940ecad83f3f1738cf8a` |
 | `astichi` | `1c47f781d3804130fdd61cbee07a3b2e4529158a` (released 1.1.3) |
 
-Library filing/index commits following this tuple are documentation-only.
-Pyrolyze runtime is unchanged; this handoff update does not certify adoption.
+Library filing/index commits immediately following this tuple were
+documentation-only. The subsequent consumer tuple above separately accepts
+the Pyrolyze runtime changes; this older library tuple did not certify adoption.
 All three review findings closed after one bounded remediation: diagnostic
 annotation cannot interrupt cleanup, public same-key validation cannot borrow
 before-hook write authority, and mutated token metadata cannot relabel evidence.
@@ -132,7 +155,7 @@ Paths in this table are relative to the owning repository root.
 | Pyrolyze: `src/pyrolyze/runtime/context_bare_refactor_lcm.py` | Decomposed context implementation exercised by the private proof |
 | Pyrolyze: `src/pyrolyze/runtime/context_lcm.py` | Older monolithic LCM implementation/reference; not proof that the decomposed path is fully activated |
 | Pyrolyze: `tests/data/lcm_integration` | Historical characterization and new construction/single-cohort canonical fixtures |
-| Lifecycle: `src/yidl_lifecycle/transaction_yidl.py` | Existing manager and retained `LifecycleTransaction`; L0-1 implementation belongs here |
+| Lifecycle: `src/yidl_lifecycle/transaction_yidl.py` | Accepted manager and retained `LifecycleTransaction`/`TransactionCompletion`; original-token completion authority |
 | Lifecycle: `src/yidl_lifecycle/yidl/lifecycle_core.yidl` | Core generated completion/preparation and common write boundary |
 | Lifecycle: `src/yidl_lifecycle/yidl/lifecycle_managed.yidl` | Effective per-key helper and hook contributions used by the complete decorator |
 | Lifecycle: `src/yidl_lifecycle/yidl/lifecycle_owned.yidl`, `lifecycle_transient.yidl` | Additional generated writers/materializing getters that must honor the same candidate-write guard |
@@ -141,9 +164,10 @@ Paths in this table are relative to the owning repository root.
 
 The manager now retains immutable `TransactionCompletion` on the original token
 and implements the accepted L0 phase-draining/eligibility contract. The private
-owner still guesses publication from exceptions, and the field-only completion
-path still couples generation decisions to `reuse_ready`/`first_failure`.
-Those consumers, not another manager implementation, are the next correction.
+owner now validates that original token's completion record after return or
+exception. Field-only completion certifies generation from publication evidence,
+not `reuse_ready` or `first_failure`; local cleanup separately fences reuse.
+Neither partial application nor lost authority permits invented undo or retry.
 
 ## Next Checkpoints
 
@@ -195,14 +219,13 @@ not add defensive copies/proxies or claim detection that does not exist.
 
 ### L0-3 And Private Consumer Adoption
 
-Library verification and independent Code/State review are complete. Next,
-update the private Pyrolyze owner and field-only completion path to consume
-completion evidence rather than guessing whether failure occurred before or
-after publication. Preserve the old transaction-failure observation with its
-revision and add a separately named target outcome; do not silently bless a
-changed historical baseline.
+Completed and accepted at the private consumer tuple above. The owner and
+field-only completion path now consume actual completion evidence. The old
+transaction-failure JSON is unchanged and reproducible at its pinned manager
+revision; a separately named current-library target covers draining and grouped
+errors. No historical observation was silently regenerated.
 
-The bounded adoption must distinguish publication, cleanup, and reuse:
+The accepted adoption distinguishes publication, cleanup, and reuse:
 
 - Coherent finalized full publication commits generation tracking even when an
   after-commit hook fails; retain the error and apply the documented reuse policy.
@@ -213,15 +236,15 @@ The bounded adoption must distinguish publication, cleanup, and reuse:
 - Empty commit/rollback/abort retain their entered-phase semantics. Generation
   decisions must not be inferred from `first_failure` or gated only by reuse.
 
-The next checkpoint owns the two current seven-file failures listed below,
-separately named target traces, original SC1/SC2 closures, full/default/broader
-verification, and fresh independent consumer review. Do not migrate the
-event-handler callback holder or admit resource routes in that same patch.
+The two pre-adoption seven-file failures listed below have been explicitly
+transitioned and resolved. Original SC1/SC2 closures, empty cases, and the
+original review counterexamples were reproved; current verification is below.
+No event-handler callback holder or resource route was migrated in this patch.
 
-Reprove original SC1/SC2 closures and empty completion cases. Resource admission
-stays blocked. Concrete resource/publication/generation/retirement/delivery
-adapter design is the next gate, not automatic runtime activation or wholesale
-snapshot deletion. Callback selection is a suggested first bounded adapter;
+Resource admission stays blocked. Concrete
+resource/publication/generation/retirement/delivery adapter design is the next
+gate, not automatic runtime activation or wholesale snapshot deletion.
+Callback selection is the first suggested bounded adapter;
 subscriptions/effects/mounts/overrides/legacy call sites are separate work.
 
 ## Verification And Commands
@@ -231,13 +254,23 @@ Current library verification: **376 passed, 46 skipped** on each of Python
 manager/two-canonical-golden run. Both reviewers independently reproduced and
 closed original counterexamples and checked exact generated artifacts.
 
-The current Pyrolyze seven-file run is **125 passed, two failed**:
+Current accepted consumer verification on Python 3.12.12:
+
+- Seven-file native: **147 passed**.
+- Owner/field-only/characterization Python-backend subset: **128 passed**.
+- Each reviewer independently ran the 128-test subset on both backends.
+- Full default native: **937 passed, 13 unchanged failures, 20 skipped, 1 warning**.
+- Broader decomposed, unactivated native: **41 passed, 14 unchanged failures**.
+- Historical manager reproduction matches the preserved JSON; Black/diff checks
+  pass. Broad failures are recorded debt, not an activation waiver.
+
+The pre-adoption library-only Pyrolyze seven-file run was **125 passed, two failed**:
 `test_unclassified_commit_failure_is_not_rolled_back_or_retried[apply_error]`
 and `test_lifecycle_failure_completion_characterization_baseline`. They are
-explicit pending consumer-transition obligations, not unrelated test debt or
-permission to ignore new failures. Preserve historical evidence and transition
-its current-library expectation in the adoption checkpoint. Full/broader
-Pyrolyze suites have not been rerun for this library-only change.
+explicit consumer-transition obligations, not unrelated test debt. They are
+resolved by the separately named target and explicit prepare/apply/after outcome
+tests. At that earlier library-only checkpoint full/broader Pyrolyze suites had
+not been rerun; the subsequent consumer counts above are the current evidence.
 
 Originally verified after the compiler fixes, on Python 3.12 with the local native
 extension rebuilt:
