@@ -205,6 +205,8 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
         self._pass_owned_event_handler_order = ()
 
     def rollback_owned_event_handlers(self) -> None:
+        if _field_only_completion(self) is not None:
+            return
         if not self._pass_owned_event_handler_order and not any(
             child.context_kind() == ContextKind.EVENT_HANDLER and child._seen_in_pass
             for child in self.children_state.values()
@@ -217,6 +219,7 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
             if slot_id not in committed_ids:
                 child.deactivate()
                 continue
+            child._discard_selection()
             child._seen_in_pass = True
         self._pass_owned_event_handler_order = ()
 
@@ -229,6 +232,9 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
             super().deactivate()
 
     def _begin_owned_event_handler_pass(self) -> None:
+        completion = _field_only_completion(self)
+        if completion is not None:
+            completion.note_owned_event_handler_pass(self)
         self._pass_owned_event_handler_order = tuple(
             slot_id
             for slot_id, child in self.children_state.items()

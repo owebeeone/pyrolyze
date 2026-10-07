@@ -57,6 +57,51 @@ def test_callback_write_rejects_replacement_token_before_mutation() -> None:
     manager.rollback(PASS_TX_KEY)
 
 
+@pytest.mark.parametrize("attack", ("equality", "property"))
+def test_callback_user_code_cannot_write_into_replacement_token(attack: str) -> None:
+    root = _root()
+    manager = root._state_mgr._transaction_manager
+    replacement: Any = None
+    armed = False
+
+    def replace_token() -> None:
+        nonlocal replacement
+        manager.rollback(PASS_TX_KEY)
+        replacement = manager.begin(PASS_TX_KEY)
+
+    class Callback:
+        def __eq__(self, other: object) -> bool:
+            if armed and attack == "equality":
+                replace_token()
+            return False
+
+        @property
+        def __self__(self) -> None:
+            if armed and attack == "property":
+                replace_token()
+            return None
+
+        def __call__(self) -> None:
+            pass
+
+    first = Callback()
+    with root.pass_scope():
+        root.event_handler(_slot(), callback=first, dirty=False)
+    state = root._slots_by_id[_slot()]._state_mgr
+    armed = True
+    with pytest.raises(RuntimeError, match="missing or replaced"):
+        with root.pass_scope():
+            selected = Callback() if attack == "property" else lambda: None
+            state.stage_callback(callback=selected, dirty=attack == "property")
+    assert manager.active_transaction_for(PASS_TX_KEY) is replacement
+    assert state._callback is first
+    assert state._callback_key is first
+    completion = root._state_mgr._field_only_completion
+    assert completion.last.published is None
+    assert not completion.last.reuse_ready
+    manager.rollback(PASS_TX_KEY)
+
+
 def test_retirement_preparation_error_discards_and_allows_clean_retry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

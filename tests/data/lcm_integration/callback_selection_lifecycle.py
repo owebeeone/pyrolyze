@@ -213,24 +213,72 @@ def _owned() -> dict[str, Any]:
 
     with root.pass_scope():
         invoke(True)
+        root.event_handler(_slot(2), callback=lambda: None, dirty=False)
     dispatch = held[-1]
     dispatch()
     try:
         with root.pass_scope():
             invoke(False)
+            root.event_handler(_slot(2), callback=lambda: None, dirty=False)
             dispatch()
             raise ValueError("failed owned removal")
     except ValueError:
         pass
     dispatch()
     assert root.debug_is_active(_slot())
+    component = root._slots_by_id[_slot(10)]
+    component.child_context._run_boundary()
+    dispatch()
+    root._slots_by_id[_slot(2)].deactivate()
+    dispatch()
+    assert root.debug_is_active(_slot())
+    with root.pass_scope():
+        assert (
+            root._ensure_slot(_slot(10), runtime.ComponentCallSlotContext) is component
+        )
+    dispatch()
+    state = component._state_mgr
+    assert state._pass_owned_event_handler_order == ()
+    assert root._slots_by_id[_slot()]._state_mgr._seen_in_pass
     with root.pass_scope():
         invoke(False)
         dispatch()
     assert _call(dispatch) == "event handler is inactive"
     assert not root.debug_is_active(_slot())
-    assert calls == ["owned"] * 4
+    assert calls == ["owned"] * 7
     return {"calls": calls, "generation": _generation(root), "removed": True}
+
+
+def _reselect_retired() -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    for equal in (False, True):
+        for fail in (False, True):
+            root = _root()
+            calls: list[str] = []
+            first = _EqualCallable("A", calls)
+            selected = _EqualCallable("B", calls) if equal else first
+            with root.pass_scope():
+                dispatch = root.event_handler(_slot(), callback=first, dirty=False)
+            try:
+                with root.pass_scope():
+                    root._slots_by_id[_slot()].deactivate()
+                    assert (
+                        root.event_handler(_slot(), callback=selected, dirty=False)
+                        is dispatch
+                    )
+                    dispatch()
+                    if fail:
+                        raise ValueError("failed reselection")
+            except ValueError:
+                pass
+            dispatch()
+            assert root.debug_is_active(_slot())
+            assert calls == ["A", "B" if equal and not fail else "A"]
+            assert root._slots_by_id[_slot()].committed_callback is (
+                first if fail else selected
+            )
+            results.append({"equal": equal, "failed": fail, "calls": calls})
+    return results
 
 
 def observe() -> dict[str, Any]:
@@ -244,6 +292,7 @@ def observe() -> dict[str, Any]:
         "membership": _membership(),
         "nested": _nested(),
         "owned": _owned(),
+        "retirement_reselection": _reselect_retired(),
     }
 
 

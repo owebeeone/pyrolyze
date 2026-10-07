@@ -22,9 +22,17 @@ No library/compiler work is needed.
   and stable identity. It reads `.current._callback`, never pending selection.
 - Bound-method keys preserve receiver identity and function identity. The
   historical A then pending B/A quirk is preserved; no effective-candidate fix.
+- Reselection cancels explicit pending retirement, including a callback equal
+  to current. User-executable key properties/equality finish before the same
+  captured render owner/token is rechecked immediately before selection writes.
 - Delete the four manual stores, `commit_handler`/`rollback_handler`, their
   facade forwarding methods, and both base/component transfer callers. Keep
   component resource cleanup/visitation bookkeeping; do not claim I5 complete.
+- On the retained unactivated route only, caught component invocation failure
+  masks its provisional selection with the accepted callback/key through managed
+  setters. This temporary local-discard adapter preserves parent-catch behavior;
+  it neither writes physical current storage nor restores a transfer engine.
+  The private route instead discards once through the outer completion owner.
 - Event handlers contribute no UI. Use the existing polymorphic empty-UI
   surface instead of reading an undeclared `ui_state` from a handler.
 
@@ -38,6 +46,10 @@ Nested field-only renders may select callbacks on the same manager/key.
 Pending handler arguments may materialize component-owned selection too;
 omitted owned handlers are removed from candidate membership before retirement
 selection is staged. No legacy call-site binding/acceptance is involved.
+Owned-handler argument visitation is scoped to the attempt that evaluated it;
+only participating component owners can authorize omission normalization. Its
+order/visitation scratch is reset after coherent completion under the existing
+cleanup/reuse fence, not interpreted again by an unrelated later write scope.
 
 1. Local evaluation stages selection and candidate membership. Existing dispatch
    still invokes the previously accepted callback; new dispatch is inactive.
@@ -79,7 +91,7 @@ unrelated debt. Settle one implementation checkpoint and conduct a tightly
 scoped implementation review. Resource categories not named here stay gated.
 No push, tag, worktree, or parent-pointer update is part of this checkpoint.
 
-## Implementation Evidence
+## Initial Candidate Evidence
 
 The canonical JSON and narrow faults were added red before implementation.
 Dirty-forced equal-key replacement and retirement-preparation error/reentry
@@ -102,3 +114,27 @@ the runtime selector are unchanged. Dependencies are unchanged.
 The implementation review is restricted to this candidate diff, its callback
 contract, and affected completion/admission behavior. It is not another design
 review of the accepted library or the whole integration.
+
+## Implementation Review
+
+Candidate `e1cce818e3c99712d54b37976a5794a8d85cfb57` received Code/State
+NO-GO. Their five P2 findings map to four roots: retained local failed-selection
+discard, stale owned-handler omission scratch (independent convergence),
+explicit retirement cancellation, and callback user-code authority loss.
+Verbatim reports and the one combined remediation plan are in
+`history/lifecycle-integration/PytoLifecyleIntegCallbacks-ReviewCode.md`,
+`-ReviewState.md`, and `-RemPlan-1.md`.
+
+All counterexamples were red before correction. The revised canonical fixture
+adds child-only/retained component reuse, unrelated removal after failed omission,
+and identical/value-equal deactivate-reselect success and failure. A separate
+owned-selection reference JSON compares original, monolithic, and unactivated
+decomposed routes. Narrow equality/property faults reject replacement-token
+contamination. The new private target is extended; historical JSON is unchanged.
+Re-verdict remains pending until the corrected committed tuple is reviewed.
+
+Corrected-tree verification: **160 focused native passed**, **24 affected
+Python passed**; full default native **950 passed, the same 13 failures,
+20 skipped, one warning**; broader unactivated **44 passed, the same 11
+failures**. Black/diff checks pass. No dependencies, historical snapshots,
+default selector, or other resource admission changed.

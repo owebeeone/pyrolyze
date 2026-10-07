@@ -42,6 +42,11 @@ Never regenerate a baseline merely to hide an unapproved semantic change.
   The original field-only gate remains unchanged. This new JSON is an authored
   target, not a rewrite of the reference observations; see
   `dev-docs/PytoLifecyleIntegCallbacks.md` for acceptance status.
+- `callback_owned_selection.py`: shared reference target for a caught component
+  failure followed by successful parent completion. Accepted selection remains
+  A, then a successful B invocation replaces it. Original, monolithic, and
+  unactivated decomposed routes compare to this new JSON; historical snapshots
+  are unchanged. The private proof separately requires whole-attempt discard.
 - `baselines/*.json`: structured historical snapshots, compared as JSON rather
   than by whitespace. Runtime selection takes place in fresh subprocesses.
 

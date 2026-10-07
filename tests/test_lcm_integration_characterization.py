@@ -70,6 +70,16 @@ def test_reference_callback_selection_baseline(implementation: str) -> None:
     _check_baseline("callback_selection.py", "callback_selection", environment)
 
 
+@pytest.mark.parametrize("implementation", ("original", "lcm", "bare_refactor_lcm"))
+def test_reference_owned_callback_selection_baseline(implementation: str) -> None:
+    environment = dict(os.environ)
+    environment.pop("PYROLYZE_USE_CONTEXT_LCM", None)
+    environment["PYROLYZE_CONTEXT_IMPL"] = implementation
+    _check_baseline(
+        "callback_owned_selection.py", "callback_owned_selection", environment
+    )
+
+
 def _check_baseline(script: str, name: str, environment: dict[str, str]) -> None:
     expected = json.loads(
         (_DATA / "baselines" / f"{name}.json").read_text(encoding="utf-8")

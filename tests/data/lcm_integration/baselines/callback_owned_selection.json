@@ -1,0 +1,4 @@
+{
+  "calls": ["A", "A", "B"],
+  "stable_dispatch": true
+}

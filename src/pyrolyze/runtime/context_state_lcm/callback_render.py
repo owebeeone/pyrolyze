@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from .field_only_render import _FieldOnlyRenderCompletion, _enable_field_only_render
 
 if TYPE_CHECKING:
     from ._base import StateMgrBase
+    from .component_call_slot_context import ComponentCallSlotContextStateMgr
     from .render_context import RenderContextStateMgr
 
 
@@ -46,6 +47,20 @@ def _graph_states(
 
 @dataclass(eq=False, slots=True)
 class _CallbackRenderCompletion(_FieldOnlyRenderCompletion):
+    owned_handler_passes: list[ComponentCallSlotContextStateMgr] = field(
+        default_factory=list, init=False
+    )
+
+    def note_owned_event_handler_pass(
+        self, context: ComponentCallSlotContextStateMgr
+    ) -> None:
+        if self.active is None or self._completing:
+            self.reject("owned-handler selection requires an active render execution")
+        self.active._require_open()
+        self.active._require_identity()
+        if context not in self.owned_handler_passes:
+            self.owned_handler_passes.append(context)
+
     def require_event_handler_binding(self) -> None:
         return None
 
@@ -56,7 +71,6 @@ class _CallbackRenderCompletion(_FieldOnlyRenderCompletion):
             super(_CallbackRenderCompletion, self).require_slot_type(slot_type)
 
     def _complete(self, propagating: BaseException | None) -> None:
-        from .component_call_slot_context import ComponentCallSlotContextStateMgr
         from .event_handler_slot_context import EventHandlerSlotContextStateMgr
 
         assert self.active is not None
@@ -66,17 +80,16 @@ class _CallbackRenderCompletion(_FieldOnlyRenderCompletion):
         try:
             if owner.first_failure is None and not owner._scopes:
                 owner._require_identity()
-                for state in _graph_states(self.root, current=False):
-                    if isinstance(state, ComponentCallSlotContextStateMgr):
-                        children = state.children_state
-                        retained = {
-                            slot_id: child
-                            for slot_id, child in children.items()
-                            if not isinstance(child, EventHandlerSlotContextStateMgr)
-                            or child._seen_in_pass
-                        }
-                        if len(retained) != len(children):
-                            state.children_state = retained
+                for state in self.owned_handler_passes:
+                    children = state.children_state
+                    retained = {
+                        slot_id: child
+                        for slot_id, child in children.items()
+                        if not isinstance(child, EventHandlerSlotContextStateMgr)
+                        or child._seen_in_pass
+                    }
+                    if len(retained) != len(children):
+                        state.children_state = retained
                 candidates = {
                     id(state) for state in _graph_states(self.root, current=False)
                 }
@@ -99,6 +112,19 @@ class _CallbackRenderCompletion(_FieldOnlyRenderCompletion):
             preparation_error = error
             if propagating is None:
                 propagating = error
-        super(_CallbackRenderCompletion, self)._complete(propagating)
+        try:
+            super(_CallbackRenderCompletion, self)._complete(propagating)
+        finally:
+            self.owned_handler_passes.clear()
         if preparation_error is not None:
             raise preparation_error
+
+    def _reconcile_registry(self) -> None:
+        from .event_handler_slot_context import EventHandlerSlotContextStateMgr
+
+        super(_CallbackRenderCompletion, self)._reconcile_registry()
+        for state in self.owned_handler_passes:
+            state._pass_owned_event_handler_order = ()
+            for child in state.current.children_state.values():
+                if isinstance(child, EventHandlerSlotContextStateMgr):
+                    child._seen_in_pass = True
