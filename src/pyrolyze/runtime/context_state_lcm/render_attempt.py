@@ -58,6 +58,9 @@ class _RenderAttempt:
     _tx_id: int = field(init=False, repr=False)
     _tx_key: Hashable = field(init=False, repr=False)
     _completion: TransactionCompletion | None = field(default=None, init=False)
+    _completion_failures: tuple[BaseException, ...] = field(
+        default=(), init=False, repr=False
+    )
     _identity_failure: RuntimeError | None = field(default=None, init=False, repr=False)
     _ownership_failure: RuntimeError | None = field(
         default=None, init=False, repr=False
@@ -111,12 +114,18 @@ class _RenderAttempt:
             raise RuntimeError("render attempt is finishing")
 
     def _require_identity(self) -> None:
-        if self.manager.active_transaction_for(self.tx_key) is not self.transaction:
+        if (
+            self._integrity_lost
+            or self.manager.active_transaction_for(self.tx_key) is not self.transaction
+            or type(self.transaction.tx_id) is not int
+            or self.transaction.tx_id != self._tx_id
+            or self.transaction.tx_key is not self._tx_key
+        ):
             self._integrity_lost = True
             self.publication_uncertain = True
             if self._identity_failure is None:
                 self._identity_failure = RuntimeError(
-                    "owned render transaction is missing or replaced"
+                    "owned render transaction is missing or replaced, or its identity changed"
                 )
             error = self._identity_failure
             self.fail(error)
@@ -201,6 +210,13 @@ class _RenderAttempt:
 
     def _observe_completion(self) -> None:
         record = self.transaction.completion
+        if isinstance(record, TransactionCompletion) and isinstance(
+            record.failures, tuple
+        ):
+            # Errors remain reportable even when the record cannot certify state.
+            self._completion_failures = tuple(
+                error for error in record.failures if isinstance(error, BaseException)
+            )
         if self._integrity_lost:
             self.publication_uncertain = True
             return
@@ -224,6 +240,21 @@ class _RenderAttempt:
                 and not (record.publication_complete and record.discard_complete)
                 and isinstance(record.failures, tuple)
                 and all(isinstance(error, BaseException) for error in record.failures)
+                and (
+                    not record.publication_complete
+                    or not record.after_actions_complete
+                    or not record.failures
+                )
+                and (
+                    not record.publication_complete
+                    or record.publication_started
+                    or (record.after_actions_complete and not record.failures)
+                )
+                and (
+                    not record.publication_started
+                    or record.publication_complete
+                    or bool(record.failures)
+                )
                 and (record.after_actions_complete or bool(record.failures))
                 and (
                     record.publication_complete
@@ -234,6 +265,7 @@ class _RenderAttempt:
         if (
             not valid
             or self.manager.active_transaction_for(self.tx_key) is not None
+            or type(self.transaction.tx_id) is not int
             or self.transaction.tx_id != self._tx_id
             or self.transaction.tx_key is not self._tx_key
         ):
@@ -254,9 +286,8 @@ class _RenderAttempt:
         )
 
     def _completion_errors(self) -> list[BaseException]:
-        record = self._completion
         errors = list(self._cleanup_errors)
-        for error in record.failures if record is not None else ():
+        for error in self._completion_failures:
             if not any(_contains_exception(existing, error) for existing in errors):
                 errors.append(error)
         return errors

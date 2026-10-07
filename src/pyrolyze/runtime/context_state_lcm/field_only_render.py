@@ -282,7 +282,7 @@ class _FieldOnlyRenderCompletion:
                     self._reconcile_registry()
             except BaseException as error:
                 self._cleanup_failure = error
-                primary = failure or propagating
+                primary = failure if failure is not None else propagating
                 if primary is not None:
                     _raise_with_cleanup(primary, [error])
                 raise

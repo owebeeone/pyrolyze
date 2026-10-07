@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from collections.abc import Hashable
+from dataclasses import replace
 
 from pyrolyze.api import UIElement
 from pyrolyze.runtime import context_bare_refactor_lcm as runtime
@@ -11,6 +13,7 @@ from pyrolyze.runtime.context_state_lcm.field_only_render import (
     _enable_field_only_render,
 )
 from pyrolyze.runtime.context_state_lcm.render_attempt import RenderAttemptAborted
+from yidl_lifecycle.transaction_yidl import TransactionManager
 
 
 def _root() -> Any:
@@ -702,3 +705,185 @@ def test_published_generation_survives_local_scratch_cleanup_failure(
         with root.pass_scope():
             pytest.fail("quarantined graph entered")
     assert tracker.committed_generation_id == 1
+
+
+@pytest.mark.parametrize("bool_raises", (False, True))
+def test_after_error_and_local_cleanup_never_test_exception_truthiness(
+    bool_raises: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pyrolyze.runtime.context_state_lcm.context_base import ContextBaseStateMgr
+    from pyrolyze.runtime.app_context import GenerationTracker
+
+    truth_checks = []
+    commits = []
+
+    class Primary(ValueError):
+        def __bool__(self) -> bool:
+            truth_checks.append(True)
+            if bool_raises:
+                raise AssertionError("exception truthiness evaluated")
+            return False
+
+    primary, cleanup = Primary("after failed"), LookupError("local cleanup failed")
+
+    class Participant:
+        def commit_order_key_for(self, tx_key: Hashable) -> tuple[object, ...]:
+            return ()
+
+        def requires_validation_for(self, tx_key: Hashable) -> bool:
+            return False
+
+        def _prepare_commit_tx_by_key(self, tx_key: Hashable, token: int) -> None:
+            pass
+
+        def _apply_prepared_commit_tx_by_key(
+            self, tx_key: Hashable, token: int
+        ) -> None:
+            pass
+
+        def _after_commit_tx_by_key(self, tx_key: Hashable, token: int) -> None:
+            raise primary
+
+    def fail_cleanup(self: Any, *, published: bool) -> None:
+        assert published
+        raise cleanup
+
+    original = GenerationTracker.commit
+
+    def record_commit(self: GenerationTracker) -> int:
+        commits.append(True)
+        return original(self)
+
+    root = _root()
+    state = root._state_mgr
+    tracker = state.get_app_context(state._generation_tracker_key)
+    monkeypatch.setattr(ContextBaseStateMgr, "_clear_field_only_pass", fail_cleanup)
+    monkeypatch.setattr(GenerationTracker, "commit", record_commit)
+    with pytest.raises(ExceptionGroup) as caught:
+        with root.pass_scope():
+            _emit(root, "published")
+            state._transaction_manager.enlist(Participant(), PASS_TX_KEY)
+    assert caught.value.exceptions == (primary, cleanup)
+    assert truth_checks == []
+    assert commits == [True]
+    assert tracker.committed_generation_id == 1
+    assert tracker.active_generation_id is None
+    assert state._field_only_completion.active is None
+    assert state._field_only_local_scope is None
+    assert state.current.ui_state[0].kind == "published"
+    with pytest.raises(RuntimeError, match="reuse"):
+        with root.pass_scope():
+            pytest.fail("quarantined graph entered")
+    assert commits == [True]
+
+
+@pytest.mark.parametrize("attribute", ("tx_key", "tx_id"))
+@pytest.mark.parametrize("reentry", (False, True))
+def test_token_relabeling_before_local_entry_is_sticky_after_restoration(
+    attribute: str,
+    reentry: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pyrolyze.runtime.context_state_lcm.context_base import ContextBaseStateMgr
+
+    root = _root()
+    state = root._state_mgr
+    completion = state._field_only_completion
+    tracker = state.get_app_context(state._generation_tracker_key)
+    entered = []
+    resets = []
+    begin = ContextBaseStateMgr._begin_field_only_pass
+
+    def record_reset(self: Any) -> None:
+        resets.append(True)
+        begin(self)
+
+    monkeypatch.setattr(ContextBaseStateMgr, "_begin_field_only_pass", record_reset)
+    with pytest.raises(RuntimeError):
+        with completion.attempt_scope():
+            scope = root.pass_scope() if reentry else completion.attempt_scope()
+            with scope:
+                token = completion.active.transaction
+                original = getattr(token, attribute)
+                setattr(token, attribute, object() if attribute == "tx_key" else 999)
+                try:
+                    with pytest.raises(RuntimeError):
+                        with root.pass_scope():
+                            entered.append(True)
+                            _emit(root, "candidate")
+                finally:
+                    setattr(token, attribute, original)
+                with pytest.raises(RuntimeError):
+                    with root.pass_scope():
+                        entered.append(True)
+    assert entered == []
+    assert resets == ([True] if reentry else [])
+    assert state.current.ui_state == ()
+    assert tracker.committed_generation_id == 0
+    assert tracker.active_generation_id is not None
+    assert completion.last.published is None
+    assert completion.last.publication_uncertain
+    assert not completion.last.reuse_ready
+    with pytest.raises(RuntimeError, match="reuse"):
+        with root.pass_scope():
+            pytest.fail("restoration rehabilitated the owner")
+
+
+@pytest.mark.parametrize(
+    "corruption", ("boolean_id", "empty_after_failure", "success_with_failure")
+)
+def test_contradictory_terminal_evidence_cannot_complete_generation(
+    corruption: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pyrolyze.runtime.context_state_lcm.render_attempt import (
+        RenderAttemptIncomplete,
+    )
+
+    root = _root()
+    state = root._state_mgr
+    manager = state._transaction_manager
+    completion = state._field_only_completion
+    tracker = state.get_app_context(state._generation_tracker_key)
+    original = TransactionManager.commit_only
+    supplied = ValueError("retained record failure")
+    calls = []
+
+    def corrupt(self: TransactionManager, tx_key: Hashable) -> int | None:
+        calls.append(tx_key)
+        result = original(self, tx_key)
+        token = completion.active.transaction
+        if corruption == "boolean_id":
+            token.tx_id = True
+        else:
+            changes = {"failures": (supplied,)}
+            if corruption == "empty_after_failure":
+                changes.update(publication_started=False, after_actions_complete=False)
+            token._completion = replace(token.completion, **changes)
+        return result
+
+    monkeypatch.setattr(TransactionManager, "commit_only", corrupt)
+    with pytest.raises((RenderAttemptIncomplete, ExceptionGroup)) as caught:
+        with root.pass_scope():
+            _emit(root, "published")
+
+    def contains(error: BaseException, target: BaseException) -> bool:
+        return (
+            error is target
+            or isinstance(error, BaseExceptionGroup)
+            and any(contains(child, target) for child in error.exceptions)
+        )
+
+    if corruption != "boolean_id":
+        assert contains(caught.value, supplied)
+    assert completion.last.published is None
+    assert completion.last.publication_uncertain and not completion.last.reuse_ready
+    assert state.current.ui_state[0].kind == "published"
+    assert tracker.committed_generation_id == 0
+    assert tracker.active_generation_id is not None
+    for entry in (root.pass_scope, state.publish_write_scope):
+        with pytest.raises(RuntimeError, match="reuse"):
+            with entry():
+                pytest.fail("contradictory evidence admitted another write")
+    assert calls == [PASS_TX_KEY]

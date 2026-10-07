@@ -119,8 +119,24 @@ paths above. No duplicate pytest-plugin registration is necessary.
 
 ## Next Gate
 
-Commit this candidate and review the settled tuple on fresh peer-blind Code
-and State axes. No pushes/tags/parent-pointer updates are part of this step.
+The initial candidate at `223d04aa322df32e2adc5f5cd45b27111b111f4b`
+received Code/State NO-GO verdicts. The verbatim reports and combined remediation
+plan are in `history/lifecycle-integration/`, named
+`PytoLifecyleIntegSC3-L0Consumer-ReviewCode.md`, `-ReviewState.md`, and
+`-RemPlan-1.md`. Three distinct P2s concern exception truthiness, mutable token
+metadata at admission, and unreachable completion-record combinations.
+
+One bounded remediation patch addresses them without widening the contract.
+Nine counterexamples were red before correction. Native focused verification
+now passes **147 tests**, and the Python-backend subset passes **128 tests**.
+Full default native is **937 passed, the same 13 failures, 20 skipped, 1
+warning**; broader unactivated is **41 passed, the same 14 failures**. No
+goldens changed. Black and diff checks pass. The original observations above
+are retained as initial-candidate evidence, not the latest test counts.
+
+Commit this combined correction and request focused re-verdicts from the same
+Code and State reviewers. Remediation rounds used: 1/2. Acceptance is still
+pending those verdicts. No pushes/tags/parent-pointer updates are part of this step.
 After acceptance, design the concrete D5/category adapter timeline before
 admitting any resource-bearing route. Do not skip directly to event-handler
 holder replacement or general activation.
