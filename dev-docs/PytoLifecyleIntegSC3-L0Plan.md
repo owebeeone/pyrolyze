@@ -4,7 +4,8 @@
 
 Status: **Design accepted at Pyrolyze `715a0074625844afae05d08afc86557d196bdecd`
 after fresh Consistency/Safety GO/GO and originating-reviewer closure; no
-implementation yet**. Reports and exact dependency tuple are recorded in
+implementation yet at that design checkpoint**. Reports and exact dependency
+tuple are recorded in
 `history/lifecycle-integration/PytoLifecyleIntegSC3-L0Plan-ReviewLoop.md`. Acceptance covers this bounded
 library design only, not implementation, private consumer adoption, or activation.
 Date: 2026-10-04. The operator approved the original proposal: a reviewed,
@@ -20,6 +21,14 @@ ownership/refcounts, marker signatures, YIDL grammar, or resource algorithms.
 Document acceptance approves this library design only. Runtime implementation
 and its exact accepted tuple need a separate gate; no SC3 live resource route,
 I3a completion, or default activation is accepted by either checkpoint.
+
+Implementation update, 2026-10-08: L0-1/L0-2 and the library verification/review
+gate are **accepted at lifecycle `4b86eec179942d96012aa4a1d92752a34cae87ef`**
+after Code/State GO/GO. The
+[library acceptance record](../../yidl-lifecycle/dev-docs/L0CompletionVerification.md)
+pins the exact tuple, one combined remediation, and original-counterexample
+closures. Private consumer adoption and L0-3's historical probe transition
+remain pending. This status update changes no contract clause or activation gate.
 
 ### Exact Phase F-1 Supersession
 

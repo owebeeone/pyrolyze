@@ -5,14 +5,15 @@ landed; use its status and the recorded acceptance scope.
 
 ## Lifecycle Integration
 
-The current checkpoint is the accepted **design** for lifecycle completion
-evidence. L0-1 manager implementation, L0-2 generated guards/hooks/goldens,
-library acceptance, and private consumer adoption are still pending. The SC2
+The current checkpoint is the accepted **library implementation** for lifecycle
+completion evidence: L0-1 manager and L0-2 generated guards/hooks/goldens passed
+Code/State GO/GO at lifecycle `4b86eec179942d96012aa4a1d92752a34cae87ef`.
+Private owner adoption and historical probe transition are next. The SC2
 field-only proof remains privately gated; resource routes are not activated.
 
 [Resume handoff](YidlLifecycleIntegrationHandoff.md) records the repository
 checkpoint, published compiler fixes, verification commands, and the next
-bounded library implementation steps. It supplements, not replaces, the plans.
+bounded private-consumer step. It supplements, not replaces, the plans.
 
 Read these documents in order:
 

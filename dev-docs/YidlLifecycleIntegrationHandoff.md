@@ -1,18 +1,20 @@
 # YIDL Lifecycle Integration Handoff
 
-Updated: 2026-10-04. This is a resume guide, not a new design or an acceptance
+Updated: 2026-10-08. This is a resume guide, not a new design or an acceptance
 verdict. Read repository instructions and the active contracts before changing
-runtime behavior. The current request creates this handoff only; it does not
-authorize another roll-build, runtime activation, or unrelated cleanup.
+runtime behavior. It does not authorize runtime activation or unrelated cleanup.
+Original handoff snapshots below remain historical evidence, not current status.
 
 ## Resume Point
 
-**Next implementation checkpoint: SC3-L0 / L0-1 in `yidl-lifecycle`.**
+**Next implementation checkpoint: SC3-L0 private Pyrolyze owner adoption.**
 
-The lifecycle completion design has passed its design review. Its manager
-implementation, generated guards/hooks, implementation review, and private
-Pyrolyze adoption have **not** landed. Do not interpret the recent compiler
-fixes or passing library tests as completion of L0.
+The lifecycle manager, generated guards/hooks, and canonical failure goldens are
+implemented and accepted at library `4b86eec179942d96012aa4a1d92752a34cae87ef`
+after independent Code/State GO/GO. Read the
+[acceptance record](../../yidl-lifecycle/dev-docs/L0CompletionVerification.md).
+Private Pyrolyze adoption has **not** landed. Do not rerun L0-1/L0-2 as new work
+or treat library acceptance as live resource activation.
 
 | Area | Actual State |
 | --- | --- |
@@ -20,7 +22,7 @@ fixes or passing library tests as completion of L0.
 | Single render completion | SC1 owner and SC2 real field-only render wiring are implemented; the accepted SC2 proof is private and graph-gated |
 | Resource routes | Existing resource-bearing routes remain unactivated; SC2 deliberately rejects unsupported admission/retirement |
 | Resource audit | SC3 caller/writer/resource audit is recorded, not an activated migration |
-| Completion contract | L0 design accepted; L0-1, L0-2, L0-3, and private consumer adoption remain pending |
+| Completion contract | L0-1/L0-2 and library verification/review accepted; historical probe transition and private consumer adoption remain pending |
 | Full field migration | I3a is not complete; callback selection, invocation values, resource holders, and remaining snapshot/transfer deletion remain unfinished |
 | Generator detour | Astichi/YIDL native materialization regressions are fixed, committed, and pushed; original YIDL goldens are unchanged |
 
@@ -61,7 +63,7 @@ not implement an old historical golden's observation as the new render contract.
 3. [SC3 resource audit](PytoLifecyleIntegSC3.md): concrete writers, completion
    callers, resource categories, and activation gates.
 4. [SC3-L0 completion plan](PytoLifecyleIntegSC3-L0Plan.md): the accepted design
-   to implement next, including exact Phase F-1 supersession and stop conditions.
+   to apply at the private-consumer checkpoint, including exact Phase F-1 supersession and stop conditions.
 5. [Overall integration plan](PytoLifecyleIntegPlan.md) and
    [I3a detail](PytoLifecyleIntegI3aPlan.md), interpreted through the amendments.
 6. [Lifecycle library index](../../yidl-lifecycle/dev-docs/README.md) and
@@ -75,6 +77,23 @@ automatically inherit those verdicts. Some older active-plan status text still
 says draft; use the exact recorded acceptance scope rather than that label alone.
 
 ## Repository Checkpoint
+
+### Accepted Library Tuple, 2026-10-08
+
+| Repository | Revision |
+| --- | --- |
+| `yidl-lifecycle` | `4b86eec179942d96012aa4a1d92752a34cae87ef` |
+| `pyrolyze` controlling plan/runtime | `ac410240fc33459da31ffcc87863f915ed7e124e` |
+| `yidl` | `a7cc1de7b630b55bd194940ecad83f3f1738cf8a` |
+| `astichi` | `1c47f781d3804130fdd61cbee07a3b2e4529158a` (released 1.1.3) |
+
+Library filing/index commits following this tuple are documentation-only.
+Pyrolyze runtime is unchanged; this handoff update does not certify adoption.
+All three review findings closed after one bounded remediation: diagnostic
+annotation cannot interrupt cleanup, public same-key validation cannot borrow
+before-hook write authority, and mutated token metadata cannot relabel evidence.
+
+### Original Handoff Snapshot, 2026-10-04
 
 These are the checked-out and published commits inspected for this handoff,
 not a replacement for the older dependency tuple pinned in the design reviews.
@@ -120,17 +139,18 @@ Paths in this table are relative to the owning repository root.
 | Lifecycle: `src/yidl_lifecycle/_generated_lifecycle_base.py` | Checked-in complete decorator artifact; regenerate from YIDL, never patch as independent authority |
 | Lifecycle: `src/yidl_lifecycle/lifecycle.py` | Harvest/build boundary; class generation compiles and executes the emitted AST, not a source round-trip |
 
-The manager currently lacks `TransactionCompletion` and retained terminal
-completion evidence. Its existing prepare/apply/after/rollback loops do not yet
-implement the accepted L0 phase-draining and eligibility contract. Token-bound
-scope fencing was implemented earlier; do not conflate it with L0 completion.
+The manager now retains immutable `TransactionCompletion` on the original token
+and implements the accepted L0 phase-draining/eligibility contract. The private
+owner still guesses publication from exceptions, and the field-only completion
+path still couples generation decisions to `reuse_ready`/`first_failure`.
+Those consumers, not another manager implementation, are the next correction.
 
 ## Next Checkpoints
 
 ### L0-1: Manager Outcome And Failure Protocol
 
-Follow the detailed plan, with narrow red tests in the library's
-`tests/test_transaction_yidl.py` before implementation.
+Completed and accepted at the library tuple above. This checklist records the
+implemented obligations; do not start another manager from it.
 
 - Add immutable, token-bound terminal completion evidence on the original
   transaction, including actual publication/discard/after-action facts and
@@ -153,7 +173,8 @@ marker, enum, magic phase tags, savepoint, or cross-key atomicity is authorized.
 
 ### L0-2: Generated Guards, Hooks, And Goldens
 
-The manager-only checkpoint is insufficient for library acceptance:
+Completed and accepted at the same library tuple, including complete and
+core-only generated paths. A manager-only checkpoint was insufficient:
 
 - Implement the before-hook candidate-write window and irreversible
   hook-to-field preparation boundary in YIDL resources.
@@ -174,12 +195,28 @@ not add defensive copies/proxies or claim detection that does not exist.
 
 ### L0-3 And Private Consumer Adoption
 
-Run focused/full library verification and fresh independent Code/State review
-at an exact settled tuple. Then update the private Pyrolyze owner to consume
+Library verification and independent Code/State review are complete. Next,
+update the private Pyrolyze owner and field-only completion path to consume
 completion evidence rather than guessing whether failure occurred before or
 after publication. Preserve the old transaction-failure observation with its
 revision and add a separately named target outcome; do not silently bless a
 changed historical baseline.
+
+The bounded adoption must distinguish publication, cleanup, and reuse:
+
+- Coherent finalized full publication commits generation tracking even when an
+  after-commit hook fails; retain the error and apply the documented reuse policy.
+- Coherent unpublished discard rolls back generation tracking; failed/incomplete
+  cleanup does not authorize automatic reuse.
+- Missing/incoherent evidence, lost authority, or partial application quarantines
+  the attempt. Never claim current-value undo or a successful generation.
+- Empty commit/rollback/abort retain their entered-phase semantics. Generation
+  decisions must not be inferred from `first_failure` or gated only by reuse.
+
+The next checkpoint owns the two current seven-file failures listed below,
+separately named target traces, original SC1/SC2 closures, full/default/broader
+verification, and fresh independent consumer review. Do not migrate the
+event-handler callback holder or admit resource routes in that same patch.
 
 Reprove original SC1/SC2 closures and empty completion cases. Resource admission
 stays blocked. Concrete resource/publication/generation/retirement/delivery
@@ -189,7 +226,20 @@ subscriptions/effects/mounts/overrides/legacy call sites are separate work.
 
 ## Verification And Commands
 
-Verified after the compiler fixes, on Python 3.12 with the local native
+Current library verification: **376 passed, 46 skipped** on each of Python
+3.12/3.13/3.14 with native assembly; **118 passed** in the focused Python-backend
+manager/two-canonical-golden run. Both reviewers independently reproduced and
+closed original counterexamples and checked exact generated artifacts.
+
+The current Pyrolyze seven-file run is **125 passed, two failed**:
+`test_unclassified_commit_failure_is_not_rolled_back_or_retried[apply_error]`
+and `test_lifecycle_failure_completion_characterization_baseline`. They are
+explicit pending consumer-transition obligations, not unrelated test debt or
+permission to ignore new failures. Preserve historical evidence and transition
+its current-library expectation in the adoption checkpoint. Full/broader
+Pyrolyze suites have not been rerun for this library-only change.
+
+Originally verified after the compiler fixes, on Python 3.12 with the local native
 extension rebuilt:
 
 | Suite | Result |
