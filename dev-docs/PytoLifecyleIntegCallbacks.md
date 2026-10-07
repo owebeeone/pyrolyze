@@ -33,6 +33,8 @@ No library/compiler work is needed.
   setters. This temporary local-discard adapter preserves parent-catch behavior;
   it neither writes physical current storage nor restores a transfer engine.
   The private route instead discards once through the outer completion owner.
+  Argument preparation belongs to that captured owner too: a failure before
+  child-boundary entry must be recorded even if the parent catches it.
 - Event handlers contribute no UI. Use the existing polymorphic empty-UI
   surface instead of reading an undeclared `ui_state` from a handler.
 
@@ -138,3 +140,17 @@ Python passed**; full default native **950 passed, the same 13 failures,
 20 skipped, one warning**; broader unactivated **44 passed, the same 11
 failures**. Black/diff checks pass. No dependencies, historical snapshots,
 default selector, or other resource admission changed.
+
+Remediation-1 re-verdicts (`-ReviewCode-1.md`, `-ReviewState-1.md`) closed
+every original finding. Both independently found one additional pre-child
+argument-preparation failure gap, mapped to Code P2-4 / State P2-3. The single
+correction in `-RemPlan-2.md` captures the private invocation owner and records
+the exception there before rethrowing. The canonical fault was red first,
+then passed for both initially absent and accepted first handlers: exact cause,
+no leaked registration/selection, unchanged generation/invocation, clean retry.
+This does not change unactivated parent-catch semantics or restore manual
+membership/current writes. Final re-verdict is pending.
+
+After the second correction the same gates were rerun: **160 native focused**,
+**24 Python affected**, full default **950/13 unchanged failures/20 skipped**,
+broader unactivated **44/11 unchanged failures**. Black/diff checks pass.

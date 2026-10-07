@@ -118,6 +118,8 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
             self._schema = schema
 
         self._begin_owned_event_handler_pass()
+        completion = _field_only_completion(self)
+        invocation_owner = None if completion is None else completion.active
         try:
             effective_param_names = _pyr_param_names or param_names
             if dirty_state is None and effective_param_names:
@@ -180,7 +182,9 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
             )
             self._child_context_state_mgr._mounted_callback = self._rerun_child
             child_context._run_boundary()
-        except BaseException:
+        except BaseException as error:
+            if invocation_owner is not None:
+                invocation_owner.fail(error)
             self.rollback_owned_event_handlers()
             raise
         self.ui_state = self._child_context_state_mgr.ui_state

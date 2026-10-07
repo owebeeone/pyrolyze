@@ -37,7 +37,9 @@ Never regenerate a baseline merely to hide an unapproved semantic change.
   the private callback-enabled render gate. It adds dirty-forced equal-callable
   replacement, stable dispatch across nested failure, candidate membership,
   explicit/omitted removal, component-owned handler arguments, and stale-holder
-  removal without unregistering a replacement. It admits no bindings, effects,
+  removal without unregistering a replacement. Its preparation fault stages a
+  first handler before the second key throws, proving whole-attempt discard
+  even when the parent catches the pre-child error. It admits no bindings, effects,
   overrides, or legacy call sites and does not activate the runtime selector.
   The original field-only gate remains unchanged. This new JSON is an authored
   target, not a rewrite of the reference observations; see

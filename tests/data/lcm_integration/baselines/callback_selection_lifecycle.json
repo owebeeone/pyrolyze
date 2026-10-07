@@ -23,6 +23,10 @@
     "repeated_failure": {"calls": ["A", "A", "A", "A"], "stable_dispatch": true},
     "repeated_success": {"calls": ["A", "A", "A", "B"], "stable_dispatch": true}
   },
+  "preparation_failure": [
+    {"initial": false, "calls": ["B"], "generation": 2, "executions": 2},
+    {"initial": true, "calls": ["A", "A", "B"], "generation": 2, "executions": 2}
+  ],
   "retirement_reselection": [
     {"equal": false, "failed": false, "calls": ["A", "A"]},
     {"equal": false, "failed": true, "calls": ["A", "A"]},

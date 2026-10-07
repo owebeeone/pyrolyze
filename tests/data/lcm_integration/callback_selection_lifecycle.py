@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from typing import Any
 
 from callback_selection import observe as reference_observe
@@ -281,6 +282,96 @@ def _reselect_retired() -> list[dict[str, Any]]:
     return results
 
 
+def _preparation_failure() -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    for initial in (False, True):
+        root = _root()
+        calls: list[str] = []
+        held: list[Any] = []
+        executions = 0
+        error = ValueError("second handler key failed")
+
+        class FailingCallback:
+            @property
+            def __self__(self) -> None:
+                raise error
+
+            def __call__(self) -> None:
+                raise AssertionError("failed handler must never be called")
+
+        def child(context: Any, first: Any, second: Any) -> None:
+            nonlocal executions
+            with context.pass_scope():
+                executions += 1
+                if first is not None:
+                    held.append(first)
+
+        component = SimpleNamespace(_pyrolyze_meta=SimpleNamespace(_func=child))
+        first = lambda: calls.append("A")
+        replacement = lambda: calls.append("B")
+
+        def binding(callback: Any, index: int = 1) -> Any:
+            return root.event_handler_binding(
+                _slot(index), callback=callback, dirty=True
+            )
+
+        with root.pass_scope():
+            root.component_call(
+                _slot(10), component, binding(first) if initial else None, None
+            )
+        before = root._slots_by_id[_slot(10)]._state_mgr.current._call_state
+        dispatch = held[-1] if initial else None
+        if dispatch is not None:
+            dispatch()
+        candidate: Any = None
+        try:
+            with root.pass_scope():
+                try:
+                    root.component_call(
+                        _slot(10),
+                        component,
+                        binding(replacement),
+                        binding(FailingCallback(), 2),
+                    )
+                except ValueError as caught:
+                    assert caught is error
+                    candidate = root._slots_by_id[_slot()].dispatch
+        except RenderAttemptAborted as aborted:
+            assert aborted.__cause__ is error
+        else:
+            raise AssertionError("caught preparation failure must abort the attempt")
+        assert executions == 1
+        assert _generation(root) == 1
+        assert not root.debug_is_active(_slot(2))
+        assert root.debug_is_active(_slot()) is initial
+        assert root._slots_by_id[_slot(10)]._state_mgr.current._call_state is before
+        completion = root._state_mgr._field_only_completion
+        assert completion.last.first_failure is error
+        assert completion.last.published is False
+        assert completion.last.reuse_ready
+        if initial:
+            assert candidate is dispatch
+            dispatch()
+        else:
+            assert _call(candidate) == "event handler is inactive"
+        with root.pass_scope():
+            root.component_call(_slot(10), component, binding(replacement), None)
+        if initial:
+            assert held[-1] is dispatch
+        held[-1]()
+        assert calls == (["A", "A", "B"] if initial else ["B"])
+        assert executions == 2
+        results.append(
+            {
+                "initial": initial,
+                "calls": calls,
+                "generation": _generation(root),
+                "executions": executions,
+            }
+        )
+    return results
+
+
 def observe() -> dict[str, Any]:
     reference = reference_observe(_root)
     assert reference["bound_success"]["calls"] == ["A", "A", "A", "B"]
@@ -293,6 +384,7 @@ def observe() -> dict[str, Any]:
         "nested": _nested(),
         "owned": _owned(),
         "retirement_reselection": _reselect_retired(),
+        "preparation_failure": _preparation_failure(),
     }
 
 
