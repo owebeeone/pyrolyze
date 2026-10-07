@@ -1,6 +1,8 @@
 # Callback Selection Migration
 
-Status: bounded implementation contract, 2026-10-08. The operator approved
+Status: **accepted at Pyrolyze `6be1b8f610c13eda18a451688377370cb1dbb087`
+after Code/State GO/GO; bounded callback-selection migration and private proof
+only**, 2026-10-08. The operator approved
 implementation followed by a focused implementation review, not another design
 review campaign. Baseline: Pyrolyze `dd3d3a7`; accepted completion consumer
 `b1461a1128da15c21dad482d41bd5792253904cd`. Dependencies remain the tuple in
@@ -133,7 +135,7 @@ and identical/value-equal deactivate-reselect success and failure. A separate
 owned-selection reference JSON compares original, monolithic, and unactivated
 decomposed routes. Narrow equality/property faults reject replacement-token
 contamination. The new private target is extended; historical JSON is unchanged.
-Re-verdict remains pending until the corrected committed tuple is reviewed.
+The first re-verdicts and their remaining finding are recorded below.
 
 Corrected-tree verification: **160 focused native passed**, **24 affected
 Python passed**; full default native **950 passed, the same 13 failures,
@@ -149,8 +151,37 @@ the exception there before rethrowing. The canonical fault was red first,
 then passed for both initially absent and accepted first handlers: exact cause,
 no leaked registration/selection, unchanged generation/invocation, clean retry.
 This does not change unactivated parent-catch semantics or restore manual
-membership/current writes. Final re-verdict is pending.
+membership/current writes. Final re-verdicts closed that finding on the tuple
+below.
 
 After the second correction the same gates were rerun: **160 native focused**,
 **24 Python affected**, full default **950/13 unchanged failures/20 skipped**,
 broader unactivated **44/11 unchanged failures**. Black/diff checks pass.
+
+## Accepted Checkpoint
+
+| Repository | Reviewed Revision |
+| --- | --- |
+| Pyrolyze runtime/fixtures | `6be1b8f610c13eda18a451688377370cb1dbb087` |
+| yidl-lifecycle (unchanged) | `05554397d1837ecbeafa36e4685477dd5ff30fc6` |
+| YIDL (unchanged) | `a7cc1de7b630b55bd194940ecad83f3f1738cf8a` |
+| Astichi (unchanged) | `1c47f781d3804130fdd61cbee07a3b2e4529158a` |
+
+Both reviewers independently replayed their original counterexamples and the
+pre-child fault on native/Python, ran the 24-test affected subset on both,
+and reported **GO** with no new findings. Reports are preserved verbatim:
+[Code](history/lifecycle-integration/PytoLifecyleIntegCallbacks-ReviewCode-2.md)
+and [State](history/lifecycle-integration/PytoLifecyleIntegCallbacks-ReviewState-2.md).
+Remediation rounds used: **2/2**. Independent convergence occurred on stale
+omission scratch and pre-child failure recording. Broad counts are implementer
+evidence, not independently repeated broad acceptance.
+
+This accepts the managed selection stores, caller deletion, retained-route
+compatibility adapter, and private handler-enabled proof. It does not certify
+I3a/I5 completion, subscriptions/effects/overrides/legacy call sites, component
+retirement, or default-runtime activation. The original field-only gate remains
+unchanged. No push, tag, worktree, library change, or parent-pointer update.
+
+Next bounded checkpoint: I3c invocation values, starting with leaf/rerunnable
+argument and identity stores. Resource-dependent invocation routes remain
+blocked until their own adapters; no wholesale snapshot deletion follows.

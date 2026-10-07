@@ -920,6 +920,14 @@ pretend a managed `_binding` reference makes the referent transactional; that
 resource migration belongs to I4. Audit mutable objects inside argument tuples
 and frozen invocation records separately from the immutability of their holder.
 
+Checkpoint update, 2026-10-08: bounded I3b selection stores/callers and a separate
+private handler-enabled proof are accepted at
+`6be1b8f610c13eda18a451688377370cb1dbb087`; see
+[the exact scope and evidence](PytoLifecyleIntegCallbacks.md). The retained
+unactivated component failure route still needs its small local-discard
+compatibility adapter. This does not complete I3a/I5 or activate resource routes.
+Next is bounded I3c invocation-value work through the single-cohort amendment.
+
 ### I4: Call Sites And External Resource Participants
 
 Conditional prerequisite: L0's failure-completion evidence before relying on

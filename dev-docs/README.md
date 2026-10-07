@@ -11,15 +11,17 @@ and historical probe transition are now accepted after Code/State GO/GO at
 `b1461a1128da15c21dad482d41bd5792253904cd`; see the
 [consumer checkpoint](PytoLifecyleIntegSC3-L0Consumer.md) for its exact tuple,
 review reports, and verification. The SC2 field-only gate remains private;
-resource routes are not activated. The
+other resource routes are not activated. The
 [bounded callback-selection implementation](PytoLifecyleIntegCallbacks.md)
-is the next review candidate, not live holder replacement. It migrates the
-selection stores and callers and adds a separate private handler-enabled proof;
-other resource categories remain gated.
+is accepted after Code/State GO/GO at
+`6be1b8f610c13eda18a451688377370cb1dbb087`. It migrates selection stores and
+callers and adds a separate private handler-enabled proof, not live holder
+replacement. Next is bounded I3c invocation-value migration; other resource
+categories and default-runtime activation remain gated.
 
 [Resume handoff](YidlLifecycleIntegrationHandoff.md) records the repository
 checkpoint, published compiler fixes, verification commands, and the next
-bounded adapter-design step. It supplements, not replaces, the plans.
+bounded invocation-value step. It supplements, not replaces, the plans.
 
 Read these documents in order:
 

@@ -18,8 +18,12 @@ gates below are accepted. The consumer checkpoint is Pyrolyze
 `b1461a1128da15c21dad482d41bd5792253904cd`, after Code/State GO/GO; see
 [its exact tuple and verification](PytoLifecyleIntegSC3-L0Consumer.md).
 The inspection, observations, and initial gate sequence below remain the
-historical audit. D5/category adapter design is next, with resource admission
-and every unreviewed retirement/delivery path still blocked.
+historical audit. Subsequent bounded callback selection is accepted at
+`6be1b8f610c13eda18a451688377370cb1dbb087` after Code/State GO/GO; see
+[its exact scope and verification](PytoLifecyleIntegCallbacks.md). Only a separate
+private handler-enabled proof is admitted. Other resource admission and every
+unreviewed retirement/delivery path remain blocked; I3a/I5 and default-runtime
+activation are not certified. Next bounded value checkpoint is I3c.
 
 ## Inspected Tuple
 

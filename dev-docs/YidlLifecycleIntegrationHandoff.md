@@ -7,7 +7,8 @@ Original handoff snapshots below remain historical evidence, not current status.
 
 ## Resume Point
 
-**Next checkpoint: D5/category adapter design, starting with callback selection.**
+**Next checkpoint: bounded I3c invocation-value migration, starting with
+leaf/rerunnable argument and identity stores.**
 
 The lifecycle manager, generated guards/hooks, and canonical failure goldens are
 implemented and accepted at library `4b86eec179942d96012aa4a1d92752a34cae87ef`
@@ -20,14 +21,23 @@ and passed Code/State GO/GO at
 L0-1/L0-2 or private adoption as new work, and do not treat either acceptance
 as live resource activation.
 
+Callback selection is now accepted at
+`6be1b8f610c13eda18a451688377370cb1dbb087` after Code/State GO/GO; read the
+[callback checkpoint](PytoLifecyleIntegCallbacks.md) for exact scope, dependency
+tuple, corrections, and evidence. Selection stores/callers are migrated and a
+separate private handler-enabled proof passes. Keep the unactivated local-discard
+compatibility adapter until its completion ownership migrates. Do not repeat
+callback storage replacement or treat this as admission of other resources.
+
 | Area | Actual State |
 | --- | --- |
 | Construction | Lifecycle-based common construction, explicit manager injection, and post-construction graph attachment are implemented and accepted through I1b |
 | Single render completion | SC1 owner and SC2 real field-only render wiring are implemented; the accepted SC2 proof is private and graph-gated |
-| Resource routes | Existing resource-bearing routes remain unactivated; SC2 deliberately rejects unsupported admission/retirement |
+| Resource routes | A separate private gate admits callback selection only; other resource-bearing routes and the default runtime remain unactivated |
+| Callback selection | Managed callback/key and local dispatch replace four manual stores; current-only stable dispatch, owned selection/removal, failures, and compatibility are accepted in the bounded checkpoint |
 | Resource audit | SC3 caller/writer/resource audit is recorded, not an activated migration |
 | Completion contract | Library and private consumer accepted; completion evidence now drives generation independently of cleanup/reuse; historical observation retained with a separately named current target |
-| Full field migration | I3a is not complete; callback selection, invocation values, resource holders, and remaining snapshot/transfer deletion remain unfinished |
+| Full field migration | I3a is not complete; invocation values, resource holders, and remaining snapshot/transfer deletion are unfinished; callback acceptance does not certify I5 membership/resource cleanup |
 | Generator detour | Astichi/YIDL native materialization regressions are fixed, committed, and pushed; original YIDL goldens are unchanged |
 
 ## Goal And Chosen Semantics
@@ -81,6 +91,17 @@ automatically inherit those verdicts. Some older active-plan status text still
 says draft; use the exact recorded acceptance scope rather than that label alone.
 
 ## Repository Checkpoint
+
+### Accepted Callback Tuple, 2026-10-08
+
+Pyrolyze runtime/fixtures: `6be1b8f610c13eda18a451688377370cb1dbb087`.
+Dependencies are the unchanged tuple in the private-consumer table below.
+Code/State GO/GO followed two bounded remediation rounds; all findings closed.
+Full default: **950 passed, 13 unchanged failures, 20 skipped**. Focused native:
+**160 passed**; affected Python: **24 passed**. Broader unactivated: **44 passed,
+11 failures**, with the three callback UI failures explicitly resolved and
+remaining identities unchanged. Historical JSON and runtime selector are
+unchanged. See the callback checkpoint for verbatim reports and complete scope.
 
 ### Accepted Private Consumer Tuple, 2026-10-08
 
@@ -150,6 +171,7 @@ Paths in this table are relative to the owning repository root.
 | --- | --- |
 | Pyrolyze: `src/pyrolyze/runtime/context_state_lcm/render_attempt.py` | Private outer attempt, identity/ownership fencing, local completion guards, rollback-only propagation |
 | Pyrolyze: `src/pyrolyze/runtime/context_state_lcm/field_only_render.py` | SC2 graph-level field-only admission and real render wiring; resource routes remain blocked |
+| Pyrolyze: `src/pyrolyze/runtime/context_state_lcm/callback_render.py`, `event_handler_slot_context.py` | Accepted private callback admission/completion staging and declarative selection; other resources remain gated |
 | Pyrolyze: `src/pyrolyze/runtime/context_state_lcm/lifecycle_adapter.py` | Construction and lifecycle integration boundary |
 | Pyrolyze: `context_state_lcm/context_base.py`, `_base.py`, `slot_context.py`, `render_context.py` under `src/pyrolyze/runtime` | Common slot/pass state and orchestration to migrate in bounded later steps |
 | Pyrolyze: `src/pyrolyze/runtime/context_bare_refactor_lcm.py` | Decomposed context implementation exercised by the private proof |
@@ -241,11 +263,11 @@ transitioned and resolved. Original SC1/SC2 closures, empty cases, and the
 original review counterexamples were reproved; current verification is below.
 No event-handler callback holder or resource route was migrated in this patch.
 
-Resource admission stays blocked. Concrete
-resource/publication/generation/retirement/delivery adapter design is the next
-gate, not automatic runtime activation or wholesale snapshot deletion.
-Callback selection is the first suggested bounded adapter;
-subscriptions/effects/mounts/overrides/legacy call sites are separate work.
+That consumer checkpoint alone kept resource admission blocked. The subsequent
+bounded callback checkpoint now admits only its private selection proof and
+migrates its stores/callers, as recorded above. Subscriptions/effects/mounts/
+overrides/legacy call sites remain separate work. Next is I3c invocation values,
+not automatic runtime activation or wholesale snapshot deletion.
 
 ## Verification And Commands
 

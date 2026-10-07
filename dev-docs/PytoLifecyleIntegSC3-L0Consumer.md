@@ -148,7 +148,12 @@ independently ran the 128-test subset on native and Python assembly and verified
 historical reproduction. Full/default/broader counts above remain implementer
 evidence, not independently repeated broad acceptance.
 
-Next: design and review the concrete D5/category adapter timeline before
+Next at this consumer acceptance: design and review the concrete D5/category adapter timeline before
 admitting any resource-bearing route. Callback selection is the first suggested
 bounded category. Do not skip directly to event-handler holder replacement or
 general activation. No pushes/tags/parent-pointer updates are part of this step.
+
+Subsequent callback selection has now passed its bounded implementation review
+at `6be1b8f610c13eda18a451688377370cb1dbb087`; see
+[the callback acceptance](PytoLifecyleIntegCallbacks.md). That later scope admits
+only its private proof and preserves all other category/activation gates.
