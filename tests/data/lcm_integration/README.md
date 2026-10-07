@@ -26,12 +26,22 @@ Never regenerate a baseline merely to hide an unapproved semantic change.
   and caught-child rollback. The snapshot demonstrates that the current API
   does not provide independent parent/child completion on that shared key;
   it is a capability observation, not approval of the resulting behavior.
-- `callback_selection.py`: original/monolithic callback behavior through runtime
+- `callback_selection.py`: reference callback behavior through runtime
   pass scopes. It records receiver-identity replacement, stable dispatch,
   unpublished selection, and A then pending B/A (B after success, A after
   failure). The latter is known debt, not permission to fix it during holder
-  replacement. Both references share one JSON snapshot; prior snapshots remain
-  unchanged.
+  replacement. Original, monolithic, and decomposed LCM routes now share one
+  unchanged JSON snapshot. Its injectable root factory also supplies the
+  private callback proof below without duplicating selection cases.
+- `callback_selection_lifecycle.py`: bounded lifecycle selection proof through
+  the private callback-enabled render gate. It adds dirty-forced equal-callable
+  replacement, stable dispatch across nested failure, candidate membership,
+  explicit/omitted removal, component-owned handler arguments, and stale-holder
+  removal without unregistering a replacement. It admits no bindings, effects,
+  overrides, or legacy call sites and does not activate the runtime selector.
+  The original field-only gate remains unchanged. This new JSON is an authored
+  target, not a rewrite of the reference observations; see
+  `dev-docs/PytoLifecyleIntegCallbacks.md` for acceptance status.
 - `baselines/*.json`: structured historical snapshots, compared as JSON rather
   than by whitespace. Runtime selection takes place in fresh subprocesses.
 

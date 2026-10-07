@@ -83,6 +83,9 @@ class _FieldOnlyRenderCompletion:
             self.active.fail(error)
         raise error
 
+    def require_event_handler_binding(self) -> None:
+        self.reject("event handler registration is not admitted by SC2")
+
     def require_retirement_allowed(self, context: Any) -> None:
         from .component_call_slot_context import ComponentCallSlotContextStateMgr
         from .context_base import ContextBaseStateMgr

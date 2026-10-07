@@ -1,0 +1,26 @@
+{
+  "dirty_equal_callables": ["A", "A", "B"],
+  "membership": {
+    "failed_removal": {"calls": ["A", "A"], "generation": 1},
+    "initial_generation": 1,
+    "new_discarded_or_removed": true,
+    "omitted": {"calls": ["A", "A", "A"], "generation": 2},
+    "stale_removal_preserved_replacement": true
+  },
+  "nested": {
+    "calls": ["A", "A", "A", "A", "A", "D"],
+    "generation": 2,
+    "shared_manager": true
+  },
+  "owned": {
+    "calls": ["owned", "owned", "owned", "owned"],
+    "generation": 2,
+    "removed": true
+  },
+  "reference": {
+    "bound_failure": {"calls": ["A", "A", "A", "A"], "stable_dispatch": true},
+    "bound_success": {"calls": ["A", "A", "A", "B"], "stable_dispatch": true},
+    "repeated_failure": {"calls": ["A", "A", "A", "A"], "stable_dispatch": true},
+    "repeated_success": {"calls": ["A", "A", "A", "B"], "stable_dispatch": true}
+  }
+}

@@ -280,8 +280,6 @@ class ContextBaseStateMgr(StateMgrBase):
             child_type = type(child_state_mgr.owner).__name__
             if child_type in {"SlotCallSlotContext", "SlotExprSlotContext"}:
                 child_state_mgr.commit_binding()
-            elif child_type == "EventHandlerSlotContext":
-                child_state_mgr.commit_handler()
             elif child_type == "ComponentCallSlotContext":
                 child_state_mgr.commit_owned_event_handlers()
 
@@ -314,8 +312,6 @@ class ContextBaseStateMgr(StateMgrBase):
             child_type = type(child_state_mgr.owner).__name__
             if child_type in {"SlotCallSlotContext", "SlotExprSlotContext"}:
                 child_state_mgr.rollback_binding()
-            elif child_type == "EventHandlerSlotContext":
-                child_state_mgr.rollback_handler()
             elif child_type == "ComponentCallSlotContext":
                 child_state_mgr.rollback_owned_event_handlers()
             child_state_mgr._invoke_dirty = self._pass_child_dirty.get(
@@ -466,7 +462,7 @@ class ContextBaseStateMgr(StateMgrBase):
             for child_state_mgr in self.children_state.values()
             for element in (
                 child_state_mgr.ui_state
-                if _field_only_completion(self) is None or isinstance(child_state_mgr, ContextBaseStateMgr)
+                if isinstance(child_state_mgr, ContextBaseStateMgr)
                 else child_state_mgr.committed_ui()
             )
         )
@@ -724,7 +720,7 @@ class ContextBaseStateMgr(StateMgrBase):
         self.require_active_scope()
         completion = _field_only_completion(self)
         if completion is not None:
-            completion.reject("event handler registration is not admitted by SC2")
+            completion.require_event_handler_binding()
         return PendingEventHandlerBinding(
             slot_id=self.resolve_slot_id(slot_id),
             dirty=dirty,

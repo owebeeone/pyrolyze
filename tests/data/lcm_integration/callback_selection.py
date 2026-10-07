@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Callable
 
 from pyrolyze.runtime import context as runtime
 
@@ -12,8 +12,8 @@ def _slot(index: int) -> runtime.SlotId:
     return runtime.SlotId(runtime.ModuleId("tests.lcm_callback_selection"), index)
 
 
-def _repeated_selection(fail: bool) -> dict[str, Any]:
-    root = runtime.RenderContext()
+def _repeated_selection(fail: bool, root_factory: Callable[[], Any]) -> dict[str, Any]:
+    root = root_factory()
     calls: list[str] = []
 
     def first() -> None:
@@ -29,9 +29,13 @@ def _repeated_selection(fail: bool) -> dict[str, Any]:
     stable = True
     try:
         with root.pass_scope():
-            stable &= root.event_handler(_slot(1), callback=second, dirty=False) is dispatch
+            stable &= (
+                root.event_handler(_slot(1), callback=second, dirty=False) is dispatch
+            )
             dispatch()
-            stable &= root.event_handler(_slot(1), callback=first, dirty=False) is dispatch
+            stable &= (
+                root.event_handler(_slot(1), callback=first, dirty=False) is dispatch
+            )
             dispatch()
             if fail:
                 raise ValueError("failed callback selection")
@@ -54,8 +58,8 @@ class _EqualReceiver:
         self.calls.append(self.name)
 
 
-def _bound_selection(fail: bool) -> dict[str, Any]:
-    root = runtime.RenderContext()
+def _bound_selection(fail: bool, root_factory: Callable[[], Any]) -> dict[str, Any]:
+    root = root_factory()
     calls: list[str] = []
     first = _EqualReceiver("A", calls)
     second = _EqualReceiver("B", calls)
@@ -66,9 +70,15 @@ def _bound_selection(fail: bool) -> dict[str, Any]:
     stable = True
     try:
         with root.pass_scope():
-            stable &= root.event_handler(_slot(2), callback=second.handle, dirty=False) is dispatch
+            stable &= (
+                root.event_handler(_slot(2), callback=second.handle, dirty=False)
+                is dispatch
+            )
             dispatch()
-            stable &= root.event_handler(_slot(2), callback=second.handle, dirty=False) is dispatch
+            stable &= (
+                root.event_handler(_slot(2), callback=second.handle, dirty=False)
+                is dispatch
+            )
             dispatch()
             if fail:
                 raise ValueError("failed callback selection")
@@ -79,12 +89,12 @@ def _bound_selection(fail: bool) -> dict[str, Any]:
     return {"calls": calls, "stable_dispatch": stable}
 
 
-def observe() -> dict[str, Any]:
+def observe(root_factory: Callable[[], Any] = runtime.RenderContext) -> dict[str, Any]:
     return {
-        "repeated_success": _repeated_selection(False),
-        "repeated_failure": _repeated_selection(True),
-        "bound_success": _bound_selection(False),
-        "bound_failure": _bound_selection(True),
+        "repeated_success": _repeated_selection(False, root_factory),
+        "repeated_failure": _repeated_selection(True, root_factory),
+        "bound_success": _bound_selection(False, root_factory),
+        "bound_failure": _bound_selection(True, root_factory),
     }
 
 

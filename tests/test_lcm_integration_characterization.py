@@ -42,6 +42,14 @@ def test_common_pass_single_cohort_golden() -> None:
     )
 
 
+def test_callback_selection_lifecycle_golden() -> None:
+    _check_baseline(
+        "callback_selection_lifecycle.py",
+        "callback_selection_lifecycle",
+        dict(os.environ),
+    )
+
+
 @pytest.mark.parametrize("implementation", ("original", "bare_refactor_lcm"))
 def test_common_pass_preflight_baseline(implementation: str) -> None:
     environment = dict(os.environ)
@@ -54,7 +62,7 @@ def test_common_pass_preflight_baseline(implementation: str) -> None:
     )
 
 
-@pytest.mark.parametrize("implementation", ("original", "lcm"))
+@pytest.mark.parametrize("implementation", ("original", "lcm", "bare_refactor_lcm"))
 def test_reference_callback_selection_baseline(implementation: str) -> None:
     environment = dict(os.environ)
     environment.pop("PYROLYZE_USE_CONTEXT_LCM", None)

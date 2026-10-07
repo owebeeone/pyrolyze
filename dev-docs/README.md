@@ -11,8 +11,11 @@ and historical probe transition are now accepted after Code/State GO/GO at
 `b1461a1128da15c21dad482d41bd5792253904cd`; see the
 [consumer checkpoint](PytoLifecyleIntegSC3-L0Consumer.md) for its exact tuple,
 review reports, and verification. The SC2 field-only gate remains private;
-resource routes are not activated. Next is the D5/category adapter design,
-starting with bounded callback selection, not live holder replacement.
+resource routes are not activated. The
+[bounded callback-selection implementation](PytoLifecyleIntegCallbacks.md)
+is the next review candidate, not live holder replacement. It migrates the
+selection stores and callers and adds a separate private handler-enabled proof;
+other resource categories remain gated.
 
 [Resume handoff](YidlLifecycleIntegrationHandoff.md) records the repository
 checkpoint, published compiler fixes, verification commands, and the next
@@ -27,6 +30,7 @@ Read these documents in order:
 | [SC3 audit](PytoLifecyleIntegSC3.md) | Actual resource/writer routes and the gates before activation |
 | [L0 completion contract](PytoLifecyleIntegSC3-L0Plan.md) | Accepted library/consumer contract and verification boundaries |
 | [Private consumer acceptance](PytoLifecyleIntegSC3-L0Consumer.md) | Exact accepted tuple, review closures, and next adapter gate |
+| [Callback selection](PytoLifecyleIntegCallbacks.md) | Bounded implementation contract, verification, and implementation-review status |
 | [I3a field migration detail](PytoLifecyleIntegI3aPlan.md) | Remaining common-field migration; read through the single-cohort amendment |
 
 Closed checkpoint evidence and review campaigns are in

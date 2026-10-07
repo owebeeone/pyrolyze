@@ -428,19 +428,11 @@ class EventHandlerSlotContext(SlotContext):
 
     @property
     def committed_callback(self) -> Callable[..., Any] | None:
-        return self._state_mgr._committed_callback
+        return self._state_mgr.current._callback
 
     @property
     def committed_key(self) -> object | None:
-        return self._state_mgr._committed_key
-
-    @property
-    def staged_callback(self) -> Callable[..., Any] | None:
-        return self._state_mgr._staged_callback
-
-    @property
-    def staged_key(self) -> object | None:
-        return self._state_mgr._staged_key
+        return self._state_mgr.current._callback_key
 
     @property
     def dispatch(self) -> Callable[..., None] | None:
@@ -453,12 +445,6 @@ class EventHandlerSlotContext(SlotContext):
         dirty: bool,
     ) -> Callable[..., None]:
         return self._state_mgr.stage_callback(callback=callback, dirty=dirty)
-
-    def commit_handler(self) -> None:
-        self._state_mgr.commit_handler()
-
-    def rollback_handler(self) -> None:
-        self._state_mgr.rollback_handler()
 
     def deactivate(self) -> None:
         self._state_mgr.deactivate()
