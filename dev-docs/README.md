@@ -19,6 +19,10 @@ callers and adds a separate private handler-enabled proof, not live holder
 replacement. Next is bounded I3c invocation-value migration; other resource
 categories and default-runtime activation remain gated.
 
+The [bounded invocation checkpoint](PytoLifecyleIntegInvocation.md) starts with
+leaf arguments and records the legacy last-attempt compatibility adapter.
+Implementation/review is in progress; this is not completion of all I3c work.
+
 [Resume handoff](YidlLifecycleIntegrationHandoff.md) records the repository
 checkpoint, published compiler fixes, verification commands, and the next
 bounded invocation-value step. It supplements, not replaces, the plans.
@@ -33,6 +37,7 @@ Read these documents in order:
 | [L0 completion contract](PytoLifecyleIntegSC3-L0Plan.md) | Accepted library/consumer contract and verification boundaries |
 | [Private consumer acceptance](PytoLifecyleIntegSC3-L0Consumer.md) | Exact accepted tuple, review closures, and next adapter gate |
 | [Callback selection](PytoLifecyleIntegCallbacks.md) | Bounded implementation contract, verification, and implementation-review status |
+| [Invocation values](PytoLifecyleIntegInvocation.md) | Bounded leaf argument migration and explicit remaining invocation/resource gates |
 | [I3a field migration detail](PytoLifecyleIntegI3aPlan.md) | Remaining common-field migration; read through the single-cohort amendment |
 
 Closed checkpoint evidence and review campaigns are in

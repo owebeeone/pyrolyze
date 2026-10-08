@@ -49,6 +49,14 @@ Never regenerate a baseline merely to hide an unapproved semantic change.
   A, then a successful B invocation replaces it. Original, monolithic, and
   unactivated decomposed routes compare to this new JSON; historical snapshots
   are unchanged. The private proof separately requires whole-attempt discard.
+- `invocation_values_lifecycle.py`: bounded I3c leaf argument target. One
+  managed record keeps accepted arguments separate from candidates until outer
+  completion, including caught child failure and parent failure after local
+  success. Plain invocation returns, standalone completion, keyword ordering,
+  retry, and shallow argument retention are covered here. The unactivated
+  route retains last-attempt tracking through its explicit local-store adapter.
+  Leaf execution is not elided; slot-call elision/resources remain gated. See
+  `dev-docs/PytoLifecyleIntegInvocation.md` for scope and acceptance status.
 - `baselines/*.json`: structured historical snapshots, compared as JSON rather
   than by whitespace. Runtime selection takes place in fresh subprocesses.
 

@@ -1,0 +1,444 @@
+{
+  "legacy": {
+    "managed_record_unused": true,
+    "native_error": "@pyrolyze functions must return None",
+    "native_failure_keeps_attempt": {
+      "accepted": [
+        [
+          7
+        ],
+        []
+      ],
+      "candidate": [
+        [
+          7
+        ],
+        []
+      ]
+    },
+    "plain": {
+      "accepted": [
+        [
+          1
+        ],
+        [
+          [
+            "flag",
+            2
+          ]
+        ]
+      ],
+      "candidate": [
+        [
+          1
+        ],
+        [
+          [
+            "flag",
+            2
+          ]
+        ]
+      ]
+    },
+    "plain_failure_keeps_attempt": {
+      "accepted": [
+        [
+          3
+        ],
+        []
+      ],
+      "candidate": [
+        [
+          3
+        ],
+        []
+      ]
+    },
+    "result": 3
+  },
+  "native": {
+    "after_child_catch": {
+      "accepted": [
+        [
+          "B"
+        ],
+        [
+          [
+            "fail",
+            false
+          ],
+          [
+            "suffix",
+            "!"
+          ]
+        ]
+      ],
+      "candidate": [
+        [
+          "D"
+        ],
+        [
+          [
+            "fail",
+            true
+          ],
+          [
+            "suffix",
+            "!"
+          ]
+        ]
+      ]
+    },
+    "after_child_failure": {
+      "accepted": [
+        [
+          "B"
+        ],
+        [
+          [
+            "fail",
+            false
+          ],
+          [
+            "suffix",
+            "!"
+          ]
+        ]
+      ],
+      "candidate": [
+        [
+          "B"
+        ],
+        [
+          [
+            "fail",
+            false
+          ],
+          [
+            "suffix",
+            "!"
+          ]
+        ]
+      ]
+    },
+    "after_parent_failure": {
+      "accepted": [
+        [
+          "B"
+        ],
+        [
+          [
+            "fail",
+            false
+          ],
+          [
+            "suffix",
+            "!"
+          ]
+        ]
+      ],
+      "candidate": [
+        [
+          "B"
+        ],
+        [
+          [
+            "fail",
+            false
+          ],
+          [
+            "suffix",
+            "!"
+          ]
+        ]
+      ]
+    },
+    "before_parent_failure": {
+      "accepted": [
+        [
+          "B"
+        ],
+        [
+          [
+            "fail",
+            false
+          ],
+          [
+            "suffix",
+            "!"
+          ]
+        ]
+      ],
+      "candidate": [
+        [
+          "C"
+        ],
+        [
+          [
+            "fail",
+            false
+          ],
+          [
+            "suffix",
+            "!"
+          ]
+        ]
+      ]
+    },
+    "calls_without_leaf_elision": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "C",
+      "C"
+    ],
+    "caught_child": "leaf invocation failed",
+    "compatibility_unused": true,
+    "declarations": {
+      "candidate_identity": true,
+      "candidate_key": true,
+      "candidate_managed": true,
+      "compatibility_local": true,
+      "same_manager": true
+    },
+    "initial": {
+      "accepted": [
+        [
+          "A"
+        ],
+        [
+          [
+            "fail",
+            false
+          ],
+          [
+            "suffix",
+            "!"
+          ]
+        ]
+      ],
+      "candidate": [
+        [
+          "A"
+        ],
+        [
+          [
+            "fail",
+            false
+          ],
+          [
+            "suffix",
+            "!"
+          ]
+        ]
+      ]
+    },
+    "outer_abort": "leaf invocation failed",
+    "parent_error": "parent invocation failed",
+    "pending_success": {
+      "accepted": [
+        [
+          "A"
+        ],
+        [
+          [
+            "fail",
+            false
+          ],
+          [
+            "suffix",
+            "!"
+          ]
+        ]
+      ],
+      "candidate": [
+        [
+          "B"
+        ],
+        [
+          [
+            "fail",
+            false
+          ],
+          [
+            "suffix",
+            "!"
+          ]
+        ]
+      ],
+      "local_released": true,
+      "original_token": true
+    },
+    "published": {
+      "accepted": [
+        [
+          "B"
+        ],
+        [
+          [
+            "fail",
+            false
+          ],
+          [
+            "suffix",
+            "!"
+          ]
+        ]
+      ],
+      "candidate": [
+        [
+          "B"
+        ],
+        [
+          [
+            "fail",
+            false
+          ],
+          [
+            "suffix",
+            "!"
+          ]
+        ]
+      ]
+    },
+    "ready": true,
+    "retry": {
+      "accepted": [
+        [
+          "C"
+        ],
+        [
+          [
+            "fail",
+            false
+          ],
+          [
+            "suffix",
+            "!"
+          ]
+        ]
+      ],
+      "candidate": [
+        [
+          "C"
+        ],
+        [
+          [
+            "fail",
+            false
+          ],
+          [
+            "suffix",
+            "!"
+          ]
+        ]
+      ]
+    },
+    "ui": [
+      "C!"
+    ]
+  },
+  "plain": {
+    "candidate_result": 7,
+    "discarded": {
+      "accepted": [
+        [
+          1
+        ],
+        [
+          [
+            "flag",
+            2
+          ]
+        ]
+      ],
+      "candidate": [
+        [
+          1
+        ],
+        [
+          [
+            "flag",
+            2
+          ]
+        ]
+      ]
+    },
+    "initial": {
+      "accepted": [
+        [
+          1
+        ],
+        [
+          [
+            "flag",
+            2
+          ]
+        ]
+      ],
+      "candidate": [
+        [
+          1
+        ],
+        [
+          [
+            "flag",
+            2
+          ]
+        ]
+      ]
+    },
+    "initial_result": 3,
+    "pending": {
+      "accepted": [
+        [
+          1
+        ],
+        [
+          [
+            "flag",
+            2
+          ]
+        ]
+      ],
+      "candidate": [
+        [
+          3
+        ],
+        [
+          [
+            "flag",
+            4
+          ]
+        ]
+      ]
+    },
+    "shallow_retention": true,
+    "standalone": {
+      "accepted": [
+        [
+          5
+        ],
+        [
+          [
+            "flag",
+            6
+          ]
+        ]
+      ],
+      "candidate": [
+        [
+          5
+        ],
+        [
+          [
+            "flag",
+            6
+          ]
+        ]
+      ]
+    },
+    "standalone_result": 11
+  }
+}
