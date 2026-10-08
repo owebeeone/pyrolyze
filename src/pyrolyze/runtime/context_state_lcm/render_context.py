@@ -287,6 +287,9 @@ class RenderContextStateMgr(ContextBaseStateMgr):
         return tuple(boundary._debug_boundary_id() for boundary in scheduler_root._scheduler.queue)
 
     def debug_mount_advertisements(self) -> tuple[Any, ...]:
+        completion = _field_only_completion(self)
+        if completion is not None:
+            return completion.committed_mount_advertisements(self)
         return tuple(self._mount_advertisements_by_slot.values())
 
     def debug_ui(self, slot_id: Any = None) -> tuple[Any, ...]:

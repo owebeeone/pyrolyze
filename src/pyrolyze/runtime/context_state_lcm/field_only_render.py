@@ -91,6 +91,14 @@ class _FieldOnlyRenderCompletion:
     def require_slot_call_result(self, result: Any) -> SlotCallSemanticsHandler:
         self.reject("slot-call selection is not admitted by SC2")
 
+    def committed_mount_advertisements(
+        self, render: RenderContextStateMgr
+    ) -> tuple[Any, ...]:
+        return ()
+
+    def require_container_call(self, func: Any) -> None:
+        self.reject("container calls are not admitted by SC2")
+
     def note_owned_event_handler_pass(self, context: Any) -> None:
         return None
 

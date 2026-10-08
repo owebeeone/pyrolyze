@@ -50,6 +50,12 @@ with cancellable operations, weak completion callbacks, and teardown fencing.
 It reuses the synchronous delivery loop and private resource wrapper; shared
 legacy handlers, mount admission, and normal routing remain unchanged.
 
+The [mount checkpoint](PytoLifecyleIntegMounts.md) adds a separate native-container
+and slot-call advertisement proof. Candidate surfaces validate before publication;
+accepted surfaces derive from committed selections. Slot-expression collections,
+opaque host context managers, structural directives, and normal routing are not
+activated by this checkpoint.
+
 [Resume handoff](YidlLifecycleIntegrationHandoff.md) records the repository
 checkpoint, published compiler fixes, verification commands, and the next
 bounded integration steps. It supplements, not replaces, the plans.
@@ -68,6 +74,7 @@ Read these documents in order:
 | [Subscription completion](PytoLifecyleIntegSubscriptions.md) | Tested subscription proof, private-wrapper ownership rationale, cleanup timeline, and deferred aggregate-review obligation |
 | [Synchronous effects](PytoLifecyleIntegEffects.md) | Tested effect proof, post-publication delivery, cleanup/failure behavior, and deferred aggregate-review obligation |
 | [Async effects](PytoLifecyleIntegAsyncEffects.md) | Async proof, cancellation/cleanup, weak callbacks, and remaining activation gates |
+| [Mount advertisements](PytoLifecyleIntegMounts.md) | Detached selection, native-container shape, candidate validation, and committed surfaces |
 | [I3a field migration detail](PytoLifecyleIntegI3aPlan.md) | Remaining common-field migration; read through the single-cohort amendment |
 
 Closed checkpoint evidence and review campaigns are in

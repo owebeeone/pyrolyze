@@ -943,6 +943,13 @@ The operator deferred separate review to the larger integration review; this
 checkpoint is implemented/tested, not independently accepted. Existing runtime routes, effects,
 async effects, mounts, and default activation are unchanged.
 
+The separately authorized [mount checkpoint](PytoLifecyleIntegMounts.md) stages
+detached slot-call advertisement bindings and native-container shape. Candidate
+surface validation precedes publication, and the accepted surface derives from
+committed graph membership rather than a second transfer store. Slot-expression
+call-site collections, opaque host context managers, structural directives, and
+normal routing remain outside this bounded proof.
+
 The separately authorized [async-effect checkpoint](PytoLifecyleIntegAsyncEffects.md)
 adds callback-driven operations to a separate private gate. It reuses the shared
 post-publication delivery loop and owned wrapper, fencing completion before

@@ -21,7 +21,18 @@ fencing; faults cover synchronous completion, cancellation/cleanup failures,
 weak graph lifetime, startup reentry, and token replacement. Full native evidence:
 **1007 passed, 2 known placement failures, 20 skipped**; affected Python resource
 tests/goldens: **27 passed**. This is tested private implementation, not normal
-route activation. Mount bindings remain the next resource category.
+route activation. The subsequent mount checkpoint is described below.
+
+The [mount advertisement checkpoint](PytoLifecyleIntegMounts.md) now implements
+the next private slot-call/native-container proof. It stages immutable metadata,
+validates candidate surfaces before publication, and derives accepted surfaces
+from committed graph state. Native-root shape is managed; caught helper failures
+retain their original cause. No library or shared legacy handler changes are
+needed. Remaining invocation work includes slot-expression call-site collections;
+this is not normal-route activation or admission of opaque host context managers.
+Verification: **1015 passed, 2 known placement failures, 20 skipped** in the full
+native suite; **51 passed** in affected Python assembly and legacy resource tests.
+Implementation review remains deferred to the aggregate integration review.
 
 The lifecycle manager, generated guards/hooks, and canonical failure goldens are
 implemented and accepted at library `4b86eec179942d96012aa4a1d92752a34cae87ef`

@@ -88,6 +88,12 @@ def test_async_effect_selection_lifecycle_golden() -> None:
     )
 
 
+def test_mount_selection_lifecycle_golden() -> None:
+    _check_baseline(
+        "mount_selection_lifecycle.py", "mount_selection_lifecycle", dict(os.environ)
+    )
+
+
 @pytest.mark.parametrize("implementation", ("original", "bare_refactor_lcm"))
 def test_common_pass_preflight_baseline(implementation: str) -> None:
     environment = dict(os.environ)

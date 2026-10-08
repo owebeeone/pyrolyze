@@ -1,0 +1,18 @@
+{
+  "container_omitted": [[], []],
+  "failed_initial": [[], false, []],
+  "failed_removal": ["b"],
+  "failed_replacement": ["a"],
+  "initial": ["a"],
+  "latest": ["latest"],
+  "native_root": true,
+  "pending_replacement": ["a"],
+  "provenance": [true, true, true],
+  "provisional": [],
+  "provisional_native_root": false,
+  "ready": true,
+  "removed": [],
+  "replacement": ["b"],
+  "retained_snapshot": "a",
+  "ui_anchor": "a"
+}

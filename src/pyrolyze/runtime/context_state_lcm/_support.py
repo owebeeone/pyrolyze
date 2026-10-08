@@ -393,8 +393,16 @@ def _resolve_mount_advertisement_owner(parent: Any) -> Any:
     return None
 
 
-def _finish_context_pass(context: Any, *, commit: bool) -> None:
+def _finish_context_pass(
+    context: Any, *, commit: bool, cause: BaseException | None = None
+) -> None:
     if not commit:
+        if cause is not None:
+            from .field_only_render import _field_only_completion
+
+            completion = _field_only_completion(context._state_mgr)
+            if completion is not None and completion.active is not None:
+                completion.active.fail(cause)
         context.rollback_pass()
         return
     try:
@@ -580,15 +588,15 @@ class _NativeContainerCallHandle(AbstractContextManager[Any]):
                 raise TypeError("@pyrolyze functions must return None")
             if self.slot._state_mgr.staged_ui_len() != 1:
                 raise RuntimeError("native container helpers must emit exactly one root UIElement")
-        except BaseException:
-            self.slot._rollback_scope_pass()
+        except BaseException as error:
+            _finish_context_pass(self.slot, commit=False, cause=error)
             self.slot.expects_native_root = False
             raise
         return self.slot
 
     def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
         try:
-            _finish_context_pass(self.slot, commit=exc_type is None)
+            _finish_context_pass(self.slot, commit=exc_type is None, cause=exc)
         finally:
             self.slot.expects_native_root = False
         return False

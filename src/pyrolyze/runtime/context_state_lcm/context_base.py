@@ -359,6 +359,8 @@ class ContextBaseStateMgr(StateMgrBase):
         self.children_state = {
             slot_id: child for slot_id, child in self.children_state.items() if child._seen_in_pass
         }
+        if hasattr(self, "_expects_native_root"):
+            self._committed_native_root = self._expects_native_root
         self.ui_state = self.build_committed_ui()
         for child in self.children_state.values():
             child._invoke_dirty = False
@@ -587,6 +589,9 @@ class ContextBaseStateMgr(StateMgrBase):
         slot.site_metadata = site_metadata
         if raw_container_fn is None:
             return None
+        completion = _field_only_completion(self)
+        if completion is not None:
+            completion.require_container_call(raw_container_fn)
         mount_context_param = _container_runtime_context_param_name(raw_container_fn)
         if mount_context_param is not None:
             directive_slot = self.ensure_slot(slot_id, directive_slot_context_cls, parent_facade=parent_facade)

@@ -16,6 +16,7 @@ from .rerunnable_slot_context import RerunnableSlotContextStateMgr
 from .context_base import PASS_TX_KEY
 from .field_only_render import _field_only_completion
 from .lifecycle_adapter import const, local_store, managed, managed_context, owned
+from .mount_binding import _MountAdvertisementBinding
 from pyrolyze.runtime.slot_call_core import (
     SlotCallCommitResult,
     SlotCallStateSnapshot,
@@ -214,6 +215,7 @@ class SlotCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
                         binding, self._binding_owner
                     )
                     self._invocation = invocation
+                    self.sync_binding_committed_ui()
         except BaseException:
             if owner is not None:
                 completion = _field_only_completion(self)
@@ -325,7 +327,9 @@ class SlotCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
 
     def build_committed_ui(self) -> tuple[Any, ...]:
         binding = self._binding
-        if isinstance(binding, PyrolyzeMountAdvertisementBinding):
+        if isinstance(
+            binding, (PyrolyzeMountAdvertisementBinding, _MountAdvertisementBinding)
+        ):
             advertisement = binding.retained_advertisement()
             if advertisement is None:
                 return ()
