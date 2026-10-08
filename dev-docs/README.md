@@ -56,6 +56,17 @@ accepted surfaces derive from committed selections. Slot-expression collections,
 opaque host context managers, structural directives, and normal routing are not
 activated by this checkpoint.
 
+The [call-site collection checkpoint](PytoLifecyleIntegCallSites.md) replaces
+legacy lifecycle records with YIDL-owned collection storage and transient
+visitation, preserving explicit binding ownership. The unused `replace_current()`
+escape is removed. Expression binding completion and admission to the private
+outer-render route remain separate work; this is not normal-route activation.
+
+The [plain-expression checkpoint](PytoLifecyleIntegExpressions.md) now adds a
+separate shared-render proof: detached value selection and visitation pruning
+publish/discard only with the outer owner. Standalone completion is retained;
+resource-bearing expressions remain excluded pending their adapters.
+
 [Resume handoff](YidlLifecycleIntegrationHandoff.md) records the repository
 checkpoint, published compiler fixes, verification commands, and the next
 bounded integration steps. It supplements, not replaces, the plans.

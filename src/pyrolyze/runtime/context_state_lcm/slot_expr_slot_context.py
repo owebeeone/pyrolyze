@@ -50,10 +50,7 @@ class SlotExprSlotContextStateMgr(RerunnableSlotContextStateMgr):
     def commit_binding(self) -> None:
         self.require_active_scope()
         for call_site_id in self._staged_call_site_ids:
-            call_site_context = (
-                self._call_site_context_manager._staged.get(call_site_id)
-                or self._call_site_context_manager._current.get(call_site_id)
-            )
+            call_site_context = self._call_site_context_manager.get_visible(call_site_id)
             binding = call_site_context.binding if call_site_context is not None else None
             commit = getattr(binding, "commit", None)
             if callable(commit):
@@ -69,10 +66,7 @@ class SlotExprSlotContextStateMgr(RerunnableSlotContextStateMgr):
     def rollback_binding(self) -> None:
         self.require_active_scope()
         for call_site_id in self._staged_call_site_ids:
-            call_site_context = (
-                self._call_site_context_manager._staged.get(call_site_id)
-                or self._call_site_context_manager._current.get(call_site_id)
-            )
+            call_site_context = self._call_site_context_manager.get_visible(call_site_id)
             binding = call_site_context.binding if call_site_context is not None else None
             rollback = getattr(binding, "rollback", None)
             if callable(rollback):
@@ -84,7 +78,7 @@ class SlotExprSlotContextStateMgr(RerunnableSlotContextStateMgr):
 
     def sync_committed_ui(self) -> None:
         advertisements: list[Any] = []
-        for call_site_context in self._call_site_context_manager._current.values():
+        for call_site_context in self._call_site_context_manager.iter_current():
             binding = call_site_context.binding
             wrapped_binding = getattr(binding, "binding", None) if binding is not None else None
             if not isinstance(wrapped_binding, self._mount_advertisement_binding_type):

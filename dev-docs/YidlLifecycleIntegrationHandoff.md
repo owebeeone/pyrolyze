@@ -34,6 +34,29 @@ Verification: **1015 passed, 2 known placement failures, 20 skipped** in the ful
 native suite; **51 passed** in affected Python assembly and legacy resource tests.
 Implementation review remains deferred to the aggregate integration review.
 
+The [call-site collection checkpoint](PytoLifecyleIntegCallSites.md) replaces
+legacy record internals with YIDL-owned storage and transient visitation for
+standalone and existing integrated expressions. Explicit context/binding
+ownership remains behind a private collection adapter. The operator approved
+removal of unused `replace_current()`. This is a collection-storage migration,
+not outer-render expression admission: local evaluator binding completion still
+needs replacement before joining the shared render decision.
+Verification: full native **1020 passed, 2 known host-ordering failures,
+20 skipped**; affected Python assembly tests and integration goldens **88 passed**.
+No library change or historical golden regeneration was required.
+
+The [plain-expression checkpoint](PytoLifecyleIntegExpressions.md) now implements
+a separate private gate using a borrowed collection manager under the root's
+pass key. Plain candidates and branch pruning follow outer publication/discard;
+local evaluator and collection completion are bypassed. Resource expression
+results are rejected before legacy binding. Standalone expressions retain their
+own completion. Next is resource-bearing expression adapter integration, followed
+by remaining graph/registration work and normal-route adoption.
+Verification: full native **1028 passed, 2 known host-ordering failures,
+20 skipped**; affected Python assembly **96 passed**. The collection migration
+and this expression checkpoint remain uncommitted on `main`; implementation
+review is deferred to the aggregate integration review.
+
 The lifecycle manager, generated guards/hooks, and canonical failure goldens are
 implemented and accepted at library `4b86eec179942d96012aa4a1d92752a34cae87ef`
 after independent Code/State GO/GO. Read the

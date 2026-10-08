@@ -11,6 +11,7 @@ from .render_attempt import _LocalRenderScope, _RenderAttempt, _raise_with_clean
 
 if TYPE_CHECKING:
     from pyrolyze.runtime.slot_call_semantics import SlotCallSemanticsHandler
+    from pyrolyze.runtime.slot_expr import SlotExprExecution
 
     from .context_base import ContextBaseStateMgr
     from .render_context import RenderContextStateMgr
@@ -98,6 +99,9 @@ class _FieldOnlyRenderCompletion:
 
     def require_container_call(self, func: Any) -> None:
         self.reject("container calls are not admitted by SC2")
+
+    def expression_execution(self, state: Any) -> SlotExprExecution:
+        self.reject("expression selection is not admitted by SC2")
 
     def note_owned_event_handler_pass(self, context: Any) -> None:
         return None

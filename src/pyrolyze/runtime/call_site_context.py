@@ -5,9 +5,13 @@ from dataclasses import InitVar, dataclass, field, replace
 from enum import IntEnum
 from typing import Any, Generic, Hashable, Iterable, Mapping, Self, TypeVar
 
-from pyrolyze.lifecycle import BindingBase, TransactionManager, managed_context, owned, transient
+from pyrolyze.lifecycle import BindingBase
+from yidl_lifecycle.lifecycle import lifecycle as managed_context
+from yidl_lifecycle.lifecycle import owned, transient
+from yidl_lifecycle.transaction_yidl import DEFAULT_TRANSACTION, LifecycleTransaction, TransactionManager
 
 from .pyro_call import RuntimeSiteMetadata
+from .call_site_ownership import _CallSiteCollection, _raise_cleanup_errors
 
 
 class _UNSET_TYPE:
@@ -144,20 +148,41 @@ class CallSiteContext(BindingBase, ABC):
 
 
 @managed_context
-class _CallSitePassContext:
-    contexts: dict[Hashable, CallSiteContext] = owned(default_factory=dict)
-    visited: set[Hashable] = transient(default_factory=set)
+class CallSitePassContext:
+    contexts: _CallSiteCollection = owned(
+        default_factory=_CallSiteCollection, compare="identity",
+    )
+    visited: frozenset[Hashable] = transient(default_factory=frozenset)
 
 
 class CallSiteContextManager:
-    __slots__ = ("_transaction_manager", "_pass_context")
+    __slots__ = ("_transaction_manager", "_pass_context", "_completing", "_tx_key", "_owns_transaction")
 
     def __init__(self) -> None:
         self._transaction_manager = TransactionManager()
-        self._pass_context = _CallSitePassContext(transaction_manager=self._transaction_manager)
+        self._pass_context = CallSitePassContext(transaction_manager=self._transaction_manager)
+        self._completing = False
+        self._tx_key = DEFAULT_TRANSACTION
+        self._owns_transaction = True
+
+    @classmethod
+    def _for_render_pass(
+        cls, pass_context: CallSitePassContext, manager: TransactionManager, tx_key: Hashable,
+    ) -> CallSiteContextManager:
+        instance = cls.__new__(cls)
+        instance._pass_context = pass_context
+        instance._transaction_manager = manager
+        instance._tx_key = tx_key
+        instance._owns_transaction = False
+        instance._completing = False
+        return instance
+
+    @property
+    def _active_transaction(self) -> LifecycleTransaction | None:
+        return self._transaction_manager.active_transaction_for(self._tx_key)
 
     def get_current(self, slot_id: Hashable) -> CallSiteContext | None:
-        return self._pass_context.current.contexts.get(slot_id)
+        return self._current.get(slot_id)
 
     def get_visible(self, slot_id: Hashable) -> CallSiteContext | None:
         return self._staged.get(slot_id) or self._current.get(slot_id)
@@ -167,60 +192,156 @@ class CallSiteContextManager:
 
     @property
     def _current(self) -> dict[Hashable, CallSiteContext]:
-        return self._pass_context.state.current_record.values["contexts"]
+        return self._pass_context.current.contexts.contexts
 
     @property
     def _staged(self) -> dict[Hashable, CallSiteContext]:
-        working = self._pass_context.state.working_record
-        if working is None:
+        if self._active_transaction is None:
             return {}
-        return working.values.get("contexts", {})
+        current = self._pass_context.current.contexts
+        visible = self._pass_context.contexts
+        return {} if visible is current else visible.contexts
+
+    def _require_not_completing(self) -> None:
+        if self._completing:
+            raise RuntimeError("call-site completion is in progress")
+
+    def _replace_collection(self, contexts: Mapping[Hashable, CallSiteContext]) -> None:
+        previous = self._pass_context.contexts
+        replacement = _CallSiteCollection.replacing(
+            contexts,
+            previous,
+            self._pass_context.current.contexts,
+        )
+        try:
+            self._pass_context.contexts = replacement
+        except BaseException as error:
+            errors = [error]
+            try:
+                replacement.release()
+            except BaseException as cleanup:
+                errors.append(cleanup)
+            _raise_cleanup_errors(errors)
+        if previous is not self._pass_context.current.contexts:
+            completing = self._completing
+            self._completing = True
+            try:
+                previous.release()
+            finally:
+                self._completing = completing
+
+    def _require_original_transaction(self, transaction: LifecycleTransaction) -> None:
+        if self._active_transaction is not transaction:
+            raise RuntimeError("original call-site transaction is no longer active")
 
     def stage(self, slot_id: Hashable, context: CallSiteContext) -> None:
-        next_contexts = dict(self._pass_context.contexts)
+        self._require_not_completing()
+        transaction = self._active_transaction
+        if transaction is None:
+            raise RuntimeError("call-site selection requires an active pass")
+        next_contexts = dict(self._pass_context.contexts.contexts)
         next_contexts[slot_id] = context
-        self._pass_context.contexts = next_contexts
-
-    def replace_current(self, slot_id: Hashable, context: CallSiteContext) -> None:
-        current_contexts = self._pass_context.state.current_record.values["contexts"]
-        previous_current = current_contexts.get(slot_id)
-        if previous_current is context:
-            return
-        next_contexts = dict(current_contexts)
-        next_contexts[slot_id] = context
-        context.accepted()
-        self._pass_context.state.current_record.values["contexts"] = next_contexts
-        if previous_current is not None:
-            previous_current.close()
+        self._require_original_transaction(transaction)
+        self._replace_collection(next_contexts)
 
     def mark_visited(self, slot_id: Hashable) -> None:
-        next_visited = set(self._pass_context.visited)
-        next_visited.add(slot_id)
-        self._pass_context.visited = next_visited
+        self._require_not_completing()
+        transaction = self._active_transaction
+        if transaction is None:
+            raise RuntimeError("call-site visitation requires an active pass")
+        visited = self._pass_context.visited | {slot_id}
+        self._require_original_transaction(transaction)
+        self._pass_context.visited = visited
 
     def begin_pass(self) -> None:
-        if self._transaction_manager.active_transaction is not None:
+        self._require_not_completing()
+        if not self._owns_transaction:
+            if self._active_transaction is None:
+                raise RuntimeError("expression selection requires the outer render transaction")
+            self._pass_context.visited = frozenset()
+            return
+        if self._active_transaction is not None:
             self.rollback_pass()
-        self._transaction_manager.begin()
+        self._transaction_manager.begin(self._tx_key)
 
     def commit_pass(self) -> None:
-        if self._transaction_manager.active_transaction is None:
+        self._require_not_completing()
+        if not self._owns_transaction:
+            raise RuntimeError("the outer render owns expression completion")
+        if self._active_transaction is None:
             return
-        next_contexts = {
-            slot_id: context
-            for slot_id, context in self._pass_context.contexts.items()
-            if slot_id in self._pass_context.visited
-        }
-        self._pass_context.contexts = next_contexts
-        self._transaction_manager.commit()
+        self._prepare_pass()
+        self._finish_pass(commit=True)
+
+    def _prepare_pass(self) -> None:
+        self._require_not_completing()
+        transaction = self._active_transaction
+        if transaction is None:
+            raise RuntimeError("call-site selection requires an active pass")
+        self._completing = True
+        try:
+            next_contexts = {
+                slot_id: context
+                for slot_id, context in self._pass_context.contexts.contexts.items()
+                if slot_id in self._pass_context.visited
+            }
+            self._require_original_transaction(transaction)
+            self._replace_collection(next_contexts)
+        finally:
+            self._completing = False
 
     def rollback_pass(self) -> None:
-        if self._transaction_manager.active_transaction is None:
+        self._require_not_completing()
+        if not self._owns_transaction:
+            raise RuntimeError("the outer render owns expression completion")
+        if self._active_transaction is None:
             return
-        self._transaction_manager.rollback()
+        self._finish_pass(commit=False)
+
+    def _finish_pass(self, *, commit: bool) -> None:
+        current = self._pass_context.current.contexts
+        pending = self._pass_context.contexts
+        errors: list[BaseException] = []
+        self._completing = True
+        try:
+            try:
+                if commit:
+                    self._transaction_manager.commit(self._tx_key)
+                else:
+                    self._transaction_manager.rollback(self._tx_key)
+            except BaseException as error:
+                errors.append(error)
+            retained = {
+                id(self._pass_context.current.contexts),
+                id(self._pass_context.contexts),
+            }
+            for collection in {id(current): current, id(pending): pending}.values():
+                if id(collection) in retained:
+                    continue
+                try:
+                    collection.release()
+                except BaseException as error:
+                    errors.append(error)
+        finally:
+            self._completing = False
+        _raise_cleanup_errors(errors)
 
     def close_all(self) -> None:
-        if self._transaction_manager.active_transaction is not None:
-            self._transaction_manager.rollback()
-        self._pass_context.close()
-        self._pass_context = _CallSitePassContext(transaction_manager=self._transaction_manager)
+        self._require_not_completing()
+        errors: list[BaseException] = []
+        if not self._owns_transaction and self._active_transaction is not None:
+            raise RuntimeError("cannot close expression collections during an outer render")
+        if self._active_transaction is not None:
+            try:
+                self.rollback_pass()
+            except BaseException as error:
+                errors.append(error)
+        self._completing = True
+        try:
+            self._pass_context.current.contexts.release()
+        except BaseException as error:
+            errors.append(error)
+        finally:
+            self._completing = False
+        self._pass_context = type(self._pass_context)(transaction_manager=self._transaction_manager)
+        _raise_cleanup_errors(errors)

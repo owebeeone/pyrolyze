@@ -969,6 +969,22 @@ remain unchanged.
 
 ### I4: Call Sites And External Resource Participants
 
+The bounded [collection checkpoint](PytoLifecyleIntegCallSites.md) now replaces
+legacy collection records with YIDL lifecycle storage and supported facade
+access, retaining explicit resource ownership. The unused direct-publication
+`replace_current()` escape was removed with operator approval. Its local
+expression completion remains an interim compatibility boundary, not the final
+render-owned model: the single-cohort amendment supersedes the older independent
+render-publication target below. Outer-render expression admission remains gated
+until evaluator/resource completion is migrated.
+
+The follow-on [plain-expression checkpoint](PytoLifecyleIntegExpressions.md)
+joins render-owned collections to the shared manager/pass key and bypasses local
+binding/collection completion for detached plain values. Standalone expressions
+retain their own completion. Resource-bearing expressions remain gated; I4b/I4c
+adapters must cover their selection, refresh, delivery, and retirement before
+admission. This is not normal-route activation or full I4 acceptance.
+
 Conditional prerequisite: L0's failure-completion evidence before relying on
 its stronger guarantees. Preserve existing domain calls while approval is
 pending. Do not move

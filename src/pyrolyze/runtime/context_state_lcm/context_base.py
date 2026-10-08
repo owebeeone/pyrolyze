@@ -518,7 +518,9 @@ class ContextBaseStateMgr(StateMgrBase):
         if slot_expr_slot_context_cls is None:
             raise RuntimeError("slot expr slot context class is not configured")
         expr_slot = self.ensure_slot(slot_id, slot_expr_slot_context_cls, parent_facade=slot_context_facade)
-        return (
+        completion = _field_only_completion(self)
+        execution = None if completion is None else completion.expression_execution(expr_slot._state_mgr)
+        expression = (
             SlotExpr(value_lambda, dirty_lambda)
             .apply_slot_context(slot_context_facade)
             .apply_host_factory(
@@ -532,6 +534,8 @@ class ContextBaseStateMgr(StateMgrBase):
             .apply_committed_ui_sync(expr_slot.sync_committed_ui)
             .apply_lifecycle_slot_context(expr_slot)
         )
+        expression.execution = execution
+        return expression
 
     def visit_slot_and_dirty(self, slot_id: Any, *, parent_facade: Any = USE_OWNER) -> bool:
         self.require_active_scope()

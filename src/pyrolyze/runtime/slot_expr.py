@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field
 import inspect
-from typing import TYPE_CHECKING, Any, Callable, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Generic, Protocol, TypeVar
 
 from pyrolyze.api import PyrolyzeMountAdvertisement, PyrolyzeMountAdvertisementRequest
 
@@ -16,6 +17,7 @@ from .call_site_context import (
 )
 from .slot_call_core import (
     SlotCallStateSnapshot,
+    SlotCallCommitResult,
     call_with_optional_runtime_context,
     commit_slot_call_invocation,
     prepare_slot_call,
@@ -63,6 +65,20 @@ def slot_params_dirt(*args: Any, **kwds: Any) -> Args[Any]:
 
 class SlotExprLiteralContext(ABC):
     pass
+
+
+class SlotExprExecution(Protocol):
+    """Runtime-only bridge to an enclosing completion boundary."""
+
+    def scope(self, manager: CallSiteContextManager) -> AbstractContextManager[None]: ...
+    def require_active(self) -> None: ...
+    def bind_result(
+        self,
+        host: SlotCallBindingHost,
+        result: Any,
+        previous: SlotCallBinding | None,
+    ) -> SlotCallBinding: ...
+    def finish_evaluation(self) -> None: ...
 
 
 class SlotCallFunctionProvider(ABC):
@@ -306,6 +322,7 @@ class SlotExpr:
     runtime_locals_provider: Callable[[Any], dict[str, Any]] | None = None
     committed_ui_sync: Callable[[], None] | None = None
     lifecycle_slot_ctx: Any | None = None
+    execution: SlotExprExecution | None = None
     _pass_id: int = 0
     _pass_active: bool = False
     _staged_post_commit_callbacks: list[Callable[[], None]] = field(default_factory=list)
@@ -391,6 +408,15 @@ class SlotExpr:
         return self
 
     def evaluate(self, *names: str) -> Any:
+        scope = (
+            nullcontext()
+            if self.execution is None
+            else self.execution.scope(self.call_site_context_manager)
+        )
+        with scope:
+            return self._evaluate(*names)
+
+    def _evaluate(self, *names: str) -> Any:
         if self.dm is None:
             raise RuntimeError("slot_expr requires apply_dirt_sink() before evaluate()")
         if self.slot_ctx is None:
@@ -416,15 +442,18 @@ class SlotExpr:
                         tuple(zip(names, unpacked_dirty, strict=True)),
                     )
             except BaseException:
-                for evaluator in self.evaluators_by_slot_id.values():
-                    evaluator.rollback_pass()
-                self.call_site_context_manager.rollback_pass()
-                if self.committed_ui_sync is not None:
-                    self.committed_ui_sync()
+                if self.execution is None:
+                    for evaluator in self.evaluators_by_slot_id.values():
+                        evaluator.rollback_pass()
+                    self.call_site_context_manager.rollback_pass()
+                    if self.committed_ui_sync is not None:
+                        self.committed_ui_sync()
                 self._staged_post_commit_callbacks.clear()
                 raise
 
-            if self.lifecycle_slot_ctx is None:
+            if self.execution is not None:
+                self.execution.finish_evaluation()
+            elif self.lifecycle_slot_ctx is None:
                 for evaluator in self.evaluators_by_slot_id.values():
                     evaluator.commit_pass()
                 self.call_site_context_manager.commit_pass()
@@ -520,7 +549,11 @@ class SlotCallEvaluator:
         self._evaluated = False
         self._current_value = None
         self._current_dirty = False
-        self._current_context = self.expr.call_site_context_manager.get_current(self.slot_id)
+        self._current_context = (
+            self.expr.call_site_context_manager.get_current(self.slot_id)
+            if self.expr.execution is None
+            else self.expr.call_site_context_manager.get_visible(self.slot_id)
+        )
         self._staged_context = None
         self._pass_invoke_state = max(
             self._current_context.invoke_state.value if self._current_context is not None else CallSiteInvokeState.NOT_SET,
@@ -560,6 +593,8 @@ class SlotCallEvaluator:
         return self.expr.dm.clean_shape_like(binding.exposed_value()) if self.expr.dm is not None else False
 
     def _run_call(self) -> None:
+        if self.expr.execution is not None:
+            self.expr.execution.require_active()
         self._visited = True
         self.expr.call_site_context_manager.mark_visited(self.slot_id)
         current_binding = self._binding_from_context(self._current_context)
@@ -581,8 +616,14 @@ class SlotCallEvaluator:
                     if refreshed_dirty
                     else (self.expr.dm.clean_shape_like(current_value) if self.expr.dm is not None else False)
                 )
-            if self._current_context is not None:
+            if self._current_context is not None and self.expr.execution is None:
                 self._current_context.invoke_state.value = self._next_invoke_state
+            elif self._current_context is not None:
+                self._staged_context = self._current_context.replace(
+                    invoke_state_value=self._next_invoke_state,
+                )
+                self.expr.execution.require_active()
+                self.expr.call_site_context_manager.stage(self.slot_id, self._staged_context)
             self._current_value = current_value
             self._current_dirty = current_dirty
             self._evaluated = True
@@ -630,6 +671,8 @@ class SlotCallEvaluator:
             prepared,
         )
         should_invoke = needs_invoke_without_func_dirt or func_dirty
+        if self.expr.execution is not None:
+            self.expr.execution.require_active()
         if should_invoke:
             result = call_with_optional_runtime_context(
                 prepared,
@@ -643,12 +686,28 @@ class SlotCallEvaluator:
             previous_binding = current_binding.binding if current_binding is not None else None
             previous_value = previous_binding.exposed_value() if previous_binding is not None else None
             initialized = previous_binding is not None
-            commit_result = commit_slot_call_invocation(
-                host=self.host,
-                prepared=prepared,
-                previous_binding=previous_binding,
-                result=result,
-            )
+            if self.expr.execution is None:
+                commit_result = commit_slot_call_invocation(
+                    host=self.host,
+                    prepared=prepared,
+                    previous_binding=previous_binding,
+                    result=result,
+                )
+            else:
+                self.expr.execution.require_active()
+                selected = self.expr.execution.bind_result(
+                    self.host, result, previous_binding,
+                )
+                current_value = selected.exposed_value()
+                commit_result = SlotCallCommitResult(
+                    current_value=current_value,
+                    result_dirty=not initialized or current_value != previous_value,
+                    binding=selected,
+                    function_identity=prepared.raw_func,
+                    schema=prepared.schema,
+                    last_args=prepared.raw_args,
+                    last_kwargs=prepared.kwargs_items,
+                )
             next_binding = current_binding if current_binding is not None and current_binding.binding is commit_result.binding else _SlotExprCallSiteBinding(binding=commit_result.binding)
             current_value = commit_result.current_value
             current_dirty = _structured_dirty_projection(
@@ -684,12 +743,18 @@ class SlotCallEvaluator:
                     else (self.expr.dm.clean_shape_like(current_value) if self.expr.dm is not None else False)
                 )
             self._pass_binding = current_binding
-            if self._current_context is not None:
+            if self._current_context is not None and self.expr.execution is None:
                 self._current_context.invoke_state.value = self._next_invoke_state
+            elif self._current_context is not None:
+                self._staged_context = self._current_context.replace(
+                    invoke_state_value=self._next_invoke_state,
+                )
         self._current_value = current_value
         self._current_dirty = current_dirty
         self._evaluated = True
         if self._staged_context is not None:
+            if self.expr.execution is not None:
+                self.expr.execution.require_active()
             self.expr.call_site_context_manager.stage(self.slot_id, self._staged_context)
 
     def _preserve_dependencies_for_refresh(self) -> None:
@@ -818,7 +883,11 @@ class SlotCallEvaluator:
             and self._current_context.last_args == last_args
             and self._current_context.site_metadata == site_metadata
         ):
-            next_context = self._current_context
+            next_context = (
+                self._current_context
+                if self.expr.execution is None
+                else self._current_context.replace()
+            )
         elif self._current_context.binding is binding:
             next_context = self._current_context.replace(
                 function_identity=function_identity,
