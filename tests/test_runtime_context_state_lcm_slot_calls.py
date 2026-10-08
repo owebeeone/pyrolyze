@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 from typing import Any
 
 import pytest
@@ -12,6 +13,7 @@ from pyrolyze.runtime.slot_call_semantics import (
     ExternalStoreRef,
     UseEffectAsyncRequest,
     UseEffectRequest,
+    SlotValueBinding,
 )
 from pyrolyze.api import PyrolyzeMountAdvertisementRequest
 
@@ -54,6 +56,59 @@ def test_resource_results_are_rejected_before_binding(kind: str) -> None:
     assert calls == []
     assert slot.binding is accepted
     assert accepted.exposed_value() == 1
+    assert root._state_mgr._field_only_completion.last.reuse_ready
+    with root.pass_scope():
+        root._ensure_slot(_slot_id(), runtime.SlotCallSlotContext)
+        slot.evaluate(lambda: 2, (), {})
+    assert slot.binding.exposed_value() == 2
+
+
+@pytest.mark.parametrize("parent_fails", (False, True))
+def test_private_binding_uses_the_handler_approved_by_admission(
+    parent_fails: bool,
+) -> None:
+    root, slot = _root_and_slot()
+    accepted = slot.binding
+    events: list[str] = []
+
+    class Result:
+        identity = object()
+        class_reads = 0
+
+        @property
+        def __class__(self) -> type[Any]:
+            self.class_reads += 1
+            # One handler-selection pass sees a plain value; a second sees a
+            # subscription. Binding must not repeat admission's recognition.
+            return type(self) if self.class_reads <= 8 else ExternalStoreRef
+
+        def subscribe(self, callback: Any) -> Any:
+            events.append("subscribe")
+            return lambda: events.append("unsubscribe")
+
+        def get(self) -> int:
+            events.append("get")
+            return 42
+
+    value = Result()
+    expectation = (
+        pytest.raises(ValueError, match="parent failed")
+        if parent_fails
+        else nullcontext()
+    )
+    with expectation:
+        with root.pass_scope():
+            root._ensure_slot(_slot_id(), runtime.SlotCallSlotContext)
+            slot.evaluate(lambda: value, (), {})
+            if parent_fails:
+                raise ValueError("parent failed")
+    assert events == []
+    assert type(slot.binding) is SlotValueBinding
+    if parent_fails:
+        assert slot.binding is accepted
+        assert slot.binding.exposed_value() == 1
+    else:
+        assert slot.binding.exposed_value() is value
     assert root._state_mgr._field_only_completion.last.reuse_ready
 
 

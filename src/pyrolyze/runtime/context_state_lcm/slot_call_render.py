@@ -26,6 +26,8 @@ class _SlotCallRenderCompletion(_CallbackRenderCompletion):
         if slot_type is not SlotCallSlotContext:
             super(_SlotCallRenderCompletion, self).require_slot_type(slot_type)
 
-    def require_slot_call_result(self, result: Any) -> None:
-        if type(select_slot_call_handler(result)) is not SlotValueHandler:
+    def require_slot_call_result(self, result: Any) -> SlotValueHandler:
+        handler = select_slot_call_handler(result)
+        if type(handler) is not SlotValueHandler:
             self.reject("external resource slot-call result is not admitted")
+        return handler

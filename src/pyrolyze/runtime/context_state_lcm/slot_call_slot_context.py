@@ -16,6 +16,7 @@ from .context_base import PASS_TX_KEY
 from .field_only_render import _field_only_completion
 from .lifecycle_adapter import const, local_store, managed, managed_context
 from pyrolyze.runtime.slot_call_core import (
+    SlotCallCommitResult,
     SlotCallStateSnapshot,
     call_with_optional_runtime_context,
     commit_slot_call_invocation,
@@ -248,19 +249,36 @@ class SlotCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
         previous_binding = self._binding
         completion = _field_only_completion(self)
         if completion is not None:
-            completion.require_slot_call_result(result)
+            handler = completion.require_slot_call_result(result)
+            previous_value = (
+                None if previous_binding is None else previous_binding.exposed_value()
+            )
             # The shared handler may rebind its input. Give it a detached value
             # binding, never the selected current or candidate referent.
             if previous_binding is not None:
                 if type(previous_binding) is not SlotValueBinding:
                     completion.reject("external resource binding is not admitted")
                 previous_binding = SlotValueBinding(previous_binding.exposed_value())
-        commit_result = commit_slot_call_invocation(
-            host=host,
-            prepared=prepared,
-            previous_binding=previous_binding,
-            result=result,
-        )
+            # Recognition can execute user code. The approved handler, not a
+            # second classification, must govern the actual bind.
+            binding = handler.bind(host, result, previous_binding)
+            value = binding.exposed_value()
+            commit_result = SlotCallCommitResult(
+                current_value=value,
+                result_dirty=previous_binding is None or value != previous_value,
+                binding=binding,
+                function_identity=prepared.raw_func,
+                schema=prepared.schema,
+                last_args=prepared.raw_args,
+                last_kwargs=prepared.kwargs_items,
+            )
+        else:
+            commit_result = commit_slot_call_invocation(
+                host=host,
+                prepared=prepared,
+                previous_binding=previous_binding,
+                result=result,
+            )
         return {
             "binding": commit_result.binding,
             "function_identity": commit_result.function_identity,

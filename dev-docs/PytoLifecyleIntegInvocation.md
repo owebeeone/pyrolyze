@@ -102,6 +102,8 @@ plain-value selection adapter, not approval of external resource completion.
 - Use a separate private graph gate admitting exact ordinary slot-call slots
   and the already admitted field/callback routes. Select and reject external
   stores, effects, async effects, and mount requests before binding side effects.
+  Retain the selected handler and bind through it; do not run recognition again
+  after admission, since recognition can execute user code.
   Existing gates and the runtime selector remain unchanged.
 - Capture original attempt ownership before normalization. Recheck after user
   equality/callable/result-projection work and before candidate assignment;
@@ -132,3 +134,16 @@ Historical snapshots, shared handlers, runtime selection, and compiler/library
 source are unchanged. The new canonical JSON is an authored target, not a
 replacement of historical observations. Acceptance is pending implementation
 review on the settled tuple, not implied by these checks.
+
+First-round Code/State review at `337bdb7fdbc578f056ca6f2bfd4a20caa6391665`
+independently found the same P2: private admission discarded its approved
+handler and shared binding dispatch classified the result again. Verbatim
+[Code](history/lifecycle-integration/PytoLifecyleIntegSlotCalls-ReviewCode.md) and
+[State](history/lifecycle-integration/PytoLifecyleIntegSlotCalls-ReviewState.md)
+reports and the [single remediation](history/lifecycle-integration/PytoLifecyleIntegSlotCalls-RemPlan-1.md)
+record the defect and closure requirements. The bounded correction binds through
+the approved handler without changing shared legacy dispatch. The stateful
+recognition reproducer failed on both successful completion and parent failure
+before correction; acceptance remains pending originating-reviewer closure.
+Remediation focused native/compatibility: **206 passed**; affected Python:
+**29 passed**. The canonical target and historical snapshots remain unchanged.

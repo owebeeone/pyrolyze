@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Any
 from .render_attempt import _LocalRenderScope, _RenderAttempt, _raise_with_cleanup
 
 if TYPE_CHECKING:
+    from pyrolyze.runtime.slot_call_semantics import SlotValueHandler
+
     from .context_base import ContextBaseStateMgr
     from .render_context import RenderContextStateMgr
 
@@ -86,7 +88,7 @@ class _FieldOnlyRenderCompletion:
     def require_event_handler_binding(self) -> None:
         self.reject("event handler registration is not admitted by SC2")
 
-    def require_slot_call_result(self, result: Any) -> None:
+    def require_slot_call_result(self, result: Any) -> SlotValueHandler:
         self.reject("slot-call selection is not admitted by SC2")
 
     def note_owned_event_handler_pass(self, context: Any) -> None:
