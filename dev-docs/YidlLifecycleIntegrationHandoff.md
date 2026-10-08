@@ -7,9 +7,9 @@ Original handoff snapshots below remain historical evidence, not current status.
 
 ## Resume Point
 
-**Next checkpoint: slot-call invocation values and binding selection together.
-The bounded leaf argument checkpoint is accepted; other resource routes and
-default-runtime activation remain gated.**
+**Leaf arguments and private plain-value slot-call invocation/binding selection
+are accepted. Next are remaining invocation/resource categories through SC3/I4,
+not default-runtime activation; external resource admission remains gated.**
 
 The lifecycle manager, generated guards/hooks, and canonical failure goldens are
 implemented and accepted at library `4b86eec179942d96012aa4a1d92752a34cae87ef`
@@ -34,17 +34,29 @@ Leaf invocation values are now accepted after Code/State GO/GO at
 `b188301216486aee3b43c1ecc7b7fe89307d0273`; see the
 [invocation checkpoint](PytoLifecyleIntegInvocation.md). Private arguments publish
 or discard as one managed record; the unactivated route retains its explicit
-last-attempt compatibility adapter. This does not admit slot-call bindings.
+last-attempt compatibility adapter. That acceptance did not admit slot-call
+bindings; the separate accepted scope below now admits plain values only.
+
+Plain-value slot-call invocation and binding selection are accepted at
+`050ec5bdfc36b434fd0ad4b32d99de50cc5352f0` after one bounded correction and
+Code/State GO/GO. A detached candidate binding and one managed invocation record
+replace manual selection stores on the separately gated private route. Accepted
+reads, candidate elision, failure discard, and retry are covered; legacy immediate
+selection remains explicit. External stores, effects, async effects, mounts,
+graph replacement/retirement, and default routing are not admitted by this proof.
+The [invocation checkpoint](PytoLifecyleIntegInvocation.md) records exact evidence
+and explains the remaining completion adapters as resource-specific wiring.
 
 | Area | Actual State |
 | --- | --- |
 | Construction | Lifecycle-based common construction, explicit manager injection, and post-construction graph attachment are implemented and accepted through I1b |
 | Single render completion | SC1 owner and SC2 real field-only render wiring are implemented; the accepted SC2 proof is private and graph-gated |
-| Resource routes | A separate private gate admits callback selection only; other resource-bearing routes and the default runtime remain unactivated |
+| Resource routes | Separate private gates admit callback selection and plain-value slot-call selection; external resource-bearing routes and the default runtime remain unactivated by this migration |
 | Callback selection | Managed callback/key and local dispatch replace four manual stores; current-only stable dispatch, owned selection/removal, failures, and compatibility are accepted in the bounded checkpoint |
+| Slot-call values | Configuration is declarative; one managed invocation record publishes/discards detached plain-value selection, identity/schema, and arguments together; legacy selection remains in its explicit compatibility record |
 | Resource audit | SC3 caller/writer/resource audit is recorded, not an activated migration |
 | Completion contract | Library and private consumer accepted; completion evidence now drives generation independently of cleanup/reuse; historical observation retained with a separately named current target |
-| Full field migration | Bounded leaf arguments are accepted; I3a and remaining I3c/resource-holder migrations and snapshot/transfer deletion are unfinished; acceptance does not certify I5 membership/resource cleanup |
+| Full field migration | Bounded leaf arguments and plain-value slot-call selection are accepted; I3a and remaining I3c/resource-holder migrations and snapshot/transfer deletion are unfinished; acceptance does not certify I5 membership/resource cleanup |
 | Generator detour | Astichi/YIDL native materialization regressions are fixed, committed, and pushed; original YIDL goldens are unchanged |
 
 ## Goal And Chosen Semantics
@@ -99,6 +111,20 @@ says draft; use the exact recorded acceptance scope rather than that label alone
 
 ## Repository Checkpoint
 
+### Accepted Plain-Value Slot-Call Tuple, 2026-10-08
+
+Pyrolyze runtime/fixtures: `050ec5bdfc36b434fd0ad4b32d99de50cc5352f0`.
+Dependencies are unchanged from the private-consumer table below. Both
+originating reviewers closed the repeated-recognition P2 after one bounded
+correction, with no new findings. Final focused native: **206 passed**; affected
+Python: **29 passed**; full default: **969 passed, 13 unchanged failures,
+20 skipped**. The pre-correction broader unactivated run remained **44 passed,
+11 unchanged failures**, and both reviewers checked unchanged legacy traces.
+Historical JSON, shared handlers, runtime selection, and dependencies are
+unchanged. See the invocation checkpoint for verbatim re-verdicts and scope.
+Acceptance filing is documentation-only. No push, tag, or parent-pointer update
+is implied; remaining resource completion and default activation are not accepted.
+
 ### Accepted Leaf Invocation Tuple, 2026-10-08
 
 Pyrolyze runtime/fixtures: `b188301216486aee3b43c1ecc7b7fe89307d0273`.
@@ -108,7 +134,8 @@ returned GO with no findings. Focused native: **167 passed**; affected Python:
 broader unactivated: **44 passed, 11 unchanged failures**. Historical JSON and
 runtime selection are unchanged. See the invocation checkpoint for the exact
 tuple, verbatim reports, compatibility boundary, and residual pre-existing risk.
-Acceptance filing is documentation-only; slot-call selection is next, not done.
+Acceptance filing was documentation-only. At that tuple slot-call selection was
+next; its subsequent, separately accepted plain-value scope is recorded above.
 
 ### Accepted Callback Tuple, 2026-10-08
 
@@ -190,6 +217,7 @@ Paths in this table are relative to the owning repository root.
 | Pyrolyze: `src/pyrolyze/runtime/context_state_lcm/render_attempt.py` | Private outer attempt, identity/ownership fencing, local completion guards, rollback-only propagation |
 | Pyrolyze: `src/pyrolyze/runtime/context_state_lcm/field_only_render.py` | SC2 graph-level field-only admission and real render wiring; resource routes remain blocked |
 | Pyrolyze: `src/pyrolyze/runtime/context_state_lcm/callback_render.py`, `event_handler_slot_context.py` | Accepted private callback admission/completion staging and declarative selection; other resources remain gated |
+| Pyrolyze: `src/pyrolyze/runtime/context_state_lcm/slot_call_render.py`, `slot_call_slot_context.py` | Accepted private plain-value admission, approved-handler binding, and managed invocation selection; legacy resource dispatch is unchanged |
 | Pyrolyze: `src/pyrolyze/runtime/context_state_lcm/lifecycle_adapter.py` | Construction and lifecycle integration boundary |
 | Pyrolyze: `context_state_lcm/context_base.py`, `_base.py`, `slot_context.py`, `render_context.py` under `src/pyrolyze/runtime` | Common slot/pass state and orchestration to migrate in bounded later steps |
 | Pyrolyze: `src/pyrolyze/runtime/context_bare_refactor_lcm.py` | Decomposed context implementation exercised by the private proof |
@@ -284,8 +312,10 @@ No event-handler callback holder or resource route was migrated in this patch.
 That consumer checkpoint alone kept resource admission blocked. The subsequent
 bounded callback checkpoint now admits only its private selection proof and
 migrates its stores/callers, as recorded above. Subscriptions/effects/mounts/
-overrides/legacy call sites remain separate work. Next is I3c invocation values,
-not automatic runtime activation or wholesale snapshot deletion.
+overrides/legacy call sites remain separate work. Subsequent bounded leaf and
+plain-value slot-call checkpoints are accepted as recorded above. Remaining
+invocation/resource categories are next, not automatic runtime activation or
+wholesale snapshot deletion.
 
 ## Verification And Commands
 

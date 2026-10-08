@@ -1,8 +1,9 @@
 # Invocation Value Migration
 
-Status: **bounded I3c leaf checkpoint accepted after Code/State GO/GO** at
-`b188301216486aee3b43c1ecc7b7fe89307d0273`, not runtime activation or completion
-of all I3c work. Read the single-cohort amendment before the older I3/I3c clauses.
+Status: **bounded I3c leaf and plain-value slot-call checkpoints accepted after
+Code/State GO/GO**, at their separate tuples below. This is not default-runtime
+activation or completion of all I3c work. Read the single-cohort amendment before
+the older I3/I3c clauses.
 The operator requested implementation review rather than another design loop.
 
 ## Leaf Checkpoint
@@ -83,15 +84,17 @@ This checkpoint fences normalization and candidate writes, not arbitrary user
 callable side effects or deep mutation of argument referents. It does not claim
 to repair that existing limitation.
 
-The next authorized bounded checkpoint is slot-call invocation values together
-with binding selection. Elision, replacement, failed-attempt discard, and retry
-must be proved together. Other resource categories and default activation remain
-gated; an immutable invocation record does not make its binding transactional.
+The subsequent plain-value slot-call checkpoint below proves invocation values,
+binding selection, elision, replacement, failed-attempt discard, and retry
+together. Other resource categories and default activation remain gated; an
+immutable invocation record does not make its binding transactional.
 
 ## Slot-Call Value Checkpoint
 
-Status: implementation authorized, acceptance pending. This is a bounded
-plain-value selection adapter, not approval of external resource completion.
+Status: **accepted after Code/State GO/GO** at
+`050ec5bdfc36b434fd0ad4b32d99de50cc5352f0`, after one bounded correction. This
+is a private plain-value selection adapter, not approval of external resource
+completion or default-runtime activation.
 
 - Redeclare slot-call configuration as constructor-time lifecycle constants
   and runtime locals as `local_store`; remove the manual generated-init chain.
@@ -124,7 +127,8 @@ preparation/projection failures, and replacement-token reentry. Run the expanded
 focused baseline, affected Python assembly, unactivated slot-call compatibility,
 and full default regression before a bounded Code/State implementation review.
 
-Implementation verification, 2026-10-08: native focused integration plus the
+Original implementation verification, 2026-10-08, before review correction:
+native focused integration plus the
 existing decomposed slot-call compatibility file **204 passed**; affected
 canonical/fault coverage on Python assembly **27 passed**; full default
 **967 passed, 13 unchanged failures, 20 skipped**; broader unactivated route
@@ -132,8 +136,8 @@ canonical/fault coverage on Python assembly **27 passed**; full default
 override/mount/generation failures retain their leaf-checkpoint identities.
 Historical snapshots, shared handlers, runtime selection, and compiler/library
 source are unchanged. The new canonical JSON is an authored target, not a
-replacement of historical observations. Acceptance is pending implementation
-review on the settled tuple, not implied by these checks.
+replacement of historical observations. These pre-correction checks alone did
+not establish acceptance.
 
 First-round Code/State review at `337bdb7fdbc578f056ca6f2bfd4a20caa6391665`
 independently found the same P2: private admission discarded its approved
@@ -144,6 +148,55 @@ reports and the [single remediation](history/lifecycle-integration/PytoLifecyleI
 record the defect and closure requirements. The bounded correction binds through
 the approved handler without changing shared legacy dispatch. The stateful
 recognition reproducer failed on both successful completion and parent failure
-before correction; acceptance remains pending originating-reviewer closure.
+before correction. Both originating reviewers closed it on the corrected tuple.
 Remediation focused native/compatibility: **206 passed**; affected Python:
 **29 passed**. The canonical target and historical snapshots remain unchanged.
+
+## Slot-Call Value Acceptance
+
+Both originating reviewers returned GO, closing the same P2 with no new
+findings: [Code re-verdict](history/lifecycle-integration/PytoLifecyleIntegSlotCalls-ReviewCode-2.md)
+and [State re-verdict](history/lifecycle-integration/PytoLifecyleIntegSlotCalls-ReviewState-2.md).
+The accepted runtime/fixture tuple is:
+
+| Repository | Revision |
+| --- | --- |
+| `pyrolyze` runtime/fixtures | `050ec5bdfc36b434fd0ad4b32d99de50cc5352f0` |
+| `yidl-lifecycle` | `05554397d1837ecbeafa36e4685477dd5ff30fc6` |
+| `yidl` | `a7cc1de7b630b55bd194940ecad83f3f1738cf8a` |
+| `astichi` | `1c47f781d3804130fdd61cbee07a3b2e4529158a` |
+
+Final owner verification: native focused **206 passed**; affected Python
+**29 passed**; full default **969 passed, 13 unchanged failures, 20 skipped**.
+Full-suite failure identities match the leaf checkpoint. The broader unactivated
+run before correction remained **44 passed, 11 unchanged failures**; the
+private-only correction was additionally checked against legacy resource traces
+by both reviewers. Code independently ran the 56-test native subset and 29-test
+Python subset; State ran the 56-test subset on both backends. Both reran the
+original stateful-recognition probe on success and parent failure.
+
+Shared handlers/core, runtime selection, historical JSON, and compiler/library
+source are unchanged. Formatting and source/document diff checks pass, excluding
+verbatim review reports whose Markdown hard breaks are preserved. Acceptance
+filing is documentation-only; no tag, push, or parent-pointer update is implied.
+
+Scope remains ordinary value selection only. Shallow argument/value referents,
+legacy immediate selection, pre-existing hostile equality/reentry limitations,
+graph replacement/retirement, and external resource completion are not newly
+certified. Remaining invocation categories and SC3/I4 adapters require their own
+bounded checkpoints before broader activation.
+
+## Completion Adapter Meaning
+
+A completion adapter is Pyrolyze's integration wiring, not a new lifecycle field
+kind, transaction manager, or framework. Lifecycle owns publication/discard of
+stored selection. Resource-specific domain code still owns subscription,
+delivery, cancellation, and retirement; its existing acceptance and cleanup
+timing must be mapped to the approved completion boundary.
+
+For the accepted plain-value route, detaching the candidate binding is sufficient
+to avoid mutating accepted selection before publication. A managed reference
+alone cannot undo an external subscription or effect. Those later adapters must
+explicitly preserve accepted resources, discard pending work, and retire
+replacements/removals at their approved boundaries. Existing unactivated
+resource paths continue using their current domain methods.

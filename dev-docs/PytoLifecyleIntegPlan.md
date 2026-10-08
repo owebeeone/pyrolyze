@@ -928,9 +928,12 @@ unactivated component failure route still needs its small local-discard
 compatibility adapter. This does not complete I3a/I5 or activate resource routes.
 The bounded I3c leaf argument checkpoint is accepted after Code/State GO/GO at
 `b188301216486aee3b43c1ecc7b7fe89307d0273`; see
-[invocation scope and evidence](PytoLifecyleIntegInvocation.md). Slot-call values
-and binding selection are the next bounded checkpoint through the single-cohort
-amendment. Other I3c/I4 work and default-runtime activation remain gated.
+[invocation scope and evidence](PytoLifecyleIntegInvocation.md). The subsequent
+private plain-value slot-call invocation/binding-selection checkpoint is accepted
+after Code/State GO/GO at `050ec5bdfc36b434fd0ad4b32d99de50cc5352f0`, after one
+bounded correction. External resources, remaining I3c/I4 categories, and
+default-runtime activation remain gated. Read both through the single-cohort
+amendment; these acceptances do not supersede the remaining adapter obligations.
 
 ### I4: Call Sites And External Resource Participants
 

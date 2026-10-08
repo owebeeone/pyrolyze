@@ -21,14 +21,17 @@ categories and default-runtime activation remain gated.
 
 The [bounded invocation checkpoint](PytoLifecyleIntegInvocation.md) accepts leaf
 arguments after Code/State GO/GO at `b188301216486aee3b43c1ecc7b7fe89307d0273`
-and records the legacy last-attempt compatibility adapter. Next is slot-call
-invocation values plus plain-value binding selection. That bounded adapter is
-implemented and awaiting implementation review; effects, external stores, and
-mount bindings remain gated. This is not completion of all I3c work.
+and records the legacy last-attempt compatibility adapter. Slot-call invocation
+values plus plain-value binding selection are also accepted after Code/State
+GO/GO at `050ec5bdfc36b434fd0ad4b32d99de50cc5352f0`, after one bounded correction.
+Effects, external stores, and mount bindings remain gated on the new private
+route; their existing runtime routes are unchanged. Remaining invocation/resource
+categories continue through SC3/I4, not automatic activation or completion of
+all I3c work.
 
 [Resume handoff](YidlLifecycleIntegrationHandoff.md) records the repository
 checkpoint, published compiler fixes, verification commands, and the next
-bounded invocation-value step. It supplements, not replaces, the plans.
+bounded integration steps. It supplements, not replaces, the plans.
 
 Read these documents in order:
 
@@ -40,7 +43,7 @@ Read these documents in order:
 | [L0 completion contract](PytoLifecyleIntegSC3-L0Plan.md) | Accepted library/consumer contract and verification boundaries |
 | [Private consumer acceptance](PytoLifecyleIntegSC3-L0Consumer.md) | Exact accepted tuple, review closures, and next adapter gate |
 | [Callback selection](PytoLifecyleIntegCallbacks.md) | Bounded implementation contract, verification, and implementation-review status |
-| [Invocation values](PytoLifecyleIntegInvocation.md) | Bounded leaf argument migration and explicit remaining invocation/resource gates |
+| [Invocation values](PytoLifecyleIntegInvocation.md) | Accepted leaf/plain-value slot-call migrations, completion-adapter meaning, and remaining invocation/resource gates |
 | [I3a field migration detail](PytoLifecyleIntegI3aPlan.md) | Remaining common-field migration; read through the single-cohort amendment |
 
 Closed checkpoint evidence and review campaigns are in
