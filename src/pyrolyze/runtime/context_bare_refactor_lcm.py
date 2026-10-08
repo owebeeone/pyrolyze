@@ -541,23 +541,23 @@ class SlotCallSlotContext(RerunnableSlotContext):
 
     @property
     def function_identity(self) -> Any:
-        return self._state_mgr._function_identity
+        return self._state_mgr.accepted_invocation().function_identity
 
     @property
     def schema(self) -> tuple[int, tuple[str, ...]]:
-        return self._state_mgr._schema
+        return self._state_mgr.accepted_invocation().schema
 
     @property
     def last_args(self) -> tuple[Any, ...]:
-        return self._state_mgr._last_args
+        return self._state_mgr.accepted_invocation().args
 
     @property
     def last_kwargs(self) -> tuple[tuple[str, Any], ...]:
-        return self._state_mgr._last_kwargs
+        return self._state_mgr.accepted_invocation().kwargs
 
     @property
     def binding(self) -> SlotCallBinding | None:
-        return self._state_mgr._binding
+        return self._state_mgr.accepted_invocation().binding
 
     @property
     def site_metadata(self) -> tuple[RuntimeSiteMetadata[Any], ...]:

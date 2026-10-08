@@ -87,3 +87,48 @@ The next authorized bounded checkpoint is slot-call invocation values together
 with binding selection. Elision, replacement, failed-attempt discard, and retry
 must be proved together. Other resource categories and default activation remain
 gated; an immutable invocation record does not make its binding transactional.
+
+## Slot-Call Value Checkpoint
+
+Status: implementation authorized, acceptance pending. This is a bounded
+plain-value selection adapter, not approval of external resource completion.
+
+- Redeclare slot-call configuration as constructor-time lifecycle constants
+  and runtime locals as `local_store`; remove the manual generated-init chain.
+- Publish callable identity, schema, arguments, and selected value binding as
+  one frozen managed record on `PASS_TX_KEY`. Public reads use current, while
+  in-attempt elision compares against the candidate. A new detached value
+  binding prevents evaluation from rebinding the accepted binding in place.
+- Use a separate private graph gate admitting exact ordinary slot-call slots
+  and the already admitted field/callback routes. Select and reject external
+  stores, effects, async effects, and mount requests before binding side effects.
+  Existing gates and the runtime selector remain unchanged.
+- Capture original attempt ownership before normalization. Recheck after user
+  equality/callable/result-projection work and before candidate assignment;
+  caught preparation/execution failure remains sticky at outer completion.
+- Keep one legacy local-store record for the unactivated route; preserve its
+  immediate binding reuse/replacement and existing commit/rollback/deactivation
+  calls. Do not change shared slot-call handlers or claim rollback of referents.
+- Ordinary result replacement, not graph slot replacement or component
+  retirement, is admitted. Argument/value referents remain shallow and caller
+  owned. Site metadata and runtime locals remain existing scratch state.
+
+The canonical subprocess target covers current/candidate selection, same-input
+elision, callable/shape/argument changes, dirty-forced evaluation, repeated
+in-attempt changes, parent failure after child success, caught callable failure,
+fresh retry, runtime-context injection, declaration/manager identity, and legacy
+binding reuse. Narrow tests cover resource rejection before side effects,
+preparation/projection failures, and replacement-token reentry. Run the expanded
+focused baseline, affected Python assembly, unactivated slot-call compatibility,
+and full default regression before a bounded Code/State implementation review.
+
+Implementation verification, 2026-10-08: native focused integration plus the
+existing decomposed slot-call compatibility file **204 passed**; affected
+canonical/fault coverage on Python assembly **27 passed**; full default
+**967 passed, 13 unchanged failures, 20 skipped**; broader unactivated route
+**44 passed, 11 unchanged failures**. The existing visitor/host-order and
+override/mount/generation failures retain their leaf-checkpoint identities.
+Historical snapshots, shared handlers, runtime selection, and compiler/library
+source are unchanged. The new canonical JSON is an authored target, not a
+replacement of historical observations. Acceptance is pending implementation
+review on the settled tuple, not implied by these checks.

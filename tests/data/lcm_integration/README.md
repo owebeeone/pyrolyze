@@ -57,6 +57,14 @@ Never regenerate a baseline merely to hide an unapproved semantic change.
   route retains last-attempt tracking through its explicit local-store adapter.
   Leaf execution is not elided; slot-call elision/resources remain gated. See
   `dev-docs/PytoLifecyleIntegInvocation.md` for scope and acceptance status.
+- `slot_call_values_lifecycle.py`: the next bounded invocation target, using
+  a separate private plain-value slot-call gate. Callable identity, argument
+  shape, arguments, and a detached value binding publish/discard together;
+  candidate reads retain unchanged-call elision within a pending attempt.
+  Replacement, parent/caught-child failure, retry, runtime-context injection,
+  dirty-forced evaluation, and the legacy immediate-binding adapter are pinned.
+  Resource-result rejection is covered by narrow fault tests; effects, stores,
+  mounts, and default-runtime activation are not admitted.
 - `baselines/*.json`: structured historical snapshots, compared as JSON rather
   than by whitespace. Runtime selection takes place in fresh subprocesses.
 

@@ -1,0 +1,28 @@
+{
+  "private": {
+    "declarations": {"record_managed": true, "record_identity": true, "record_key": true, "configuration_const": true, "runtime_locals": true, "same_manager": true},
+    "initial": {"accepted": ["source", [2], [["offset", 1]], 3], "candidate": ["source", [2], [["offset", 1]], 3], "shape": [1, ["offset"]]},
+    "initial_result": [true, 3],
+    "unchanged": [false, 3, true],
+    "pending": {"accepted": ["source", [2], [["offset", 1]], 3], "candidate": ["source", [4], [["offset", 1]], 5], "shape": [1, ["offset"]]},
+    "detached_binding": true,
+    "candidate_elision": [false, 5, true],
+    "candidate_reselection": {"accepted": ["source", [2], [["offset", 1]], 3], "candidate": ["source", [4], [["offset", 1]], 5], "shape": [1, ["offset"]]},
+    "published": {"accepted": ["source", [4], [["offset", 1]], 5], "candidate": ["source", [4], [["offset", 1]], 5], "shape": [1, ["offset"]]},
+    "pending_failure": {"accepted": ["source", [4], [["offset", 1]], 5], "candidate": ["source", [6], [["offset", 1]], 7], "shape": [1, ["offset"]]},
+    "discarded": {"accepted": ["source", [4], [["offset", 1]], 5], "candidate": ["source", [4], [["offset", 1]], 5], "shape": [1, ["offset"]]},
+    "retry": {"accepted": ["source", [6], [["offset", 1]], 7], "candidate": ["source", [6], [["offset", 1]], 7], "shape": [1, ["offset"]]},
+    "caught_failure": "slot-call failed",
+    "after_caught_failure": {"accepted": ["source", [6], [["offset", 1]], 7], "candidate": ["source", [6], [["offset", 1]], 7], "shape": [1, ["offset"]]},
+    "callable_change": {"accepted": ["alternate", [6], [["offset", 1]], 17], "candidate": ["alternate", [6], [["offset", 1]], 17], "shape": [1, ["offset"]]},
+    "shape_change": {"accepted": ["alternate", [6], [], 17], "candidate": ["alternate", [6], [], 17], "shape": [1, []]},
+    "equal_value_dirty": false,
+    "dirty_forced": [false, 17],
+    "shallow_retention": true,
+    "calls": [["source", 2, 1], ["source", 4, 1], ["source", 5, 1], ["source", 4, 1], ["source", 6, 1], ["source", 6, 1], ["fail", 8], ["alternate", 6, 1], ["alternate", 6, 1], ["alternate", 6, 1]],
+    "runtime_injected": true,
+    "ready": true,
+    "legacy_unused": true
+  },
+  "legacy": {"reused_binding": true, "last_arguments": [2], "immediate_value": 2, "managed_unused": true}
+}

@@ -86,6 +86,9 @@ class _FieldOnlyRenderCompletion:
     def require_event_handler_binding(self) -> None:
         self.reject("event handler registration is not admitted by SC2")
 
+    def require_slot_call_result(self, result: Any) -> None:
+        self.reject("slot-call selection is not admitted by SC2")
+
     def note_owned_event_handler_pass(self, context: Any) -> None:
         return None
 

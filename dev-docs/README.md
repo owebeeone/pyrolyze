@@ -22,7 +22,9 @@ categories and default-runtime activation remain gated.
 The [bounded invocation checkpoint](PytoLifecyleIntegInvocation.md) accepts leaf
 arguments after Code/State GO/GO at `b188301216486aee3b43c1ecc7b7fe89307d0273`
 and records the legacy last-attempt compatibility adapter. Next is slot-call
-invocation values plus binding selection; this is not completion of all I3c work.
+invocation values plus plain-value binding selection. That bounded adapter is
+implemented and awaiting implementation review; effects, external stores, and
+mount bindings remain gated. This is not completion of all I3c work.
 
 [Resume handoff](YidlLifecycleIntegrationHandoff.md) records the repository
 checkpoint, published compiler fixes, verification commands, and the next
