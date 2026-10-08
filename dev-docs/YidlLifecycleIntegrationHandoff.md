@@ -56,13 +56,14 @@ The separate [synchronous-effect expression proof](PytoLifecyleIntegExpressionEf
 adds inert selection and setup after collection retirement/publication.
 The separate [async-effect expression proof](PytoLifecyleIntegExpressionAsyncEffects.md)
 now adds async delivery, cancellation, and weak callback fencing on that path.
-Mount expressions remain gated. Next is their adapter integration, followed
-by remaining graph/registration work and normal-route adoption.
+The separate [mount-expression proof](PytoLifecyleIntegExpressionMounts.md)
+now adds candidate validation and committed UI anchors. Remaining graph/registration
+work and normal-route adoption follow; all these proofs remain test-gated.
 Plain-checkpoint verification: full native **1028 passed, 2 known host-ordering failures,
 20 skipped**; affected Python assembly **96 passed**. The collection migration
 and the plain-expression checkpoint were committed and pushed as `9ed7372`;
 the subscription-, synchronous-effect-, and async-effect-expression extensions
-are uncommitted.
+were committed and pushed as `aa4a645`. The mount-expression extension is uncommitted.
 Implementation review is deferred to the aggregate integration review.
 
 Synchronous-effect expression verification: full native **1042 passed, 2 known
@@ -73,6 +74,12 @@ Async-effect expression verification: full native **1050 passed, 2 unchanged
 host-ordering failures, 20 skipped**; affected Python expression proofs and
 characterization **51 passed**. Only mount expression admission remains pending
 among these resource-expression adapters; normal-route adoption is still gated.
+
+Mount-expression verification: full native **1056 passed, 2 unchanged host-ordering
+failures, 20 skipped**; affected Python expression proofs and characterization
+**57 passed**. Resource-expression adapters are implemented under their proof
+gates, not activated as the normal route. Remaining graph/registration migration,
+aggregate review, normal adoption, and legacy deletion remain pending.
 
 The lifecycle manager, generated guards/hooks, and canonical failure goldens are
 implemented and accepted at library `4b86eec179942d96012aa4a1d92752a34cae87ef`

@@ -46,7 +46,8 @@ Verification: full native suite **1050 passed, 2 unchanged host-ordering failure
 
 ## Remaining Gates
 
-Mount expressions are the next adapter checkpoint. Existing mount and async
+The separate [mount-expression proof](PytoLifecyleIntegExpressionMounts.md) now
+connects candidate advertisements and committed anchors. Existing mount and async
 slot-call routes are unaffected. Normal-route adoption, remaining graph and
 registration migration, and deletion of legacy completion paths remain pending.
 No lifecycle-library, shared handler, or compiler changes were required.

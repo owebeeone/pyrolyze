@@ -76,10 +76,10 @@ now connects subscription selection, refresh, and cleanup to outer completion.
 The [synchronous-effect proof](PytoLifecyleIntegExpressionEffects.md) now connects
 effect selection, delivery, and retirement. The separate
 [async-effect proof](PytoLifecyleIntegExpressionAsyncEffects.md) adds cancellation
-and callback fencing. Mount expressions still need their binding selection, refresh,
-delivery, and retirement connected to the previously implemented resource
-adapters. Do not enable them by removing the result-type admission check: legacy
-handlers can mutate or activate accepted resources before the render completes.
+and callback fencing. The separate [mount-expression proof](PytoLifecyleIntegExpressionMounts.md)
+connects candidate validation and committed UI anchors. These resource-expression
+proofs do not activate normal routing; do not bypass their completion paths by
+simply removing the earlier gates' result-type admission checks.
 Graph/registration migration, normal-route adoption, and deletion of legacy
 expression completion remain subsequent work. Implementation review is deferred
 to the aggregate integration review.

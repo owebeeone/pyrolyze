@@ -83,6 +83,11 @@ reuses the same ownership/delivery path with stable weak notification hosts,
 cancellation, and callback fencing. Mount expressions and normal-route adoption
 remain pending; aggregate review is still deferred.
 
+The [mount-expression checkpoint](PytoLifecyleIntegExpressionMounts.md) adds
+candidate surface validation and committed UI anchors for expression selections.
+The resource-expression adapters are implemented behind their proof gates;
+remaining graph/registration work, aggregate review, and normal adoption continue.
+
 [Resume handoff](YidlLifecycleIntegrationHandoff.md) records the repository
 checkpoint, published compiler fixes, verification commands, and the next
 bounded integration steps. It supplements, not replaces, the plans.

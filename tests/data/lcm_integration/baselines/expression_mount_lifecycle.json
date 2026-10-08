@@ -1,0 +1,14 @@
+{
+  "provisional": [],
+  "initial": ["a"],
+  "ui_anchor": "a",
+  "provenance": [true, true, true],
+  "pending": ["a"],
+  "discarded": ["a"],
+  "latest": ["latest"],
+  "retained_snapshot": "a",
+  "scoped_call_sites": ["one", "two"],
+  "scoped_anchors": ["one", "two"],
+  "expressions_omitted": [[], []],
+  "container_omitted": [[], []]
+}
