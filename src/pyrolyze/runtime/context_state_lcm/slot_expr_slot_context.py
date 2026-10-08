@@ -6,6 +6,7 @@ from .lifecycle_adapter import const, local_store, managed_context, transient
 from pyrolyze.runtime.call_site_context import CallSiteContextManager
 from pyrolyze.runtime.slot_call_semantics import PyrolyzeMountAdvertisementBinding
 from .context_base import PASS_TX_KEY
+from .field_only_render import _field_only_completion
 from ._base import _copy_parent_state_mgr, _copy_slot_id
 from .rerunnable_slot_context import RerunnableSlotContextStateMgr
 
@@ -41,11 +42,24 @@ class SlotExprSlotContextStateMgr(RerunnableSlotContextStateMgr):
                 merged_ids.append(slot_id)
         self._staged_call_site_ids = tuple(merged_ids)
         if post_commit_callbacks:
-            self._staged_post_commit_callbacks += post_commit_callbacks
+            for callback in post_commit_callbacks:
+                self.append_slot_expr_post_commit_callback(callback)
 
     def append_slot_expr_post_commit_callback(self, callback: Callable[[], None]) -> None:
         self.require_active_scope()
+        completion = _field_only_completion(self)
+        if completion is not None and getattr(
+            completion, "directive_selection_enabled", False
+        ):
+            completion.enqueue_post_commit(self, callback)
+            return
         self._staged_post_commit_callbacks += (callback,)
+
+    def _complete_legacy_selection(self, *, committed: bool) -> None:
+        if committed:
+            self.commit_binding()
+        else:
+            self.rollback_binding()
 
     def commit_binding(self) -> None:
         self.require_active_scope()

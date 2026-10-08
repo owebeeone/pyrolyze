@@ -1084,7 +1084,10 @@ new graph-wide rollback guarantee.
 Current precedence: the single-cohort amendment supersedes independent nested
 publication assumptions in the historical migration text below. The bounded
 [override checkpoint](PytoLifecyleIntegOverrides.md) implements I6a and its required
-post-field graph/generation delivery seam. Other I6b work is still pending.
+post-field graph/generation delivery seam. The subsequent
+[I6b checkpoint](PytoLifecyleIntegCompletionQueues.md) migrates directive selectors,
+captures general completion batches, and replaces base class-name dispatch behind
+a separate proof gate. Aggregate review and normal-route adoption remain pending.
 
 Conditional prerequisite: the L0 contract must be verified before integrated
 hooks depend on its stronger guarantees. Pending D4 approval, preserve existing

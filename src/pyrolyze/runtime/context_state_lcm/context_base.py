@@ -277,11 +277,7 @@ class ContextBaseStateMgr(StateMgrBase):
                 child_state_mgr.deactivate()
 
         for child_state_mgr in self.children_state.values():
-            child_type = type(child_state_mgr.owner).__name__
-            if child_type in {"SlotCallSlotContext", "SlotExprSlotContext"}:
-                child_state_mgr.commit_binding()
-            elif child_type == "ComponentCallSlotContext":
-                child_state_mgr.commit_owned_event_handlers()
+            child_state_mgr._complete_legacy_selection(committed=True)
 
         if hasattr(self, "_expects_native_root"):
             self._committed_native_root = self._expects_native_root
@@ -309,11 +305,7 @@ class ContextBaseStateMgr(StateMgrBase):
             if slot_id not in committed_ids:
                 child_state_mgr.deactivate()
                 continue
-            child_type = type(child_state_mgr.owner).__name__
-            if child_type in {"SlotCallSlotContext", "SlotExprSlotContext"}:
-                child_state_mgr.rollback_binding()
-            elif child_type == "ComponentCallSlotContext":
-                child_state_mgr.rollback_owned_event_handlers()
+            child_state_mgr._complete_legacy_selection(committed=False)
             child_state_mgr._invoke_dirty = self._pass_child_dirty.get(
                 slot_id,
                 child_state_mgr._invoke_dirty,

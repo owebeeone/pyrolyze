@@ -1,0 +1,11 @@
+{
+  "before_outer_exit": [[], false],
+  "accepted": [["old", 1, true, 1, true]],
+  "nested": ["nested", 2],
+  "discard": ["old", [["old", 1, true, 1, true]]],
+  "retry": [["old", 1, true, 1, true], ["new", 3, true, 2, true]],
+  "removed": [false, []],
+  "expression_before_exit": [],
+  "expression_after_exit": ["expression"],
+  "independent_invalidation": [true, true]
+}

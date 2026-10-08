@@ -131,3 +131,7 @@ class StateMgrBase:
 
     def parent_context(self) -> Any | None:
         return None
+
+    def _complete_legacy_selection(self, *, committed: bool) -> None:
+        """Compatibility-only domain completion; lifecycle gates bypass this."""
+        return None

@@ -7,12 +7,29 @@ Original handoff snapshots below remain historical evidence, not current status.
 
 ## Resume Point
 
+Component and override checkpoints are committed on main as `bdc149d`
+(`Migrate component retirement and override publication to lifecycle`), not
+pushed by that request. The following I6b checkpoint is implemented:
+[directives and completion queues](PytoLifecyleIntegCompletionQueues.md).
+It adds `_enable_completion_render`, managed selector publication with candidate
+child validation, and captured render/expression callback delivery after accepted
+graph/generation and resource completion. Failed/superseded sources do not
+deliver; independent invalidations survive discard. Callback failures drain,
+retain publication evidence, and quarantine reuse; incomplete registry acceptance
+blocks delivery. Base owner-class-name completion dispatch is removed in favor
+of compatibility-only per-state methods. Normal routing is unchanged.
+Aggregate review, I7 adoption/legacy deletion, and remaining common-field audit
+are still pending. Earlier checkpoint descriptions below are historical status.
+I6b verification: full native **1083 passed, 2 unchanged host-ordering failures,
+20 skipped**; affected Python assembly and compatibility checks **43 passed**.
+The canonical directive/queue fixture and narrow failure checks pass; historical
+baselines and compiler/lifecycle libraries remain unchanged.
+
 Latest bounded extension: [override publication](PytoLifecyleIntegOverrides.md)
 implements managed keys/values and stable stream delivery after accepted graph
 and generation publication. Failed candidates do not emit override changes;
-independent parent events remain intact. It is uncommitted and test-gated.
-I6b directive/registry/queue migration, aggregate review, normal-route adoption,
-and compatibility deletion remain pending.
+independent parent events remain intact. It is committed and test-gated.
+Aggregate review, normal-route adoption, and compatibility deletion remain pending.
 Final override verification: full native **1071 passed, 2 unchanged host-ordering
 failures, 20 skipped**; broader affected Python run **53 passed**, final override
 faults/golden **8 passed**. Existing Drip error policy is unchanged. No historical
@@ -21,7 +38,7 @@ baseline regeneration or compiler/lifecycle-library changes were needed.
 Latest checkpoint: mount expressions were committed/pushed as `358ead7`.
 The [component-selection proof](PytoLifecyleIntegComponentSelection.md) now stages
 identity, schema, and child together under the shared render transaction.
-It is uncommitted, test-gated work. The same proof now stages component
+It is committed, test-gated work. The same proof now stages component
 replacement/retirement and detaches rejected or retired children after a known
 outcome. The canonical trace exercises real subscriptions and retained snapshots.
 Legacy compatibility deletion, graph/registry migration, aggregate review,

@@ -5,11 +5,16 @@ landed; use its status and the recorded acceptance scope.
 
 ## Lifecycle Integration
 
+Latest bounded work: [directive and completion queues](PytoLifecyleIntegCompletionQueues.md)
+migrates directive selectors and captures render/expression callback batches
+until accepted outer completion. It removes base class-name completion dispatch
+without activating normal routing. Aggregate review and adoption remain pending.
+
 The [override publication checkpoint](PytoLifecyleIntegOverrides.md) adds managed
 lexical override selection and post-publication stream delivery behind its own
-proof gate. Remaining I6b registry/directive/queue work is not claimed complete.
+proof gate.
 
-Latest bounded work: [component selection](PytoLifecyleIntegComponentSelection.md)
+The [component selection checkpoint](PytoLifecyleIntegComponentSelection.md)
 adds managed identity/schema/child selection and component replacement/retirement
 under the single outer decision. Normal-route adoption remains gated.
 

@@ -400,16 +400,22 @@ class RenderContextStateMgr(ContextBaseStateMgr):
     def queue_invalidation_from(self, slot: object, *, include_source: bool = True) -> None:
         slot_state_mgr = slot._state_mgr if hasattr(slot, "_state_mgr") else slot
         boundary_state_mgr = slot_state_mgr._render_context_state_mgr
+        completion = _field_only_completion(self)
+        note_invalidation = getattr(completion, "note_invalidation", None)
         scheduler_root = boundary_state_mgr._scheduler_root_state_mgr
         was_pending = scheduler_root._scheduler.has_pending_work()
         if include_source:
             slot_state_mgr._invoke_dirty = True
+            if note_invalidation is not None:
+                note_invalidation(slot_state_mgr)
 
         current = slot_state_mgr._parent_state_mgr
         dirty_contexts = 0
         while current is not None:
             dirty_contexts += 1
             current._invoke_dirty = True
+            if note_invalidation is not None:
+                note_invalidation(current)
             current_state_mgr = current
             if current_state_mgr.context_kind() in {
                 ContextKind.RENDER_ROOT,
@@ -422,6 +428,8 @@ class RenderContextStateMgr(ContextBaseStateMgr):
         owner_slot_state_mgr = boundary_state_mgr._owner_slot_state_mgr
         if owner_slot_state_mgr is not None:
             owner_slot_state_mgr._invoke_dirty = True
+            if note_invalidation is not None:
+                note_invalidation(owner_slot_state_mgr)
 
         boundary_state_mgr._scheduler.request(boundary_state_mgr.owner)
         if not any(queued is slot_state_mgr for queued in self._queued_invalidations):
@@ -440,6 +448,12 @@ class RenderContextStateMgr(ContextBaseStateMgr):
             )
 
     def enqueue_post_commit(self, callback: Callable[[], None]) -> None:
+        completion = _field_only_completion(self)
+        if completion is not None and getattr(
+            completion, "directive_selection_enabled", False
+        ):
+            completion.enqueue_post_commit(self, callback)
+            return
         self._post_commit_callbacks.append(callback)
 
     def publish_mount_advertisement(self, slot: Any, request: Any) -> Any:

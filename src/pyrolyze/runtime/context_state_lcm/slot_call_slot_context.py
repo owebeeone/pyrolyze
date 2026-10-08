@@ -371,6 +371,12 @@ class SlotCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
             binding.commit()
         self.sync_binding_committed_ui()
 
+    def _complete_legacy_selection(self, *, committed: bool) -> None:
+        if committed:
+            self.commit_binding()
+        else:
+            self.rollback_binding()
+
     def rollback_binding(self) -> None:
         binding = self._binding
         if binding is not None:

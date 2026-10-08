@@ -241,6 +241,12 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
         self.ui_state = self._child_context_state_mgr.ui_state
         return None
 
+    def _complete_legacy_selection(self, *, committed: bool) -> None:
+        if committed:
+            self.commit_owned_event_handlers()
+        else:
+            self.rollback_owned_event_handlers()
+
     def commit_owned_event_handlers(self) -> None:
         if not self._pass_owned_event_handler_order and not any(
             child.context_kind() == ContextKind.EVENT_HANDLER and child._seen_in_pass

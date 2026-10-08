@@ -94,6 +94,12 @@ def test_mount_selection_lifecycle_golden() -> None:
     )
 
 
+def test_directive_completion_lifecycle_golden() -> None:
+    _check_baseline(
+        "directive_completion_lifecycle.py", "directive_completion_lifecycle", dict(os.environ)
+    )
+
+
 def test_override_selection_lifecycle_golden() -> None:
     _check_baseline(
         "override_selection_lifecycle.py", "override_selection_lifecycle", dict(os.environ)
