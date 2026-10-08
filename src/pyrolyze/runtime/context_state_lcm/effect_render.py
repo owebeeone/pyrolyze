@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 from yidl_lifecycle.bindings_refcount import BindingBase
 
@@ -17,13 +17,19 @@ from pyrolyze.runtime.slot_call_semantics import (
     select_slot_call_handler,
 )
 from .callback_render import _graph_states
-from .effect_binding import _EffectBinding, _EffectResource
+from .effect_binding import _EffectBinding
 from .render_attempt import _raise_with_cleanup
 from .render_context import RenderContextStateMgr
 from .subscription_render import (
     _SubscriptionRenderCompletion,
     _enable_subscription_render,
 )
+
+
+class _EffectDeliveryResource(Protocol):
+    cleanup_failure: BaseException | None
+
+    def start(self) -> None: ...
 
 
 def _enable_effect_render(root: RenderContextStateMgr) -> None:
@@ -61,16 +67,26 @@ class _EffectRenderCompletion(_SubscriptionRenderCompletion):
             return binding.resource
         return super(_EffectRenderCompletion, self).resource_for(binding)
 
+    def delivery_resource_for(
+        self, binding: SlotCallBinding | None
+    ) -> _EffectDeliveryResource | None:
+        return binding.resource if type(binding) is _EffectBinding else None
+
     def _complete(self, propagating: BaseException | None) -> None:
         from .slot_call_slot_context import SlotCallSlotContextStateMgr
 
         assert self.active is not None
         owner = self.active
         previous = {
-            id(state): state.current._invocation.binding.resource
+            id(state): resource
             for state in _graph_states(self.root, current=True)
             if isinstance(state, SlotCallSlotContextStateMgr)
-            and type(state.current._invocation.binding) is _EffectBinding
+            and (
+                resource := self.delivery_resource_for(
+                    state.current._invocation.binding
+                )
+            )
+            is not None
         }
         failure: BaseException | None = None
         try:
@@ -88,15 +104,16 @@ class _EffectRenderCompletion(_SubscriptionRenderCompletion):
                     if not isinstance(state, SlotCallSlotContextStateMgr):
                         continue
                     binding = state.current._invocation.binding
-                    if type(binding) is not _EffectBinding:
+                    resource = self.delivery_resource_for(binding)
+                    if resource is None:
                         continue
-                    old: _EffectResource | None = previous.get(id(state))
+                    old = previous.get(id(state))
                     if old is not None and old.cleanup_failure is not None:
                         # Legacy replacement does not start after its own
                         # cleanup fails; that must not suppress other slots.
                         continue
                     try:
-                        binding.resource.start()
+                        resource.start()
                     except BaseException as error:
                         errors.append(error)
                         self._cleanup_failure = error

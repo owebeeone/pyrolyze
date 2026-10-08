@@ -943,6 +943,12 @@ The operator deferred separate review to the larger integration review; this
 checkpoint is implemented/tested, not independently accepted. Existing runtime routes, effects,
 async effects, mounts, and default activation are unchanged.
 
+The separately authorized [async-effect checkpoint](PytoLifecyleIntegAsyncEffects.md)
+adds callback-driven operations to a separate private gate. It reuses the shared
+post-publication delivery loop and owned wrapper, fencing completion before
+cancellation and draining cleanup failures. Mounts, legacy handlers, and normal
+runtime activation remain unchanged.
+
 The separately authorized [synchronous-effect checkpoint](PytoLifecyleIntegEffects.md)
 continues I4c behind an additional proof gate. Managed request selection and the
 same private owned resource wrapper replace manual staged/current requests on

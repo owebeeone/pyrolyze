@@ -10,8 +10,18 @@ Original handoff snapshots below remain historical evidence, not current status.
 **Leaf arguments and private plain-value slot-call invocation/binding selection
 are accepted. Subscription ownership and synchronous effects are implemented
 and tested behind additional proof gates, with review deferred to the aggregate
-integration review. Remaining invocation/resource categories continue through
+integration review. Async effects now have a separate private proof gate using
+the same delivery/ownership machinery; see the
+[async-effect checkpoint](PytoLifecyleIntegAsyncEffects.md). Remaining invocation/resource categories continue through
 SC3/I4, not default-runtime activation.**
+
+The async checkpoint uses the shared delivery loop and existing private owned
+wrapper. Its canonical trace covers actual scheduler flushing and stale callback
+fencing; faults cover synchronous completion, cancellation/cleanup failures,
+weak graph lifetime, startup reentry, and token replacement. Full native evidence:
+**1007 passed, 2 known placement failures, 20 skipped**; affected Python resource
+tests/goldens: **27 passed**. This is tested private implementation, not normal
+route activation. Mount bindings remain the next resource category.
 
 The lifecycle manager, generated guards/hooks, and canonical failure goldens are
 implemented and accepted at library `4b86eec179942d96012aa4a1d92752a34cae87ef`

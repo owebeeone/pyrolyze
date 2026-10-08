@@ -1,0 +1,30 @@
+{
+  "completion_posts": 1,
+  "events": [
+    ["start", "a", true],
+    ["cancel", "a"],
+    ["cleanup", "a"],
+    ["start", "b", true],
+    ["cleanup", "b"],
+    ["start", "latest", true],
+    ["cancel", "latest"],
+    ["cleanup", "latest"],
+    ["start", "always1", true],
+    ["cancel", "always1"],
+    ["cleanup", "always1"],
+    ["start", "always2", true],
+    ["cancel", "always2"],
+    ["cleanup", "always2"],
+    ["start", "once", true],
+    ["cancel", "once"],
+    ["cleanup", "once"]
+  ],
+  "failed_removal_active": true,
+  "failed_replacement": [["start", "a", true]],
+  "provisional": [],
+  "ready": true,
+  "removed_callback_posts": 1,
+  "retained_snapshot_closed": true,
+  "scheduler": ["render", "start", ["posted", 1], "render", "cleanup"],
+  "stale_callback_posts": 0
+}

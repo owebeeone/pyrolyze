@@ -45,6 +45,11 @@ multiple pending requests select the latest callback. It is implemented/tested,
 with separate review deferred to the aggregate integration review. Async
 effects, mounts, and default-runtime activation remain gated.
 
+The [async-effect checkpoint](PytoLifecyleIntegAsyncEffects.md) extends the proof
+with cancellable operations, weak completion callbacks, and teardown fencing.
+It reuses the synchronous delivery loop and private resource wrapper; shared
+legacy handlers, mount admission, and normal routing remain unchanged.
+
 [Resume handoff](YidlLifecycleIntegrationHandoff.md) records the repository
 checkpoint, published compiler fixes, verification commands, and the next
 bounded integration steps. It supplements, not replaces, the plans.
@@ -62,6 +67,7 @@ Read these documents in order:
 | [Invocation values](PytoLifecyleIntegInvocation.md) | Accepted leaf/plain-value slot-call migrations, completion-adapter meaning, and remaining invocation/resource gates |
 | [Subscription completion](PytoLifecyleIntegSubscriptions.md) | Tested subscription proof, private-wrapper ownership rationale, cleanup timeline, and deferred aggregate-review obligation |
 | [Synchronous effects](PytoLifecyleIntegEffects.md) | Tested effect proof, post-publication delivery, cleanup/failure behavior, and deferred aggregate-review obligation |
+| [Async effects](PytoLifecyleIntegAsyncEffects.md) | Async proof, cancellation/cleanup, weak callbacks, and remaining activation gates |
 | [I3a field migration detail](PytoLifecyleIntegI3aPlan.md) | Remaining common-field migration; read through the single-cohort amendment |
 
 Closed checkpoint evidence and review campaigns are in
