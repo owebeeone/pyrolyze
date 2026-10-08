@@ -1,0 +1,20 @@
+{
+  "provisional": [],
+  "initial": [["setup", "a", true]],
+  "stable_dependencies": [["setup", "a", true]],
+  "failed_replacement": [[["setup", "a", true]], false],
+  "retained_snapshot_closed": true,
+  "failed_removal_active": true,
+  "omitted": true,
+  "explicit_removal": true,
+  "ready": true,
+  "events": [
+    ["setup", "a", true], ["cleanup", "a"],
+    ["setup", "c", true], ["cleanup", "c"],
+    ["setup", "final", true], ["cleanup", "final"],
+    ["setup", "always1", true], ["cleanup", "always1"],
+    ["setup", "always2", true], ["cleanup", "always2"],
+    ["setup", "once", true], ["cleanup", "once"],
+    ["setup", "latest", true], ["cleanup", "latest"]
+  ]
+}

@@ -4,17 +4,18 @@ from contextlib import nullcontext
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Callable, TypeVar
 
+from yidl_lifecycle.bindings import BindingBase
+
 from pyrolyze.runtime.slot_call_semantics import (
     PyrolyzeMountAdvertisementBinding,
     SlotCallBinding,
-    SlotValueBinding,
 )
 from ._base import USE_FACTORY, USE_OWNER
 from ._support import _project_dirty_state, _resolve_runtime_site_call, _unwrap
 from .rerunnable_slot_context import RerunnableSlotContextStateMgr
 from .context_base import PASS_TX_KEY
 from .field_only_render import _field_only_completion
-from .lifecycle_adapter import const, local_store, managed, managed_context
+from .lifecycle_adapter import const, local_store, managed, managed_context, owned
 from pyrolyze.runtime.slot_call_core import (
     SlotCallCommitResult,
     SlotCallStateSnapshot,
@@ -51,6 +52,12 @@ class SlotCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
     _invocation: _SlotCallInvocation = managed(
         init=False,
         default_factory=_SlotCallInvocation,
+        compare="identity",
+        tx_key=PASS_TX_KEY,
+    )
+    _binding_owner: BindingBase | None = owned(
+        init=False,
+        default=None,
         compare="identity",
         tx_key=PASS_TX_KEY,
     )
@@ -150,6 +157,7 @@ class SlotCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
             owner._require_identity()
 
         invocation = self._invocation_record()
+        selection_changed = should_invoke
         if should_invoke:
             next_result = self.call_with_optional_runtime_context(
                 prepared, runtime_context_factory
@@ -174,22 +182,43 @@ class SlotCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
             result_dirty = False
             binding = self._binding
             if binding is not None:
-                refreshed = self.refresh_slot_call_binding(binding)
+                if owner is not None:
+                    completion = _field_only_completion(self)
+                    refreshed_selection = completion.refresh_slot_call_selection(
+                        binding
+                    )
+                    if refreshed_selection is not None:
+                        binding, result_dirty = refreshed_selection
+                        invocation = replace(invocation, binding=binding)
+                        selection_changed = True
+                    refreshed = None
+                else:
+                    refreshed = self.refresh_slot_call_binding(binding)
                 if refreshed is not None:
                     _, result_dirty = refreshed
 
         binding = invocation.binding
         if binding is None:
             raise RuntimeError("slot-call slot has no binding after evaluation")
-        result = self._slot_call_result_cls(
-            dirty=self.project_dirty_state(result_dirty, result_shape),
-            value=binding.exposed_value(),
-        )
-        if owner is not None:
-            owner._require_open()
-            owner._require_identity()
-            if should_invoke:
-                self._invocation = invocation
+        try:
+            result = self._slot_call_result_cls(
+                dirty=self.project_dirty_state(result_dirty, result_shape),
+                value=binding.exposed_value(),
+            )
+            if owner is not None:
+                owner._require_open()
+                owner._require_identity()
+                if selection_changed:
+                    completion = _field_only_completion(self)
+                    self._binding_owner = completion.resource_owner_for(
+                        binding, self._binding_owner
+                    )
+                    self._invocation = invocation
+        except BaseException:
+            if owner is not None:
+                completion = _field_only_completion(self)
+                completion.discard_unstaged_selection(binding, self)
+            raise
         return result
 
     def resolve_runtime_site_call(
@@ -253,25 +282,25 @@ class SlotCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
             previous_value = (
                 None if previous_binding is None else previous_binding.exposed_value()
             )
-            # The shared handler may rebind its input. Give it a detached value
-            # binding, never the selected current or candidate referent.
-            if previous_binding is not None:
-                if type(previous_binding) is not SlotValueBinding:
-                    completion.reject("external resource binding is not admitted")
-                previous_binding = SlotValueBinding(previous_binding.exposed_value())
             # Recognition can execute user code. The approved handler, not a
             # second classification, must govern the actual bind.
-            binding = handler.bind(host, result, previous_binding)
-            value = binding.exposed_value()
-            commit_result = SlotCallCommitResult(
-                current_value=value,
-                result_dirty=previous_binding is None or value != previous_value,
-                binding=binding,
-                function_identity=prepared.raw_func,
-                schema=prepared.schema,
-                last_args=prepared.raw_args,
-                last_kwargs=prepared.kwargs_items,
+            binding = completion.bind_slot_call_result(
+                handler, host, result, previous_binding
             )
+            try:
+                value = binding.exposed_value()
+                commit_result = SlotCallCommitResult(
+                    current_value=value,
+                    result_dirty=previous_binding is None or value != previous_value,
+                    binding=binding,
+                    function_identity=prepared.raw_func,
+                    schema=prepared.schema,
+                    last_args=prepared.raw_args,
+                    last_kwargs=prepared.kwargs_items,
+                )
+            except BaseException:
+                completion.discard_unstaged_selection(binding, self)
+                raise
         else:
             commit_result = commit_slot_call_invocation(
                 host=host,
@@ -344,6 +373,11 @@ class SlotCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
             binding.rollback()
         self.sync_binding_committed_ui()
 
+    def _stage_slot_call_retirement(self) -> None:
+        self._binding_owner = None
+        self._invocation = replace(self._invocation, binding=None)
+        self.ui_state = ()
+
     def deactivate(self) -> None:
         binding = self._binding
         completion = _field_only_completion(self)
@@ -355,7 +389,7 @@ class SlotCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
                 completion.reject("slot-call retirement requires an active render")
             completion.active._require_open()
             completion.active._require_identity()
-            self._invocation = replace(self._invocation, binding=None)
+            self._stage_slot_call_retirement()
         if binding is not None:
             binding.deactivate()
         self.ui_state = ()

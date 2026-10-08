@@ -66,6 +66,20 @@ def test_slot_call_values_lifecycle_golden() -> None:
     )
 
 
+def test_subscription_selection_lifecycle_golden() -> None:
+    _check_baseline(
+        "subscription_selection_lifecycle.py",
+        "subscription_selection_lifecycle",
+        dict(os.environ),
+    )
+
+
+def test_effect_selection_lifecycle_golden() -> None:
+    _check_baseline(
+        "effect_selection_lifecycle.py", "effect_selection_lifecycle", dict(os.environ)
+    )
+
+
 @pytest.mark.parametrize("implementation", ("original", "bare_refactor_lcm"))
 def test_common_pass_preflight_baseline(implementation: str) -> None:
     environment = dict(os.environ)

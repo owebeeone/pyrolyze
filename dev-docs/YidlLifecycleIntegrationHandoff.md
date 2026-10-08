@@ -8,8 +8,10 @@ Original handoff snapshots below remain historical evidence, not current status.
 ## Resume Point
 
 **Leaf arguments and private plain-value slot-call invocation/binding selection
-are accepted. Next are remaining invocation/resource categories through SC3/I4,
-not default-runtime activation; external resource admission remains gated.**
+are accepted. Subscription ownership and synchronous effects are implemented
+and tested behind additional proof gates, with review deferred to the aggregate
+integration review. Remaining invocation/resource categories continue through
+SC3/I4, not default-runtime activation.**
 
 The lifecycle manager, generated guards/hooks, and canonical failure goldens are
 implemented and accepted at library `4b86eec179942d96012aa4a1d92752a34cae87ef`
@@ -47,11 +49,49 @@ graph replacement/retirement, and default routing are not admitted by this proof
 The [invocation checkpoint](PytoLifecyleIntegInvocation.md) records exact evidence
 and explains the remaining completion adapters as resource-specific wiring.
 
+The [subscription checkpoint](PytoLifecyleIntegSubscriptions.md) is implemented
+behind an additional proof gate. The operator deferred separate review to the
+larger integration review; this is tested implementation, not independent
+acceptance. No reviewers were dispatched for this checkpoint. The operator
+approved private Python-lifetime ownership wrappers around explicitly counted
+resources, so keeping a value snapshot cannot delay unsubscribe. Failed candidate
+wrappers release idempotently even if a traceback retains them. The source module
+documents why this split is necessary. Focused native verification: **226 passed**;
+affected Python assembly: **41 passed**; full default: **981 passed, 13 recorded
+visitor/host-order failures, 20 skipped**. No library, shared legacy handler,
+runtime-selector, or historical snapshot changes are part of this checkpoint.
+
+The [synchronous-effect checkpoint](PytoLifecyleIntegEffects.md) is also implemented
+and tested behind a separate gate, with the same deferred review obligation.
+Selected requests stay inert until proven outer publication; accepted resource
+replacement/removal cleans up before setup. Stable dependencies reuse an active
+effect, while multiple pending requests retain the latest callback even when
+dependencies match. Ordinary/system setup and cleanup failures drain independent
+actions and preserve actual publication evidence. Expanded native verification:
+**234 passed**; the final extended effect golden/fault run: **8 passed**; affected
+Python assembly: **49 passed**. Async effects, mounts, and normal routing remain
+unchanged.
+
+The eleven recorded graph/visualization failures were traced to an incomplete
+visitor-interface migration: `context_lcm.ContextBase` kept the data but lacked
+`own_committed_ui`, `own_committed_ui_entries`, and `iter_children`. Restoring
+those read-only methods changes no storage or transaction semantics. All five
+affected test files now pass (**15 passed**). The two recorded host sibling-order
+failures are separate and not addressed by this correction.
+
+Latest combined default native regression after this correction: **1000 passed,
+2 recorded host sibling-order failures, 20 skipped, 1 warning**. The remaining
+failures are the retained-row ordering case in
+`tests/test_generic_backend_host_surface_runtime.py` and its native PySide6
+counterpart in `tests/test_pyside6_native_host.py`. No graph failures remain.
+Subscription/effect implementation review is still deferred, not independently
+accepted; changes remain uncommitted at this verification checkpoint.
+
 | Area | Actual State |
 | --- | --- |
 | Construction | Lifecycle-based common construction, explicit manager injection, and post-construction graph attachment are implemented and accepted through I1b |
 | Single render completion | SC1 owner and SC2 real field-only render wiring are implemented; the accepted SC2 proof is private and graph-gated |
-| Resource routes | Separate private gates admit callback selection and plain-value slot-call selection; external resource-bearing routes and the default runtime remain unactivated by this migration |
+| Resource routes | Accepted callback/plain-value gates plus tested subscription/synchronous-effect gates; aggregate review is deferred for the latter, while async effects, mounts, and normal-route activation remain gated |
 | Callback selection | Managed callback/key and local dispatch replace four manual stores; current-only stable dispatch, owned selection/removal, failures, and compatibility are accepted in the bounded checkpoint |
 | Slot-call values | Configuration is declarative; one managed invocation record publishes/discards detached plain-value selection, identity/schema, and arguments together; legacy selection remains in its explicit compatibility record |
 | Resource audit | SC3 caller/writer/resource audit is recorded, not an activated migration |
@@ -218,6 +258,8 @@ Paths in this table are relative to the owning repository root.
 | Pyrolyze: `src/pyrolyze/runtime/context_state_lcm/field_only_render.py` | SC2 graph-level field-only admission and real render wiring; resource routes remain blocked |
 | Pyrolyze: `src/pyrolyze/runtime/context_state_lcm/callback_render.py`, `event_handler_slot_context.py` | Accepted private callback admission/completion staging and declarative selection; other resources remain gated |
 | Pyrolyze: `src/pyrolyze/runtime/context_state_lcm/slot_call_render.py`, `slot_call_slot_context.py` | Accepted private plain-value admission, approved-handler binding, and managed invocation selection; legacy resource dispatch is unchanged |
+| Pyrolyze: `src/pyrolyze/runtime/context_state_lcm/resource_ownership.py`, `subscription_binding.py`, `subscription_render.py` | Tested hybrid ownership and subscription completion; retained snapshots do not own resources; aggregate review deferred |
+| Pyrolyze: `src/pyrolyze/runtime/context_state_lcm/effect_binding.py`, `effect_render.py` | Tested synchronous-effect selection and post-publication setup with independent failure draining; aggregate review deferred |
 | Pyrolyze: `src/pyrolyze/runtime/context_state_lcm/lifecycle_adapter.py` | Construction and lifecycle integration boundary |
 | Pyrolyze: `context_state_lcm/context_base.py`, `_base.py`, `slot_context.py`, `render_context.py` under `src/pyrolyze/runtime` | Common slot/pass state and orchestration to migrate in bounded later steps |
 | Pyrolyze: `src/pyrolyze/runtime/context_bare_refactor_lcm.py` | Decomposed context implementation exercised by the private proof |

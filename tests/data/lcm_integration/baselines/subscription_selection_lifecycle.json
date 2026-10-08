@@ -1,0 +1,30 @@
+{
+  "pending_accepted": false,
+  "owned": true,
+  "initial": [1, true],
+  "pending_refresh": [1, 2],
+  "failed_refresh": [1, 1],
+  "retried_refresh": [2, 2],
+  "pending_replacement": [2, 1, 1],
+  "failed_replacement": [2, 1, 0],
+  "committed_replacement": [3, 0, 1],
+  "same_subscription": true,
+  "retained_old": [0, 1],
+  "released_old": [0, 1],
+  "omitted": [true, 0],
+  "failed_removal": [2, 1],
+  "explicit_removal": [true, 0],
+  "ready": true,
+  "events": [
+    ["subscribe", "a"], ["get", "a", 1],
+    ["get", "a", 2], ["get", "a", 2],
+    ["subscribe", "b"], ["get", "b", 3], ["unsubscribe", "b"],
+    ["subscribe", "b"], ["get", "b", 3], ["unsubscribe", "a"],
+    ["get", "b", 3],
+    ["subscribe", "c"], ["get", "c", 4], ["unsubscribe", "b"],
+    ["unsubscribe", "c"],
+    ["subscribe", "a"], ["get", "a", 2], ["unsubscribe", "a"]
+  ],
+  "no_store_graph_cycle": true,
+  "collection_events": [["subscribe", "live"], ["get", "live", 5], ["unsubscribe", "live"]]
+}

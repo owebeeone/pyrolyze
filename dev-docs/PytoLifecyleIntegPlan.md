@@ -935,6 +935,25 @@ bounded correction. External resources, remaining I3c/I4 categories, and
 default-runtime activation remain gated. Read both through the single-cohort
 amendment; these acceptances do not supersede the remaining adapter obligations.
 
+The operator-approved [bounded subscription checkpoint](PytoLifecyleIntegSubscriptions.md)
+continues I4b with a separate proof gate. Its private lifecycle-owned wrappers
+adopt explicit resource references so retained value snapshots cannot prolong
+subscription lifetime; the source documents the ownership rationale.
+The operator deferred separate review to the larger integration review; this
+checkpoint is implemented/tested, not independently accepted. Existing runtime routes, effects,
+async effects, mounts, and default activation are unchanged.
+
+The separately authorized [synchronous-effect checkpoint](PytoLifecyleIntegEffects.md)
+continues I4c behind an additional proof gate. Managed request selection and the
+same private owned resource wrapper replace manual staged/current requests on
+that gate. Setup waits for proven outer publication, rollback cannot start a
+candidate, and replacement/removal releases the previous resource before setup.
+Equal dependencies reuse an already-started effect, not a superseded pending
+callback. Independent setup/cleanup errors drain and preserve actual publication.
+This checkpoint is implemented/tested; review is deferred to aggregate integration
+review, not waived. Shared handlers, async effects, mounts, and normal routing
+remain unchanged.
+
 ### I4: Call Sites And External Resource Participants
 
 Conditional prerequisite: L0's failure-completion evidence before relying on
