@@ -1,0 +1,9 @@
+{
+  "lexical": ["old", "old"],
+  "candidate": ["discard", [null]],
+  "rollback": ["old", []],
+  "stable_identity": true,
+  "accepted": ["new", [["new", 2, true, true]]],
+  "concrete": ["concrete", false],
+  "omitted": [false, false, [["new", 2, true, true], ["concrete", 3, true, true]]]
+}

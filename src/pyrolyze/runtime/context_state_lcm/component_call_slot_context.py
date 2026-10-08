@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import Any, Callable
 
 from pyrolyze.freezable import freezable_dataclass, frozen_dataclass
@@ -47,19 +47,65 @@ class FrozenComponentCallInvocationState:
     pass
 
 
+@dataclass(frozen=True, slots=True)
+class _ComponentSelection:
+    identity: Any = None
+    schema: tuple[int, tuple[str, ...]] = (0, ())
+    child: Any = None
+
+
 @managed_context
 class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
     _parent_state_mgr: Any = const(init=False, default_factory=_copy_parent_state_mgr)
     _slot_id: Any = const(init=False, default_factory=_copy_slot_id)
-    _component_identity: Any = local_store(default=None)
-    _schema: tuple[int, tuple[str, ...]] = local_store(default=(0, ()))
-    _child_context_state_mgr: Any = local_store(default=None)
+    # The compatibility route retains its last-attempt selection until adoption.
+    _legacy_selection: _ComponentSelection = local_store(
+        default_factory=_ComponentSelection
+    )
+    _selection: _ComponentSelection = managed(
+        default_factory=_ComponentSelection,
+        init=False,
+        compare="identity",
+        tx_key=PASS_TX_KEY,
+    )
     _pass_owned_event_handler_order: tuple[Any, ...] = local_store(default_factory=tuple)
     _call_state: FrozenComponentCallInvocationState = managed(
         default_factory=FrozenComponentCallInvocationState,
         init=False,
         tx_key=PASS_TX_KEY,
     )
+
+    def _selection_record(self) -> _ComponentSelection:
+        completion = _field_only_completion(self)
+        if getattr(completion, "component_selection_enabled", False):
+            return self._selection
+        return self._legacy_selection
+
+    def _set_selection(self, selection: _ComponentSelection) -> None:
+        completion = _field_only_completion(self)
+        if getattr(completion, "component_selection_enabled", False):
+            assert completion.active is not None
+            completion.active._require_open()
+            completion.active._require_identity()
+            self._selection = selection
+        else:
+            self._legacy_selection = selection
+
+    @property
+    def _component_identity(self) -> Any:
+        return self._selection_record().identity
+
+    @property
+    def _schema(self) -> tuple[int, tuple[str, ...]]:
+        return self._selection_record().schema
+
+    @property
+    def _child_context_state_mgr(self) -> Any:
+        return self._selection_record().child
+
+    @_child_context_state_mgr.setter
+    def _child_context_state_mgr(self, child: Any) -> None:
+        self._set_selection(replace(self._selection_record(), child=child))
 
     def invoke(
         self,
@@ -105,17 +151,22 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
         schema = (len(args), tuple(sorted(kwargs)))
         if self._child_context_state_mgr is None or self._component_identity != identity_key or self._schema != schema:
             completion = _field_only_completion(self)
-            if completion is not None and self._child_context_state_mgr is not None:
+            if getattr(completion, "component_selection_enabled", False):
+                # Keep the accepted child alive until the outer decision. The
+                # empty candidate allows construction of its replacement.
+                self._set_selection(_ComponentSelection())
+            elif completion is not None and self._child_context_state_mgr is not None:
                 completion.reject("component replacement is not admitted by SC2")
-            self._dispose_child_context()
+            else:
+                self._dispose_child_context()
             child_context = render_context_factory(
                 owner_slot=owner_slot_facade,
                 scheduler_root=scheduler_root_facade,
                 authored_app_context_lookup=self._parent_state_mgr.effective_authored_app_context_lookup(),
             )
-            self._child_context_state_mgr = child_context._state_mgr
-            self._component_identity = identity_key
-            self._schema = schema
+            self._set_selection(
+                _ComponentSelection(identity_key, schema, child_context._state_mgr)
+            )
 
         self._begin_owned_event_handler_pass()
         completion = _field_only_completion(self)
@@ -231,6 +282,14 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
         completion = _field_only_completion(self)
         if completion is not None:
             completion.require_retirement_allowed(self)
+        if getattr(completion, "component_selection_enabled", False):
+            self._dispose_child_context()
+            self.children_state = {}
+            children = dict(self._parent_state_mgr.children_state)
+            if children.get(self._slot_id) is self:
+                children.pop(self._slot_id)
+                self._parent_state_mgr.children_state = children
+            return
         with self.publish_write_scope():
             self._dispose_child_context()
             super().deactivate()
@@ -239,11 +298,14 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
         completion = _field_only_completion(self)
         if completion is not None:
             completion.note_owned_event_handler_pass(self)
-        self._pass_owned_event_handler_order = tuple(
-            slot_id
-            for slot_id, child in self.children_state.items()
-            if child.context_kind() == ContextKind.EVENT_HANDLER
-        )
+        # The component proof uses managed membership; only the unactivated
+        # compatibility route needs an order snapshot for manual restoration.
+        if not getattr(completion, "component_selection_enabled", False):
+            self._pass_owned_event_handler_order = tuple(
+                slot_id
+                for slot_id, child in self.children_state.items()
+                if child.context_kind() == ContextKind.EVENT_HANDLER
+            )
         for child in self.children_state.values():
             if child.context_kind() == ContextKind.EVENT_HANDLER:
                 child._seen_in_pass = False
@@ -312,6 +374,13 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
                 self._parent_state_mgr.refresh_committed_ui_from_children()
 
     def _dispose_child_context(self) -> None:
+        completion = _field_only_completion(self)
+        if getattr(completion, "component_selection_enabled", False):
+            completion.require_retirement_allowed(self)
+            self._set_selection(_ComponentSelection())
+            self._call_state = replace(self._call_state, pending_dirty_state=None)
+            self.ui_state = ()
+            return
         child_context = None if self._child_context_state_mgr is None else self._child_context_state_mgr.owner
         if child_context is None:
             return

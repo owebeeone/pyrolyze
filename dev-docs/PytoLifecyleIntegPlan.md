@@ -1039,6 +1039,13 @@ throwing action rather than claim it was repaired or automatically retried.
 
 ### I5: Child Ownership And Component Boundaries
 
+Current precedence: the single-cohort amendment supersedes the independent-TM
+and child-publication timing assumptions below. The bounded
+[component-selection checkpoint](PytoLifecyleIntegComponentSelection.md) implements
+managed selection and bounded component replacement/retirement behind a new proof
+gate. Older lifetime instructions below are historical migration intent,
+not authorization to restore independent nested completion.
+
 1. Migrate component identity/schema, child render context, and owned handler
    membership away from `local_store` where they affect published behavior.
 2. Use the compatible holder/participant mapping; keep existing child-lifetime
@@ -1073,6 +1080,11 @@ dispatch's inactive transition must match the compatibility reference, not a
 new graph-wide rollback guarantee.
 
 ### I6: Overrides, Registries, And Publication Notifications
+
+Current precedence: the single-cohort amendment supersedes independent nested
+publication assumptions in the historical migration text below. The bounded
+[override checkpoint](PytoLifecyleIntegOverrides.md) implements I6a and its required
+post-field graph/generation delivery seam. Other I6b work is still pending.
 
 Conditional prerequisite: the L0 contract must be verified before integrated
 hooks depend on its stronger guarantees. Pending D4 approval, preserve existing

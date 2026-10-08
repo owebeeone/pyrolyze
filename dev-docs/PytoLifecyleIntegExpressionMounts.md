@@ -46,7 +46,7 @@ Verification: full native suite **1056 passed, 2 unchanged host-ordering failure
 ## Remaining Work
 
 The subscription and effect-expression checkpoints were committed and pushed as
-`aa4a645` before this work. This mount extension remains uncommitted. Remaining
+`aa4a645` before this work. This mount extension was committed/pushed as `358ead7`. Remaining
 graph/registration migration, aggregate review, normal-route adoption, and legacy
 completion deletion are still pending. Opaque container helpers and structural
 directive admission are unchanged; this checkpoint does not claim their migration.

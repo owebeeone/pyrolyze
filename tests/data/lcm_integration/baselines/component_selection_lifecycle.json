@@ -1,0 +1,10 @@
+{
+  "provisional": [true, true],
+  "accepted": [true, [1]],
+  "during_retry": [1],
+  "discard": [true, true, [1]],
+  "retry": [true, true, [3]],
+  "resource_discard": [["subscribe:old", "subscribe:failed", "unsubscribe:failed"], true, true, true],
+  "replacement": [["subscribe:old", "subscribe:failed", "unsubscribe:failed", "subscribe:superseded", "subscribe:new", "unsubscribe:old", "unsubscribe:superseded"], true, true, [], true],
+  "omission": [["subscribe:old", "subscribe:failed", "unsubscribe:failed", "subscribe:superseded", "subscribe:new", "unsubscribe:old", "unsubscribe:superseded", "unsubscribe:new"], true, true, []]
+}

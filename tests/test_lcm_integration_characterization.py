@@ -94,6 +94,18 @@ def test_mount_selection_lifecycle_golden() -> None:
     )
 
 
+def test_override_selection_lifecycle_golden() -> None:
+    _check_baseline(
+        "override_selection_lifecycle.py", "override_selection_lifecycle", dict(os.environ)
+    )
+
+
+def test_component_selection_lifecycle_golden() -> None:
+    _check_baseline(
+        "component_selection_lifecycle.py", "component_selection_lifecycle", dict(os.environ)
+    )
+
+
 def test_expression_mount_lifecycle_golden() -> None:
     _check_baseline(
         "expression_mount_lifecycle.py", "expression_mount_lifecycle", dict(os.environ)

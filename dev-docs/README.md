@@ -5,6 +5,14 @@ landed; use its status and the recorded acceptance scope.
 
 ## Lifecycle Integration
 
+The [override publication checkpoint](PytoLifecyleIntegOverrides.md) adds managed
+lexical override selection and post-publication stream delivery behind its own
+proof gate. Remaining I6b registry/directive/queue work is not claimed complete.
+
+Latest bounded work: [component selection](PytoLifecyleIntegComponentSelection.md)
+adds managed identity/schema/child selection and component replacement/retirement
+under the single outer decision. Normal-route adoption remains gated.
+
 Library completion evidence is accepted at lifecycle
 `4b86eec179942d96012aa4a1d92752a34cae87ef`. The **private Pyrolyze consumer**
 and historical probe transition are now accepted after Code/State GO/GO at

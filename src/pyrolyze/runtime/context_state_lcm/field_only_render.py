@@ -303,6 +303,7 @@ class _FieldOnlyRenderCompletion:
                     for context in self.contexts:
                         context._clear_field_only_pass(published=published)
                     self._reconcile_registry()
+                    self._after_field_publication(published)
             except BaseException as error:
                 self._cleanup_failure = error
                 primary = failure if failure is not None else propagating
@@ -320,6 +321,10 @@ class _FieldOnlyRenderCompletion:
                 self._completion_requested = False
         if failure is not None:
             raise failure
+
+    def _after_field_publication(self, published: bool) -> None:
+        """Domain delivery point after fields, generation, and graph caches."""
+        return None
 
     def _reconcile_registry(self) -> None:
         # Registrations are a cache of current membership, not resource lifetime.

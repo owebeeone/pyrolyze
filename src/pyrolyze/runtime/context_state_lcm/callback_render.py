@@ -37,7 +37,8 @@ def _graph_states(
             for child in facade.children_state.values():
                 visit(child)
         if isinstance(state, ComponentCallSlotContextStateMgr):
-            nested = state._child_context_state_mgr
+            facade = state.current if current else state
+            nested = facade._child_context_state_mgr
             if nested is not None:
                 visit(nested)
 

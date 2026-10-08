@@ -1,11 +1,35 @@
 # YIDL Lifecycle Integration Handoff
 
-Updated: 2026-10-08. This is a resume guide, not a new design or an acceptance
+Updated: 2026-10-09. This is a resume guide, not a new design or an acceptance
 verdict. Read repository instructions and the active contracts before changing
 runtime behavior. It does not authorize runtime activation or unrelated cleanup.
 Original handoff snapshots below remain historical evidence, not current status.
 
 ## Resume Point
+
+Latest bounded extension: [override publication](PytoLifecyleIntegOverrides.md)
+implements managed keys/values and stable stream delivery after accepted graph
+and generation publication. Failed candidates do not emit override changes;
+independent parent events remain intact. It is uncommitted and test-gated.
+I6b directive/registry/queue migration, aggregate review, normal-route adoption,
+and compatibility deletion remain pending.
+Final override verification: full native **1071 passed, 2 unchanged host-ordering
+failures, 20 skipped**; broader affected Python run **53 passed**, final override
+faults/golden **8 passed**. Existing Drip error policy is unchanged. No historical
+baseline regeneration or compiler/lifecycle-library changes were needed.
+
+Latest checkpoint: mount expressions were committed/pushed as `358ead7`.
+The [component-selection proof](PytoLifecyleIntegComponentSelection.md) now stages
+identity, schema, and child together under the shared render transaction.
+It is uncommitted, test-gated work. The same proof now stages component
+replacement/retirement and detaches rejected or retired children after a known
+outcome. The canonical trace exercises real subscriptions and retained snapshots.
+Legacy compatibility deletion, graph/registry migration, aggregate review,
+and default activation remain pending.
+Retirement verification: full native **1063 passed, 2 unchanged host-ordering
+failures, 20 skipped**; affected component/field-only tests and goldens **106 passed
+on Python assembly**; native affected tests plus callback compatibility **114
+passed**. No historical baseline regeneration or library changes.
 
 **Leaf arguments and private plain-value slot-call invocation/binding selection
 are accepted. Subscription ownership and synchronous effects are implemented
