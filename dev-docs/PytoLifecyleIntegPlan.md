@@ -926,7 +926,11 @@ private handler-enabled proof are accepted at
 [the exact scope and evidence](PytoLifecyleIntegCallbacks.md). The retained
 unactivated component failure route still needs its small local-discard
 compatibility adapter. This does not complete I3a/I5 or activate resource routes.
-Next is bounded I3c invocation-value work through the single-cohort amendment.
+The bounded I3c leaf argument checkpoint is accepted after Code/State GO/GO at
+`b188301216486aee3b43c1ecc7b7fe89307d0273`; see
+[invocation scope and evidence](PytoLifecyleIntegInvocation.md). Slot-call values
+and binding selection are the next bounded checkpoint through the single-cohort
+amendment. Other I3c/I4 work and default-runtime activation remain gated.
 
 ### I4: Call Sites And External Resource Participants
 

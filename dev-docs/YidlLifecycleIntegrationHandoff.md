@@ -7,8 +7,9 @@ Original handoff snapshots below remain historical evidence, not current status.
 
 ## Resume Point
 
-**Next checkpoint: bounded I3c invocation-value migration, starting with
-leaf/rerunnable argument and identity stores.**
+**Next checkpoint: slot-call invocation values and binding selection together.
+The bounded leaf argument checkpoint is accepted; other resource routes and
+default-runtime activation remain gated.**
 
 The lifecycle manager, generated guards/hooks, and canonical failure goldens are
 implemented and accepted at library `4b86eec179942d96012aa4a1d92752a34cae87ef`
@@ -29,6 +30,12 @@ separate private handler-enabled proof passes. Keep the unactivated local-discar
 compatibility adapter until its completion ownership migrates. Do not repeat
 callback storage replacement or treat this as admission of other resources.
 
+Leaf invocation values are now accepted after Code/State GO/GO at
+`b188301216486aee3b43c1ecc7b7fe89307d0273`; see the
+[invocation checkpoint](PytoLifecyleIntegInvocation.md). Private arguments publish
+or discard as one managed record; the unactivated route retains its explicit
+last-attempt compatibility adapter. This does not admit slot-call bindings.
+
 | Area | Actual State |
 | --- | --- |
 | Construction | Lifecycle-based common construction, explicit manager injection, and post-construction graph attachment are implemented and accepted through I1b |
@@ -37,7 +44,7 @@ callback storage replacement or treat this as admission of other resources.
 | Callback selection | Managed callback/key and local dispatch replace four manual stores; current-only stable dispatch, owned selection/removal, failures, and compatibility are accepted in the bounded checkpoint |
 | Resource audit | SC3 caller/writer/resource audit is recorded, not an activated migration |
 | Completion contract | Library and private consumer accepted; completion evidence now drives generation independently of cleanup/reuse; historical observation retained with a separately named current target |
-| Full field migration | I3a is not complete; invocation values, resource holders, and remaining snapshot/transfer deletion are unfinished; callback acceptance does not certify I5 membership/resource cleanup |
+| Full field migration | Bounded leaf arguments are accepted; I3a and remaining I3c/resource-holder migrations and snapshot/transfer deletion are unfinished; acceptance does not certify I5 membership/resource cleanup |
 | Generator detour | Astichi/YIDL native materialization regressions are fixed, committed, and pushed; original YIDL goldens are unchanged |
 
 ## Goal And Chosen Semantics
@@ -91,6 +98,17 @@ automatically inherit those verdicts. Some older active-plan status text still
 says draft; use the exact recorded acceptance scope rather than that label alone.
 
 ## Repository Checkpoint
+
+### Accepted Leaf Invocation Tuple, 2026-10-08
+
+Pyrolyze runtime/fixtures: `b188301216486aee3b43c1ecc7b7fe89307d0273`.
+Dependencies are unchanged from the private-consumer table below. Both reviews
+returned GO with no findings. Focused native: **167 passed**; affected Python:
+**23 passed**; full default: **957 passed, 13 unchanged failures, 20 skipped**;
+broader unactivated: **44 passed, 11 unchanged failures**. Historical JSON and
+runtime selection are unchanged. See the invocation checkpoint for the exact
+tuple, verbatim reports, compatibility boundary, and residual pre-existing risk.
+Acceptance filing is documentation-only; slot-call selection is next, not done.
 
 ### Accepted Callback Tuple, 2026-10-08
 

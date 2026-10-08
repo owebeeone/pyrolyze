@@ -16,12 +16,13 @@ other resource routes are not activated. The
 is accepted after Code/State GO/GO at
 `6be1b8f610c13eda18a451688377370cb1dbb087`. It migrates selection stores and
 callers and adds a separate private handler-enabled proof, not live holder
-replacement. Next is bounded I3c invocation-value migration; other resource
+replacement. Bounded I3c invocation-value migration continues; other resource
 categories and default-runtime activation remain gated.
 
-The [bounded invocation checkpoint](PytoLifecyleIntegInvocation.md) starts with
-leaf arguments and records the legacy last-attempt compatibility adapter.
-Implementation/review is in progress; this is not completion of all I3c work.
+The [bounded invocation checkpoint](PytoLifecyleIntegInvocation.md) accepts leaf
+arguments after Code/State GO/GO at `b188301216486aee3b43c1ecc7b7fe89307d0273`
+and records the legacy last-attempt compatibility adapter. Next is slot-call
+invocation values plus binding selection; this is not completion of all I3c work.
 
 [Resume handoff](YidlLifecycleIntegrationHandoff.md) records the repository
 checkpoint, published compiler fixes, verification commands, and the next

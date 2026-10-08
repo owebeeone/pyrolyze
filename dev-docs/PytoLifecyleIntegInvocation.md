@@ -1,7 +1,8 @@
 # Invocation Value Migration
 
-Status: bounded I3c leaf checkpoint in implementation, not acceptance or runtime
-activation. Read the single-cohort amendment before the older I3/I3c clauses.
+Status: **bounded I3c leaf checkpoint accepted after Code/State GO/GO** at
+`b188301216486aee3b43c1ecc7b7fe89307d0273`, not runtime activation or completion
+of all I3c work. Read the single-cohort amendment before the older I3/I3c clauses.
 The operator requested implementation review rather than another design loop.
 
 ## Leaf Checkpoint
@@ -55,5 +56,34 @@ assembly, and the full default regression suite. Attribute existing failures
 by identity, not count. Settle the intended checkpoint before a bounded
 Code/State implementation review; no new plan review or broad cleanup.
 
-Acceptance and the exact reviewed tuple remain pending. Do not treat passing
-tests, a checkpoint commit, or publication as a review verdict.
+## Leaf Acceptance
+
+Both bounded implementation reviews returned GO with no findings and no
+remediation: [Code report](history/lifecycle-integration/PytoLifecyleIntegInvocation-ReviewCode.md)
+and [State report](history/lifecycle-integration/PytoLifecyleIntegInvocation-ReviewState.md).
+The reviewed tuple is:
+
+| Repository | Revision |
+| --- | --- |
+| `pyrolyze` runtime/fixtures | `b188301216486aee3b43c1ecc7b7fe89307d0273` |
+| `yidl-lifecycle` | `05554397d1837ecbeafa36e4685477dd5ff30fc6` |
+| `yidl` | `a7cc1de7b630b55bd194940ecad83f3f1738cf8a` |
+| `astichi` | `1c47f781d3804130fdd61cbee07a3b2e4529158a` |
+
+Final verification: focused native **167 passed**; affected Python **23 passed**;
+full default **957 passed, 13 unchanged failures, 20 skipped**; broader unactivated
+route **44 passed, 11 unchanged failures**. Failure identities match the callback
+checkpoint. Formatting and diff checks pass; historical JSON, runtime selection,
+and library/compiler source are unchanged. Code independently ran the 23 affected
+tests on both backends; State ran native coverage and additional fault probes.
+
+The review also confirmed a pre-existing limitation: hostile keyword mappings
+can replace transaction ownership during later callable argument expansion.
+This checkpoint fences normalization and candidate writes, not arbitrary user
+callable side effects or deep mutation of argument referents. It does not claim
+to repair that existing limitation.
+
+The next authorized bounded checkpoint is slot-call invocation values together
+with binding selection. Elision, replacement, failed-attempt discard, and retry
+must be proved together. Other resource categories and default activation remain
+gated; an immutable invocation record does not make its binding transactional.
