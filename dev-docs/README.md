@@ -67,6 +67,22 @@ separate shared-render proof: detached value selection and visitation pruning
 publish/discard only with the outer owner. Standalone completion is retained;
 resource-bearing expressions remain excluded pending their adapters.
 
+The [subscription-expression checkpoint](PytoLifecyleIntegExpressionSubscriptions.md)
+adds a separate proof with detached refresh snapshots and explicit resource
+ownership through lifecycle-owned collections. Effect/async/mount expressions
+and normal-route activation remain gated; aggregate implementation review is
+still deferred.
+
+The [synchronous-effect expression checkpoint](PytoLifecyleIntegExpressionEffects.md)
+adds inert candidate effects and post-publication delivery after collection
+retirement. Async-effect/mount expressions and normal-route activation remain
+gated, with aggregate review still deferred.
+
+The [async-effect expression checkpoint](PytoLifecyleIntegExpressionAsyncEffects.md)
+reuses the same ownership/delivery path with stable weak notification hosts,
+cancellation, and callback fencing. Mount expressions and normal-route adoption
+remain pending; aggregate review is still deferred.
+
 [Resume handoff](YidlLifecycleIntegrationHandoff.md) records the repository
 checkpoint, published compiler fixes, verification commands, and the next
 bounded integration steps. It supplements, not replaces, the plans.

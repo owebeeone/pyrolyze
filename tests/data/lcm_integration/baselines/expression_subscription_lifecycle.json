@@ -1,0 +1,12 @@
+{
+  "initial": 1,
+  "same_identity": 1,
+  "refresh": 3,
+  "accepted_during_refresh": 1,
+  "candidate": 2,
+  "after_discard": [1, 0, 3],
+  "replacement": 2,
+  "after_replace": [0, 1, true],
+  "after_remove": [0, 0],
+  "events": [["subscribe", "a"], ["get", "a", 1], ["get", "a", 1], ["get", "a", 3], ["subscribe", "b"], ["get", "b", 2], ["unsubscribe", "b"], ["subscribe", "b"], ["get", "b", 2], ["unsubscribe", "a"], ["unsubscribe", "b"]]
+}

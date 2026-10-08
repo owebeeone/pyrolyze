@@ -71,7 +71,12 @@ env PYTHONDONTWRITEBYTECODE=1 ASTICHI_LOWER_ENGINE=native \
 
 ## Remaining Scope
 
-Resource-bearing expressions still need their binding selection, refresh,
+The separate [subscription-expression proof](PytoLifecyleIntegExpressionSubscriptions.md)
+now connects subscription selection, refresh, and cleanup to outer completion.
+The [synchronous-effect proof](PytoLifecyleIntegExpressionEffects.md) now connects
+effect selection, delivery, and retirement. The separate
+[async-effect proof](PytoLifecyleIntegExpressionAsyncEffects.md) adds cancellation
+and callback fencing. Mount expressions still need their binding selection, refresh,
 delivery, and retirement connected to the previously implemented resource
 adapters. Do not enable them by removing the result-type admission check: legacy
 handlers can mutate or activate accepted resources before the render completes.

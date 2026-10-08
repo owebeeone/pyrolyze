@@ -1,0 +1,8 @@
+{
+  "provisional": [],
+  "stable": [["setup", "a", true]],
+  "after_discard": [[["setup", "a", true]], false],
+  "retained_closed": true,
+  "removed": true,
+  "events": [["setup", "a", true], ["cleanup", "a"], ["setup", "b", true], ["cleanup", "b"], ["setup", "latest", true], ["cleanup", "latest"], ["setup", "always1", true], ["cleanup", "always1"], ["setup", "always2", true], ["cleanup", "always2"], ["setup", "once", true], ["cleanup", "once"]]
+}

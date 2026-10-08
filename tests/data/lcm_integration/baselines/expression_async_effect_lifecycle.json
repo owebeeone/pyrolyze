@@ -1,0 +1,11 @@
+{
+  "provisional": [],
+  "stable": [["start", "a", true]],
+  "after_discard": [[["start", "a", true]], false],
+  "retained_closed": true,
+  "cancel_callback_ignored": 0,
+  "stale_callback_ignored": 0,
+  "completion": [1, true],
+  "removed": true,
+  "events": [["start", "a", true], ["cancel", "a"], ["cleanup", "a"], ["start", "latest", true], ["cleanup", "latest"]]
+}

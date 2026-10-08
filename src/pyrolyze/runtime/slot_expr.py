@@ -78,6 +78,10 @@ class SlotExprExecution(Protocol):
         result: Any,
         previous: SlotCallBinding | None,
     ) -> SlotCallBinding: ...
+    def wrap_binding(self, binding: SlotCallBinding) -> _SlotExprCallSiteBinding: ...
+    def refresh_binding(
+        self, binding: _SlotExprCallSiteBinding
+    ) -> tuple[_SlotExprCallSiteBinding, bool] | None: ...
     def finish_evaluation(self) -> None: ...
 
 
@@ -601,7 +605,7 @@ class SlotCallEvaluator:
         if self._pass_invoke_state is CallSiteInvokeState.GET_SET and current_binding is not None:
             self._preserve_dependencies_for_refresh()
             previous_value = current_binding.exposed_value()
-            refreshed = refresh_slot_call_binding(current_binding.binding)
+            current_binding, refreshed = self._refresh_binding(current_binding)
             if refreshed is None:
                 current_value = current_binding.exposed_value()
                 current_dirty = self.expr.dm.clean_shape_like(current_value) if self.expr.dm is not None else False
@@ -620,6 +624,11 @@ class SlotCallEvaluator:
                 self._current_context.invoke_state.value = self._next_invoke_state
             elif self._current_context is not None:
                 self._staged_context = self._current_context.replace(
+                    **(
+                        {"binding": current_binding}
+                        if current_binding is not self._current_context.binding
+                        else {}
+                    ),
                     invoke_state_value=self._next_invoke_state,
                 )
                 self.expr.execution.require_active()
@@ -708,7 +717,11 @@ class SlotCallEvaluator:
                     last_args=prepared.raw_args,
                     last_kwargs=prepared.kwargs_items,
                 )
-            next_binding = current_binding if current_binding is not None and current_binding.binding is commit_result.binding else _SlotExprCallSiteBinding(binding=commit_result.binding)
+            next_binding = current_binding if current_binding is not None and current_binding.binding is commit_result.binding else (
+                _SlotExprCallSiteBinding(binding=commit_result.binding)
+                if self.expr.execution is None
+                else self.expr.execution.wrap_binding(commit_result.binding)
+            )
             current_value = commit_result.current_value
             current_dirty = _structured_dirty_projection(
                 previous=previous_value,
@@ -727,7 +740,7 @@ class SlotCallEvaluator:
         else:
             assert current_binding is not None
             previous_value = current_binding.exposed_value()
-            refreshed = refresh_slot_call_binding(current_binding.binding)
+            current_binding, refreshed = self._refresh_binding(current_binding)
             if refreshed is None:
                 current_value = current_binding.exposed_value()
                 current_dirty = self.expr.dm.clean_shape_like(current_value) if self.expr.dm is not None else False
@@ -747,6 +760,11 @@ class SlotCallEvaluator:
                 self._current_context.invoke_state.value = self._next_invoke_state
             elif self._current_context is not None:
                 self._staged_context = self._current_context.replace(
+                    **(
+                        {"binding": current_binding}
+                        if current_binding is not self._current_context.binding
+                        else {}
+                    ),
                     invoke_state_value=self._next_invoke_state,
                 )
         self._current_value = current_value
@@ -756,6 +774,17 @@ class SlotCallEvaluator:
             if self.expr.execution is not None:
                 self.expr.execution.require_active()
             self.expr.call_site_context_manager.stage(self.slot_id, self._staged_context)
+
+    def _refresh_binding(
+        self, binding: _SlotExprCallSiteBinding
+    ) -> tuple[_SlotExprCallSiteBinding, tuple[Any, bool] | None]:
+        if self.expr.execution is None:
+            return binding, refresh_slot_call_binding(binding.binding)
+        refreshed = self.expr.execution.refresh_binding(binding)
+        if refreshed is None:
+            return binding, None
+        selected, dirty = refreshed
+        return selected, (selected.exposed_value(), dirty)
 
     def _preserve_dependencies_for_refresh(self) -> None:
         self._mark_dependencies_visited(set())

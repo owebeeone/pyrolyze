@@ -94,6 +94,30 @@ def test_mount_selection_lifecycle_golden() -> None:
     )
 
 
+def test_expression_async_effect_lifecycle_golden() -> None:
+    _check_baseline(
+        "expression_async_effect_lifecycle.py",
+        "expression_async_effect_lifecycle",
+        dict(os.environ),
+    )
+
+
+def test_expression_effect_lifecycle_golden() -> None:
+    _check_baseline(
+        "expression_effect_lifecycle.py",
+        "expression_effect_lifecycle",
+        dict(os.environ),
+    )
+
+
+def test_expression_subscription_lifecycle_golden() -> None:
+    _check_baseline(
+        "expression_subscription_lifecycle.py",
+        "expression_subscription_lifecycle",
+        dict(os.environ),
+    )
+
+
 def test_slot_expr_selection_lifecycle_golden() -> None:
     _check_baseline(
         "slot_expr_selection_lifecycle.py", "slot_expr_selection_lifecycle", dict(os.environ)

@@ -50,12 +50,29 @@ a separate private gate using a borrowed collection manager under the root's
 pass key. Plain candidates and branch pruning follow outer publication/discard;
 local evaluator and collection completion are bypassed. Resource expression
 results are rejected before legacy binding. Standalone expressions retain their
-own completion. Next is resource-bearing expression adapter integration, followed
+own completion. The separate [subscription-expression checkpoint](PytoLifecyleIntegExpressionSubscriptions.md)
+now implements subscription refresh and ownership through those collections.
+The separate [synchronous-effect expression proof](PytoLifecyleIntegExpressionEffects.md)
+adds inert selection and setup after collection retirement/publication.
+The separate [async-effect expression proof](PytoLifecyleIntegExpressionAsyncEffects.md)
+now adds async delivery, cancellation, and weak callback fencing on that path.
+Mount expressions remain gated. Next is their adapter integration, followed
 by remaining graph/registration work and normal-route adoption.
-Verification: full native **1028 passed, 2 known host-ordering failures,
+Plain-checkpoint verification: full native **1028 passed, 2 known host-ordering failures,
 20 skipped**; affected Python assembly **96 passed**. The collection migration
-and this expression checkpoint remain uncommitted on `main`; implementation
-review is deferred to the aggregate integration review.
+and the plain-expression checkpoint were committed and pushed as `9ed7372`;
+the subscription-, synchronous-effect-, and async-effect-expression extensions
+are uncommitted.
+Implementation review is deferred to the aggregate integration review.
+
+Synchronous-effect expression verification: full native **1042 passed, 2 known
+host-ordering failures, 20 skipped**; affected Python expression proofs and
+characterization **43 passed**. Async/mount expression admission remains pending.
+
+Async-effect expression verification: full native **1050 passed, 2 unchanged
+host-ordering failures, 20 skipped**; affected Python expression proofs and
+characterization **51 passed**. Only mount expression admission remains pending
+among these resource-expression adapters; normal-route adoption is still gated.
 
 The lifecycle manager, generated guards/hooks, and canonical failure goldens are
 implemented and accepted at library `4b86eec179942d96012aa4a1d92752a34cae87ef`

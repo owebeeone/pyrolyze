@@ -23,6 +23,7 @@ from pyrolyze.runtime.slot_call_semantics import (
     SlotValueHandler,
     select_slot_call_handler,
 )
+from pyrolyze.runtime.slot_expr import _SlotExprCallSiteBinding
 from .callback_render import _graph_states
 from .context_base import PASS_TX_KEY
 from .lifecycle_adapter import managed_context, owned, transient
@@ -93,6 +94,16 @@ class _ExpressionExecution:
         self.require_active()
         self.state._call_site_context_manager._prepare_pass()
         self.require_active()
+
+    def wrap_binding(self, binding: SlotCallBinding) -> _SlotExprCallSiteBinding:
+        self.require_active()
+        return _SlotExprCallSiteBinding(binding=binding)
+
+    def refresh_binding(
+        self, binding: _SlotExprCallSiteBinding
+    ) -> tuple[_SlotExprCallSiteBinding, bool] | None:
+        self.require_active()
+        return None
 
 
 @dataclass(eq=False, slots=True)
