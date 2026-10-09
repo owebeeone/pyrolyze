@@ -1,0 +1,31 @@
+{
+  "declarations": ["field", "managed", true, "managed", "local_store"],
+  "initial": [1, 1, false, true, 1],
+  "unchanged": [1, 1, false, true, 1],
+  "later_request_provisional": [2, true],
+  "later_request_committed": [3, 2, true, true, 2],
+  "later_request_consumed": [3, 3, false, true, 3],
+  "failure_provisional": [4, 3],
+  "failure_discarded": [4, 3, true, true, 4],
+  "failure_retry": [4, 4, false, true, 5],
+  "repeated_passes": [5, 5, false, true, 7],
+  "notification_after_local_exit": [6, 5, true, true, 7],
+  "notification_retry": [6, 6, false, true, 8],
+  "removal_provisional": [false, false, true],
+  "removal_discarded": [true, true],
+  "independent_root": [true, false, true],
+  "bookkeeping_unused": [true, true, true],
+  "explicit_cancel": [true, true],
+  "removal_committed": true,
+  "owned_handlers": {
+    "calls": ["old", "old", "new"],
+    "rollback_retained": true,
+    "omitted": "event handler is inactive"
+  },
+  "partial_rerender": {
+    "calls": ["child", "sibling", "child"],
+    "consumed": [true, true],
+    "sibling_retained": true,
+    "scheduled_work_drained": true
+  }
+}

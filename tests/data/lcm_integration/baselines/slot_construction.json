@@ -1,9 +1,9 @@
 [
   {
     "common_field_counts": {
-      "_invoke_dirty": 1,
+      "_legacy_invoke_dirty": 1,
       "_parent_state_mgr": 1,
-      "_seen_in_pass": 1,
+      "_legacy_seen_in_pass": 1,
       "_site_metadata": 1,
       "_slot_id": 1
     },
@@ -30,9 +30,9 @@
   },
   {
     "common_field_counts": {
-      "_invoke_dirty": 1,
+      "_legacy_invoke_dirty": 1,
       "_parent_state_mgr": 1,
-      "_seen_in_pass": 1,
+      "_legacy_seen_in_pass": 1,
       "_site_metadata": 1,
       "_slot_id": 1
     },
@@ -59,9 +59,9 @@
   },
   {
     "common_field_counts": {
-      "_invoke_dirty": 1,
+      "_legacy_invoke_dirty": 1,
       "_parent_state_mgr": 1,
-      "_seen_in_pass": 1,
+      "_legacy_seen_in_pass": 1,
       "_site_metadata": 1,
       "_slot_id": 1
     },
@@ -88,9 +88,9 @@
   },
   {
     "common_field_counts": {
-      "_invoke_dirty": 1,
+      "_legacy_invoke_dirty": 1,
       "_parent_state_mgr": 1,
-      "_seen_in_pass": 1,
+      "_legacy_seen_in_pass": 1,
       "_site_metadata": 1,
       "_slot_id": 1
     },
@@ -117,9 +117,9 @@
   },
   {
     "common_field_counts": {
-      "_invoke_dirty": 1,
+      "_legacy_invoke_dirty": 1,
       "_parent_state_mgr": 1,
-      "_seen_in_pass": 1,
+      "_legacy_seen_in_pass": 1,
       "_site_metadata": 1,
       "_slot_id": 1
     },
@@ -146,9 +146,9 @@
   },
   {
     "common_field_counts": {
-      "_invoke_dirty": 1,
+      "_legacy_invoke_dirty": 1,
       "_parent_state_mgr": 1,
-      "_seen_in_pass": 1,
+      "_legacy_seen_in_pass": 1,
       "_site_metadata": 1,
       "_slot_id": 1
     },
@@ -175,9 +175,9 @@
   },
   {
     "common_field_counts": {
-      "_invoke_dirty": 1,
+      "_legacy_invoke_dirty": 1,
       "_parent_state_mgr": 1,
-      "_seen_in_pass": 1,
+      "_legacy_seen_in_pass": 1,
       "_site_metadata": 1,
       "_slot_id": 1
     },

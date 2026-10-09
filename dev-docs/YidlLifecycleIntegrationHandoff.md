@@ -7,15 +7,31 @@ Original handoff snapshots below remain historical evidence, not current status.
 
 ## Resume Point
 
+The [pass-state checkpoint](PytoLifecyleIntegPassState.md) is implemented and
+tested behind `_enable_pass_state_render`. Requests remain ordinary fields;
+acknowledgment and visitation are managed by the shared render transaction.
+The newest gate no longer snapshots/restores dirtiness or replays independent
+notifications. Scheduled child rerenders acknowledge their owner without
+revisiting siblings. Verification: 128 focused native tests pass, and 12 affected
+fault/golden/resource-replay checks pass on each of Python 3.12 and 3.14 using
+Python assembly. Full native regression: 1,120 passed, 20 skipped, the same two
+known host-ordering failures. Aggregate review and default activation remain
+pending, including the pre-existing ordinary compiled-component admission gap
+documented in the checkpoint. No compiler or lifecycle-library changes were made.
+
+The preceding cleanup is committed as `53b0ec1`; it removes redundant private
+child-order snapshots. Its full regression had 1,109 passing tests, 20 skips,
+and the two known host-ordering failures.
+
 The [scope-container checkpoint](PytoLifecyleIntegContainerRouting.md) is now
-implemented, uncommitted, behind `_enable_container_render`. It classifies
+committed as `a87a7ac`, behind `_enable_container_render`. It classifies
 compiled/native/directive calls before slot construction, fences original-owner
 execution, and rejects external mount-helper hosts before entering them.
 Verification: 39 native scope/loop/compiler compatibility tests pass, plus 10
 container checks on each of the Python 3.12 and 3.14 Python assembly backends.
 Full native regression: 1,108 passed, 20 skipped, the same two host-ordering
 failures. No compiler or library changes were needed. Common dirty/visitation
-cleanup is next; normal activation and
+cleanup is implemented in the subsequent checkpoint above; normal activation and
 aggregate review remain pending.
 
 The keyed-loop checkpoint is committed as `053dd3c` behind
@@ -33,7 +49,7 @@ I6b is committed as `583241e` on main, not pushed by this request. The
 [adoption audit](PytoLifecyleIntegAdoptionAudit.md) is the next-step inventory.
 KeyedLoop/LoopItem admission and transactional item selection are implemented
 and tested in the committed checkpoint above. Container dispatch is implemented
-in the uncommitted checkpoint; common dirty/visitation state follows. Do not
+in its committed checkpoint; common dirty/visitation state follows above. Do not
 activate the normal route yet: the default `lcm` alias still selects the older
 monolithic runtime, and the explicit decomposed route does not automatically
 install the final completion gate. Aggregate review precedes adoption/deletion.

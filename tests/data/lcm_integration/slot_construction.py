@@ -53,7 +53,7 @@ def characterize() -> list[dict[str, object]]:
         (SlotExprSlotContextStateMgr, "_call_site_context_manager"),
         (ComponentCallSlotContextStateMgr, "_call_state"),
     )
-    common_names = ("_parent_state_mgr", "_slot_id", "_invoke_dirty", "_seen_in_pass", "_site_metadata")
+    common_names = ("_parent_state_mgr", "_slot_id", "_legacy_invoke_dirty", "_legacy_seen_in_pass", "_site_metadata")
     input_names = ("parent_state_mgr", "slot_id", "invoke_dirty", "seen_in_pass")
     for state_type, ready_field in cases:
         graph = Graph(ready_field)

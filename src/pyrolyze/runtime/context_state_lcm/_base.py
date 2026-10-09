@@ -5,10 +5,12 @@ from typing import Any, Self
 from pyrolyze.runtime.slot_kinds import ContextKind
 from .lifecycle_adapter import (
     TransactionManager,
+    PASS_TX_KEY,
     const,
     field,
     initvar,
     local_store,
+    managed,
     managed_context,
 )
 
@@ -55,6 +57,11 @@ def _copy_seen_in_pass(cls: type[StateMgrBase], seen_in_pass: bool) -> bool:
     return seen_in_pass
 
 
+def _initial_revision(cls: type[StateMgrBase], invoke_dirty: bool) -> int:
+    del cls
+    return int(invoke_dirty)
+
+
 @managed_context
 class StateMgrBase:
     # Roots use neutral slot inputs; descendants share this one construction schema.
@@ -69,12 +76,74 @@ class StateMgrBase:
         init=False,
         default_factory=_resolve_render_context_state_mgr_initvar,
     )
-    _context_kind: ContextKind = const(default_factory=_default_context_kind, allow_self_factory=True)
+    _context_kind: ContextKind = const(
+        default_factory=_default_context_kind, allow_self_factory=True
+    )
     _parent_state_mgr: Any = field(init=False, default_factory=_copy_parent_state_mgr)
     _slot_id: Any = field(init=False, default_factory=_copy_slot_id)
-    _invoke_dirty: bool = field(init=False, default_factory=_copy_invoke_dirty)
-    _seen_in_pass: bool = field(init=False, default_factory=_copy_seen_in_pass)
+    _legacy_invoke_dirty: bool = field(init=False, default_factory=_copy_invoke_dirty)
+    _legacy_seen_in_pass: bool = field(init=False, default_factory=_copy_seen_in_pass)
+    # Notifications survive rollback; only their successful consumption and
+    # local visitation participate in the shared render transaction.
+    _requested_revision: int = field(init=False, default_factory=_initial_revision)
+    _handled_revision: int = managed(init=False, default=0, tx_key=PASS_TX_KEY)
+    _pass_requested_revision: int = local_store(default_factory=_initial_revision)
+    _pass_seen_in_pass: bool = managed(
+        init=False, default_factory=_copy_seen_in_pass, tx_key=PASS_TX_KEY
+    )
     _site_metadata: tuple[Any, ...] = local_store(default_factory=tuple)
+
+    def _pass_state_completion(self) -> Any:
+        from .field_only_render import _field_only_completion
+
+        completion = _field_only_completion(self)
+        return (
+            completion
+            if getattr(completion, "pass_state_selection_enabled", False)
+            else None
+        )
+
+    def _capture_pass_revision(self) -> None:
+        completion = self._pass_state_completion()
+        if completion is not None:
+            completion.require_resource_owner()
+            self._pass_requested_revision = self._requested_revision
+
+    @property
+    def _invoke_dirty(self) -> bool:
+        if self._pass_state_completion() is None:
+            return self._legacy_invoke_dirty
+        return self._requested_revision != self._handled_revision
+
+    @_invoke_dirty.setter
+    def _invoke_dirty(self, value: bool) -> None:
+        completion = self._pass_state_completion()
+        if completion is None:
+            self._legacy_invoke_dirty = value
+        elif value:
+            self._requested_revision += 1
+        elif completion.active is None:
+            # Explicit out-of-pass clearing keeps the existing boolean API;
+            # it cancels a request, rather than claiming a render handled it.
+            self._requested_revision = self.current._handled_revision
+        else:
+            completion.require_resource_owner()
+            self._handled_revision = self._pass_requested_revision
+
+    @property
+    def _seen_in_pass(self) -> bool:
+        if self._pass_state_completion() is None:
+            return self._legacy_seen_in_pass
+        return self._pass_seen_in_pass
+
+    @_seen_in_pass.setter
+    def _seen_in_pass(self, value: bool) -> None:
+        completion = self._pass_state_completion()
+        if completion is None:
+            self._legacy_seen_in_pass = value
+        else:
+            completion.require_resource_owner()
+            self._pass_seen_in_pass = value
 
     @classmethod
     def create(cls, owner: Any, **kwargs: Any) -> Self:
@@ -98,7 +167,9 @@ class StateMgrBase:
                 completion.reject("slot parent/render ownership does not match")
             completion.require_slot_type(type(owner))
             render_state._require_owned_render()
-            completion.require_attachment(parent_state, render_state, kwargs.get("slot_id"))
+            completion.require_attachment(
+                parent_state, render_state, kwargs.get("slot_id")
+            )
         manager = getattr(render_state, "_transaction_manager", None)
         if manager is not None:
             kwargs["transaction_manager"] = manager

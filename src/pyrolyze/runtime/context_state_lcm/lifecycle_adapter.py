@@ -15,8 +15,11 @@ from yidl_lifecycle.transaction_yidl import DEFAULT_TRANSACTION
 from yidl_lifecycle.transaction_yidl import LifecycleTransaction
 from yidl_lifecycle.transaction_yidl import TransactionManager
 
+PASS_TX_KEY = "context_pass"
+
 __all__ = [
     "DEFAULT_TRANSACTION",
+    "PASS_TX_KEY",
     "LifecycleTransaction",
     "TransactionManager",
     "binding",

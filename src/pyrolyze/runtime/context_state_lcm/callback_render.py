@@ -127,5 +127,7 @@ class _CallbackRenderCompletion(_FieldOnlyRenderCompletion):
         for state in self.owned_handler_passes:
             state._pass_owned_event_handler_order = ()
             for child in state.current.children_state.values():
-                if isinstance(child, EventHandlerSlotContextStateMgr):
+                if isinstance(child, EventHandlerSlotContextStateMgr) and not getattr(
+                    self, "pass_state_selection_enabled", False
+                ):
                     child._seen_in_pass = True

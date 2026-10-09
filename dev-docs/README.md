@@ -7,12 +7,15 @@ landed; use its status and the recorded acceptance scope.
 
 The [adoption audit](PytoLifecyleIntegAdoptionAudit.md) inventories remaining
 holders and confirmed gates after I6b. Keyed-loop selection is committed and
-container routing is implemented behind a private gate. Next: common pass-state
-cleanup, aggregate review, then normal-route adoption.
+container routing is committed behind a private gate. The
+[pass-state checkpoint](PytoLifecyleIntegPassState.md) now implements managed
+visitation and invalidation acknowledgment behind `_enable_pass_state_render`.
+Next: aggregate review and remaining admission corrections, then
+normal-route adoption.
 
 The [container routing checkpoint](PytoLifecyleIntegContainerRouting.md) classifies
 supported compiled/native/directive scope calls before constructing their slots.
-It is implemented and tested behind its own private gate, uncommitted.
+It is committed as `a87a7ac` and tested behind its own private gate.
 Normal routing and arbitrary external context-manager admission are unchanged.
 
 The [keyed-loop checkpoint](PytoLifecyleIntegKeyedLoops.md) now implements managed

@@ -27,6 +27,8 @@ class _CompletionRenderCompletion(_OverrideRenderCompletion):
         self._publication_ready = False
 
     def note_invalidation(self, state: Any) -> None:
+        if getattr(self, "pass_state_selection_enabled", False):
+            return
         if self.active is not None and not self._publication_ready:
             self._invalidated_states[id(state)] = state
 

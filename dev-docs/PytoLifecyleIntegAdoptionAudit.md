@@ -37,10 +37,10 @@ subclasses; a text search alone is not the final admission inventory.
 | Leaf/slot-call arguments and selected bindings | Managed records, with legacy adapters | Remove compatibility records only after normal-route adoption |
 | Components and override selections | Managed records; accepted graph drives retirement/notifications | Aggregate review, not another holder migration |
 | Directive selectors | Managed on I6b; legacy selector snapshot on unactivated routes | Delete legacy selector storage with compatibility removal |
-| LoopItem `_current_value`, `_current_dirty`, `_current_initialized` | Plain attributes assigned by `update_current` | Migrate coherent item selection before admitting loops |
-| `_invoke_dirty`, `_seen_in_pass` | Ordinary fields used by traversal/scheduling | Audit pass-specific versus independently arriving scheduling mutations before selecting markers |
-| `_pass_child_dirty`, `_field_only_has_snapshot` | Final gate still saves/restores dirty flags after failed local work | Remaining I3a work; preserve the I6b independent-invalidation ledger while removing restoration |
-| `_pass_child_order`, `_pass_started_tx` | Legacy local completion; order also written on private passes | Remove private-path redundant writes, then legacy declarations after adoption |
+| LoopItem value/dirty/initialized | Managed `_selection` record on the keyed-loop gate; legacy compatibility record retained | Remove compatibility record after adoption; checkpoint is committed as `053dd3c` |
+| `_invoke_dirty`, `_seen_in_pass` | Compatibility properties; pass-state gate derives dirtiness from revisions and manages visitation | Delete legacy backing fields only after adoption; keep requests independent |
+| `_pass_child_dirty`, `_field_only_has_snapshot` | Earlier gates save/restore dirty flags; pass-state gate uses request/managed acknowledgment | Remove compatibility stores during adoption; no restoration/replay on the new gate |
+| `_pass_child_order`, `_pass_started_tx` | Legacy local completion; private order writes removed in `53b0ec1` | Delete legacy declarations after adoption |
 | `_field_only_prior_children` | Inventory used to validate retirement admission | Domain validation input, not a published-value rollback holder; do not delete blindly |
 | Slot registries, mount advertisement maps | Accepted-membership caches / derived surfaces | Reconcile from accepted graph; do not make caches another publication engine |
 | Scheduler queue, active/deferred boundaries, flush flags | Scheduling control, including independent external events | Preserve independently accepted work; not render candidate fields |
@@ -132,12 +132,27 @@ inventories and local scope identities also remain necessary. This is a bounded
 cleanup, not completion of the entire dirty/visitation migration or permission
 to activate the lifecycle path by default.
 
+Subsequent operator-approved implementation:
+[pass-state consumption](PytoLifecyleIntegPassState.md) adds ordinary request
+revisions, managed acknowledgment and visitation, and a local captured revision.
+The newest gate does not capture/restore dirty snapshots or replay I6b's
+invalidation ledger. Earlier gates retain their compatibility behavior. The
+canonical checkpoint covers retry, late notifications, repeated local passes,
+partial rerender, independent roots, and owned-handler omission. Aggregate review
+and ordinary compiled-component admission remain before default adoption.
+
 ### D: Aggregate Review And I7 Adoption
 
 After A-C, run the operator-requested aggregate implementation review over the
 resource ownership adapters, preparation/publication sequence, notification
 batch draining, original-token fencing, graph retirement, and actual compiled
 routes. Resolve blocking findings before default activation.
+
+The pass-state probe identified an existing ordinary compiled-component
+admission gap: generic visitation constructs a `SlotContext` before component
+dispatch requests a different slot type. Correct classification/construction
+and prove that actual compiled route before activation; this is distinct from
+the completed scope-container routing and invalidation-consumption checkpoints.
 
 Then make lifecycle-backed completion automatic for fresh canonical roots;
 update exports/identity and migrate direct-import tests. Keep the original fallback.

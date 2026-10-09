@@ -201,9 +201,20 @@ class RenderContextStateMgr(ContextBaseStateMgr):
         callback = self._mounted_callback
         if callback is None:
             raise RuntimeError("render context is not mounted")
+        pass_state = self._pass_state_completion()
+        owner_slot = self._owner_slot_state_mgr
+        if pass_state is not None:
+            self._capture_pass_revision()
+            if owner_slot is not None:
+                owner_slot._capture_pass_revision()
         self._scheduler.enter_active(boundary_facade)
         try:
             callback()
+            if pass_state is not None:
+                self._invoke_dirty = False
+                if owner_slot is not None:
+                    # A scheduled child rerender need not revisit its parent.
+                    owner_slot._invoke_dirty = False
         finally:
             self._scheduler.exit_active(boundary_facade)
 

@@ -6,7 +6,7 @@ import os
 from typing import Any, Callable, Iterator, TYPE_CHECKING, TypeVar
 
 from pyrolyze.api import MountDirective, UIElement
-from .lifecycle_adapter import const, local_store, managed, managed_context
+from .lifecycle_adapter import PASS_TX_KEY, const, local_store, managed, managed_context
 from pyrolyze.runtime.app_context import APP_CONTEXT_MISSING, EMPTY_APP_CONTEXT_LOOKUP
 from pyrolyze.runtime.slot_kinds import ContextKind
 from pyrolyze.runtime.slot_call_semantics import ExternalStoreRef
@@ -43,7 +43,6 @@ if TYPE_CHECKING:
     from pyrolyze.runtime.app_context import AppContextKey, GenerationTracker
 
 
-PASS_TX_KEY = "context_pass"
 UiNode = UIElement | MountDirective
 
 
@@ -328,13 +327,16 @@ class ContextBaseStateMgr(StateMgrBase):
         children = self.children_state
         # Admission inventory only: never used to restore managed membership.
         self._field_only_prior_children = tuple(children.items())
-        if not getattr(self, "_field_only_has_snapshot", False):
+        if self._pass_state_completion() is None and not getattr(
+            self, "_field_only_has_snapshot", False
+        ):
             # Dirtiness is scheduler state, not managed membership. Keep its
             # retry baseline; independent invalidations are replayed separately.
             self._pass_child_dirty = {
                 slot_id: child._invoke_dirty for slot_id, child in children.items()
             }
             self._field_only_has_snapshot = True
+        self._capture_pass_revision()
         self.own_ui_entries_state = ()
         self.own_ui_state = ()
         for child in children.values():
@@ -362,18 +364,21 @@ class ContextBaseStateMgr(StateMgrBase):
         self.ui_state = self.build_committed_ui()
         for child in self.children_state.values():
             child._invoke_dirty = False
+        if self._pass_state_completion() is not None:
+            self._invoke_dirty = False
 
     def _abort_field_only_pass(self) -> None:
         # Lifecycle discards candidate maps/values once, at the outer boundary.
         return None
 
     def _clear_field_only_pass(self, *, published: bool) -> None:
-        if not published:
-            for slot_id, child in self.current.children_state.items():
-                child._invoke_dirty = self._pass_child_dirty.get(slot_id, child._invoke_dirty)
-                child._seen_in_pass = True
-        self._pass_child_dirty = {}
-        self._field_only_has_snapshot = False
+        if self._pass_state_completion() is None:
+            if not published:
+                for slot_id, child in self.current.children_state.items():
+                    child._invoke_dirty = self._pass_child_dirty.get(slot_id, child._invoke_dirty)
+                    child._seen_in_pass = True
+            self._pass_child_dirty = {}
+            self._field_only_has_snapshot = False
         self._field_only_prior_children = ()
         self._field_only_local_scope = None
         self._field_only_outer_pass = False
@@ -444,6 +449,7 @@ class ContextBaseStateMgr(StateMgrBase):
             owner._require_identity()
         self.children_state = next_children
         existing._state_mgr._seen_in_pass = True
+        existing._state_mgr._capture_pass_revision()
         return existing
 
     def materialize_pending_event_handler(
