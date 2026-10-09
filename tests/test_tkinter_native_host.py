@@ -162,7 +162,8 @@ def test_native_tkinter_host_mounts_and_rerenders_explicit_selector_tree_end_to_
         )
 
     ctx.set_flush_poster(post_flush)
-    ctx.mount(lambda: (component._pyrolyze_meta._func(ctx, dirtyof()), reconcile_host()))
+    ctx.mount(lambda: component._pyrolyze_meta._func(ctx, dirtyof()))
+    reconcile_host()
 
     try:
         assert isinstance(host.root_widget, ttk.Notebook)
@@ -212,7 +213,8 @@ def test_native_tkinter_host_preserves_live_event_handlers_for_clean_skipped_sub
         )
 
     ctx.set_flush_poster(post_flush)
-    ctx.mount(lambda: (component._pyrolyze_meta._func(ctx, dirtyof()), reconcile_host()))
+    ctx.mount(lambda: component._pyrolyze_meta._func(ctx, dirtyof()))
+    reconcile_host()
 
     def _pump() -> None:
         for _ in range(10):

@@ -1,8 +1,49 @@
 from __future__ import annotations
 
-from pyrolyze.api import UIElement
+from typing import Callable
+
+import pytest
+
+from pyrolyze.api import PyrolyzeHandler, UIElement
 from pyrolyze.compiler import emit_transformed_source, load_transformed_namespace
 from pyrolyze.runtime import RenderContext, SlotId, SlotIdPath, dirtyof
+
+
+def native_event_probe(
+    on_press: PyrolyzeHandler[[], None], *, formatter: Callable[[str], str],
+) -> UIElement:
+    return UIElement(kind="button", props={"on_press": on_press, "formatter": formatter})
+
+
+@pytest.mark.parametrize("imported", [False, True])
+@pytest.mark.parametrize("arguments", [
+    "lambda: LOG.append(label), formatter=lambda text: text",
+    "on_press=lambda: LOG.append(label), formatter=lambda text: text",
+])
+def test_phase7_native_factory_wraps_only_declared_event_arguments(
+    arguments: str, imported: bool,
+) -> None:
+    source = '''
+from typing import Callable
+from pyrolyze.api import PyrolyzeHandler as Handler, UIElement, call_native, pyrolyze
+
+def button(on_press: Handler[[], None], *, formatter: Callable[[str], str]):
+    return UIElement(kind="button", props={"on_press": on_press, "formatter": formatter})
+
+@pyrolyze
+def panel(label):
+    call_native(button)(ARGUMENTS)
+'''.replace("ARGUMENTS", arguments)
+    if imported:
+        source = source.replace(
+            'def button(on_press: Handler[[], None], *, formatter: Callable[[str], str]):\n'
+            '    return UIElement(kind="button", props={"on_press": on_press, "formatter": formatter})',
+            'from tests.test_ast_phase7_native_call_rewrite import native_event_probe as button',
+        )
+    transformed = emit_transformed_source(source, module_name="example.phase7.native_event")
+    assert transformed.count(".event_handler(") == 1
+    assert ".event_handler_binding(" not in transformed
+    assert "formatter=lambda text: text" in transformed
 
 
 def test_phase7_lowers_call_native_factory_calls() -> None:

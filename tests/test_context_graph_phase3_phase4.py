@@ -1,38 +1,20 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Callable, Generic, TypeVar
 
 import pytest
 
+from pyrolyze.compiler import load_transformed_namespace
 from pyrolyze.runtime.context import (
     DuplicateKeyError,
     ExternalStoreRef,
-    ModuleRegistry,
     RenderContext,
-    SlotId,
     dirtyof,
 )
-from pyrolyze_testsupport import pyrolize_test_wrap
-from tests.slot_expr_test_utils import eval_single_slot_expr
 
 
 T = TypeVar("T")
-
-module_registry = ModuleRegistry()
-_MODULE_ID = module_registry.module_id("tests.context_graph_phase3_phase4")
-
-_SECTION_SLOT = SlotId(_MODULE_ID, 1, line_no=10)
-_FIRST_BADGE_SLOT = SlotId(_MODULE_ID, 2, line_no=11)
-_SECOND_BADGE_SLOT = SlotId(_MODULE_ID, 3, line_no=12)
-
-_LOOP_SECTION_SLOT = SlotId(_MODULE_ID, 10, line_no=20)
-_FOO_LOOP_SLOT = SlotId(_MODULE_ID, 11, line_no=21)
-_BAR_LOOP_SLOT = SlotId(_MODULE_ID, 12, line_no=22)
-_GRIP_SLOT = SlotId(_MODULE_ID, 13, line_no=23)
-_VALUE_SLOT = SlotId(_MODULE_ID, 14, line_no=24)
-_BADGE_SLOT = SlotId(_MODULE_ID, 15, line_no=25)
 
 
 @dataclass(slots=True)
@@ -74,65 +56,46 @@ class _StoreProbe(Generic[T]):
         return len(self._listeners)
 
 
-def _make_container_reorder_program(log: list[tuple[object, ...]]):
-    @contextmanager
-    def _section(title: str, *, accent: str):
-        log.append(("section.enter", title, accent))
-        try:
-            yield
-        finally:
-            log.append(("section.exit", title, accent))
+def _compile_graph_program(
+    log: list[tuple[object, ...]],
+    body: str,
+    *,
+    globals_dict: dict[str, object] | None = None,
+) -> Callable[..., None]:
+    source = '''
+from pyrolyze.api import UIElement, call_native, component, keyed, pyrolyze, slotted
+from pyrolyze.runtime.context import ContextBase
 
-    @pyrolize_test_wrap
-    def _badge(text: str, *, tone: str) -> None:
-        log.append(("badge", text, tone))
+def section(ctx: ContextBase):
+    ctx.call_native(UIElement, kind="section", props={})
 
-    def _pyr_container_reorder(
-        ctx: RenderContext,
-        __pyr_dirty_state,
-        reverse: bool,
-    ) -> None:
-        with ctx.pass_scope():
-            if __pyr_dirty_state.reverse or ctx.visit_slot_and_dirty(_SECTION_SLOT):
-                with ctx.container_call(
-                    _SECTION_SLOT,
-                    _section,
-                    "Stats",
-                    accent="green",
-                ) as section_ctx:
-                    ordered = (
-                        ((_SECOND_BADGE_SLOT, "second"), (_FIRST_BADGE_SLOT, "first"))
-                        if reverse
-                        else ((_FIRST_BADGE_SLOT, "first"), (_SECOND_BADGE_SLOT, "second"))
-                    )
-                    for slot_id, label in ordered:
-                        if __pyr_dirty_state.reverse or section_ctx.visit_slot_and_dirty(slot_id):
-                            section_ctx.component_call(
-                                slot_id,
-                                _badge,
-                                label,
-                                tone="info",
-                                dirty_state=dirtyof(text=__pyr_dirty_state.reverse, tone=False),
-                            )
+@pyrolyze
+def badge(text, *, tone):
+    LOG.append(("badge", text, tone))
+    call_native(UIElement)(kind="badge", props={"text": text, "tone": tone})
+''' + body
+    namespace = load_transformed_namespace(
+        source,
+        module_name="tests.context_graph_phase3_phase4.compiled",
+        globals_dict={"LOG": log, **(globals_dict or {})},
+    )
+    return namespace["panel"]._pyrolyze_meta._func
 
-    return _pyr_container_reorder
+
+def _make_container_reorder_program(log: list[tuple[object, ...]]) -> Callable[..., None]:
+    return _compile_graph_program(log, '''
+@pyrolyze
+def panel(reverse):
+    with component(section):
+        for label in keyed(("second", "first") if reverse else ("first", "second"), key=lambda value: value):
+            badge(label, tone="info")
+''')
 
 
 def _make_nested_keyed_program(
     log: list[tuple[object, ...]],
     resolve_store: Callable[[tuple[str, str]], _StoreProbe[str]],
-):
-    @contextmanager
-    def _section(title: str, *, accent: str):
-        log.append(("section.enter", title, accent))
-        try:
-            yield
-        finally:
-            log.append(("section.exit", title, accent))
-
-    def identity_key(value: str) -> str:
-        return value
-
+) -> Callable[..., None]:
     def make_grip(foo: str, bar: str) -> tuple[str, str]:
         log.append(("make_grip", foo, bar))
         return (foo, bar)
@@ -141,75 +104,16 @@ def _make_nested_keyed_program(
         log.append(("use_grip", grip))
         return resolve_store(grip).ref()
 
-    @pyrolize_test_wrap
-    def _badge(text: str, *, tone: str) -> None:
-        log.append(("badge", text, tone))
-
-    def _pyr_nested_values(
-        ctx: RenderContext,
-        __pyr_dirty_state,
-        xs: list[str],
-        ys: list[str],
-    ) -> None:
-        with ctx.pass_scope():
-            if __pyr_dirty_state.xs or __pyr_dirty_state.ys or ctx.visit_slot_and_dirty(_LOOP_SECTION_SLOT):
-                with ctx.container_call(
-                    _LOOP_SECTION_SLOT,
-                    _section,
-                    "Nested",
-                    accent="violet",
-                ) as section_ctx:
-                    if __pyr_dirty_state.xs or __pyr_dirty_state.ys or section_ctx.visit_slot_and_dirty(_FOO_LOOP_SLOT):
-                        for foo_item in section_ctx.keyed_loop(_FOO_LOOP_SLOT, xs, key_fn=identity_key):
-                            with foo_item.pass_scope():
-                                __pyr_foo_dirty, foo = foo_item.current_value()
-                                if not (
-                                    __pyr_dirty_state.xs
-                                    or __pyr_dirty_state.ys
-                                    or foo_item.visit_self_and_dirty()
-                                ):
-                                    continue
-
-                                if __pyr_foo_dirty or __pyr_dirty_state.ys or foo_item.visit_slot_and_dirty(_BAR_LOOP_SLOT):
-                                    for bar_item in foo_item.keyed_loop(_BAR_LOOP_SLOT, ys, key_fn=identity_key):
-                                        with bar_item.pass_scope():
-                                            __pyr_bar_dirty, bar = bar_item.current_value()
-                                            if not (
-                                                __pyr_dirty_state.ys
-                                                or __pyr_foo_dirty
-                                                or __pyr_bar_dirty
-                                                or bar_item.visit_self_and_dirty()
-                                            ):
-                                                continue
-
-                                            __pyr_grip_dirty, grip = eval_single_slot_expr(
-                                                bar_item,
-                                                dirtyof(),
-                                                _GRIP_SLOT,
-                                                make_grip,
-                                                foo,
-                                                bar,
-                                                result_name="grip",
-                                            )
-                                            __pyr_value_dirty, value = eval_single_slot_expr(
-                                                bar_item,
-                                                dirtyof(),
-                                                _VALUE_SLOT,
-                                                use_grip,
-                                                grip,
-                                                result_name="value",
-                                            )
-
-                                            if __pyr_value_dirty or bar_item.visit_slot_and_dirty(_BADGE_SLOT):
-                                                bar_item.component_call(
-                                                    _BADGE_SLOT,
-                                                    _badge,
-                                                    value,
-                                                    tone="neutral",
-                                                    dirty_state=dirtyof(text=__pyr_value_dirty, tone=False),
-                                                )
-
-    return _pyr_nested_values
+    return _compile_graph_program(log, '''
+@pyrolyze
+def panel(xs, ys):
+    with component(section):
+        for foo in keyed(xs, key=lambda value: value):
+            for bar in keyed(ys, key=lambda value: value):
+                grip = slotted(make_grip, foo, bar)
+                value = slotted(use_grip, grip)
+                badge(value, tone="neutral")
+''', globals_dict={"make_grip": make_grip, "use_grip": use_grip})
 
 
 def test_container_children_follow_encounter_order_after_reorder() -> None:
@@ -218,20 +122,20 @@ def test_container_children_follow_encounter_order_after_reorder() -> None:
     pyr_container_reorder = _make_container_reorder_program(log)
 
     pyr_container_reorder(ctx, dirtyof(reverse=True), False)
-    assert ctx.debug_children_of(_SECTION_SLOT) == (_FIRST_BADGE_SLOT, _SECOND_BADGE_SLOT)
+    section = ctx.debug_children_of()[0]
+    loop = ctx.debug_children_of(section)[0]
+    initial_items = ctx.debug_children_of(loop)
+    assert [item.key_path for item in initial_items] == [("first",), ("second",)]
+    initial_ui = ctx.committed_ui()[0]
+    assert [child.props["text"] for child in initial_ui.children] == ["first", "second"]
 
     pyr_container_reorder(ctx, dirtyof(reverse=True), True)
 
-    assert ctx.debug_children_of(_SECTION_SLOT) == (_SECOND_BADGE_SLOT, _FIRST_BADGE_SLOT)
+    assert ctx.debug_children_of(loop) == tuple(reversed(initial_items))
+    assert [child.props["text"] for child in ctx.committed_ui()[0].children] == ["second", "first"]
     assert log == [
-        ("section.enter", "Stats", "green"),
         ("badge", "first", "info"),
         ("badge", "second", "info"),
-        ("section.exit", "Stats", "green"),
-        ("section.enter", "Stats", "green"),
-        ("badge", "second", "info"),
-        ("badge", "first", "info"),
-        ("section.exit", "Stats", "green"),
     ]
 
 
@@ -253,18 +157,14 @@ def test_nested_keyed_loops_reuse_contexts_on_reorder_and_preserve_subscriptions
         ["x", "y"],
     )
 
-    assert ctx.debug_children_of(_LOOP_SECTION_SLOT) == (_FOO_LOOP_SLOT,)
-    foo_items = ctx.debug_children_of(_FOO_LOOP_SLOT)
-    assert foo_items == (
-        SlotId(_MODULE_ID, 11, key_path=("a",), line_no=21),
-        SlotId(_MODULE_ID, 11, key_path=("b",), line_no=21),
-    )
-    bar_loop_owner = SlotId(_MODULE_ID, 12, key_path=("a",), line_no=22)
+    section = ctx.debug_children_of()[0]
+    foo_loop = ctx.debug_children_of(section)[0]
+    foo_items = ctx.debug_children_of(foo_loop)
+    assert [item.key_path for item in foo_items] == [("a",), ("b",)]
+    bar_loop_owner = ctx.debug_children_of(foo_items[0])[0]
     assert ctx.debug_children_of(foo_items[0]) == (bar_loop_owner,)
-    assert ctx.debug_children_of(bar_loop_owner) == (
-        SlotId(_MODULE_ID, 12, key_path=("a", "x"), line_no=22),
-        SlotId(_MODULE_ID, 12, key_path=("a", "y"), line_no=22),
-    )
+    bar_items = ctx.debug_children_of(bar_loop_owner)
+    assert [item.key_path for item in bar_items] == [("a", "x"), ("a", "y")]
 
     initial_use_grip_calls = [entry for entry in log if entry[:1] == ("use_grip",)]
     assert len(initial_use_grip_calls) == 4
@@ -282,10 +182,8 @@ def test_nested_keyed_loops_reuse_contexts_on_reorder_and_preserve_subscriptions
     assert [entry for entry in log if entry[:1] == ("subscribe",)] == []
     assert [entry for entry in log if entry[:1] == ("unsubscribe",)] == []
     assert [entry for entry in log if entry[:1] == ("badge",)] == []
-    assert ctx.debug_children_of(_FOO_LOOP_SLOT) == (
-        SlotId(_MODULE_ID, 11, key_path=("b",), line_no=21),
-        SlotId(_MODULE_ID, 11, key_path=("a",), line_no=21),
-    )
+    assert ctx.debug_children_of(foo_loop) == tuple(reversed(foo_items))
+    assert ctx.debug_children_of(bar_loop_owner) == tuple(reversed(bar_items))
 
 
 def test_keyed_loop_deactivates_removed_item_subtrees_and_unsubscribes() -> None:
@@ -305,6 +203,9 @@ def test_keyed_loop_deactivates_removed_item_subtrees_and_unsubscribes() -> None
         ["a", "b"],
         ["x", "y"],
     )
+    section = ctx.debug_children_of()[0]
+    foo_loop = ctx.debug_children_of(section)[0]
+    retained_item = ctx.debug_children_of(foo_loop)[0]
     log.clear()
 
     pyr_nested_values(
@@ -323,9 +224,7 @@ def test_keyed_loop_deactivates_removed_item_subtrees_and_unsubscribes() -> None
         ("unsubscribe", "b:x"),
         ("unsubscribe", "b:y"),
     ]
-    assert ctx.debug_children_of(_FOO_LOOP_SLOT) == (
-        SlotId(_MODULE_ID, 11, key_path=("a",), line_no=21),
-    )
+    assert ctx.debug_children_of(foo_loop) == (retained_item,)
 
 
 def test_duplicate_keys_raise_runtime_error() -> None:

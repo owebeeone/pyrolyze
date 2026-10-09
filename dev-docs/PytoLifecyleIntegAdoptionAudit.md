@@ -65,6 +65,142 @@ Next: close the candidate's functional and performance gaps, migrate canonical
 consumers, then switch `lcm` and retire the monolithic engine. Compatibility
 deletion remains gated on that verified adoption, not the successful small UI trial.
 
+### Publication-Timing Consumer Migration (2026-10-10)
+
+The current lifecycle-selected baseline reproduced 48 failures, with 1125 passing
+tests and 20 skips. Five remaining runners reconciled committed UI inside the
+initial render callback: the general grid, native Tk grid, unified grid, native
+DearPyGui grid, and studio runners. They now reconcile after `mount()` returns;
+their posted update callbacks already reconcile after flush completion. Six
+native-host test setup calls use the same outer-completion ordering. No runtime
+admission rules or test assertions were relaxed.
+
+The affected lifecycle-selected UI files now have 17 passing tests and only the
+known nested-row host-ordering failure. This also resolves both native Tk grid
+failures from the activation baseline. Full normal routing has 1171 passing
+tests, 20 skips, and the two known host-ordering failures. Full lifecycle routing
+has 1136 passing tests, 20 skips, and 37 failures: 11 activation failures are
+resolved. The remaining failures still include legacy container/slot routing,
+concrete binding assumptions, and caught-error outer-abort expectations. Default
+activation remains blocked. Next: classify and migrate the container/slot
+consumers without weakening admission or blindly updating assertions.
+
+### Remaining Adoption Failure Classification (2026-10-10)
+
+The 37 failures after publication-timing migration are classified by their
+first observed blocker, not certified root cause. Fixing one blocker may expose
+another. This classification does not authorize relaxing a runtime contract.
+
+| Count | Observed blocker | Next action |
+| --- | --- | --- |
+| 17 | Opaque container helpers rejected by `container_render.container_call` | Inventory actual helpers. Handwritten `contextmanager` scaffolds, such as phase-1 `_section`, yield without a declared native-context parameter or compiled-component metadata. Migrate scaffolds to supported forms where equivalent; decide separately whether real opaque consumers need support. Preserve recognition and failure tests. |
+| 9 | Existing slot has a different type; `ensure_resolved_slot` rejects replacement | Handwritten guards call `visit_slot_and_dirty` before typed dispatch, including directives, native calls, and component bodies. Trace each allocation; migrate guards to allocation-free lookup and explicit clean retention, preserving ownership/removal tests. Do not simply allow arbitrary replacement. |
+| 4 | Inner validation error is caught, then outer exit raises `RenderAttemptAborted` | Update outer-boundary expectations to the agreed rollback-only contract. Keep original diagnostic checks and prove accepted state survives and retry works. Cases are override arity/fixed-key validation and app-context invalid-key/missing-provider errors. |
+| 3 | Concrete binding-type assertions | Two external-store tests expect `ExternalStoreBinding`; the advertisement test expects its legacy binding type. Preserve refresh, unsubscribe, publication, and retirement assertions while checking the selected lifecycle behavior rather than old implementation identity. Later assertions remain unverified until the type blocker is removed. |
+| 1 | Subscription replacement cleanup order | `test_rebinding_external_store_subscribes_new_before_unsubscribing_old` expects old unsubscribe before reading the new value. The candidate reads the new value before retiring the accepted subscription. Check this against the approved outer-completion ownership contract before changing the expectation; it is not merely a type assertion. |
+| 1 | Missing invalidation boundary trace records | `test_render_context_emits_invalidation_flush_and_boundary_records` receives no expected `start`/`end` records. Inspect tracing on the new boundary; do not remove observability assertions without checking the intended trace contract. |
+| 2 | Known backend host-ordering failures | Keep the generic fault-mode and native PySide nested-row placement work separate from lifecycle adoption. |
+
+The routing groups occur in `test_context_graph_phase1.py`,
+`test_context_graph_phase3_phase4.py`, `test_context_graph_phase5_component_call.py`,
+`test_context_graph_phase5a_invalidation_kernel.py`,
+`test_context_graph_phase7_native_ui.py`, `test_context_graph_phase8_scheduler.py`,
+`test_mount_advert_binding.py`, `test_mount_directive_context.py`,
+`test_runtime_pyro_call.py`, and `test_visitor_context_graph.py`, all under `tests/`.
+Start with the handwritten container/guard consumers, one verified group at a
+time. No runtime or test-expectation changes accompany this classification.
+
+### Compiler-Driven Scaffold Migration (2026-10-10)
+
+The phase-1, keyed-loop, helper-selected component, and invalidation scaffolds
+now use authored source through `load_transformed_namespace`, rather than
+handwritten lowering. Obsolete helper factories and their fixed slot identifiers
+are removed. Tests discover generated graph identities and continue to check
+published UI, clean retention, keyed reorder, subscription reuse/removal,
+callback identity, notification coalescing, child-only rerenders, and FIFO queues.
+
+Scopes use supported native context parameters and badges produce concrete UI;
+scope execution logs replace artificial context-manager enter/exit logs. These
+fixtures do not certify arbitrary Python context-manager compatibility. The
+dynamic component fixture resolves its constant fallback before the scope:
+placing that local selection inside the scope makes current lowering
+conservatively rerun the scope, so that shape cannot prove clean scope elision.
+
+Direct runtime probes remain where they deliberately control dirty forwarding,
+callback ownership, invalid calls, or failure injection. Two leaf guards in the
+component identity probe use allocation-free `slot_needs_execution`, avoiding
+the old generic slot preallocation. No runtime implementation or admission
+policy changes accompany this checkpoint. Explicit opaque context-manager and
+permissive-callable compatibility tests remain unresolved, not rewritten away.
+
+Focused verification: all 29 tests in the four affected files pass on normal
+routing and lifecycle routing; lifecycle also passes all 29 with Python
+assembly. Full normal regression: 1170 passed, 20 skipped, and only the two
+known host-ordering failures. Full lifecycle regression: 1150 passed, 20 skipped,
+and 22 failures, down from the classified 37. The remaining opaque compatibility
+cases, other slot-preallocation consumers, binding assumptions, caught-error
+expectations, cleanup-order check, and boundary tracing remain unresolved.
+
+Subsequent operator-requested migration replaces all component/container bodies
+in the phase-5 component-call file, including the failed-pass fixture, with
+compiled source. Small wrappers observe incoming dirty flags; direct test drivers
+dispatch controlled inputs but no longer reproduce compiler-generated guards or
+component bodies. The earlier full-suite counts precede this follow-up.
+
+This exposed a compiler gap: an annotated callback passed to
+`call_native(button_element)` remained a raw lambda, failing retained callback
+identity. The previous handwritten body explicitly called `event_handler`,
+bypassing the gap. The operator authorized a bounded compiler correction:
+local/imported factories with declared handler parameters now use immediate
+context-owned event handlers; component arguments retain deferred attachment.
+Ordinary callable parameters remain untouched. Positional/keyword recognition,
+stable callback identity, refreshed closures, and lifecycle outer rollback are
+covered. The rollback fixture also proves accepted UI identity and clean retry.
+Legacy local completion does not acquire lifecycle outer rollback semantics.
+
+Follow-up verification: 24 focused native/component-handler checks pass on
+normal routing; 45 affected checks pass on lifecycle with Python assembly.
+The concurrent full runs report 1174 passed / 3 failed on normal routing and
+1154 passed / 23 failed on lifecycle, both with 20 existing skips. Both runs
+also wrote the same basic-shape diagnostic graph and hit a Graphviz syntax
+error. That exact test passes in isolated reruns on each route, confirming
+shared diagnostic-output interference rather than a reproduced compiler defect.
+Do not run those suites concurrently when writing the same graph artifacts.
+All other failures match the known normal/adoption inventories.
+
+Further handwritten-body candidates are external-store readers in
+`tests/test_context_graph_phase2_external_store.py`, the toolbar in
+`tests/test_context_graph_phase7_native_ui.py`, the visitor graph in
+`tests/test_visitor_context_graph.py`, hook guards in `tests/test_hooks_module.py`,
+and component bodies in `tests/test_app_context_framework.py`,
+`tests/test_app_context_override_context.py`, and
+`tests/test_context_graph_no_comp_value_api.py`. Inspect each by purpose:
+authored behavior should use compiled input; explicit runtime misuse,
+introspection, and native context helpers are not automatically obsolete.
+
+### Handwritten Lowering Removal Project
+
+Goal: authored behavior tests must run compiler-generated code, not a second
+hand-maintained approximation of lowering. Keep behavioral assertions, not old
+allocation details. Wrappers may observe inputs and inject controlled test
+conditions; they must delegate component execution to compiled bodies.
+
+- [x] Phase-1, keyed-loop, component-call, and invalidation fixtures migrated.
+- [x] Component/container dirty-forwarding and rollback bodies compiled.
+- [x] Native callback lowering discrepancy reproduced and corrected.
+- [x] Visitor graph and hook-render success fixtures migrated.
+- [x] Native toolbar success fixture migrated; native API misuse kept separate.
+- [ ] App-context and component-introspection bodies compiled behind wrappers.
+- [ ] External-store readers classified: migrate authored scenarios; keep
+  direct binding/dirty-result/injection probes explicitly runtime-level.
+- [ ] Audit remaining tests for hand-maintained lowering, document intentional
+  exceptions, and verify the final batch on both routes and assembly backends.
+
+Check each group with focused tests. Run broad regressions at checkpoint
+boundaries, sequentially because graph diagnostics share output paths. Do not
+activate lifecycle, relax resource cleanup, erase generic-context-manager
+compatibility tests, or rewrite generated goldens merely to reduce failures.
+
 ### Large-Grid Performance Correction (2026-10-09)
 
 Profiling confirmed O(N^2) ownership checks in `yidl-lifecycle`: each callback

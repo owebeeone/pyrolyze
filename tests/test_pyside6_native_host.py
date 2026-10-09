@@ -202,7 +202,8 @@ def test_native_pyside6_host_mounts_and_rerenders_generated_component_tree() -> 
         )
 
     ctx.set_flush_poster(post_flush)
-    ctx.mount(lambda: (component._pyrolyze_meta._func(ctx, dirtyof()), reconcile_host()))
+    ctx.mount(lambda: component._pyrolyze_meta._func(ctx, dirtyof()))
+    reconcile_host()
 
     assert isinstance(host.root_widget, QMainWindow)
     label = host.root_widget.findChild(QLabel, "count_label")
@@ -243,7 +244,8 @@ def test_native_pyside6_host_mounts_explicit_selector_tree_end_to_end() -> None:
         )
 
     ctx.set_flush_poster(post_flush)
-    ctx.mount(lambda: (component._pyrolyze_meta._func(ctx, dirtyof()), reconcile_host()))
+    ctx.mount(lambda: component._pyrolyze_meta._func(ctx, dirtyof()))
+    reconcile_host()
 
     assert isinstance(host.root_widget, QMainWindow)
     host.show()
@@ -300,7 +302,8 @@ def test_native_pyside6_conditional_sibling_toggle_keeps_stable_row_order() -> N
         )
 
     ctx.set_flush_poster(post_flush)
-    ctx.mount(lambda: (component._pyrolyze_meta._func(ctx, dirtyof()), reconcile_host()))
+    ctx.mount(lambda: component._pyrolyze_meta._func(ctx, dirtyof()))
+    reconcile_host()
 
     assert isinstance(host.root_widget, QMainWindow)
     host.show()
@@ -370,7 +373,8 @@ def test_native_pyside6_conditional_nested_layout_toggle_keeps_row_above_trailin
         )
 
     ctx.set_flush_poster(post_flush)
-    ctx.mount(lambda: (component._pyrolyze_meta._func(ctx, dirtyof()), reconcile_host()))
+    ctx.mount(lambda: component._pyrolyze_meta._func(ctx, dirtyof()))
+    reconcile_host()
 
     assert isinstance(host.root_widget, QMainWindow)
     host.show()

@@ -4,6 +4,7 @@ from typing import Callable
 
 from pyrolyze.api import use_effect as api_use_effect
 from pyrolyze.api import use_state as api_use_state
+from pyrolyze.compiler import load_transformed_namespace
 from pyrolyze.hooks import use_effect, use_grip, use_mount, use_state, use_unmount
 from pyrolyze.runtime import (
     ExternalStoreRef,
@@ -22,8 +23,6 @@ _MODULE_ID = module_registry.module_id("tests.hooks_module")
 _STATE_SLOT = SlotId(_MODULE_ID, 1, line_no=10, is_top_level=True)
 _EFFECT_SLOT = SlotId(_MODULE_ID, 2, line_no=11, is_top_level=True)
 _GRIP_SLOT = SlotId(_MODULE_ID, 3, line_no=12, is_top_level=True)
-_DERIVED_SLOT = SlotId(_MODULE_ID, 4, line_no=13, is_top_level=True)
-_LEAF_SLOT = SlotId(_MODULE_ID, 5, line_no=14, is_top_level=True)
 
 
 def test_api_reexports_primary_hooks() -> None:
@@ -66,38 +65,32 @@ def test_use_state_provides_plain_tuple_and_stable_setter() -> None:
 def test_use_state_invalidation_reruns_sibling_top_level_slots_in_same_context() -> None:
     ctx = RenderContext()
     observed: list[str] = []
-    state_holder = {"count": 0}
     setters: list[Callable[[int], None]] = []
 
     def derive_label(count: int) -> str:
         return f"value:{count}"
 
-    def render() -> None:
-        with ctx.pass_scope():
-            pair_dirty, pair = eval_single_slot_expr(
-                ctx,
-                dirtyof(),
-                _STATE_SLOT,
-                use_state,
-                0,
-                result_name="pair",
-            )
-            count, setter = pair
-            setters[:] = [setter]
-            state_holder["count"] = count
-            label_dirty, label = eval_single_slot_expr(
-                ctx,
-                dirtyof(),
-                _DERIVED_SLOT,
-                derive_label,
-                count,
-                args_dirty=(pair_dirty[0],),
-                result_name="label",
-            )
-            if label_dirty or ctx.visit_slot_and_dirty(_LEAF_SLOT):
-                observed.append(label)
+    namespace = load_transformed_namespace(
+        '''
+from pyrolyze.api import UIElement, call_native, pyrolyze, slotted, use_state
 
-    ctx.mount(render)
+@pyrolyze
+def label_ui(label):
+    OBSERVED.append(label)
+    call_native(UIElement)(kind="label", props={"text": label})
+
+@pyrolyze
+def panel():
+    count, setter = use_state(0)
+    SETTERS[:] = [setter]
+    label = slotted(derive_label, count)
+    label_ui(label)
+''',
+        module_name="tests.hooks_module.compiled_state_siblings",
+        globals_dict={"OBSERVED": observed, "SETTERS": setters, "derive_label": derive_label},
+    )
+    render = namespace["panel"]._pyrolyze_meta._func
+    ctx.mount(lambda: render(ctx, dirtyof()))
     assert observed == ["value:0"]
 
     observed.clear()

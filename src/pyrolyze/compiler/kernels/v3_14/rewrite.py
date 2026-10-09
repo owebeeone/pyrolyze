@@ -288,6 +288,22 @@ def lower_module_plan(plan: ModuleTransformPlan) -> ast.Module:
         for component in plan.component_plans
     }
     component_event_params.update(imported_component_event_params)
+    for node in plan.module_ast.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        event_names = _parameter_event_names(
+            node,
+            event_handler_type_names=event_handler_type_names,
+        )
+        if event_names:
+            component_param_names.setdefault(
+                node.name,
+                tuple(
+                    argument.arg
+                    for argument in [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
+                ),
+            )
+            component_event_params.setdefault(node.name, event_names)
     callable_return_kinds = _collect_local_callable_return_kinds(plan.module_ast)
     callable_return_kinds.update(imported_return_kinds)
     top_level_component_names = {
@@ -1716,6 +1732,18 @@ def _lower_call_native_expr(
 
     call_site_id = state.next_call_site_id(reason=statement)
     factory = call.func.args[0]
+    factory_name = _call_qualified_name(factory)
+    # Native factories execute here, so handlers belong to this context rather
+    # than being deferred for attachment to a child component.
+    event_slot_setup, lowered_args, lowered_keywords = _lower_eventful_call_arguments(
+        args=list(call.args),
+        keywords=list(call.keywords),
+        param_names=state.component_param_names.get(factory_name),
+        event_param_names=state.component_event_params.get(factory_name, frozenset()),
+        state=state,
+        reason=statement,
+        defer_binding=False,
+    )
     lowered = ast.Expr(
         value=ast.Call(
             func=ast.Attribute(
@@ -1723,14 +1751,14 @@ def _lower_call_native_expr(
                 attr="call_native",
                 ctx=ast.Load(),
             ),
-            args=[copy.deepcopy(factory), *[copy.deepcopy(arg) for arg in call.args]],
+            args=[copy.deepcopy(factory), *lowered_args],
             keywords=[
-                *[copy.deepcopy(keyword) for keyword in call.keywords],
+                *lowered_keywords,
                 ast.keyword(arg="__pyr_call_site_id", value=ast.Constant(call_site_id)),
             ],
         )
     )
-    return [copy_reason_location(lowered, statement)]
+    return [*event_slot_setup, copy_reason_location(lowered, statement)]
 
 
 def _lower_delete(statement: ast.Delete, *, state: _LoweringState) -> list[ast.stmt]:
@@ -2089,11 +2117,12 @@ def _event_handler_expression(
     *,
     slot_ref: ast.expr,
     state: _LoweringState,
+    defer_binding: bool = True,
 ) -> ast.expr:
     return ast.Call(
         func=ast.Attribute(
             value=state.context_ref(),
-            attr="event_handler_binding",
+            attr="event_handler_binding" if defer_binding else "event_handler",
             ctx=ast.Load(),
         ),
         args=[slot_ref],
@@ -2115,6 +2144,7 @@ def _lower_eventful_call_arguments(
     event_param_names: frozenset[str],
     state: _LoweringState,
     reason: ast.AST,
+    defer_binding: bool = True,
 ) -> tuple[list[ast.stmt], list[ast.expr], list[ast.keyword]]:
     if not event_param_names or param_names is None:
         return [], [copy.deepcopy(arg) for arg in args], [copy.deepcopy(keyword) for keyword in keywords]
@@ -2132,6 +2162,7 @@ def _lower_eventful_call_arguments(
                         arg,
                         slot_ref=event_slot_ref,
                         state=state,
+                        defer_binding=defer_binding,
                     ),
                     arg,
                 )
@@ -2152,6 +2183,7 @@ def _lower_eventful_call_arguments(
                             keyword.value,
                             slot_ref=event_slot_ref,
                             state=state,
+                            defer_binding=defer_binding,
                         ),
                         keyword.value,
                     ),
@@ -2469,6 +2501,27 @@ def _collect_imported_annotated_symbols(
                 )
                 if callable_kind is not None:
                     return_kinds[local_name] = callable_kind
+                if any(_runtime_annotation_is_event_handler(hint) for hint in resolved_hints.values()):
+                    try:
+                        signature = inspect.signature(imported_value)
+                    except (TypeError, ValueError):
+                        signature = None
+                    if signature is not None:
+                        parameters = tuple(
+                            parameter for parameter in signature.parameters.values()
+                            if parameter.kind in {
+                                inspect.Parameter.POSITIONAL_ONLY,
+                                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                                inspect.Parameter.KEYWORD_ONLY,
+                            }
+                        )
+                        component_param_names[local_name] = tuple(parameter.name for parameter in parameters)
+                        component_event_params[local_name] = frozenset(
+                            parameter.name for parameter in parameters
+                            if _runtime_annotation_is_event_handler(
+                                resolved_hints.get(parameter.name, parameter.annotation)
+                            )
+                        )
             else:
                 component_names.add(local_name)
                 try:

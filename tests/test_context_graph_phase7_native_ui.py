@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from typing import Callable
+
 import pytest
 
 from pyrolyze.api import UIElement
+from pyrolyze.compiler import load_transformed_namespace
 from pyrolyze.runtime.context import (
     ContextBase,
     ModuleRegistry,
@@ -16,9 +19,7 @@ from pyrolyze_testsupport import pyrolize_test_native
 module_registry = ModuleRegistry()
 _MODULE_ID = module_registry.module_id("tests.context_graph_phase7_native_ui")
 
-_SECTION_SLOT = SlotId(_MODULE_ID, 1, line_no=10)
 _BADGE_SLOT = SlotId(_MODULE_ID, 2, line_no=11)
-_BUTTON_SLOT = SlotId(_MODULE_ID, 3, line_no=12)
 _NONE_SLOT = SlotId(_MODULE_ID, 4, line_no=13)
 _BAD_SLOT = SlotId(_MODULE_ID, 5, line_no=14)
 _DOUBLE_SECTION_SLOT = SlotId(_MODULE_ID, 6, line_no=15)
@@ -81,44 +82,22 @@ def _pyr_double_root(ctx: ContextBase) -> None:
     ctx.call_native(UIElement, kind="section", props={"title": "Two"})
 
 
-def _make_toolbar_program() -> callable:
-    def _pyr_toolbar(ctx: RenderContext, __pyr_dirty_state, active: bool) -> None:
-        with ctx.pass_scope():
-            if __pyr_dirty_state.active or ctx.visit_slot_and_dirty(_SECTION_SLOT):
-                with ctx.container_call(
-                    _SECTION_SLOT,
-                    _pyr_section,
-                    "Toolbar",
-                    accent="cyan",
-                    dirty_state=dirtyof(title=False, accent=False),
-                ) as section_ctx:
-                    if __pyr_dirty_state.active or section_ctx.visit_slot_and_dirty(_BADGE_SLOT):
-                        section_ctx.component_call(
-                            _BADGE_SLOT,
-                            _pyr_badge,
-                            "Ready" if active else "Paused",
-                            tone="info",
-                            dirty_state=dirtyof(text=__pyr_dirty_state.active, tone=False),
-                        )
+def _make_toolbar_program() -> Callable[..., None]:
+    namespace = load_transformed_namespace(
+        '''
+from pyrolyze.api import component, pyrolyze
 
-                    if __pyr_dirty_state.active or section_ctx.visit_slot_and_dirty(_BUTTON_SLOT):
-                        section_ctx.component_call(
-                            _BUTTON_SLOT,
-                            _pyr_button,
-                            "Run",
-                            enabled=not active,
-                            meta={
-                                "tags": ["primary", "toolbar"],
-                                "status": {"active": active},
-                            },
-                            dirty_state=dirtyof(
-                                label=__pyr_dirty_state.active,
-                                enabled=__pyr_dirty_state.active,
-                                meta=__pyr_dirty_state.active,
-                            ),
-                        )
-
-    return _pyr_toolbar
+@pyrolyze
+def toolbar(active):
+    with component(section, "Toolbar", accent="cyan"):
+        component(badge, "Ready" if active else "Paused", tone="info")
+        component(button, "Run", enabled=not active,
+                  meta={"tags": ["primary", "toolbar"], "status": {"active": active}})
+''',
+        module_name="tests.context_graph_phase7_native_ui.compiled_toolbar",
+        globals_dict={"section": _pyr_section, "badge": _pyr_badge, "button": _pyr_button},
+    )
+    return namespace["toolbar"]._pyrolyze_meta._func
 
 
 def test_native_ui_helpers_build_committed_tree_and_retain_on_stable_pass() -> None:

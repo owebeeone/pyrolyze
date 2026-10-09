@@ -4,17 +4,11 @@ from pathlib import Path
 
 from pyrolyze.api import UIElement
 from pyrolyze.compiler import load_transformed_namespace
-from pyrolyze.runtime import ContextBase, ModuleRegistry, RenderContext, SlotId, dirtyof
+from pyrolyze.runtime import ContextBase, RenderContext, dirtyof
 from pyrolyze_testsupport import pyrolize_test_native
 from pyrolyze.visitor import capture_context_graph, compare_context_graphs
 
 
-module_registry = ModuleRegistry()
-_MODULE_ID = module_registry.module_id("tests.visitor_context_graph")
-
-_SECTION_SLOT = SlotId(_MODULE_ID, 1, line_no=10)
-_ITEM_LOOP_SLOT = SlotId(_MODULE_ID, 2, line_no=11)
-_BADGE_SLOT = SlotId(_MODULE_ID, 3, line_no=12)
 
 
 @pyrolize_test_native
@@ -35,25 +29,21 @@ def _read_test_source(test_name: str) -> tuple[Path, str]:
 def test_capture_context_graph_records_context_kinds_and_render_owners() -> None:
     ctx = RenderContext()
 
-    def render() -> None:
-        with ctx.pass_scope():
-            if ctx.visit_slot_and_dirty(_SECTION_SLOT):
-                with ctx.container_call(_SECTION_SLOT, section, "Stats", dirty_state=dirtyof(title=False)) as section_ctx:
-                    if section_ctx.visit_slot_and_dirty(_ITEM_LOOP_SLOT):
-                        for item_ctx in section_ctx.keyed_loop(_ITEM_LOOP_SLOT, ["a", "b"], key_fn=lambda value: value):
-                            with item_ctx.pass_scope():
-                                item_dirty, value = item_ctx.current_value()
-                                if not (item_dirty or item_ctx.visit_self_and_dirty()):
-                                    continue
-                                if item_ctx.visit_slot_and_dirty(_BADGE_SLOT):
-                                    item_ctx.component_call(
-                                        _BADGE_SLOT,
-                                        badge,
-                                        value.upper(),
-                                        dirty_state=dirtyof(text=False),
-                                    )
+    namespace = load_transformed_namespace(
+        '''
+from pyrolyze.api import component, keyed, pyrolyze
 
-    ctx.mount(render)
+@pyrolyze
+def panel():
+    with component(section, "Stats"):
+        for value in keyed(["a", "b"], key=lambda item: item):
+            component(badge, value.upper())
+''',
+        module_name="tests.visitor_context_graph.compiled",
+        globals_dict={"section": section, "badge": badge},
+    )
+    render = namespace["panel"]._pyrolyze_meta._func
+    ctx.mount(lambda: render(ctx, dirtyof()))
     graph = capture_context_graph(ctx)
 
     assert graph.generation_id == 1
@@ -61,11 +51,12 @@ def test_capture_context_graph_records_context_kinds_and_render_owners() -> None
     assert graph.root.slot_id is None
     assert [child.kind for child in graph.root.children] == ["container"]
     container = graph.root.children[0]
-    assert container.slot_id == _SECTION_SLOT
+    section_slot = ctx.debug_children_of()[0]
+    assert container.slot_id == section_slot
     assert container.ui == (
         graph.root.children[0].ui[0],
     )
-    assert container.ui[0].slot_id == _SECTION_SLOT
+    assert container.ui[0].slot_id == section_slot
     assert container.ui[0].render_owner_slot_id is None
     assert container.ui[0].element == UIElement(kind="section", props={"title": "Stats"})
 
@@ -74,17 +65,17 @@ def test_capture_context_graph_records_context_kinds_and_render_owners() -> None
     first_item, second_item = loop.children
     assert first_item.kind == "loop_item"
     assert second_item.kind == "loop_item"
-    assert first_item.slot_id == SlotId(_MODULE_ID, 2, key_path=("a",), line_no=11)
-    assert second_item.slot_id == SlotId(_MODULE_ID, 2, key_path=("b",), line_no=11)
+    assert first_item.slot_id.key_path == ("a",)
+    assert second_item.slot_id.key_path == ("b",)
 
     first_leaf = first_item.children[0]
     second_leaf = second_item.children[0]
     assert first_leaf.kind == "component_call"
     assert second_leaf.kind == "component_call"
-    assert first_leaf.ui[0].slot_id == SlotId(_MODULE_ID, 3, key_path=("a",), line_no=12)
-    assert second_leaf.ui[0].slot_id == SlotId(_MODULE_ID, 3, key_path=("b",), line_no=12)
-    assert first_leaf.ui[0].render_owner_slot_id == _SECTION_SLOT
-    assert second_leaf.ui[0].render_owner_slot_id == _SECTION_SLOT
+    assert first_leaf.ui[0].slot_id == first_leaf.slot_id
+    assert second_leaf.ui[0].slot_id == second_leaf.slot_id
+    assert first_leaf.ui[0].render_owner_slot_id == section_slot
+    assert second_leaf.ui[0].render_owner_slot_id == section_slot
     assert first_leaf.ui[0].element == UIElement(kind="badge", props={"text": "A"})
     assert second_leaf.ui[0].element == UIElement(kind="badge", props={"text": "B"})
 

@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
-
 import pytest
 
+from pyrolyze.compiler import load_transformed_namespace
 from pyrolyze.runtime.context import (
-    DirtyStateContext,
     ModuleRegistry,
     RenderContext,
     SlotId,
@@ -13,230 +11,89 @@ from pyrolyze.runtime.context import (
     dirtyof,
 )
 from pyrolyze_testsupport import pyrolize_test_wrap
-from tests.slot_expr_test_utils import eval_single_slot_expr
 
 
 module_registry = ModuleRegistry()
 _MODULE_ID = module_registry.module_id("tests.context_graph_phase1")
 
-_TITLE_SLOT = SlotId(_MODULE_ID, 1, line_no=10)
-_SECTION_SLOT = SlotId(_MODULE_ID, 2, line_no=11)
-_BADGE_SLOT = SlotId(_MODULE_ID, 3, line_no=12)
-_PANEL_SLOT = SlotId(_MODULE_ID, 4, line_no=13)
-_COUNTER_SLOT = SlotId(_MODULE_ID, 5, line_no=14)
-_BUTTON_SLOT = SlotId(_MODULE_ID, 6, line_no=15)
-_BUTTON_EVENT_SLOT = SlotId(_MODULE_ID, 7, line_no=16)
 
-
-def _make_welcome_program(log: list[tuple[object, ...]]):
-    @contextmanager
-    def _section(title: str, *, accent: str):
-        log.append(("section.enter", title, accent))
-        try:
-            yield
-        finally:
-            log.append(("section.exit", title, accent))
-
+def _make_compiled_welcome_program(log: list[tuple[object, ...]], *, conditional: bool = False):
     def _format_title(name: str) -> str:
         log.append(("format_title", name))
         return f"Hello {name}"
 
-    @pyrolize_test_wrap
-    def _badge(text: str, *, tone: str) -> None:
-        log.append(("badge", text, tone))
+    namespace = load_transformed_namespace(
+        '''
+from pyrolyze.api import UIElement, call_native, component, pyrolyze, slotted
+from pyrolyze.runtime.context import ContextBase
 
-    def _pyr_welcome(
-        ctx: RenderContext,
-        __pyr_dirty_state: DirtyStateContext,
-        name: str,
-    ) -> None:
-        with ctx.pass_scope():
-            __pyr_title_dirty, title = eval_single_slot_expr(
-                ctx,
-                __pyr_dirty_state,
-                _TITLE_SLOT,
-                _format_title,
-                name,
-                args_dirty=(__pyr_dirty_state.name,),
-                result_name="title",
-            )
+def section(ctx: ContextBase, title, *, accent):
+    LOG.append(("section", title, accent))
+    ctx.call_native(UIElement, kind="section", props={"title": title, "accent": accent})
 
-            if __pyr_title_dirty or ctx.visit_slot_and_dirty(_SECTION_SLOT):
-                with ctx.container_call(
-                    _SECTION_SLOT,
-                    _section,
-                    "Greeting",
-                    accent="blue",
-                ) as section_ctx:
-                    if __pyr_title_dirty or section_ctx.visit_slot_and_dirty(_BADGE_SLOT):
-                        section_ctx.component_call(
-                            _BADGE_SLOT,
-                            _badge,
-                            title,
-                            tone="info",
-                            dirty_state=dirtyof(text=__pyr_title_dirty, tone=False),
-                        )
+@pyrolyze
+def badge(text, *, tone):
+    LOG.append(("badge", text, tone))
+    call_native(UIElement)(kind="badge", props={"text": text, "tone": tone})
 
-    return _pyr_welcome
+@pyrolyze
+def welcome(name):
+    title = slotted(format_title, name)
+    with component(section, "Greeting", accent="blue"):
+        badge(title, tone="info")
+
+@pyrolyze
+def welcome_conditional(name, show_badge):
+    title = slotted(format_title, name)
+    with component(section, "Greeting", accent="blue"):
+        if show_badge:
+            badge(title, tone="info")
+''',
+        module_name="tests.context_graph_phase1.compiled_welcome",
+        globals_dict={"LOG": log, "format_title": _format_title},
+    )
+    return namespace["welcome_conditional" if conditional else "welcome"]._pyrolyze_meta._func
 
 
-def _make_welcome_conditional_program(log: list[tuple[object, ...]]):
-    @contextmanager
-    def _section(title: str, *, accent: str):
-        log.append(("section.enter", title, accent))
-        try:
-            yield
-        finally:
-            log.append(("section.exit", title, accent))
-
-    def _format_title(name: str) -> str:
-        log.append(("format_title", name))
-        return f"Hello {name}"
-
-    @pyrolize_test_wrap
-    def _badge(text: str, *, tone: str) -> None:
-        log.append(("badge", text, tone))
-
-    def _pyr_welcome_conditional(
-        ctx: RenderContext,
-        __pyr_dirty_state: DirtyStateContext,
-        name: str,
-        show_badge: bool,
-    ) -> None:
-        with ctx.pass_scope():
-            __pyr_title_dirty, title = eval_single_slot_expr(
-                ctx,
-                __pyr_dirty_state,
-                _TITLE_SLOT,
-                _format_title,
-                name,
-                args_dirty=(__pyr_dirty_state.name,),
-                result_name="title",
-            )
-
-            if (
-                __pyr_title_dirty
-                or __pyr_dirty_state.show_badge
-                or ctx.visit_slot_and_dirty(_SECTION_SLOT)
-            ):
-                with ctx.container_call(
-                    _SECTION_SLOT,
-                    _section,
-                    "Greeting",
-                    accent="blue",
-                ) as section_ctx:
-                    if show_badge:
-                        if (
-                            __pyr_title_dirty
-                            or __pyr_dirty_state.show_badge
-                            or section_ctx.visit_slot_and_dirty(_BADGE_SLOT)
-                        ):
-                            section_ctx.component_call(
-                                _BADGE_SLOT,
-                                _badge,
-                                title,
-                                tone="info",
-                                dirty_state=dirtyof(
-                                    text=__pyr_title_dirty or __pyr_dirty_state.show_badge,
-                                    tone=False,
-                                ),
-                            )
-
-    return _pyr_welcome_conditional
-
-
-def _make_wrong_child_owner_program(log: list[tuple[object, ...]]):
-    @contextmanager
-    def _section(title: str, *, accent: str):
-        log.append(("section.enter", title, accent))
-        try:
-            yield
-        finally:
-            log.append(("section.exit", title, accent))
-
-    def _format_title(name: str) -> str:
-        log.append(("format_title", name))
-        return f"Hello {name}"
-
-    @pyrolize_test_wrap
-    def _badge(text: str, *, tone: str) -> None:
-        log.append(("badge", text, tone))
-
-    def _pyr_wrong_child_owner(
-        ctx: RenderContext,
-        __pyr_dirty_state: DirtyStateContext,
-        name: str,
-        accent: str,
-    ) -> None:
-        with ctx.pass_scope():
-            __pyr_title_dirty, title = eval_single_slot_expr(
-                ctx,
-                __pyr_dirty_state,
-                _TITLE_SLOT,
-                _format_title,
-                name,
-                args_dirty=(__pyr_dirty_state.name,),
-                result_name="title",
-            )
-
-            if (
-                __pyr_title_dirty
-                or __pyr_dirty_state.accent
-                or ctx.visit_slot_and_dirty(_SECTION_SLOT)
-            ):
-                with ctx.container_call(
-                    _SECTION_SLOT,
-                    _section,
-                    "Greeting",
-                    accent=accent,
-                ) as section_ctx:
-                    if __pyr_title_dirty or ctx.visit_slot_and_dirty(_BADGE_SLOT):
-                        section_ctx.component_call(
-                            _BADGE_SLOT,
-                            _badge,
-                            title,
-                            tone="info",
-                            dirty_state=dirtyof(
-                                text=__pyr_title_dirty,
-                                tone=False,
-                            ),
-                        )
-
-    return _pyr_wrong_child_owner
 
 
 def test_first_pass_executes_and_stable_second_pass_retains_subtree() -> None:
     ctx = RenderContext()
     log: list[tuple[object, ...]] = []
-    pyr_welcome = _make_welcome_program(log)
+    pyr_welcome = _make_compiled_welcome_program(log)
 
     pyr_welcome(ctx, dirtyof(name=True), "Ada")
 
     assert log == [
         ("format_title", "Ada"),
-        ("section.enter", "Greeting", "blue"),
+        ("section", "Greeting", "blue"),
         ("badge", "Hello Ada", "info"),
-        ("section.exit", "Greeting", "blue"),
     ]
-    assert ctx.debug_children_of() == (_TITLE_SLOT, _SECTION_SLOT)
-    assert ctx.debug_children_of(_SECTION_SLOT) == (_BADGE_SLOT,)
+    children = ctx.debug_children_of()
+    assert len(children) == 2
+    section_slot = children[1]
+    section_children = ctx.debug_children_of(section_slot)
+    assert section_children
+    published = ctx.committed_ui()
+    assert len(published) == 1
+    assert published[0].kind == "section"
 
     pyr_welcome(ctx, dirtyof(name=False), "Ada")
 
     assert log == [
         ("format_title", "Ada"),
-        ("section.enter", "Greeting", "blue"),
+        ("section", "Greeting", "blue"),
         ("badge", "Hello Ada", "info"),
-        ("section.exit", "Greeting", "blue"),
     ]
-    assert ctx.debug_children_of() == (_TITLE_SLOT, _SECTION_SLOT)
-    assert ctx.debug_children_of(_SECTION_SLOT) == (_BADGE_SLOT,)
+    assert ctx.debug_children_of() == children
+    assert ctx.debug_children_of(section_slot) == section_children
+    assert ctx.committed_ui()[0] is published[0]
 
 
 def test_parent_rerun_deactivates_previously_active_child_when_branch_is_omitted() -> None:
     ctx = RenderContext()
     log: list[tuple[object, ...]] = []
-    pyr_welcome_conditional = _make_welcome_conditional_program(log)
+    pyr_welcome_conditional = _make_compiled_welcome_program(log, conditional=True)
 
     pyr_welcome_conditional(
         ctx,
@@ -244,7 +101,8 @@ def test_parent_rerun_deactivates_previously_active_child_when_branch_is_omitted
         "Ada",
         True,
     )
-    assert ctx.debug_children_of(_SECTION_SLOT) == (_BADGE_SLOT,)
+    section_slot = ctx.debug_children_of()[1]
+    assert ctx.committed_ui()[0].children[0].kind == "badge"
 
     pyr_welcome_conditional(
         ctx,
@@ -254,7 +112,8 @@ def test_parent_rerun_deactivates_previously_active_child_when_branch_is_omitted
     )
 
     assert ("badge", "Hello Bea", "info") not in log
-    assert ctx.debug_children_of(_SECTION_SLOT) == ()
+    assert ctx.committed_ui()[0].children == ()
+    assert ctx.debug_children_of()[1] == section_slot
 
 
 def test_first_visit_is_dirty_and_later_stable_visit_is_clean() -> None:
@@ -284,18 +143,15 @@ def test_pass_scope_rolls_back_when_body_raises() -> None:
 def test_child_visitation_must_use_the_owning_container_context() -> None:
     ctx = RenderContext()
     log: list[tuple[object, ...]] = []
-    pyr_welcome = _make_welcome_program(log)
-    pyr_wrong_child_owner = _make_wrong_child_owner_program(log)
+    pyr_welcome = _make_compiled_welcome_program(log)
 
     pyr_welcome(ctx, dirtyof(name=True), "Ada")
+    section_slot = ctx.debug_children_of()[1]
+    badge_slot = ctx.debug_children_of(section_slot)[0]
 
     with pytest.raises(SlotOwnershipError):
-        pyr_wrong_child_owner(
-            ctx,
-            dirtyof(name=False, accent=True),
-            "Ada",
-            "violet",
-        )
+        with ctx.pass_scope():
+            ctx.component_call(badge_slot, pyrolize_test_wrap(lambda: None), dirty_state=dirtyof())
 
 
 def test_skipped_clean_subtree_preserves_event_handler_slots() -> None:
@@ -303,40 +159,42 @@ def test_skipped_clean_subtree_preserves_event_handler_slots() -> None:
     events: list[str] = []
     captured_dispatch: dict[str, object] = {}
 
-    @contextmanager
-    def _panel():
-        yield
+    namespace = load_transformed_namespace(
+        '''
+from pyrolyze.api import UIElement, call_native, component, pyrolyze
+from pyrolyze.runtime.context import ContextBase
 
-    @contextmanager
-    def _button():
-        yield
+def panel_scope(ctx: ContextBase):
+    ctx.call_native(UIElement, kind="panel", props={})
 
-    @pyrolize_test_wrap
-    def _noop() -> None:
-        return None
+@pyrolyze
+def button(*, on_clicked):
+    CAPTURED["value"] = on_clicked
+    call_native(UIElement)(kind="button", props={"on_clicked": on_clicked})
 
-    def _render(counter_dirty: bool, button_dirty: bool) -> None:
-        with ctx.pass_scope():
-            if counter_dirty or button_dirty or ctx.visit_slot_and_dirty(_PANEL_SLOT):
-                with ctx.container_call(_PANEL_SLOT, _panel) as panel_ctx:
-                    if counter_dirty or panel_ctx.visit_slot_and_dirty(_COUNTER_SLOT):
-                        panel_ctx.component_call(_COUNTER_SLOT, _noop, dirty_state=dirtyof())
-                    if button_dirty or panel_ctx.visit_slot_and_dirty(_BUTTON_SLOT):
-                        with panel_ctx.container_call(_BUTTON_SLOT, _button) as button_ctx:
-                            captured_dispatch["value"] = button_ctx.event_handler(
-                                _BUTTON_EVENT_SLOT,
-                                dirty=button_dirty,
-                                callback=lambda: events.append("clicked"),
-                            )
+@pyrolyze
+def counter_ui(value):
+    call_native(UIElement)(kind="counter", props={"value": value})
 
-    _render(counter_dirty=True, button_dirty=True)
+@pyrolyze
+def panel(counter):
+    with component(panel_scope):
+        counter_ui(counter)
+        button(on_clicked=lambda: EVENTS.append("clicked"))
+''',
+        module_name="tests.context_graph_phase1.compiled_events",
+        globals_dict={"EVENTS": events, "CAPTURED": captured_dispatch},
+    )
+    render = namespace["panel"]._pyrolyze_meta._func
+    render(ctx, dirtyof(counter=True), 1)
     dispatch = captured_dispatch["value"]
     assert callable(dispatch)
     dispatch()
     assert events == ["clicked"]
 
-    _render(counter_dirty=True, button_dirty=False)
+    render(ctx, dirtyof(counter=True), 2)
 
+    assert captured_dispatch["value"] is dispatch
     dispatch = captured_dispatch["value"]
     assert callable(dispatch)
     dispatch()

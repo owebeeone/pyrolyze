@@ -1,44 +1,19 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
 from dataclasses import dataclass, field
-import pytest
 from textwrap import dedent
 from typing import Callable
 
-from pyrolyze.api import (
-    CallFromNonPyrolyzeContext,
-    ComponentMetadata,
-    pyrolyze_component_ref,
-)
+import pytest
+
 from pyrolyze.compiler import load_transformed_namespace
 from pyrolyze.runtime.context import (
-    DirtyStateContext,
     ExternalStoreRef,
-    ModuleRegistry,
     RenderContext,
-    SlotId,
     dirtyof,
 )
-from pyrolyze_testsupport import pyrolize_test_wrap
-from tests.slot_expr_test_utils import eval_single_slot_expr
 
 
-module_registry = ModuleRegistry()
-_MODULE_ID = module_registry.module_id("tests.context_graph_phase5a_invalidation_kernel")
-
-_ROOT_STORE_SLOT = SlotId(_MODULE_ID, 1, line_no=10)
-_ROOT_SECTION_SLOT = SlotId(_MODULE_ID, 2, line_no=11)
-_ROOT_BADGE_SLOT = SlotId(_MODULE_ID, 3, line_no=12)
-_CHILD_COMPONENT_SLOT = SlotId(_MODULE_ID, 4, line_no=20)
-_CHILD_STORE_SLOT = SlotId(_MODULE_ID, 5, line_no=21)
-_CHILD_BADGE_SLOT = SlotId(_MODULE_ID, 6, line_no=22)
-_LEFT_COMPONENT_SLOT = SlotId(_MODULE_ID, 7, line_no=30)
-_RIGHT_COMPONENT_SLOT = SlotId(_MODULE_ID, 8, line_no=31)
-_LEFT_STORE_SLOT = SlotId(_MODULE_ID, 9, line_no=32)
-_RIGHT_STORE_SLOT = SlotId(_MODULE_ID, 10, line_no=33)
-_LEFT_BADGE_SLOT = SlotId(_MODULE_ID, 11, line_no=34)
-_RIGHT_BADGE_SLOT = SlotId(_MODULE_ID, 12, line_no=35)
 @dataclass(slots=True)
 class _StoreProbe:
     name: str
@@ -129,61 +104,52 @@ class _IntStoreProbe:
         return len(self._listeners)
 
 
+def _compile_store_program(
+    log: list[tuple[object, ...]],
+    body: str,
+    globals_dict: dict[str, object],
+) -> Callable[[RenderContext], None]:
+    source = '''
+from pyrolyze.api import UIElement, call_native, component, pyrolyze, slotted
+from pyrolyze.runtime.context import ContextBase
+
+def section(ctx: ContextBase, title, *, accent):
+    LOG.append(("section", title, accent))
+    ctx.call_native(UIElement, kind="section", props={"title": title, "accent": accent})
+
+@pyrolyze
+def badge(text, *, tone):
+    LOG.append(("badge", text, tone))
+    if ON_BADGE is not None:
+        ON_BADGE(text)
+    call_native(UIElement)(kind="badge", props={"text": text, "tone": tone})
+''' + body
+    namespace = load_transformed_namespace(
+        source,
+        module_name="tests.context_graph_phase5a_invalidation_kernel.compiled",
+        globals_dict={"LOG": log, "ON_BADGE": None, **globals_dict},
+    )
+    render = namespace["panel"]._pyrolyze_meta._func
+    return lambda ctx: render(ctx, dirtyof())
+
+
 def _make_weather_program(
     log: list[tuple[object, ...]],
     store: _StoreProbe,
     *,
     on_badge: Callable[[str], None] | None = None,
 ) -> Callable[[RenderContext], None]:
-    @contextmanager
-    def _section(title: str, *, accent: str):
-        log.append(("section.enter", title, accent))
-        try:
-            yield
-        finally:
-            log.append(("section.exit", title, accent))
-
-    @pyrolize_test_wrap
-    def _badge(text: str, *, tone: str) -> None:
-        log.append(("badge", text, tone))
-        if on_badge is not None:
-            on_badge(text)
-
     def use_grip(grip_name: str) -> ExternalStoreRef[str]:
         log.append(("helper", grip_name))
         return store.ref()
 
-    def _pyr_weather_panel(
-        ctx: RenderContext,
-        __pyr_dirty_state: DirtyStateContext,
-    ) -> None:
-        with ctx.pass_scope():
-            __pyr_location_dirty, location = eval_single_slot_expr(
-                ctx,
-                __pyr_dirty_state,
-                _ROOT_STORE_SLOT,
-                use_grip,
-                "weather",
-                result_name="location",
-            )
-
-            if __pyr_location_dirty or ctx.visit_slot_and_dirty(_ROOT_SECTION_SLOT):
-                with ctx.container_call(
-                    _ROOT_SECTION_SLOT,
-                    _section,
-                    "Weather",
-                    accent="blue",
-                ) as section_ctx:
-                    if __pyr_location_dirty or section_ctx.visit_slot_and_dirty(_ROOT_BADGE_SLOT):
-                        section_ctx.component_call(
-                            _ROOT_BADGE_SLOT,
-                            _badge,
-                            location,
-                            tone="info",
-                            dirty_state=dirtyof(text=__pyr_location_dirty, tone=False),
-                        )
-
-    return lambda ctx: _pyr_weather_panel(ctx, dirtyof())
+    return _compile_store_program(log, '''
+@pyrolyze
+def panel():
+    location = slotted(use_grip, "weather")
+    with component(section, "Weather", accent="blue"):
+        badge(location, tone="info")
+''', {"use_grip": use_grip, "ON_BADGE": on_badge})
 
 
 def _make_parent_child_program(
@@ -191,18 +157,6 @@ def _make_parent_child_program(
     parent_store: _StoreProbe,
     child_store: _StoreProbe,
 ) -> Callable[[RenderContext], None]:
-    @contextmanager
-    def _section(title: str, *, accent: str):
-        log.append(("section.enter", title, accent))
-        try:
-            yield
-        finally:
-            log.append(("section.exit", title, accent))
-
-    @pyrolize_test_wrap
-    def _badge(text: str, *, tone: str) -> None:
-        log.append(("badge", text, tone))
-
     def use_parent_grip(grip_name: str) -> ExternalStoreRef[str]:
         log.append(("parent.helper", grip_name))
         return parent_store.ref()
@@ -211,71 +165,19 @@ def _make_parent_child_program(
         log.append(("child.helper", grip_name))
         return child_store.ref()
 
-    def __pyr_child_badge(
-        ctx: RenderContext,
-        __pyr_dirty_state: DirtyStateContext,
-    ) -> None:
-        with ctx.pass_scope():
-            __pyr_value_dirty, value = eval_single_slot_expr(
-                ctx,
-                __pyr_dirty_state,
-                _CHILD_STORE_SLOT,
-                use_child_grip,
-                "child",
-                result_name="value",
-            )
+    return _compile_store_program(log, '''
+@pyrolyze
+def child_badge():
+    value = slotted(use_child_grip, "child")
+    badge(value, tone="child")
 
-            if __pyr_value_dirty or ctx.visit_slot_and_dirty(_CHILD_BADGE_SLOT):
-                ctx.component_call(
-                    _CHILD_BADGE_SLOT,
-                    _badge,
-                    value,
-                    tone="child",
-                    dirty_state=dirtyof(text=__pyr_value_dirty, tone=False),
-                )
-
-    @pyrolyze_component_ref(ComponentMetadata("child_badge", __pyr_child_badge))
-    def child_badge() -> None:
-        raise CallFromNonPyrolyzeContext("child_badge")
-
-    def _pyr_parent_panel(
-        ctx: RenderContext,
-        __pyr_dirty_state: DirtyStateContext,
-    ) -> None:
-        with ctx.pass_scope():
-            __pyr_parent_dirty, parent_value = eval_single_slot_expr(
-                ctx,
-                __pyr_dirty_state,
-                _ROOT_STORE_SLOT,
-                use_parent_grip,
-                "parent",
-                result_name="parent_value",
-            )
-
-            if __pyr_parent_dirty or ctx.visit_slot_and_dirty(_ROOT_SECTION_SLOT):
-                with ctx.container_call(
-                    _ROOT_SECTION_SLOT,
-                    _section,
-                    "Parent",
-                    accent="green",
-                ) as section_ctx:
-                    if __pyr_parent_dirty or section_ctx.visit_slot_and_dirty(_ROOT_BADGE_SLOT):
-                        section_ctx.component_call(
-                            _ROOT_BADGE_SLOT,
-                            _badge,
-                            parent_value,
-                            tone="parent",
-                            dirty_state=dirtyof(text=__pyr_parent_dirty, tone=False),
-                        )
-
-                    if section_ctx.visit_slot_and_dirty(_CHILD_COMPONENT_SLOT):
-                        section_ctx.component_call(
-                            _CHILD_COMPONENT_SLOT,
-                            child_badge,
-                            dirty_state=dirtyof(),
-                        )
-
-    return lambda ctx: _pyr_parent_panel(ctx, dirtyof())
+@pyrolyze
+def panel():
+    parent_value = slotted(use_parent_grip, "parent")
+    with component(section, "Parent", accent="green"):
+        badge(parent_value, tone="parent")
+        child_badge()
+''', {"use_parent_grip": use_parent_grip, "use_child_grip": use_child_grip})
 
 
 def _make_sibling_component_program(
@@ -283,10 +185,6 @@ def _make_sibling_component_program(
     left_store: _StoreProbe,
     right_store: _StoreProbe,
 ) -> Callable[[RenderContext], None]:
-    @pyrolize_test_wrap
-    def _badge(text: str, *, tone: str) -> None:
-        log.append(("badge", text, tone))
-
     def use_left_grip(grip_name: str) -> ExternalStoreRef[str]:
         log.append(("left.helper", grip_name))
         return left_store.ref()
@@ -295,81 +193,22 @@ def _make_sibling_component_program(
         log.append(("right.helper", grip_name))
         return right_store.ref()
 
-    def __pyr_left_badge(
-        ctx: RenderContext,
-        __pyr_dirty_state: DirtyStateContext,
-    ) -> None:
-        with ctx.pass_scope():
-            __pyr_value_dirty, value = eval_single_slot_expr(
-                ctx,
-                __pyr_dirty_state,
-                _LEFT_STORE_SLOT,
-                use_left_grip,
-                "left",
-                result_name="value",
-            )
-            if __pyr_value_dirty or ctx.visit_slot_and_dirty(_LEFT_BADGE_SLOT):
-                ctx.component_call(
-                    _LEFT_BADGE_SLOT,
-                    _badge,
-                    value,
-                    tone="left",
-                    dirty_state=dirtyof(text=__pyr_value_dirty, tone=False),
-                )
+    return _compile_store_program(log, '''
+@pyrolyze
+def left_badge():
+    value = slotted(use_left_grip, "left")
+    badge(value, tone="left")
 
-    @pyrolyze_component_ref(ComponentMetadata("left_badge", __pyr_left_badge))
-    def left_badge() -> None:
-        raise CallFromNonPyrolyzeContext("left_badge")
+@pyrolyze
+def right_badge():
+    value = slotted(use_right_grip, "right")
+    badge(value, tone="right")
 
-    def __pyr_right_badge(
-        ctx: RenderContext,
-        __pyr_dirty_state: DirtyStateContext,
-    ) -> None:
-        with ctx.pass_scope():
-            __pyr_value_dirty, value = eval_single_slot_expr(
-                ctx,
-                __pyr_dirty_state,
-                _RIGHT_STORE_SLOT,
-                use_right_grip,
-                "right",
-                result_name="value",
-            )
-            if __pyr_value_dirty or ctx.visit_slot_and_dirty(_RIGHT_BADGE_SLOT):
-                ctx.component_call(
-                    _RIGHT_BADGE_SLOT,
-                    _badge,
-                    value,
-                    tone="right",
-                    dirty_state=dirtyof(text=__pyr_value_dirty, tone=False),
-                )
-
-    @pyrolyze_component_ref(ComponentMetadata("right_badge", __pyr_right_badge))
-    def right_badge() -> None:
-        raise CallFromNonPyrolyzeContext("right_badge")
-
-    def _pyr_siblings(
-        ctx: RenderContext,
-        __pyr_dirty_state: DirtyStateContext,
-    ) -> None:
-        with ctx.pass_scope():
-            if ctx.visit_slot_and_dirty(_LEFT_COMPONENT_SLOT):
-                ctx.component_call(
-                    _LEFT_COMPONENT_SLOT,
-                    left_badge,
-                    dirty_state=dirtyof(),
-                )
-
-            if ctx.visit_slot_and_dirty(_RIGHT_COMPONENT_SLOT):
-                ctx.component_call(
-                    _RIGHT_COMPONENT_SLOT,
-                    right_badge,
-                    dirty_state=dirtyof(),
-                )
-
-    return lambda ctx: _pyr_siblings(ctx, dirtyof())
-
-
-def test_external_store_notification_queues_mounted_root_once_and_reruns_on_drain() -> None:
+@pyrolyze
+def panel():
+    left_badge()
+    right_badge()
+''', {"use_left_grip": use_left_grip, "use_right_grip": use_right_grip})
     ctx = RenderContext()
     log: list[tuple[object, ...]] = []
     store = _StoreProbe("weather", "sunny", log)
@@ -387,9 +226,8 @@ def test_external_store_notification_queues_mounted_root_once_and_reruns_on_drai
 
     assert log == [
         ("get", "weather", "wind"),
-        ("section.enter", "Weather", "blue"),
+        ("section", "Weather", "blue"),
         ("badge", "wind", "info"),
-        ("section.exit", "Weather", "blue"),
     ]
     assert ctx.debug_pending_boundaries() == ()
 
@@ -418,13 +256,11 @@ def test_invalidation_during_active_pass_coalesces_to_one_follow_up_rerun() -> N
 
     assert log == [
         ("get", "weather", "rain"),
-        ("section.enter", "Weather", "blue"),
+        ("section", "Weather", "blue"),
         ("badge", "rain", "info"),
-        ("section.exit", "Weather", "blue"),
         ("get", "weather", "storm"),
-        ("section.enter", "Weather", "blue"),
+        ("section", "Weather", "blue"),
         ("badge", "storm", "info"),
-        ("section.exit", "Weather", "blue"),
     ]
     assert ctx.debug_pending_boundaries() == ()
 
@@ -441,7 +277,9 @@ def test_child_component_invalidation_reruns_only_child_component_boundary() -> 
 
     child_store.notify("C2")
 
-    assert ctx.debug_pending_boundaries() == (_CHILD_COMPONENT_SLOT,)
+    section = ctx.debug_children_of()[1]
+    child_boundary = ctx.debug_children_of(section)[1]
+    assert ctx.debug_pending_boundaries() == (child_boundary,)
 
     ctx.run_pending_invalidations()
 
@@ -463,7 +301,9 @@ def test_queued_ancestor_root_elides_queued_child_component_boundary() -> None:
     log.clear()
 
     child_store.notify("C2")
-    assert ctx.debug_pending_boundaries() == (_CHILD_COMPONENT_SLOT,)
+    section = ctx.debug_children_of()[1]
+    child_boundary = ctx.debug_children_of(section)[1]
+    assert ctx.debug_pending_boundaries() == (child_boundary,)
 
     parent_store.notify("P2")
     assert ctx.debug_pending_boundaries() == (None,)
@@ -472,11 +312,10 @@ def test_queued_ancestor_root_elides_queued_child_component_boundary() -> None:
 
     assert log == [
         ("get", "parent", "P2"),
-        ("section.enter", "Parent", "green"),
+        ("section", "Parent", "green"),
         ("badge", "P2", "parent"),
         ("get", "child", "C2"),
         ("badge", "C2", "child"),
-        ("section.exit", "Parent", "green"),
     ]
     assert ctx.debug_pending_boundaries() == ()
 
@@ -495,7 +334,8 @@ def test_sibling_component_invalidations_are_deduplicated_fifo() -> None:
     left_store.notify("L2")
     right_store.notify("R3")
 
-    assert ctx.debug_pending_boundaries() == (_RIGHT_COMPONENT_SLOT, _LEFT_COMPONENT_SLOT)
+    left_boundary, right_boundary = ctx.debug_children_of()
+    assert ctx.debug_pending_boundaries() == (right_boundary, left_boundary)
 
     ctx.run_pending_invalidations()
 

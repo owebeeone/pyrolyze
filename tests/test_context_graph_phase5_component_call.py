@@ -1,186 +1,135 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
+from dataclasses import replace
+from typing import Callable
 
 import pytest
 
 from pyrolyze.api import (
     CallFromNonPyrolyzeContext,
-    ComponentMetadata,
     ComponentRef,
-    UIElement,
     pyrolyze_component_ref,
 )
+from pyrolyze.compiler import load_transformed_namespace
 from pyrolyze.runtime.context import DirtyStateContext, ModuleRegistry, RenderContext, SlotId, dirtyof
-from pyrolyze_testsupport import pyrolize_test_wrap
-from tests.slot_expr_test_utils import eval_single_slot_expr
+from pyrolyze.runtime.context_lifecycle import RenderContext as LifecycleRenderContext
 
 
 module_registry = ModuleRegistry()
 _MODULE_ID = module_registry.module_id("tests.context_graph_phase5_component_call")
 
-_NEUTRAL_BADGE_LEAF_SLOT = SlotId(_MODULE_ID, 1, line_no=10)
-_INFO_BADGE_LEAF_SLOT = SlotId(_MODULE_ID, 2, line_no=20)
-_PICK_BADGE_SLOT = SlotId(_MODULE_ID, 3, line_no=30)
-_SECTION_SLOT = SlotId(_MODULE_ID, 4, line_no=31)
-_CHOSEN_COMPONENT_SLOT = SlotId(_MODULE_ID, 5, line_no=32)
-_FALLBACK_PICK_SLOT = SlotId(_MODULE_ID, 6, line_no=33)
-_FALLBACK_COMPONENT_SLOT = SlotId(_MODULE_ID, 7, line_no=34)
 _DIRECT_COMPONENT_SLOT = SlotId(_MODULE_ID, 8, line_no=40)
 _DIRECT_CONTAINER_SLOT = SlotId(_MODULE_ID, 9, line_no=41)
-_DIRECT_CONTAINER_HANDLER_SLOT = SlotId(_MODULE_ID, 10, line_no=42)
-_DIRECT_CONTAINER_INNER_LEAF_SLOT = SlotId(_MODULE_ID, 11, line_no=43)
 
 
-def _make_component_program(log: list[tuple[object, ...]]):
-    @contextmanager
-    def _section(title: str, *, accent: str):
-        log.append(("section.enter", title, accent))
-        try:
-            yield
-        finally:
-            log.append(("section.exit", title, accent))
+def _observe_dirty(
+    component: ComponentRef[[str]],
+    observe: Callable[[str, DirtyStateContext], None],
+) -> ComponentRef[[str]]:
+    """Observe runtime inputs without reproducing the generated component body."""
+    metadata = component._pyrolyze_meta
 
-    @pyrolize_test_wrap
-    def _badge(text: str, *, tone: str) -> None:
-        log.append(("badge", text, tone))
+    def run(ctx: RenderContext, state: DirtyStateContext, value: str) -> None:
+        observe(value, state)
+        metadata._func(ctx, state, value)
 
-    def __pyr_neutral_badge(
-        ctx: RenderContext,
-        __pyr_dirty_state: DirtyStateContext,
-        text: str,
-    ) -> None:
-        log.append(("render", "neutral", text, __pyr_dirty_state.text))
-        with ctx.pass_scope():
-            if __pyr_dirty_state.text or ctx.visit_slot_and_dirty(_NEUTRAL_BADGE_LEAF_SLOT):
-                ctx.component_call(
-                    _NEUTRAL_BADGE_LEAF_SLOT,
-                    _badge,
-                    text,
-                    tone="neutral",
-                    dirty_state=dirtyof(text=__pyr_dirty_state.text, tone=False),
-                )
+    def observed(value: str) -> None:
+        raise CallFromNonPyrolyzeContext(metadata.name)
 
-    @pyrolyze_component_ref(
-        ComponentMetadata("neutral_badge", __pyr_neutral_badge)
+    return pyrolyze_component_ref(replace(metadata, _func=run))(observed)
+
+
+def _make_component_program(log: list[tuple[object, ...]]) -> dict[str, Callable[..., None]]:
+    namespace = load_transformed_namespace(
+        '''
+from pyrolyze.api import UIElement, call_native, pyrolyze
+
+@pyrolyze
+def badge(text, *, tone):
+    LOG.append(("badge", text, tone))
+    call_native(UIElement)(kind="badge", props={"text": text, "tone": tone})
+
+@pyrolyze
+def neutral_badge(text):
+    badge(text, tone="neutral")
+
+@pyrolyze
+def info_badge(text):
+    badge(text, tone="info")
+''',
+        module_name="tests.context_graph_phase5_component_call.forwarding",
+        globals_dict={"LOG": log},
     )
-    def neutral_badge(text: str) -> None:
-        raise CallFromNonPyrolyzeContext("neutral_badge")
 
-    def __pyr_info_badge(
+    def direct_component(
         ctx: RenderContext,
-        __pyr_dirty_state: DirtyStateContext,
-        text: str,
-    ) -> None:
-        log.append(("render", "info", text, __pyr_dirty_state.text))
-        with ctx.pass_scope():
-            if __pyr_dirty_state.text or ctx.visit_slot_and_dirty(_INFO_BADGE_LEAF_SLOT):
-                ctx.component_call(
-                    _INFO_BADGE_LEAF_SLOT,
-                    _badge,
-                    text,
-                    tone="info",
-                    dirty_state=dirtyof(text=__pyr_dirty_state.text, tone=False),
-                )
-
-    @pyrolyze_component_ref(
-        ComponentMetadata("info_badge", __pyr_info_badge)
-    )
-    def info_badge(text: str) -> None:
-        raise CallFromNonPyrolyzeContext("info_badge")
-
-    def pick_badge(kind: str) -> ComponentRef[[str]]:
-        return info_badge if kind == "info" else neutral_badge
-
-    def __pyr_badge_panel(
-        ctx: RenderContext,
-        __pyr_dirty_state: DirtyStateContext,
-        kind: str,
-        text: str,
-    ) -> None:
-        with ctx.pass_scope():
-            __pyr_chosen_dirty, chosen = eval_single_slot_expr(
-                ctx,
-                __pyr_dirty_state,
-                _PICK_BADGE_SLOT,
-                pick_badge,
-                kind,
-                args_dirty=(__pyr_dirty_state.kind,),
-                result_name="chosen",
-            )
-
-            if __pyr_chosen_dirty or __pyr_dirty_state.text or ctx.visit_slot_and_dirty(_SECTION_SLOT):
-                with ctx.container_call(
-                    _SECTION_SLOT,
-                    _section,
-                    "Badges",
-                    accent="slate",
-                ) as section_ctx:
-                    if (
-                        __pyr_chosen_dirty
-                        or __pyr_dirty_state.text
-                        or section_ctx.visit_slot_and_dirty(_CHOSEN_COMPONENT_SLOT)
-                    ):
-                        section_ctx.component_call(
-                            _CHOSEN_COMPONENT_SLOT,
-                            chosen,
-                            text,
-                            dirty_state=dirtyof(text=__pyr_dirty_state.text),
-                        )
-
-                    __pyr_fallback_dirty, fallback = eval_single_slot_expr(
-                        section_ctx,
-                        dirtyof(),
-                        _FALLBACK_PICK_SLOT,
-                        pick_badge,
-                        "neutral",
-                        result_name="fallback",
-                    )
-
-                    if __pyr_fallback_dirty or section_ctx.visit_slot_and_dirty(_FALLBACK_COMPONENT_SLOT):
-                        section_ctx.component_call(
-                            _FALLBACK_COMPONENT_SLOT,
-                            fallback,
-                            "fallback",
-                            dirty_state=dirtyof(text=True),
-                        )
-
-    def __pyr_direct_component(
-        ctx: RenderContext,
-        __pyr_dirty_state: DirtyStateContext,
+        state: DirtyStateContext,
         component: ComponentRef[[str]],
         text: str,
         refresh: int,
     ) -> None:
-        _ = refresh
+        # Force dispatch independently of the forwarded argument's dirty flag.
         with ctx.pass_scope():
-            if (
-                __pyr_dirty_state.refresh
-                or __pyr_dirty_state.component
-                or __pyr_dirty_state.text
-                or ctx.visit_slot_and_dirty(_DIRECT_COMPONENT_SLOT)
-            ):
-                ctx.component_call(
-                    _DIRECT_COMPONENT_SLOT,
-                    component,
-                    text,
-                    dirty_state=dirtyof(text=__pyr_dirty_state.text),
-                )
+            ctx.component_call(
+                _DIRECT_COMPONENT_SLOT, component, text, dirty_state=dirtyof(text=state.text)
+            )
 
     return {
-        "badge_panel": __pyr_badge_panel,
-        "direct_component": __pyr_direct_component,
-        "neutral_badge": neutral_badge,
-        "info_badge": info_badge,
+        "direct_component": direct_component,
+        "neutral_badge": _observe_dirty(
+            namespace["neutral_badge"],
+            lambda text, state: log.append(("render", "neutral", text, state.text)),
+        ),
+        "info_badge": _observe_dirty(
+            namespace["info_badge"],
+            lambda text, state: log.append(("render", "info", text, state.text)),
+        ),
     }
+
+
+def _make_compiled_badge_panel(log: list[tuple[object, ...]]) -> Callable[..., None]:
+    namespace = load_transformed_namespace(
+        '''
+from pyrolyze.api import ComponentRef, UIElement, call_native, component, pyrolyze, slotted
+from pyrolyze.runtime.context import ContextBase
+
+def section(ctx: ContextBase, title, *, accent):
+    LOG.append(("section", title, accent))
+    ctx.call_native(UIElement, kind="section", props={"title": title, "accent": accent})
+
+@pyrolyze
+def neutral_badge(text):
+    LOG.append(("render", "neutral", text))
+    call_native(UIElement)(kind="badge", props={"text": text, "tone": "neutral"})
+
+@pyrolyze
+def info_badge(text):
+    LOG.append(("render", "info", text))
+    call_native(UIElement)(kind="badge", props={"text": text, "tone": "info"})
+
+def pick_badge(kind: str) -> ComponentRef[[str]]:
+    return info_badge if kind == "info" else neutral_badge
+
+@pyrolyze
+def badge_panel(kind, text):
+    chosen = slotted(pick_badge, kind)
+    fallback = slotted(pick_badge, "neutral")
+    with component(section, "Badges", accent="slate"):
+        component(chosen, text)
+        component(fallback, "fallback")
+''',
+        module_name="tests.context_graph_phase5_component_call.compiled",
+        globals_dict={"LOG": log},
+    )
+    return namespace["badge_panel"]._pyrolyze_meta._func
 
 
 def test_component_call_mounts_child_component_from_helper_returned_component_ref() -> None:
     ctx = RenderContext()
     log: list[tuple[object, ...]] = []
-    program = _make_component_program(log)
+    render = _make_compiled_badge_panel(log)
 
-    program["badge_panel"](
+    render(
         ctx,
         dirtyof(kind=True, text=True),
         "info",
@@ -188,15 +137,16 @@ def test_component_call_mounts_child_component_from_helper_returned_component_re
     )
 
     assert log == [
-        ("section.enter", "Badges", "slate"),
-        ("render", "info", "Hello", True),
-        ("badge", "Hello", "info"),
-        ("render", "neutral", "fallback", True),
-        ("badge", "fallback", "neutral"),
-        ("section.exit", "Badges", "slate"),
+        ("section", "Badges", "slate"),
+        ("render", "info", "Hello"),
+        ("render", "neutral", "fallback"),
+    ]
+    published = ctx.committed_ui()[0]
+    assert [(child.props["text"], child.props["tone"]) for child in published.children] == [
+        ("Hello", "info"), ("fallback", "neutral"),
     ]
 
-    program["badge_panel"](
+    render(
         ctx,
         dirtyof(kind=False, text=False),
         "info",
@@ -204,13 +154,11 @@ def test_component_call_mounts_child_component_from_helper_returned_component_re
     )
 
     assert log == [
-        ("section.enter", "Badges", "slate"),
-        ("render", "info", "Hello", True),
-        ("badge", "Hello", "info"),
-        ("render", "neutral", "fallback", True),
-        ("badge", "fallback", "neutral"),
-        ("section.exit", "Badges", "slate"),
+        ("section", "Badges", "slate"),
+        ("render", "info", "Hello"),
+        ("render", "neutral", "fallback"),
     ]
+    assert ctx.committed_ui()[0] is published
 
 
 def test_component_call_rerenders_existing_child_context_when_identity_is_stable() -> None:
@@ -300,93 +248,54 @@ def test_component_call_rejects_undecorated_callable() -> None:
         )
 
 
-def _make_container_component_program(log: list[tuple[object, ...]]):
-    def _body(text: str) -> None:
-        log.append(("body", text))
+def _make_container_component_program(log: list[tuple[object, ...]]) -> dict[str, Callable[..., None]]:
+    namespace = load_transformed_namespace(
+        '''
+from pyrolyze.api import PyrolyzeHandler, UIElement, call_native, pyrolyze
 
-    def __pyr_neutral_box(
-        ctx: RenderContext,
-        __pyr_dirty_state: DirtyStateContext,
-        title: str,
-    ) -> None:
-        log.append(("render-container", "neutral", title, __pyr_dirty_state.title))
-        with ctx.pass_scope():
-            ctx.call_native(
-                UIElement,
-                kind="box",
-                props={"title": title, "tone": "neutral"},
-            )
+@pyrolyze
+def neutral_box(title):
+    call_native(UIElement)(kind="box", props={"title": title, "tone": "neutral"})
 
-    @pyrolyze_component_ref(ComponentMetadata("neutral_box", __pyr_neutral_box))
-    def neutral_box(title: str) -> None:
-        raise CallFromNonPyrolyzeContext("neutral_box")
+@pyrolyze
+def info_box(title):
+    call_native(UIElement)(kind="box", props={"title": title, "tone": "info"})
 
-    def __pyr_info_box(
-        ctx: RenderContext,
-        __pyr_dirty_state: DirtyStateContext,
-        title: str,
-    ) -> None:
-        log.append(("render-container", "info", title, __pyr_dirty_state.title))
-        with ctx.pass_scope():
-            ctx.call_native(
-                UIElement,
-                kind="box",
-                props={"title": title, "tone": "info"},
-            )
+def button_element(label, *, on_press: PyrolyzeHandler[[], None]):
+    return UIElement(kind="button", props={"label": label, "on_press": on_press})
 
-    @pyrolyze_component_ref(ComponentMetadata("info_box", __pyr_info_box))
-    def info_box(title: str) -> None:
-        raise CallFromNonPyrolyzeContext("info_box")
-
-    def __pyr_button_box(
-        ctx: RenderContext,
-        __pyr_dirty_state: DirtyStateContext,
-        label: str,
-    ) -> None:
-        with ctx.pass_scope():
-            dispatch = ctx.event_handler(
-                _DIRECT_CONTAINER_HANDLER_SLOT,
-                dirty=__pyr_dirty_state.label,
-                callback=lambda: log.append(("press", label)),
-            )
-            ctx.call_native(
-                UIElement,
-                kind="button",
-                props={"label": label, "on_press": dispatch},
-            )
-
-    @pyrolyze_component_ref(ComponentMetadata("button_box", __pyr_button_box))
-    def button_box(label: str) -> None:
-        raise CallFromNonPyrolyzeContext("button_box")
+@pyrolyze
+def button_box(label):
+    call_native(button_element)(label, on_press=lambda: LOG.append(("press", label)))
+''',
+        module_name="tests.context_graph_phase5_component_call.container_forwarding",
+        globals_dict={"LOG": log},
+    )
 
     def render_container(
         ctx: RenderContext,
-        __pyr_dirty_state: DirtyStateContext,
+        state: DirtyStateContext,
         component: ComponentRef[[str]],
         title: str,
         refresh: int,
     ) -> None:
-        _ = refresh
         with ctx.pass_scope():
-            if (
-                __pyr_dirty_state.refresh
-                or __pyr_dirty_state.component
-                or __pyr_dirty_state.title
-                or ctx.visit_slot_and_dirty(_DIRECT_CONTAINER_SLOT)
+            with ctx.container_call(
+                _DIRECT_CONTAINER_SLOT, component, title, dirty_state=dirtyof(title=state.title)
             ):
-                with ctx.container_call(
-                    _DIRECT_CONTAINER_SLOT,
-                    component,
-                    title,
-                    dirty_state=dirtyof(title=__pyr_dirty_state.title),
-                ):
-                    _body(title)
+                log.append(("body", title))
 
     return {
         "render_container": render_container,
-        "neutral_box": neutral_box,
-        "info_box": info_box,
-        "button_box": button_box,
+        "neutral_box": _observe_dirty(
+            namespace["neutral_box"],
+            lambda title, state: log.append(("render-container", "neutral", title, state.title)),
+        ),
+        "info_box": _observe_dirty(
+            namespace["info_box"],
+            lambda title, state: log.append(("render-container", "info", title, state.title)),
+        ),
+        "button_box": namespace["button_box"],
     }
 
 
@@ -450,44 +359,36 @@ def test_container_component_ref_rolls_back_failed_pass() -> None:
     ctx = RenderContext()
     log: list[tuple[object, ...]] = []
 
-    def __pyr_ok_box(
-        child_ctx: RenderContext,
-        __pyr_dirty_state: DirtyStateContext,
-        title: str,
-    ) -> None:
-        del __pyr_dirty_state
-        with child_ctx.pass_scope():
-            child_ctx.call_native(UIElement, kind="box", props={"title": title})
+    namespace = load_transformed_namespace(
+        '''
+from pyrolyze.api import UIElement, call_native, pyrolyze
 
-    @pyrolyze_component_ref(ComponentMetadata("ok_box", __pyr_ok_box))
-    def ok_box(title: str) -> None:
-        raise CallFromNonPyrolyzeContext("ok_box")
+@pyrolyze
+def ok_box(title):
+    call_native(UIElement)(kind="box", props={"title": title})
 
-    def __pyr_fail_box(
-        child_ctx: RenderContext,
-        __pyr_dirty_state: DirtyStateContext,
-        title: str,
-    ) -> None:
-        del title
-        with child_ctx.pass_scope():
-            child_ctx.call_native(UIElement, kind="box", props={"title": "bad"})
-            log.append(("fail", __pyr_dirty_state.title))
-            raise RuntimeError("boom")
-
-    @pyrolyze_component_ref(ComponentMetadata("fail_box", __pyr_fail_box))
-    def fail_box(title: str) -> None:
-        raise CallFromNonPyrolyzeContext("fail_box")
+@pyrolyze
+def fail_box(title):
+    call_native(UIElement)(kind="box", props={"title": "bad"})
+    raise RuntimeError("boom")
+''',
+        module_name="tests.context_graph_phase5_component_call.rollback",
+    )
+    ok_box = namespace["ok_box"]
+    fail_box = _observe_dirty(
+        namespace["fail_box"],
+        lambda title, state: log.append(("fail", state.title)),
+    )
 
     def render(component: ComponentRef[[str]], title: str, state: DirtyStateContext) -> None:
         with ctx.pass_scope():
-            if state.component or state.title or ctx.visit_slot_and_dirty(_DIRECT_CONTAINER_SLOT):
-                with ctx.container_call(
-                    _DIRECT_CONTAINER_SLOT,
-                    component,
-                    title,
-                    dirty_state=dirtyof(title=state.title),
-                ):
-                    pass
+            with ctx.container_call(
+                _DIRECT_CONTAINER_SLOT,
+                component,
+                title,
+                dirty_state=dirtyof(title=state.title),
+            ):
+                pass
 
     render(ok_box, "good", dirtyof(component=True, title=True))
     committed = ctx.committed_ui()
@@ -496,7 +397,10 @@ def test_container_component_ref_rolls_back_failed_pass() -> None:
         render(fail_box, "bad", dirtyof(component=True, title=True))
 
     assert ctx.committed_ui() == committed
+    assert ctx.committed_ui()[0] is committed[0]
     assert log == [("fail", True)]
+    render(ok_box, "retry", dirtyof(component=True, title=True))
+    assert ctx.committed_ui()[0].props["title"] == "retry"
 
 
 def test_container_component_ref_retains_event_handler_callback_identity() -> None:
@@ -532,3 +436,26 @@ def test_container_component_ref_retains_event_handler_callback_identity() -> No
     assert updated_dispatch is dispatch
     dispatch()
     assert log == [("body", "Beta"), ("press", "Beta")]
+
+
+def test_compiled_native_handler_update_rolls_back_with_outer_render() -> None:
+    ctx = LifecycleRenderContext()
+    log: list[tuple[object, ...]] = []
+    program = _make_container_component_program(log)
+    program["render_container"](
+        ctx, dirtyof(component=True, title=True, refresh=True),
+        program["button_box"], "Beta", 1,
+    )
+    updated_button_node = ctx.committed_ui()[0]
+    dispatch = updated_button_node.props["on_press"]
+    log.clear()
+    with pytest.raises(RuntimeError, match="abort callback update"):
+        with ctx.pass_scope():
+            program["render_container"](
+                ctx, dirtyof(component=False, title=True, refresh=True),
+                program["button_box"], "Gamma", 3,
+            )
+            raise RuntimeError("abort callback update")
+    dispatch()
+    assert log == [("body", "Gamma"), ("press", "Beta")]
+    assert ctx.committed_ui()[0] is updated_button_node

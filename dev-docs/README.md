@@ -6,7 +6,9 @@ landed; use its status and the recorded acceptance scope.
 ## Lifecycle Integration
 
 The [adoption audit](PytoLifecyleIntegAdoptionAudit.md) inventories remaining
-holders and confirmed gates after I6b. Keyed-loop selection is committed and
+holders and includes the active handwritten-lowering removal project. That
+cleanup uses compiled fixtures and thin observers to prevent test/runtime drift.
+The audit also records confirmed gates after I6b. Keyed-loop selection is committed and
 container routing is committed behind a private gate. The
 [pass-state checkpoint](PytoLifecyleIntegPassState.md) now implements managed
 visitation and invalidation acknowledgment behind `_enable_pass_state_render`.
