@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .component_render import _ComponentRenderCompletion, _enable_component_render
-from .callback_render import _graph_states
+from .callback_render import _graph_states, _graph_states_many
 from .app_context_override_slot_context import (
     AppContextOverrideSlotContextStateMgr,
     _CommittedAppContextOverrideKeyState,
@@ -32,11 +32,10 @@ class _OverrideRenderCompletion(_ComponentRenderCompletion):
     def _complete(self, propagating: BaseException | None) -> None:
         assert self.active is not None
         owner = self.active
-        for render in (self.root, *self.render_roots):
-            for current in (True, False):
-                for state in _graph_states(render, current=current):
-                    if isinstance(state, AppContextOverrideSlotContextStateMgr):
-                        self._overrides[id(state)] = state
+        for current in (True, False):
+            for state in _graph_states_many((self.root, *self.render_roots), current=current):
+                if isinstance(state, AppContextOverrideSlotContextStateMgr):
+                    self._overrides[id(state)] = state
         if owner.first_failure is None and not owner._scopes:
             try:
                 owner._require_identity()

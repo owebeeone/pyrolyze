@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from .callback_render import _graph_states
+from .callback_render import _graph_states, _graph_states_many
 from .component_call_slot_context import (
     ComponentCallSlotContextStateMgr,
     _ComponentSelection,
@@ -32,17 +32,17 @@ class _ComponentRenderCompletion(_MountExprRenderCompletion):
     def _complete(self, propagating: BaseException | None) -> None:
         assert self.active is not None
         owner = self.active
-        known = {id(state): state for state in _graph_states(self.root, current=True)}
+        roots = (self.root, *self.render_roots)
+        known = {id(state): state for state in _graph_states_many(roots, current=True)}
         for render in self.render_roots:
             if render is not self.root:
                 self._child_roots[id(render)] = render
-            for current in (True, False):
-                known.update(
-                    {
-                        id(state): state
-                        for state in _graph_states(render, current=current)
-                    }
-                )
+        known.update(
+            {
+                id(state): state
+                for state in _graph_states_many(self.render_roots, current=False)
+            }
+        )
         for state in known.values():
             if isinstance(state, RenderContextStateMgr) and state is not self.root:
                 self._child_roots[id(state)] = state

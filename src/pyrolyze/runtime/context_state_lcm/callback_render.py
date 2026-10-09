@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -19,15 +20,28 @@ def _enable_callback_render(root: RenderContextStateMgr) -> None:
 
 
 def _graph_states(
-    root: RenderContextStateMgr, *, current: bool
+    root: RenderContextStateMgr, *, current: bool, render_local: bool = False
+) -> tuple[StateMgrBase, ...]:
+    return _graph_states_many((root,), current=current, render_local=render_local)
+
+
+def _graph_states_many(
+    roots: Iterable[RenderContextStateMgr], *, current: bool, render_local: bool = False
 ) -> tuple[StateMgrBase, ...]:
     from .component_call_slot_context import ComponentCallSlotContextStateMgr
     from .context_base import ContextBaseStateMgr
+    from .render_context import RenderContextStateMgr
 
     states: list[StateMgrBase] = []
     visited: set[int] = set()
 
     def visit(state: Any) -> None:
+        if (
+            render_local
+            and isinstance(state, RenderContextStateMgr)
+            and state is not root
+        ):
+            return
         if id(state) in visited:
             return
         visited.add(id(state))
@@ -42,7 +56,10 @@ def _graph_states(
             if nested is not None:
                 visit(nested)
 
-    visit(root)
+    # Nested roots overlap. Share visitation only within this traversal/view;
+    # later staging and publication can change which descendants are reachable.
+    for root in roots:
+        visit(root)
     return tuple(states)
 
 

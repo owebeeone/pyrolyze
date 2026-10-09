@@ -65,6 +65,36 @@ Next: close the candidate's functional and performance gaps, migrate canonical
 consumers, then switch `lcm` and retire the monolithic engine. Compatibility
 deletion remains gated on that verified adoption, not the successful small UI trial.
 
+### Large-Grid Performance Correction (2026-10-09)
+
+Profiling confirmed O(N^2) ownership checks in `yidl-lifecycle`: each callback
+check copied and compared all participants. Versioned membership now preserves
+those checks in constant time; the ordered participants are captured once.
+The same unprofiled logical 20x20 update dropped from 9.468 s to 0.866 s and the
+first logical layout toggle from 60.419 s to 1.278 s. The unchanged full UI
+operation-budget test passed on an isolated rerun. See the library's
+`dev-docs/L0CompletionVerification.md` for the measurement and guard details.
+
+The next bounded correction batches overlapping roots in component/override
+completion, with separate visitation for committed and candidate views. Mount
+advertisement walks stop at nested render boundaries because each advertisement
+belongs to one render owner. Detached roots are still visited. No traversal
+results are cached across staging or publication, and the other adapters still
+walk their own fresh graph views.
+
+On the same sequential 5/10/20 logical-update workload, the graph correction
+reduced the 20x20 update further to 0.720 s and the first layout toggle to 1.101 s.
+These measurements exclude host reconciliation and are observations, not test
+thresholds. Deterministic regressions cover overlapping roots at 10/100/1,000
+nodes, nested roots, independent graph views, later mutation, and local render
+boundaries. Existing canonical traces remain the behavioral acceptance surface.
+This does not activate normal lifecycle routing or resolve the host-ordering bugs.
+
+Verification after the graph correction: 59 native focused/canonical checks and
+31 targeted Python-backend checks pass, with no golden changes. The full normal
+route suite reports 1,167 passed, 20 existing skips and the same two known
+host-ordering failures. The implementation remains uncommitted.
+
 With normal routing restored and the two sample runners corrected, regression
 verification reports 1144 passed, 20 skipped, and only the two known host failures.
 Candidate native checks pass the existing grid interaction and generic-harness

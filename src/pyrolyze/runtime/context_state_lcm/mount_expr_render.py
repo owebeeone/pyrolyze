@@ -76,7 +76,7 @@ class _MountExprRenderCompletion(_AsyncEffectExprRenderCompletion):
         entries = super(_MountExprRenderCompletion, self)._advertisements_for(
             render, current=current
         )
-        for state in _graph_states(render, current=current):
+        for state in _graph_states(render, current=current, render_local=True):
             if (
                 not isinstance(state, SlotExprSlotContextStateMgr)
                 or state._render_context_state_mgr is not render
