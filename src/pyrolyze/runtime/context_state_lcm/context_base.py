@@ -26,6 +26,7 @@ from ._support import (
     _MountContainerCallHandle,
     _NativeContainerCallHandle,
     _PyrolyzeContainerCallHandle,
+    _RuntimeCallSite,
     _clean_dirty_state,
     _component_call_key,
     _container_runtime_context_param_name,
@@ -548,6 +549,52 @@ class ContextBaseStateMgr(StateMgrBase):
         expression.execution = execution
         return expression
 
+    def omit_resolved_slot(self, slot_id: Any) -> None:
+        self.require_active_scope()
+        completion = _field_only_completion(self)
+        owner = None if completion is None else completion.active
+        slot = self.root_context_state_mgr().get_registered_slot(slot_id)
+        if slot is not None and slot._state_mgr._parent_state_mgr is not self:
+            raise SlotOwnershipError(f"slot {slot_id!r} belongs to another context")
+        next_children = dict(self.children_state)
+        next_children.pop(slot_id, None)
+        if owner is not None:
+            owner._require_open()
+            owner._require_identity()
+        self.require_active_scope()
+        self.children_state = next_children
+
+    def slot_needs_execution(self, slot_id: Any) -> bool:
+        # A predicate must not allocate a placeholder or retain an old selection.
+        self.require_active_scope()
+        completion = _field_only_completion(self)
+        owner = None if completion is None else completion.active
+        resolved = self.resolve_slot_id(slot_id)
+        slot = self.root_context_state_mgr().get_registered_slot(resolved)
+        if owner is not None:
+            owner._require_open()
+            owner._require_identity()
+        if slot is not None and slot._state_mgr._parent_state_mgr is not self:
+            raise SlotOwnershipError(f"slot {resolved!r} belongs to another context")
+        self.require_active_scope()
+        return slot is None or slot.invoke_dirty
+
+    def retain_slot(self, slot_id: Any, *, parent_facade: Any = USE_OWNER) -> None:
+        self.require_active_scope()
+        completion = _field_only_completion(self)
+        owner = None if completion is None else completion.active
+        resolved = self.resolve_slot_id(slot_id)
+        slot = self.root_context_state_mgr().get_registered_slot(resolved)
+        if owner is not None:
+            owner._require_open()
+            owner._require_identity()
+        if slot is None:
+            raise RuntimeError("cannot retain a missing slot")
+        self.ensure_resolved_slot(resolved, type(slot), parent_facade=parent_facade)
+        if self._pass_state_completion() is not None:
+            # No execution occurred: acknowledge only work already handled.
+            slot._state_mgr._pass_requested_revision = slot._state_mgr._handled_revision
+
     def visit_slot_and_dirty(self, slot_id: Any, *, parent_facade: Any = USE_OWNER) -> bool:
         self.require_active_scope()
         slot_context_cls = REFRACTOR_CLASSES.slot_context_cls
@@ -706,21 +753,32 @@ class ContextBaseStateMgr(StateMgrBase):
         component_call_slot_context_cls = REFRACTOR_CLASSES.component_call_slot_context_cls
         if component_call_slot_context_cls is None:
             raise RuntimeError("component call slot context class is not configured")
-        slot = self.ensure_slot(slot_id, component_call_slot_context_cls, parent_facade=parent_facade)
+        completion = _field_only_completion(self)
+        owner = None if completion is None else completion.active
+        site = _RuntimeCallSite(
+            self.resolve_slot_id(slot_id), self._resolve_owner_arg(parent_facade)
+        )
         raw_component, raw_args, raw_kwargs, site_metadata = _resolve_runtime_site_call(
-            slot,
+            site,
             component,
             args,
             kwargs,
         )
-        slot.site_metadata = site_metadata
+        if owner is not None:
+            owner._require_open()
+            owner._require_identity()
         if raw_component is None:
+            self.omit_resolved_slot(site.slot_id)
             return None
         unwrapped_component, _ = _unwrap(raw_component)
         metadata, _ = _component_call_key(unwrapped_component)
         runtime_func = _resolve_runtime_component_func(getattr(metadata, "_func", None))
         if metadata is None or runtime_func is None:
             raise TypeError("component_call expects a ComponentRef with _pyrolyze_meta._func")
+        slot = self.ensure_resolved_slot(
+            site.slot_id, component_call_slot_context_cls, parent_facade=parent_facade
+        )
+        slot.site_metadata = site_metadata
         slot.invoke(
             raw_component,
             raw_args,

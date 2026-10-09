@@ -154,6 +154,14 @@ dispatch requests a different slot type. Correct classification/construction
 and prove that actual compiled route before activation; this is distinct from
 the completed scope-container routing and invalidation-consumption checkpoints.
 
+Subsequent correction: the [pass-state checkpoint](PytoLifecyleIntegPassState.md)
+now records allocation-free dirty lookup and explicit clean retention across
+all five compiled guard paths. Component resolution precedes construction;
+null component/container selection omits candidate membership. Outcome tests
+cover retention, replacement, removal, rollback, subscription cleanup, and
+late invalidation. This closes the reproduced admission gap, not aggregate
+review or default-activation approval.
+
 Then make lifecycle-backed completion automatic for fresh canonical roots;
 update exports/identity and migrate direct-import tests. Keep the original fallback.
 Run authored/generic-backend scenarios through the real canonical selector,
@@ -185,3 +193,9 @@ audit, not certification of that newer implementation.
 Implement A first: keyed-loop item selection. Then B, C, aggregate review, and
 I7 adoption/deletion in that order. This replaces the misleading implication
 that I6b completion leaves only an import switch before adoption.
+
+Current next checkpoint, after the subsequent loop, container, pass-state, and
+compiled-admission implementations: aggregate integration review under D.
+Review the actual compiled routes and resource/notification ownership together;
+then undertake I7 canonical-root activation and compatibility removal only
+after blocking findings are resolved.

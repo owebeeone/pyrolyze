@@ -16,8 +16,10 @@ def __pyr_imported_panel(__pyr_ctx, __pyr_dirty_state, text: str):
         __pyr_dm = globals()['__pyr_dm_from_dirty_state'](__pyr_dirty_state)
         value = __pyr_ctx.slot_expr(__pyr_slot_1, lambda v1: v1.eval(), lambda v1: v1.dirty()).slot_call('v1', __pyr_LiteralFunctionProvider(imported_upper), lambda: __pyr_slot_params(text), lambda: __pyr_slot_params_dirt(__pyr_dm.bind.text), slot_id=__pyr_slot_2).apply_dirt_sink(__pyr_dm).evaluate('value')
         record(value)
-        if __pyr_dm.bind.value or __pyr_ctx.visit_slot_and_dirty(__pyr_slot_3):
+        if __pyr_dm.bind.value or __pyr_ctx.slot_needs_execution(__pyr_slot_3):
             __pyr_ctx.component_call(__pyr_slot_3, imported_child, value, dirty_state=__pyr_dirtyof(text=__pyr_dm.bind.value))
+        else:
+            __pyr_ctx.retain_slot(__pyr_slot_3)
 
 @__pyr_component_ref(__pyr_ComponentMetadata('imported_panel', __pyr_imported_panel))
 def imported_panel(text: str) -> None:

@@ -25,27 +25,35 @@ def button(label: str, *, value: int) -> None:
 def __pyr_grid_panel(__pyr_ctx, __pyr_dirty_state, labels: list[str], values: list[int]):
     with __pyr_ctx.pass_scope():
         __pyr_dm = globals()['__pyr_dm_from_dirty_state'](__pyr_dirty_state)
-        if __pyr_dm.bind.labels or __pyr_dm.bind.values or __pyr_ctx.visit_slot_and_dirty(__pyr_slot_1):
+        if __pyr_dm.bind.labels or __pyr_dm.bind.values or __pyr_ctx.slot_needs_execution(__pyr_slot_1):
             with __pyr_keyed_loop_scope(__pyr_ctx.keyed_loop(__pyr_slot_1, labels, key_fn=lambda x: x)) as __pyr_ctx_slot_1_k_items:
                 for __pyr_ctx_slot_1_k in __pyr_ctx_slot_1_k_items:
                     with __pyr_ctx_slot_1_k.pass_scope():
                         __pyr_label_dirty, label = __pyr_ctx_slot_1_k.current_value()
                         if not (__pyr_dm.bind.labels or (__pyr_label_dirty or __pyr_dm.bind.values) or __pyr_ctx_slot_1_k.visit_self_and_dirty()):
                             continue
-                        if __pyr_label_dirty or (__pyr_dm.bind.values or __pyr_label_dirty) or __pyr_ctx_slot_1_k.visit_slot_and_dirty(__pyr_slot_2):
+                        if __pyr_label_dirty or (__pyr_dm.bind.values or __pyr_label_dirty) or __pyr_ctx_slot_1_k.slot_needs_execution(__pyr_slot_2):
                             if (__pyr_ctx_slot_2_h := __pyr_ctx_slot_1_k.container_call(__pyr_slot_2, row, label, dirty_state=__pyr_dirtyof(title=__pyr_label_dirty))):
                                 with __pyr_ctx_slot_2_h as __pyr_ctx_slot_2:
-                                    if __pyr_dm.bind.values or __pyr_label_dirty or __pyr_ctx_slot_2.visit_slot_and_dirty(__pyr_slot_3):
+                                    if __pyr_dm.bind.values or __pyr_label_dirty or __pyr_ctx_slot_2.slot_needs_execution(__pyr_slot_3):
                                         with __pyr_keyed_loop_scope(__pyr_ctx_slot_2.keyed_loop(__pyr_slot_3, values, key_fn=lambda x: x)) as __pyr_ctx_slot_3_k_items:
                                             for __pyr_ctx_slot_3_k in __pyr_ctx_slot_3_k_items:
                                                 with __pyr_ctx_slot_3_k.pass_scope():
                                                     __pyr_value_dirty, value = __pyr_ctx_slot_3_k.current_value()
                                                     if not (__pyr_dm.bind.values or (__pyr_value_dirty or __pyr_label_dirty) or __pyr_ctx_slot_3_k.visit_self_and_dirty()):
                                                         continue
-                                                    if (__pyr_label_dirty or __pyr_value_dirty) or (__pyr_value_dirty or __pyr_label_dirty) or __pyr_ctx_slot_3_k.visit_slot_and_dirty(__pyr_slot_4):
+                                                    if (__pyr_label_dirty or __pyr_value_dirty) or (__pyr_value_dirty or __pyr_label_dirty) or __pyr_ctx_slot_3_k.slot_needs_execution(__pyr_slot_4):
                                                         if (__pyr_ctx_slot_4_h := __pyr_ctx_slot_3_k.container_call(__pyr_slot_4, row, f'{label}:{value}', dirty_state=__pyr_dirtyof(title=__pyr_label_dirty or __pyr_value_dirty))):
                                                             with __pyr_ctx_slot_4_h as __pyr_ctx_slot_4:
                                                                 button(f'{label}:{value}', value=value)
+                                                    else:
+                                                        __pyr_ctx_slot_3_k.retain_slot(__pyr_slot_4)
+                                    else:
+                                        __pyr_ctx_slot_2.retain_slot(__pyr_slot_3)
+                        else:
+                            __pyr_ctx_slot_1_k.retain_slot(__pyr_slot_2)
+        else:
+            __pyr_ctx.retain_slot(__pyr_slot_1)
 
 @__pyr_component_ref(__pyr_ComponentMetadata('grid_panel', __pyr_grid_panel))
 def grid_panel(labels: list[str], values: list[int]) -> None:

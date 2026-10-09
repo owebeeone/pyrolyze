@@ -4,6 +4,36 @@ Status: implemented and tested behind `_enable_pass_state_render`. Aggregate
 review and normal-route activation remain pending. No YIDL, Astichi, lifecycle
 library, or transaction-manager changes are required.
 
+## Compiled Site Selection Correction
+
+The subsequent admission correction is implemented and tested. Compiled
+components, containers, mount directives, overrides, and keyed loops now use
+an allocation-free `slot_needs_execution` query. A missing site requires
+execution, even when its inputs are clean. The clean branch explicitly calls
+`retain_slot` to preserve membership, ordering, output, and revision capture.
+Retention captures the already handled revision, not a new invalidation that
+arrived after the clean decision: retaining output does not process new work.
+The compatibility `visit_slot_and_dirty` method remains for existing callers;
+new compiler output does not use its allocation-producing behavior.
+
+Component calls resolve against a neutral runtime call-site identity before
+constructing or visiting a concrete slot. Scope containers reuse that identity.
+A null resolved target explicitly omits the site from candidate membership;
+it is not a clean skip and must not retain accepted output. Outer commit retires
+the omitted selection; rollback preserves it. Existing slot-type replacement
+restrictions remain intact.
+
+`tests/test_lcm_slot_admission_repro.py` checks fresh-site construction with clean
+and dirty inputs across the five compiler paths.
+`tests/test_lcm_slot_selection_outcomes.py` pins clean retention, replacement,
+null removal, and rollback preservation for both components and scope containers.
+Compiler goldens show the explicit retain branches. Aggregate review and
+normal-route adoption remain pending.
+
+Verification: full regression reports 1141 passed, 20 skipped, and the same two
+known host-ordering failures. Focused selection, pass-state, and compiler-golden
+checks pass on Python 3.12 and 3.14 across native and Python assembly coverage.
+
 ## Contract
 
 One shared render transaction remains. We separate state responsibilities, not

@@ -20,8 +20,10 @@ def child_badge(text: str) -> None:
 def __pyr_parent_panel(__pyr_ctx, __pyr_dirty_state, text: str):
     with __pyr_ctx.pass_scope():
         __pyr_dm = globals()['__pyr_dm_from_dirty_state'](__pyr_dirty_state)
-        if __pyr_dm.bind.text or __pyr_ctx.visit_slot_and_dirty(__pyr_slot_1):
+        if __pyr_dm.bind.text or __pyr_ctx.slot_needs_execution(__pyr_slot_1):
             __pyr_ctx.component_call(__pyr_slot_1, child_badge, text, dirty_state=__pyr_dirtyof(text=__pyr_dm.bind.text))
+        else:
+            __pyr_ctx.retain_slot(__pyr_slot_1)
 
 @__pyr_component_ref(__pyr_ComponentMetadata('parent_panel', __pyr_parent_panel))
 def parent_panel(text: str) -> None:

@@ -7,9 +7,8 @@ from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from typing import Any
 
-from pyrolyze.runtime.slot_identity import SlotId
-
 from ._support import (
+    _RuntimeCallSite,
     _DirectiveCallHandle,
     _MountContainerCallHandle,
     _NativeContainerCallHandle,
@@ -25,12 +24,6 @@ from .context_base import ContextBaseStateMgr
 from .keyed_loop_render import _KeyedLoopRenderCompletion, _enable_keyed_loop_render
 from .render_attempt import _RenderAttempt
 from .render_context import RenderContextStateMgr
-
-
-@dataclass(frozen=True, slots=True)
-class _ContainerSite:
-    slot_id: SlotId
-    parent: Any
 
 
 @dataclass(eq=False, slots=True)
@@ -85,13 +78,14 @@ class _ContainerRenderCompletion(_KeyedLoopRenderCompletion):
         assert self.active is not None
         owner = self.active
         with self.attempt_scope():
-            site = _ContainerSite(context.resolve_slot_id(slot_id), parent)
+            site = _RuntimeCallSite(context.resolve_slot_id(slot_id), parent)
             self._require_original(owner)
             func, raw_args, raw_kwargs, metadata = _resolve_runtime_site_call(
                 site, container_fn, args, kwargs
             )
             self._require_original(owner)
             if func is None:
+                context.omit_resolved_slot(site.slot_id)
                 return None
             handle: (
                 _MountContainerCallHandle

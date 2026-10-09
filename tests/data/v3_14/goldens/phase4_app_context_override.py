@@ -12,11 +12,13 @@ def badge(text: str) -> None:
 def __pyr_panel(__pyr_ctx, __pyr_dirty_state, theme: str, locale: str, show: bool):
     with __pyr_ctx.pass_scope():
         __pyr_dm = globals()['__pyr_dm_from_dirty_state'](__pyr_dirty_state)
-        if (__pyr_dm.bind.theme or __pyr_dm.bind.locale) or __pyr_dm.bind.show or __pyr_ctx.visit_slot_and_dirty(__pyr_slot_1):
+        if (__pyr_dm.bind.theme or __pyr_dm.bind.locale) or __pyr_dm.bind.show or __pyr_ctx.slot_needs_execution(__pyr_slot_1):
             with __pyr_ctx.open_app_context_override(__pyr_slot_1, (THEME_KEY, LOCALE_KEY), theme, locale) as __pyr_ctx_slot_1:
                 badge('body')
                 if show:
                     badge('extra')
+        else:
+            __pyr_ctx.retain_slot(__pyr_slot_1)
 
 @__pyr_component_ref(__pyr_ComponentMetadata('panel', __pyr_panel))
 def panel(theme: str, locale: str, show: bool) -> None:

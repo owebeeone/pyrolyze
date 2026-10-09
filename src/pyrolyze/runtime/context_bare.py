@@ -210,6 +210,12 @@ class ContextBase:
         _ = slot_id
         _unavailable()
 
+    def slot_needs_execution(self, slot_id: SlotId) -> bool:
+        _unavailable()
+
+    def retain_slot(self, slot_id: SlotId) -> None:
+        _unavailable()
+
     def keyed_loop(
         self,
         slot_id: SlotId,

@@ -404,6 +404,23 @@ class ContextBaseStateMgr(StateMgrBase):
             .apply_lifecycle_slot_context(expr_slot)
         )
 
+    def slot_needs_execution(self, slot_id: Any) -> bool:
+        self.require_active_scope()
+        resolved = self.resolve_slot_id(slot_id)
+        slot = self.root_context_state_mgr().get_registered_slot(resolved)
+        if slot is not None and slot._state_mgr._parent_state_mgr is not self:
+            raise SlotOwnershipError(f"slot {resolved!r} belongs to another context")
+        self.require_active_scope()
+        return slot is None or slot.invoke_dirty
+
+    def retain_slot(self, slot_id: Any, *, parent_facade: Any = USE_OWNER) -> None:
+        self.require_active_scope()
+        resolved = self.resolve_slot_id(slot_id)
+        slot = self.root_context_state_mgr().get_registered_slot(resolved)
+        if slot is None:
+            raise RuntimeError("cannot retain a missing slot")
+        self.ensure_resolved_slot(resolved, type(slot), parent_facade=parent_facade)
+
     def visit_slot_and_dirty(self, slot_id: Any, *, parent_facade: Any = USE_OWNER) -> bool:
         self.require_active_scope()
         slot_context_cls = REFRACTOR_CLASSES.slot_context_cls

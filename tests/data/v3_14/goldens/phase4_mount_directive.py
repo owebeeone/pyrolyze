@@ -21,17 +21,25 @@ def badge(text: str) -> None:
 def __pyr_panel(__pyr_ctx, __pyr_dirty_state, show_inner: bool):
     with __pyr_ctx.pass_scope():
         __pyr_dm = globals()['__pyr_dm_from_dirty_state'](__pyr_dirty_state)
-        if __pyr_dm.bind.show_inner or __pyr_ctx.visit_slot_and_dirty(__pyr_slot_1):
+        if __pyr_dm.bind.show_inner or __pyr_ctx.slot_needs_execution(__pyr_slot_1):
             if (__pyr_ctx_slot_1_h := __pyr_ctx.container_call(__pyr_slot_1, mount, menu, default, dirty_state=__pyr_dirtyof())):
                 with __pyr_ctx_slot_1_h as __pyr_ctx_slot_1:
-                    if __pyr_ctx_slot_1.visit_slot_and_dirty(__pyr_slot_2):
+                    if __pyr_ctx_slot_1.slot_needs_execution(__pyr_slot_2):
                         __pyr_ctx_slot_1.component_call(__pyr_slot_2, badge, 'File', dirty_state=__pyr_dirtyof(text=False))
+                    else:
+                        __pyr_ctx_slot_1.retain_slot(__pyr_slot_2)
                     if show_inner:
-                        if __pyr_ctx_slot_1.visit_slot_and_dirty(__pyr_slot_3):
+                        if __pyr_ctx_slot_1.slot_needs_execution(__pyr_slot_3):
                             if (__pyr_ctx_slot_3_h := __pyr_ctx_slot_1.container_call(__pyr_slot_3, mount, corner(corner='top_left'), dirty_state=__pyr_dirtyof())):
                                 with __pyr_ctx_slot_3_h as __pyr_ctx_slot_3:
-                                    if __pyr_ctx_slot_3.visit_slot_and_dirty(__pyr_slot_4):
+                                    if __pyr_ctx_slot_3.slot_needs_execution(__pyr_slot_4):
                                         __pyr_ctx_slot_3.component_call(__pyr_slot_4, badge, 'Edit', dirty_state=__pyr_dirtyof(text=False))
+                                    else:
+                                        __pyr_ctx_slot_3.retain_slot(__pyr_slot_4)
+                        else:
+                            __pyr_ctx_slot_1.retain_slot(__pyr_slot_3)
+        else:
+            __pyr_ctx.retain_slot(__pyr_slot_1)
 
 @__pyr_component_ref(__pyr_ComponentMetadata('panel', __pyr_panel))
 def panel(show_inner: bool) -> None:

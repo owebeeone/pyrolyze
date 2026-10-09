@@ -350,9 +350,10 @@ def panel(theme: str, locale: str, show: bool) -> None:
     )
 
     assert "open_app_context_override(" in transformed
-    assert "visit_slot_and_dirty(__pyr_slot_1)" in transformed
+    assert "slot_needs_execution(__pyr_slot_1)" in transformed
+    assert "retain_slot(__pyr_slot_1)" in transformed
     assert "with __pyr_ctx.open_app_context_override(__pyr_slot_1, (THEME_KEY, LOCALE_KEY), theme, locale) as __pyr_ctx_slot_1:" in transformed
-    assert "if (__pyr_dm.bind.theme or __pyr_dm.bind.locale) or __pyr_dm.bind.show or __pyr_ctx.visit_slot_and_dirty(__pyr_slot_1):" in transformed
+    assert "if (__pyr_dm.bind.theme or __pyr_dm.bind.locale) or __pyr_dm.bind.show or __pyr_ctx.slot_needs_execution(__pyr_slot_1):" in transformed
     assert "badge('body')" in transformed
     assert "badge('extra')" in transformed
 

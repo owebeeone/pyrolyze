@@ -238,6 +238,12 @@ def _project_dirty_state(dirty: bool, result_shape: object | None) -> Any:
     return dirty
 
 
+@dataclass(frozen=True, slots=True)
+class _RuntimeCallSite:
+    slot_id: SlotId
+    parent: Any
+
+
 def _slot_site_path(node: object) -> SlotIdPath:
     slot_id = getattr(node, "slot_id", None)
     if not isinstance(slot_id, SlotId):

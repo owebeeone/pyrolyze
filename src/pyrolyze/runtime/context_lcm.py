@@ -508,6 +508,21 @@ class ContextBase(SlotExprLiteralContext):
             .apply_lifecycle_slot_context(expr_slot)
         )
 
+    def slot_needs_execution(self, slot_id: SlotId) -> bool:
+        self._require_active_scope()
+        resolved = self._resolve_slot_id(slot_id)
+        slot = self.root_context._slots_by_id.get(resolved)
+        if slot is not None and slot.parent is not self:
+            raise SlotOwnershipError(f"slot {resolved!r} belongs to another context")
+        return slot is None or slot.invoke_dirty
+
+    def retain_slot(self, slot_id: SlotId) -> None:
+        self._require_active_scope()
+        slot = self.root_context._slots_by_id.get(self._resolve_slot_id(slot_id))
+        if slot is None:
+            raise RuntimeError("cannot retain a missing slot")
+        self._ensure_slot(slot_id, type(slot))
+
     def visit_slot_and_dirty(self, slot_id: SlotId) -> bool:
         self._require_active_scope()
         slot = self._ensure_slot(slot_id, SlotContext)

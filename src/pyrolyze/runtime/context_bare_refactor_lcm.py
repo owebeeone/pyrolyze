@@ -210,6 +210,12 @@ class ContextBase(_StateDelegatingObject, SlotExprLiteralContext):
     def visit_slot_and_dirty(self, slot_id: SlotId) -> bool:
         return self._state_mgr.visit_slot_and_dirty(slot_id, parent_facade=self)
 
+    def slot_needs_execution(self, slot_id: SlotId) -> bool:
+        return self._state_mgr.slot_needs_execution(slot_id)
+
+    def retain_slot(self, slot_id: SlotId) -> None:
+        self._state_mgr.retain_slot(slot_id, parent_facade=self)
+
     def keyed_loop(
         self,
         slot_id: SlotId,

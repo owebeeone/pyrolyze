@@ -816,7 +816,7 @@ def _lower_container_with(statement: ast.With, *, state: _LoweringState) -> list
             ast.Call(
                 func=ast.Attribute(
                     value=state.context_ref(),
-                    attr="visit_slot_and_dirty",
+                    attr="slot_needs_execution",
                     ctx=ast.Load(),
                 ),
                 args=[slot_name],
@@ -836,7 +836,7 @@ def _lower_container_with(statement: ast.With, *, state: _LoweringState) -> list
                 orelse=[],
             )
         ],
-        orelse=[],
+        orelse=_retain_slot(state, slot_name),
     )
     return [*slot_setup, *event_slot_setup, copy_reason_location(lowered, statement)]
 
@@ -893,7 +893,7 @@ def _lower_mount_with(
             ast.Call(
                 func=ast.Attribute(
                     value=state.context_ref(),
-                    attr="visit_slot_and_dirty",
+                    attr="slot_needs_execution",
                     ctx=ast.Load(),
                 ),
                 args=[slot_name],
@@ -901,7 +901,7 @@ def _lower_mount_with(
             ),
         ]
     )
-    lowered = ast.If(test=guard, body=[directive_with], orelse=[])
+    lowered = ast.If(test=guard, body=[directive_with], orelse=_retain_slot(state, slot_name))
     return [*slot_setup, copy_reason_location(lowered, statement)]
 
 
@@ -966,7 +966,7 @@ def _lower_app_context_override_with(
             ast.Call(
                 func=ast.Attribute(
                     value=state.context_ref(),
-                    attr="visit_slot_and_dirty",
+                    attr="slot_needs_execution",
                     ctx=ast.Load(),
                 ),
                 args=[slot_name],
@@ -974,7 +974,7 @@ def _lower_app_context_override_with(
             ),
         ]
     )
-    lowered = ast.If(test=guard, body=[override_with], orelse=[])
+    lowered = ast.If(test=guard, body=[override_with], orelse=_retain_slot(state, slot_name))
     return [*slot_setup, copy_reason_location(lowered, statement)]
 
 
@@ -1096,7 +1096,7 @@ def _lower_keyed_for(statement: ast.For, *, state: _LoweringState) -> list[ast.s
             ast.Call(
                 func=ast.Attribute(
                     value=state.context_ref(),
-                    attr="visit_slot_and_dirty",
+                    attr="slot_needs_execution",
                     ctx=ast.Load(),
                 ),
                 args=[slot_name],
@@ -1119,7 +1119,7 @@ def _lower_keyed_for(statement: ast.For, *, state: _LoweringState) -> list[ast.s
         body=[loop_for],
     )
     loop_for.iter = ast.Name(id=loop_items_name, ctx=ast.Load())
-    lowered = ast.If(test=guard, body=[loop_scope], orelse=[])
+    lowered = ast.If(test=guard, body=[loop_scope], orelse=_retain_slot(state, slot_name))
     return [*slot_setup, copy_reason_location(lowered, statement)]
 
 
@@ -1673,7 +1673,7 @@ def _lower_component_expr_call(
             ast.Call(
                 func=ast.Attribute(
                     value=state.context_ref(),
-                    attr="visit_slot_and_dirty",
+                    attr="slot_needs_execution",
                     ctx=ast.Load(),
                 ),
                 args=[slot_name],
@@ -1681,8 +1681,22 @@ def _lower_component_expr_call(
             ),
         ]
     )
-    lowered = ast.If(test=guard, body=[component_call], orelse=[])
+    lowered = ast.If(test=guard, body=[component_call], orelse=_retain_slot(state, slot_name))
     return [*slot_setup, *event_slot_setup, copy_reason_location(lowered, statement)]
+
+
+def _retain_slot(state: _LoweringState, slot_name: ast.expr) -> list[ast.stmt]:
+    return [
+        ast.Expr(
+            value=ast.Call(
+                func=ast.Attribute(
+                    value=state.context_ref(), attr="retain_slot", ctx=ast.Load()
+                ),
+                args=[copy.deepcopy(slot_name)],
+                keywords=[],
+            )
+        )
+    ]
 
 
 def _lower_call_native_expr(
