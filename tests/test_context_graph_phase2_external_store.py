@@ -3,25 +3,45 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Generic, TypeVar
 
+from pyrolyze.compiler import load_transformed_namespace
 from pyrolyze.runtime.context import (
     ExternalStoreBinding,
     ExternalStoreRef,
-    ModuleRegistry,
     SlotRuntimeContext,
     SlotValueBinding,
     RenderContext,
-    SlotId,
     dirtyof,
 )
-from tests.slot_expr_test_utils import eval_single_slot_expr, slot_expr_binding_for
+from tests.slot_expr_test_utils import ObservedCompiledContext
 
 
 T = TypeVar("T")
 
-module_registry = ModuleRegistry()
-_MODULE_ID = module_registry.module_id("tests.context_graph_phase2_external_store")
 
-_STORE_SLOT = SlotId(_MODULE_ID, 1, line_no=10)
+def _compiled_reader(
+    source: str,
+    globals_dict: dict[str, Any],
+    observed: list,
+    *,
+    binding_identity: bool = False,
+):
+    namespace = load_transformed_namespace(
+        "from pyrolyze.api import pyrolyze, slotted\n" + source,
+        module_name="tests.phase2_external_store.compiled_reader",
+        globals_dict=globals_dict,
+    )
+    body = namespace["reader"]._pyrolyze_meta._func
+
+    def render(ctx, state, *args):
+        def observe(slot_id, call_slot, value, dirty):
+            if binding_identity:
+                observed.append((value, id(_binding_for(ctx)), dirty))
+            else:
+                observed.append((value, dirty))
+
+        body(ObservedCompiledContext(ctx, observe), state, *args)
+
+    return render
 
 
 @dataclass(slots=True)
@@ -82,43 +102,32 @@ def _make_external_reader_program(
         log.append(("helper", grip_name))
         return resolve_store(grip_name).ref()
 
-    def _pyr_reader(ctx: RenderContext, __pyr_dirty_state, grip_name: str) -> None:
-        with ctx.pass_scope():
-            __pyr_value_dirty, value = eval_single_slot_expr(
-                ctx,
-                __pyr_dirty_state,
-                _STORE_SLOT,
-                use_grip,
-                grip_name,
-                args_dirty=(__pyr_dirty_state.grip_name,),
-                result_name="value",
-            )
-            observed.append((value, __pyr_value_dirty))
-
-    return _pyr_reader, observed
+    return _compiled_reader(
+        "@pyrolyze\ndef reader(grip_name):\n    value = slotted(use_grip, grip_name)\n",
+        {"use_grip": use_grip}, observed,
+    ), observed
 
 
 def _make_switching_helper_program(log: list[tuple[object, ...]]):
     observed: list[tuple[str, bool]] = []
 
-    def _pyr_reader(ctx: RenderContext, __pyr_dirty_state, helper: Callable[[str], object], grip_name: str) -> None:
-        with ctx.pass_scope():
-            __pyr_value_dirty, value = eval_single_slot_expr(
-                ctx,
-                __pyr_dirty_state,
-                _STORE_SLOT,
-                helper,
-                grip_name,
-                args_dirty=(__pyr_dirty_state.grip_name,),
-                result_name="value",
-            )
-            observed.append((value, __pyr_value_dirty))
-
-    return _pyr_reader, observed
+    return _compiled_reader(
+        "@pyrolyze\ndef reader(helper, grip_name):\n    value = slotted(helper, grip_name)\n",
+        {}, observed,
+    ), observed
 
 
 def _binding_for(ctx: RenderContext):
-    return slot_expr_binding_for(ctx, _STORE_SLOT)
+    bindings = []
+    for slot in ctx._slots_by_id.values():
+        manager = getattr(slot, "call_site_context_manager", None)
+        if manager is not None:
+            contexts = manager._current or manager._staged
+            for context in contexts.values():
+                if context.binding is not None:
+                    bindings.append(getattr(context.binding, "binding", context.binding))
+    assert len(bindings) == 1
+    return bindings[0]
 
 
 def _make_conditional_program(
@@ -131,26 +140,11 @@ def _make_conditional_program(
         log.append(("helper", grip_name))
         return store.ref()
 
-    def _pyr_conditional(
-        ctx: RenderContext,
-        __pyr_dirty_state,
-        show: bool,
-        grip_name: str,
-    ) -> None:
-        with ctx.pass_scope():
-            if show:
-                __pyr_value_dirty, value = eval_single_slot_expr(
-                    ctx,
-                    __pyr_dirty_state,
-                    _STORE_SLOT,
-                    use_grip,
-                    grip_name,
-                    args_dirty=(__pyr_dirty_state.grip_name,),
-                    result_name="value",
-                )
-                observed.append((value, __pyr_value_dirty))
-
-    return _pyr_conditional, observed
+    return _compiled_reader(
+        "@pyrolyze\ndef reader(show, grip_name):\n"
+        "    if show:\n        value = slotted(use_grip, grip_name)\n",
+        {"use_grip": use_grip}, observed,
+    ), observed
 
 
 def test_external_store_notification_refreshes_via_get_without_helper_rerun() -> None:
@@ -269,18 +263,10 @@ def test_slot_call_runtime_context_injects_slot_local_storage() -> None:
         runtime.set_local("sequence", sequence + 1)
         return f"{label}:{sequence}"
 
-    def _pyr_reader(ctx: RenderContext, __pyr_dirty_state, label: str) -> None:
-        with ctx.pass_scope():
-            __pyr_value_dirty, value = eval_single_slot_expr(
-                ctx,
-                __pyr_dirty_state,
-                _STORE_SLOT,
-                helper,
-                label,
-                args_dirty=(__pyr_dirty_state.label,),
-                result_name="value",
-            )
-            observed.append((value, id(_binding_for(ctx)), __pyr_value_dirty))
+    _pyr_reader = _compiled_reader(
+        "@pyrolyze\ndef reader(label):\n    value = slotted(helper, label)\n",
+        {"helper": helper}, observed, binding_identity=True,
+    )
 
     _pyr_reader(ctx, dirtyof(label=True), "alpha")
     _pyr_reader(ctx, dirtyof(label=False), "alpha")
@@ -303,18 +289,13 @@ def test_plain_result_uses_plain_value_binding() -> None:
         log.append(("plain_helper", name))
         return f"plain:{name}"
 
-    def pyr_reader(name: str, __pyr_dirty_state) -> None:
-        with ctx.pass_scope():
-            __pyr_value_dirty, value = eval_single_slot_expr(
-                ctx,
-                __pyr_dirty_state,
-                _STORE_SLOT,
-                plain_helper,
-                name,
-                args_dirty=(getattr(__pyr_dirty_state, "name", False),),
-                result_name="value",
-            )
-            observed.append((value, __pyr_value_dirty))
+    compiled_reader = _compiled_reader(
+        "@pyrolyze\ndef reader(name):\n    value = slotted(plain_helper, name)\n",
+        {"plain_helper": plain_helper}, observed,
+    )
+
+    def pyr_reader(name: str, state) -> None:
+        compiled_reader(ctx, state, name)
 
     pyr_reader("weather", dirtyof(name=True))
 
@@ -344,6 +325,7 @@ def test_deactivating_an_external_slot_call_unsubscribes_the_store() -> None:
 
     assert observed == [("sunny", True)]
     assert store.active_listener_count == 1
+    store_slots = tuple(ctx._slots_by_id)
 
     pyr_conditional(
         ctx,
@@ -353,7 +335,7 @@ def test_deactivating_an_external_slot_call_unsubscribes_the_store() -> None:
     )
 
     assert store.active_listener_count == 0
-    assert ctx.debug_is_active(_STORE_SLOT) is False
+    assert all(not ctx.debug_is_active(slot_id) for slot_id in store_slots)
     assert log[-1] == ("unsubscribe", "weather")
 
 
@@ -361,18 +343,10 @@ def test_slot_call_accepts_builtin_function_without_attribute_cache_support() ->
     ctx = RenderContext()
     observed: list[tuple[int, bool]] = []
 
-    def _pyr_reader(ctx: RenderContext, __pyr_dirty_state) -> None:
-        _ = __pyr_dirty_state
-        with ctx.pass_scope():
-            __pyr_value_dirty, value = eval_single_slot_expr(
-                ctx,
-                dirtyof(),
-                _STORE_SLOT,
-                len,
-                [1, 2, 3],
-                result_name="value",
-            )
-            observed.append((value, __pyr_value_dirty))
+    _pyr_reader = _compiled_reader(
+        "@pyrolyze\ndef reader():\n    value = slotted(len, [1, 2, 3])\n",
+        {}, observed,
+    )
 
     _pyr_reader(ctx, dirtyof())
     _pyr_reader(ctx, dirtyof())
@@ -396,18 +370,10 @@ def test_slot_call_tolerates_callable_with_invalid_signature_metadata() -> None:
 
     helper = _NoAttrBadSignaturePlain()
 
-    def _pyr_reader(ctx: RenderContext, __pyr_dirty_state) -> None:
-        _ = __pyr_dirty_state
-        with ctx.pass_scope():
-            __pyr_value_dirty, value = eval_single_slot_expr(
-                ctx,
-                dirtyof(),
-                _STORE_SLOT,
-                helper,
-                [1, 2, 3],
-                result_name="value",
-            )
-            observed.append((value, __pyr_value_dirty))
+    _pyr_reader = _compiled_reader(
+        "@pyrolyze\ndef reader():\n    value = slotted(helper, [1, 2, 3])\n",
+        {"helper": helper}, observed,
+    )
 
     _pyr_reader(ctx, dirtyof())
     _pyr_reader(ctx, dirtyof())

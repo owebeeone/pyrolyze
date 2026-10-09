@@ -5,13 +5,11 @@ from typing import Callable
 
 import pytest
 
-from pyrolyze.api import CallFromNonPyrolyzeContext, ComponentMetadata, pyrolyze_component_ref
-from pyrolyze.api import UIElement
+from pyrolyze.compiler import load_transformed_namespace
 from pyrolyze.runtime import (
     AppContextKey,
     AppContextStore,
     ContextBase,
-    DirtyStateContext,
     ExternalStoreRef,
     ModuleRegistry,
     SlotRuntimeContext,
@@ -30,7 +28,6 @@ _PLAIN_WRITE_SLOT = SlotId(_MODULE_ID, 1, line_no=10)
 _PLAIN_READ_SLOT = SlotId(_MODULE_ID, 2, line_no=11)
 _NATIVE_SLOT = SlotId(_MODULE_ID, 3, line_no=12)
 _COMPONENT_SLOT = SlotId(_MODULE_ID, 4, line_no=13)
-_STORE_SLOT = SlotId(_MODULE_ID, 5, line_no=14)
 
 
 @dataclass(slots=True)
@@ -159,14 +156,15 @@ def test_plain_native_and_child_component_contexts_share_app_context() -> None:
     def mark_native(ctx: ContextBase, value: str) -> None:
         ctx.get_app_context(key).values.append(f"native:{value}")
 
-    def __pyr_child(child_ctx: RenderContext, __pyr_dirty_state: DirtyStateContext, label: str) -> None:
-        _ = __pyr_dirty_state
-        with child_ctx.pass_scope():
-            child_ctx.get_app_context(key).values.append(f"child:{label}")
+    def record_child(label: str, *, __pyrolyze_ctx: SlotRuntimeContext) -> None:
+        __pyrolyze_ctx.get_app_context(key).values.append(f"child:{label}")
 
-    @pyrolyze_component_ref(ComponentMetadata("child", __pyr_child))
-    def child(label: str) -> None:
-        raise CallFromNonPyrolyzeContext("child")
+    child = load_transformed_namespace(
+        "from pyrolyze.api import pyrolyze, slotted\n"
+        "@pyrolyze\ndef child(label):\n    slotted(record_child, label)\n",
+        module_name="tests.app_context_framework.shared_child",
+        globals_dict={"record_child": record_child},
+    )["child"]
 
     ctx = RenderContext(app_context_store=AppContextStore(host_app="APP"))
 
@@ -218,23 +216,18 @@ def test_generation_tracker_is_shared_and_advances_on_committed_boundary_reruns(
     def use_store() -> ExternalStoreRef[str]:
         return store.ref()
 
-    def __pyr_child(child_ctx: RenderContext, __pyr_dirty_state: DirtyStateContext) -> None:
-        _ = __pyr_dirty_state
-        with child_ctx.pass_scope():
-            log.append(("generation", child_ctx.current_generation_id()))
-            __pyr_store_dirty, value = eval_single_slot_expr(
-                child_ctx,
-                dirtyof(),
-                _STORE_SLOT,
-                use_store,
-                result_name="value",
-            )
-            _ = __pyr_store_dirty
-            log.append(("value", value))
+    def record_generation(value: str, *, __pyrolyze_ctx: SlotRuntimeContext) -> None:
+        log.append(("generation", __pyrolyze_ctx.current_generation_id()))
 
-    @pyrolyze_component_ref(ComponentMetadata("child", __pyr_child))
-    def child() -> None:
-        raise CallFromNonPyrolyzeContext("child")
+    child = load_transformed_namespace(
+        "from pyrolyze.api import pyrolyze, slotted\n"
+        "@pyrolyze\ndef child():\n"
+        "    value = slotted(use_store)\n"
+        "    slotted(record_generation, value)\n"
+        "    LOG.append(('value', value))\n",
+        module_name="tests.app_context_framework.generation_child",
+        globals_dict={"record_generation": record_generation, "use_store": use_store, "LOG": log},
+    )["child"]
 
     ctx = RenderContext()
 
@@ -266,19 +259,17 @@ def test_generation_tracker_is_shared_and_advances_on_committed_boundary_reruns(
 def test_container_component_context_shares_app_context() -> None:
     key = AppContextKey("shared.container", factory=lambda host_app: SharedState(values=[f"host:{host_app}"]))
 
-    def __pyr_child(child_ctx: RenderContext, __pyr_dirty_state: DirtyStateContext, label: str) -> None:
-        _ = __pyr_dirty_state
-        with child_ctx.pass_scope():
-            child_ctx.get_app_context(key).values.append(f"container:{label}")
-            child_ctx.call_native(
-                UIElement,
-                kind="container_child",
-                props={"label": label},
-            )
+    def record_container(label: str, *, __pyrolyze_ctx: SlotRuntimeContext) -> None:
+        __pyrolyze_ctx.get_app_context(key).values.append(f"container:{label}")
 
-    @pyrolyze_component_ref(ComponentMetadata("container_child", __pyr_child))
-    def child(label: str) -> None:
-        raise CallFromNonPyrolyzeContext("container_child")
+    child = load_transformed_namespace(
+        "from pyrolyze.api import UIElement, call_native, pyrolyze, slotted\n"
+        "@pyrolyze\ndef child(label):\n"
+        "    slotted(record_container, label)\n"
+        "    call_native(UIElement)(kind='container_child', props={'label': label})\n",
+        module_name="tests.app_context_framework.container_child",
+        globals_dict={"record_container": record_container},
+    )["child"]
 
     ctx = RenderContext(app_context_store=AppContextStore(host_app="APP"))
 

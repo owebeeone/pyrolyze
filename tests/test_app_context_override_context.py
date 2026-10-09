@@ -5,22 +5,18 @@ from typing import Callable
 
 import pytest
 
-from pyrolyze.api import (
-    CallFromNonPyrolyzeContext,
-    ComponentMetadata,
-    UIElement,
-    pyrolyze_component_ref,
-)
+from pyrolyze.api import UIElement
 from pyrolyze.runtime import (
     AppContextKey,
     AppContextStore,
     ContextBase,
-    DirtyStateContext,
     ModuleRegistry,
     RenderContext,
     SlotId,
+    SlotRuntimeContext,
     dirtyof,
 )
+from pyrolyze.compiler import load_transformed_namespace
 
 
 module_registry = ModuleRegistry()
@@ -90,14 +86,17 @@ def test_none_override_falls_through_to_parent_value() -> None:
 def test_component_child_context_inherits_authored_override() -> None:
     seen: list[str] = []
 
-    def __pyr_child(child_ctx: RenderContext, __pyr_dirty_state: DirtyStateContext) -> None:
-        _ = __pyr_dirty_state
-        with child_ctx.pass_scope():
-            seen.append(child_ctx.get_authored_app_context(_THEME_KEY))
+    def read_theme(*, __pyrolyze_ctx: SlotRuntimeContext) -> str:
+        return __pyrolyze_ctx.get_authored_app_context(_THEME_KEY)
 
-    @pyrolyze_component_ref(ComponentMetadata("child", __pyr_child))
-    def child() -> None:
-        raise CallFromNonPyrolyzeContext("child")
+    child = load_transformed_namespace(
+        "from pyrolyze.api import pyrolyze, slotted\n"
+        "@pyrolyze\ndef child():\n"
+        "    theme = slotted(read_theme)\n"
+        "    SEEN.append(theme)\n",
+        module_name="tests.app_context_override_context.compiled_child",
+        globals_dict={"read_theme": read_theme, "SEEN": seen},
+    )["child"]
 
     ctx = RenderContext()
 

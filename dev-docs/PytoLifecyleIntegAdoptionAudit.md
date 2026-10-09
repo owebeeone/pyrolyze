@@ -190,9 +190,9 @@ conditions; they must delegate component execution to compiled bodies.
 - [x] Native callback lowering discrepancy reproduced and corrected.
 - [x] Visitor graph and hook-render success fixtures migrated.
 - [x] Native toolbar success fixture migrated; native API misuse kept separate.
-- [ ] App-context and component-introspection bodies compiled behind wrappers.
-- [ ] External-store readers classified: migrate authored scenarios; keep
-  direct binding/dirty-result/injection probes explicitly runtime-level.
+- [x] App-context and component-introspection bodies compiled behind wrappers.
+- [x] External-store reader bodies compiled; binding/dirty-result/injection
+  assertions retained as runtime-level observations of generated execution.
 - [ ] Audit remaining tests for hand-maintained lowering, document intentional
   exceptions, and verify the final batch on both routes and assembly backends.
 
@@ -200,6 +200,32 @@ Check each group with focused tests. Run broad regressions at checkpoint
 boundaries, sequentially because graph diagnostics share output paths. Do not
 activate lifecycle, relax resource cleanup, erase generic-context-manager
 compatibility tests, or rewrite generated goldens merely to reduce failures.
+
+The app-context/introspection/external-store batch replaces component and reader
+bodies with authored input. `ObservedCompiledContext` in
+`tests/slot_expr_test_utils.py` delegates generated expression construction and
+evaluation unchanged, then records the returned value and compiler dirt sink.
+It does not synthesize slots, argument dirt, or pass scopes. Method wrappers
+retain descriptor-binding coverage while delegating execution to compiled bodies.
+External-store assertions discover generated call sites rather than pinning the
+old handwritten slot IDs; binding observation retains accepted-first visibility.
+
+Intentional direct probes remain: app-context store identity and shutdown,
+lexical overrides and notification forwarding, plain-call dirt projection,
+callback-handle commit/rollback and descriptors, and drivers supplying controlled
+component dirt. These are API-contract tests, not substitute component bodies.
+No assertion about cleanup order, concrete binding type, or caught-error
+completion has been relaxed in this fixture migration.
+
+Verification for this batch: all 33 affected tests pass on normal routing with
+both assembly backends. Lifecycle has 28 passes and the same five known failures
+in these files (two caught-error expectations, two legacy binding-type checks,
+one subscription cleanup-order check); all 28 passing cases also pass on Python
+assembly. Sequential full native runs: normal routing 1,175 passed, 20 skipped,
+two known host-ordering failures; lifecycle routing 1,156 passed, 20 skipped,
+21 existing adoption/backend failures. The compiled visitor fixture clears one
+previous adoption failure. No shared diagnostic-file collision occurred.
+`git diff --check` passes; Ruff is unavailable in the current environment.
 
 ### Large-Grid Performance Correction (2026-10-09)
 

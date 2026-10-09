@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import replace
 
 import pytest
 
 from pyrolyze.api import CallFromNonPyrolyzeContext, ComponentMetadata, pyrolyze_component_ref
+from pyrolyze.compiler import load_transformed_namespace
 from pyrolyze.runtime.context import DirtyStateContext, ModuleRegistry, RenderContext, SlotId, dirtyof
-from tests.slot_expr_test_utils import eval_single_slot_expr
+from tests.slot_expr_test_utils import ObservedCompiledContext, eval_single_slot_expr
 
 
 module_registry = ModuleRegistry()
@@ -18,7 +20,6 @@ _EVENT_SLOT = SlotId(_MODULE_ID, 3, line_no=30)
 _EVENT_SLOT_2 = SlotId(_MODULE_ID, 4, line_no=31)
 _EVENT_SLOT_3 = SlotId(_MODULE_ID, 5, line_no=32)
 _COMPONENT_SLOT = SlotId(_MODULE_ID, 6, line_no=40)
-_CHILD_STORE_SLOT = SlotId(_MODULE_ID, 7, line_no=41)
 _INSTANCE_COMPONENT_SLOT = SlotId(_MODULE_ID, 8, line_no=50)
 _CLASS_COMPONENT_SLOT = SlotId(_MODULE_ID, 9, line_no=51)
 _STATIC_COMPONENT_SLOT = SlotId(_MODULE_ID, 10, line_no=52)
@@ -243,21 +244,23 @@ def test_component_call_passes_dirty_state_and_uses_clean_parent_dirtiness_on_ch
 
         return ExternalStoreRef(identity="weather", subscribe=subscribe, get=get)
 
-    def __pyr_child(child_ctx: RenderContext, __pyr_dirty_state: DirtyStateContext, name: str) -> None:
-        with child_ctx.pass_scope():
-            log.append(("render", name))
-            log.append(("name_dirty", __pyr_dirty_state.name))
-            __pyr_store_dirty, value = eval_single_slot_expr(
-                child_ctx,
-                dirtyof(),
-                _CHILD_STORE_SLOT,
-                use_store,
-                result_name="value",
-            )
-            log.append(("store", value))
-            log.append(("store_dirty", __pyr_store_dirty))
+    compiled = load_transformed_namespace(
+        "from pyrolyze.api import pyrolyze, slotted\n"
+        "@pyrolyze\ndef child(name):\n    value = slotted(use_store)\n",
+        module_name="tests.no_comp_value_api.compiled_child",
+        globals_dict={"use_store": use_store},
+    )["child"]
 
-    @pyrolyze_component_ref(ComponentMetadata("child", __pyr_child))
+    def observe_value(slot_id, call_slot, value, dirty):
+        log.append(("store", value))
+        log.append(("store_dirty", dirty))
+
+    def observe_child(child_ctx, state, name):
+        log.append(("render", name))
+        log.append(("name_dirty", state.name))
+        compiled._pyrolyze_meta._func(ObservedCompiledContext(child_ctx, observe_value), state, name)
+
+    @pyrolyze_component_ref(replace(compiled._pyrolyze_meta, _func=observe_child))
     def child(name: str) -> None:
         raise CallFromNonPyrolyzeContext("child")
 
@@ -294,36 +297,48 @@ def test_component_call_passes_dirty_state_and_uses_clean_parent_dirtiness_on_ch
 def test_component_call_supports_bound_instance_class_and_static_component_refs() -> None:
     ctx = RenderContext()
     log: list[tuple[str, object]] = []
+    flags: list[bool] = []
+    namespace = load_transformed_namespace(
+        "from pyrolyze.api import pyrolyze\n"
+        "@pyrolyze\ndef instance_body(owner, label):\n"
+        "    LOG.append(('instance', owner.prefix, label, FLAGS[-1]))\n"
+        "@pyrolyze\ndef class_body(owner, label):\n"
+        "    LOG.append(('class', owner.__name__, label, FLAGS[-1]))\n"
+        "@pyrolyze\ndef static_body(label):\n"
+        "    LOG.append(('static', label, FLAGS[-1]))\n",
+        module_name="tests.no_comp_value_api.compiled_methods",
+        globals_dict={"LOG": log, "FLAGS": flags},
+    )
 
     class Panel:
         def __init__(self, prefix: str) -> None:
             self.prefix = prefix
 
-        def __pyr_instance(self, child_ctx: RenderContext, __pyr_dirty_state: DirtyStateContext, label: str) -> None:
-            with child_ctx.pass_scope():
-                log.append(("instance", self.prefix, label, __pyr_dirty_state.label))
+        def _observe_instance(self, child_ctx: RenderContext, __pyr_dirty_state: DirtyStateContext, label: str) -> None:
+            flags.append(__pyr_dirty_state.label)
+            namespace["instance_body"]._pyrolyze_meta._func(child_ctx, __pyr_dirty_state, self, label)
 
         @classmethod
-        def __pyr_class(cls, child_ctx: RenderContext, __pyr_dirty_state: DirtyStateContext, label: str) -> None:
-            with child_ctx.pass_scope():
-                log.append(("class", cls.__name__, label, __pyr_dirty_state.label))
+        def _observe_class(cls, child_ctx: RenderContext, __pyr_dirty_state: DirtyStateContext, label: str) -> None:
+            flags.append(__pyr_dirty_state.label)
+            namespace["class_body"]._pyrolyze_meta._func(child_ctx, __pyr_dirty_state, cls, label)
 
         @staticmethod
-        def __pyr_static(child_ctx: RenderContext, __pyr_dirty_state: DirtyStateContext, label: str) -> None:
-            with child_ctx.pass_scope():
-                log.append(("static", label, __pyr_dirty_state.label))
+        def _observe_static(child_ctx: RenderContext, __pyr_dirty_state: DirtyStateContext, label: str) -> None:
+            flags.append(__pyr_dirty_state.label)
+            namespace["static_body"]._pyrolyze_meta._func(child_ctx, __pyr_dirty_state, label)
 
-        @pyrolyze_component_ref(ComponentMetadata("instance_panel", __pyr_instance))
+        @pyrolyze_component_ref(ComponentMetadata("instance_panel", _observe_instance))
         def instance_panel(self, label: str) -> None:
             raise CallFromNonPyrolyzeContext("instance_panel")
 
         @classmethod
-        @pyrolyze_component_ref(ComponentMetadata("class_panel", __pyr_class))
+        @pyrolyze_component_ref(ComponentMetadata("class_panel", _observe_class))
         def class_panel(cls, label: str) -> None:
             raise CallFromNonPyrolyzeContext("class_panel")
 
         @staticmethod
-        @pyrolyze_component_ref(ComponentMetadata("static_panel", __pyr_static))
+        @pyrolyze_component_ref(ComponentMetadata("static_panel", _observe_static))
         def static_panel(label: str) -> None:
             raise CallFromNonPyrolyzeContext("static_panel")
 

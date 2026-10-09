@@ -1,9 +1,51 @@
 from __future__ import annotations
 
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Callable
 
 from pyrolyze.runtime import LiteralFunctionProvider, dm_from_dirty_state, slot_params, slot_params_dirt
 from pyrolyze.runtime.context import ContextBase, DirtyStateContext, SlotExprSlotContext, SlotId
+
+
+@dataclass
+class ObservedCompiledContext:
+    """Observe single-call `value` expressions without duplicating lowering."""
+
+    context: ContextBase
+    observe: Callable[[SlotId, SlotId, Any, Any], None]
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.context, name)
+
+    def slot_expr(self, slot_id: SlotId, *args: Any, **kwargs: Any) -> Any:
+        return _ObservedExpression(self.context.slot_expr(slot_id, *args, **kwargs), self.observe, slot_id)
+
+
+@dataclass
+class _ObservedExpression:
+    expression: Any
+    observe: Callable[[SlotId, SlotId, Any, Any], None]
+    slot_id: SlotId
+
+    def __getattr__(self, name: str) -> Any:
+        target = getattr(self.expression, name)
+        if not callable(target):
+            return target
+
+        def delegate(*args: Any, **kwargs: Any) -> Any:
+            result = target(*args, **kwargs)
+            return self if result is self.expression else result
+
+        return delegate
+
+    def evaluate(self, *names: str) -> Any:
+        value = self.expression.evaluate(*names)
+        if names == ("value",):
+            dirty = getattr(self.expression.dm.bind, "value")
+            assert len(self.expression.evaluators_by_slot_id) == 1
+            call_slot = next(iter(self.expression.evaluators_by_slot_id))
+            self.observe(self.slot_id, call_slot, value, dirty)
+        return value
 
 
 def eval_single_slot_expr(
