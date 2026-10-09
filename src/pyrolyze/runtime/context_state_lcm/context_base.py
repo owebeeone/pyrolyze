@@ -228,8 +228,13 @@ class ContextBaseStateMgr(StateMgrBase):
         self.children_state = next_children
 
     def register_child_state_mgr(self, slot_id: Any, child_state_mgr: Any) -> None:
+        completion = _field_only_completion(self)
+        owner = None if completion is None else completion.active
         next_children = dict(self.children_state)
         next_children[slot_id] = child_state_mgr
+        if owner is not None:
+            owner._require_open()
+            owner._require_identity()
         self.children_state = next_children
 
     def staged_ui_len(self) -> int:
@@ -408,12 +413,16 @@ class ContextBaseStateMgr(StateMgrBase):
         parent_facade: Any = USE_OWNER,
     ) -> T:
         completion = _field_only_completion(self)
+        owner = None if completion is None else completion.active
         if completion is not None:
             completion.require_slot_type(slot_type)
         parent_facade = self._resolve_owner_arg(parent_facade)
         root_context_state_mgr = self.root_context_state_mgr()
         root_context = root_context_state_mgr.owner
         existing = root_context_state_mgr.get_registered_slot(slot_id)
+        if owner is not None:
+            owner._require_open()
+            owner._require_identity()
         if existing is not None and existing._state_mgr._parent_state_mgr is not self:
             raise SlotOwnershipError(
                 f"slot {slot_id!r} is owned by {type(existing._state_mgr._parent_state_mgr.owner).__name__}, "
@@ -429,6 +438,10 @@ class ContextBaseStateMgr(StateMgrBase):
             existing = slot
         next_children = dict(self.children_state)
         next_children[slot_id] = existing._state_mgr
+        if owner is not None:
+            # Key hashing/equality can execute user code even after selection.
+            owner._require_open()
+            owner._require_identity()
         self.children_state = next_children
         existing._state_mgr._seen_in_pass = True
         return existing
@@ -546,6 +559,9 @@ class ContextBaseStateMgr(StateMgrBase):
         parent_facade: Any = USE_OWNER,
     ) -> Any:
         self.require_active_scope()
+        completion = _field_only_completion(self)
+        if getattr(completion, "keyed_loop_selection_enabled", False):
+            return completion.keyed_loop(self, slot_id, values, key_fn, parent_facade)
         keyed_loop_slot_context_cls = REFRACTOR_CLASSES.keyed_loop_slot_context_cls
         if keyed_loop_slot_context_cls is None:
             raise RuntimeError("keyed loop slot context class is not configured")

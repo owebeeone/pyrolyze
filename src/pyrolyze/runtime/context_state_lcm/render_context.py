@@ -111,7 +111,15 @@ class RenderContextStateMgr(ContextBaseStateMgr):
     def register_slot_state_mgr(self, slot_state_mgr: Any) -> None:
         completion = _field_only_completion(self)
         if completion is not None:
+            owner = completion.active
+            assert owner is not None
+            next_slots = dict(self._slots_by_id)
+            next_slots[slot_state_mgr.current_slot_id()] = slot_state_mgr
+            owner._require_open()
+            owner._require_identity()
             completion.note_render_root(self)
+            self._slots_by_id = next_slots
+            return
         self._slots_by_id[slot_state_mgr.current_slot_id()] = slot_state_mgr
 
     def unregister_slot(self, slot_id: Any) -> None:

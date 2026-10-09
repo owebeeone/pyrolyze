@@ -1104,7 +1104,22 @@ def _lower_keyed_for(statement: ast.For, *, state: _LoweringState) -> list[ast.s
             ),
         ]
     )
-    lowered = ast.If(test=guard, body=[loop_for], orelse=[])
+    loop_items_name = f"{item_ctx_name}_items"
+    loop_scope = ast.With(
+        items=[
+            ast.withitem(
+                context_expr=ast.Call(
+                    func=ast.Name(id="__pyr_keyed_loop_scope", ctx=ast.Load()),
+                    args=[loop_for.iter],
+                    keywords=[],
+                ),
+                optional_vars=ast.Name(id=loop_items_name, ctx=ast.Store()),
+            )
+        ],
+        body=[loop_for],
+    )
+    loop_for.iter = ast.Name(id=loop_items_name, ctx=ast.Load())
+    lowered = ast.If(test=guard, body=[loop_scope], orelse=[])
     return [*slot_setup, copy_reason_location(lowered, statement)]
 
 
@@ -1770,6 +1785,14 @@ def _inject_module_scaffold(
             ),
         ),
     ]
+    if _body_uses_support_name(body, "__pyr_keyed_loop_scope"):
+        scaffold.append(
+            ast.ImportFrom(
+                module="pyrolyze.runtime.keyed_loop_scope",
+                names=[ast.alias(name="keyed_loop_scope", asname="__pyr_keyed_loop_scope")],
+                level=0,
+            )
+        )
     return [*body[:insert_at], *scaffold, *slot_declarations, *body[insert_at:]]
 
 

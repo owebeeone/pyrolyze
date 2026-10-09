@@ -5,6 +5,15 @@ landed; use its status and the recorded acceptance scope.
 
 ## Lifecycle Integration
 
+The [adoption audit](PytoLifecyleIntegAdoptionAudit.md) inventories remaining
+holders and confirmed gates after I6b. Next: keyed-loop item selection, container
+routing, common pass-state cleanup, aggregate review, then normal-route adoption.
+
+The [keyed-loop checkpoint](PytoLifecyleIntegKeyedLoops.md) now implements managed
+item selection and original-owner iteration behind another proof gate. The
+approved compiler execution scope distinguishes successful `break` from body
+failure; normal routing and unrelated container admission remain unchanged.
+
 Latest bounded work: [directive and completion queues](PytoLifecyleIntegCompletionQueues.md)
 migrates directive selectors and captures render/expression callback batches
 until accepted outer completion. It removes base class-name completion dispatch

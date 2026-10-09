@@ -174,17 +174,18 @@ def grid_panel(labels, values):
 
     assert transformed.count("keyed_loop(") == 2
     assert transformed.count("container_call(") == 2
-    assert "for __pyr_ctx_slot_1_k in __pyr_ctx.keyed_loop(__pyr_slot_1, labels, key_fn=lambda x: x):" in transformed
+    assert "with __pyr_keyed_loop_scope(__pyr_ctx.keyed_loop(__pyr_slot_1, labels, key_fn=lambda x: x)) as __pyr_ctx_slot_1_k_items:" in transformed
+    assert "for __pyr_ctx_slot_1_k in __pyr_ctx_slot_1_k_items:" in transformed
     assert "with __pyr_ctx_slot_1_k.pass_scope():" in transformed
     assert "__pyr_label_dirty, label = __pyr_ctx_slot_1_k.current_value()" in transformed
     assert "if (__pyr_ctx_slot_2_h := __pyr_ctx_slot_1_k.container_call(__pyr_slot_2, row, label, dirty_state=__pyr_dirtyof(title=__pyr_label_dirty))):" in transformed
     assert "with __pyr_ctx_slot_2_h as __pyr_ctx_slot_2:" in transformed
-    assert "for __pyr_ctx_slot_3_k in __pyr_ctx_slot_2.keyed_loop(__pyr_slot_3, values, key_fn=lambda x: x):" in transformed
+    assert "with __pyr_keyed_loop_scope(__pyr_ctx_slot_2.keyed_loop(__pyr_slot_3, values, key_fn=lambda x: x)) as __pyr_ctx_slot_3_k_items:" in transformed
     assert "with __pyr_ctx_slot_3_k.pass_scope():" in transformed
     assert "__pyr_value_dirty, value = __pyr_ctx_slot_3_k.current_value()" in transformed
     assert "if (__pyr_ctx_slot_4_h := __pyr_ctx_slot_3_k.container_call(__pyr_slot_4, row, f'{label}:{value}', dirty_state=__pyr_dirtyof(title=__pyr_label_dirty or __pyr_value_dirty))):" in transformed
     assert "with __pyr_ctx_slot_4_h as __pyr_ctx_slot_4:" in transformed
-    assert "_item" not in transformed
+    assert "_item.current_value(" not in transformed
     assert "button(f'{label}:{value}', value=value)" in transformed
 
     namespace = load_transformed_namespace(
@@ -231,7 +232,7 @@ def list_render(items):
         filename="/virtual/example/phase4/list_render.py",
     )
 
-    assert "for __pyr_ctx_slot_1_k in __pyr_ctx.keyed_loop(__pyr_slot_1, enumerate(items), key_fn=lambda element: element[0]):" in transformed
+    assert "with __pyr_keyed_loop_scope(__pyr_ctx.keyed_loop(__pyr_slot_1, enumerate(items), key_fn=lambda element: element[0])) as __pyr_ctx_slot_1_k_items:" in transformed
     assert "with __pyr_ctx_slot_1_k.pass_scope():" in transformed
     assert "__pyr_item_dirty, __pyr_item_value = __pyr_ctx_slot_1_k.current_value()" in transformed
     assert "__pyr_index_dirty, (__pyr_x_dirty, __pyr_y_dirty) = __pyr_item_dirty" in transformed

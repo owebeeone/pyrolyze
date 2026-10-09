@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import inspect
 import os
-from contextlib import AbstractContextManager
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Callable, Generic, Iterator, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Callable, Generic, Iterator, TypeVar, cast
 
 from pyrolyze.api import (
     MountDirective,
@@ -22,6 +22,10 @@ from ..slot_call_semantics import ExternalStoreRef
 from ..slot_call_core import runtime_context_param_name
 from ..slot_kinds import ContextKind
 from ..slot_identity import SlotId, SlotIdPath
+
+if TYPE_CHECKING:
+    from .keyed_loop_render import _KeyedLoopExecution
+    from .render_attempt import _LocalRenderScope
 
 
 T = TypeVar("T")
@@ -759,35 +763,85 @@ class _KeyedLoopIterable(Generic[T]):
     parent_facade: Any
     values: tuple[T, ...]
     key_fn: Callable[[T], Any]
+    execution: _KeyedLoopExecution | None = None
+    _execution_scope: _LocalRenderScope | None = field(default=None, init=False, repr=False)
 
-    def __iter__(self) -> Iterator[T]:
-        loop_item_slot_context_cls = REFRACTOR_CLASSES.loop_item_slot_context_cls
-        if loop_item_slot_context_cls is None:
-            raise RuntimeError("loop item slot context class is not configured")
+    @contextmanager
+    def pass_scope(self) -> Iterator[_KeyedLoopIterable[T]]:
+        if self.execution is None:
+            yield self
+            return
+        with self.execution.scope(self.owner_state_mgr) as scope:
+            self._execution_scope = scope
+            try:
+                yield self
+            finally:
+                self._execution_scope = None
+
+    def __iter__(self) -> Iterator[Any]:
+        # Capture at iter(), not first next(): even an unstarted iterator belongs
+        # to the execution scope in which it was acquired.
+        return self._iterate(self._execution_scope)
+
+    def _iterate(self, scope: _LocalRenderScope | None) -> Iterator[Any]:
+        if self.execution is not None:
+            if scope is not None:
+                self._require_iteration_scope(scope)
+                yield from self._iter_items(scope=scope)
+                return
+            with self.pass_scope():
+                try:
+                    yield from self._iter_items(scope=self._execution_scope)
+                except GeneratorExit:
+                    # Disposal is not evidence of a failed loop body. Compiled
+                    # loops report body exceptions through their explicit scope.
+                    return
+            return
         self.owner_state_mgr.begin_pass()
-        seen_keys: set[Any] = set()
         try:
-            for value in self.values:
-                key = self.key_fn(value)
-                owner_slot_id = self.owner_state_mgr.current_slot_id()
-                if key in seen_keys:
-                    raise DuplicateKeyError(f"duplicate key {key!r} for loop slot {owner_slot_id!r}")
-                seen_keys.add(key)
-                item_slot = SlotId(
-                    module_id=owner_slot_id.module_id,
-                    slot_index=owner_slot_id.slot_index,
-                    key_path=(key,),
-                    line_no=owner_slot_id.line_no,
-                )
-                item = self.owner_state_mgr.ensure_slot(
-                    item_slot,
-                    loop_item_slot_context_cls,
-                    parent_facade=self.parent_facade,
-                )
-                item.update_current(value)
-                yield item
+            yield from self._iter_items()
         except BaseException:
             self.owner_state_mgr.rollback_pass()
             raise
         else:
             self.owner_state_mgr.end_pass()
+
+    def _require_iteration_scope(self, scope: _LocalRenderScope | None) -> None:
+        if self.execution is not None:
+            self.execution.require_active()
+            if scope is not None and self._execution_scope is not scope:
+                self.execution.completion.reject("original loop execution scope has exited")
+
+    def _iter_items(self, *, scope: _LocalRenderScope | None = None) -> Iterator[Any]:
+        loop_item_slot_context_cls = REFRACTOR_CLASSES.loop_item_slot_context_cls
+        if loop_item_slot_context_cls is None:
+            raise RuntimeError("loop item slot context class is not configured")
+        seen_keys: set[Any] = set()
+        for value in self.values:
+            self._require_iteration_scope(scope)
+            key = self.key_fn(value)
+            if self.execution is not None:
+                self.execution.require_active()
+            owner_slot_id = self.owner_state_mgr.current_slot_id()
+            duplicate = key in seen_keys
+            if self.execution is not None:
+                self.execution.require_active()
+            if duplicate:
+                raise DuplicateKeyError(f"duplicate key {key!r} for loop slot {owner_slot_id!r}")
+            seen_keys.add(key)
+            if self.execution is not None:
+                self.execution.require_active()
+            item_slot = SlotId(
+                module_id=owner_slot_id.module_id,
+                slot_index=owner_slot_id.slot_index,
+                key_path=(key,),
+                line_no=owner_slot_id.line_no,
+            )
+            item = self.owner_state_mgr.ensure_slot(
+                item_slot, loop_item_slot_context_cls, parent_facade=self.parent_facade,
+            )
+            if self.execution is not None:
+                self.execution.require_active()
+            item.update_current(value)
+            yield item
+            self._require_iteration_scope(scope)

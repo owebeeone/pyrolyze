@@ -1,0 +1,11 @@
+{
+  "initial": [[1, 2], [[true, true], [true, true]], ["subscribe:a", "subscribe:b"]],
+  "reorder": [[2, 3], [[false, false], [false, true]], [true, true]],
+  "rollback": [[2, 3], ["a", 3], ["subscribe:a", "subscribe:b", "subscribe:c", "unsubscribe:c"]],
+  "remove_and_retry": [[5], [[false, true]], true, ["subscribe:a", "subscribe:b", "subscribe:c", "unsubscribe:c", "unsubscribe:b"]],
+  "nested_key": ["a", 7],
+  "omit": [[], ["subscribe:a", "subscribe:b", "subscribe:c", "unsubscribe:c", "unsubscribe:b", "unsubscribe:a"]],
+  "compiled": [3, 1],
+  "compiled_break": [8],
+  "compiled_break_rollback": [8]
+}
