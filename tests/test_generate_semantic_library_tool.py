@@ -188,6 +188,17 @@ def test_generated_pyside6_line_edit_exposes_text_changed_event() -> None:
     assert event.payload_policy is EventPayloadPolicy.FIRST_ARG
 
 
+def test_generated_pyside6_combo_box_exposes_options_and_selection() -> None:
+    spec = PySide6UiLibrary.WIDGET_SPECS["QComboBox"]
+    assert spec.methods["addItems"].source_props == ("items",)
+    assert spec.methods["addItems"].mode is MethodMode.CREATE_ONLY_REMOUNT
+    assert spec.props["items"].affects_identity
+    assert spec.methods["setCurrentText"].source_props == ("currentText",)
+    event = spec.events["on_currentTextChanged"]
+    assert event.signal_name == "currentTextChanged"
+    assert event.payload_policy is EventPayloadPolicy.FIRST_ARG
+
+
 def test_generated_pyside6_scroll_area_prefers_widget_for_default_attach() -> None:
     spec = PySide6UiLibrary.WIDGET_SPECS["QScrollArea"]
 

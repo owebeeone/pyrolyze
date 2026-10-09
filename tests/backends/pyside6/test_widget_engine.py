@@ -27,6 +27,24 @@ class _BrokenQtPropertyWidget(QWidget):
         raise RuntimeError(f"cannot convert {name}")
 
 
+def test_combo_options_remount_without_duplicate_items(qapp: QApplication) -> None:
+    del qapp
+    engine = PySide6WidgetEngine(PySide6UiLibrary.WIDGET_SPECS)
+    changes: list[str] = []
+    props = {"items": ("Sydney", "Paris"), "currentText": "Paris", "on_currentTextChanged": changes.append}
+    node = engine.mount(UIElement(kind="QComboBox", props=props))
+    original = node.widget
+    assert original.currentText() == "Paris"
+    assert changes == []
+    engine.update(node, UIElement(kind="QComboBox", props={**props, "currentText": "Sydney"}))
+    assert node.widget is original
+    assert original.count() == 2
+    engine.update(node, UIElement(kind="QComboBox", props={**props, "items": ("Rome", "Paris")}))
+    assert node.widget is not original
+    assert tuple(node.widget.itemText(i) for i in range(node.widget.count())) == ("Rome", "Paris")
+    assert node.widget.currentText() == "Paris"
+
+
 def test_read_current_prop_value_returns_missing_when_qt_property_read_raises(qapp: QApplication) -> None:
     del qapp
     engine = PySide6WidgetEngine(PySide6UiLibrary.WIDGET_SPECS)

@@ -4040,8 +4040,51 @@ class PySide6UiLibrary:
                 "windowTitle": UiPropSpec(name="windowTitle", annotation=TypeRef(expr='QString'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.QT_PROPERTY, setter_name="setProperty", getter_kind=AccessorKind.QT_PROPERTY, getter_name="property", affects_identity=False),
                 "x": UiPropSpec(name="x", annotation=TypeRef(expr='int'), mode=PropMode.READONLY, constructor_name=None, setter_kind=None, setter_name=None, getter_kind=AccessorKind.QT_PROPERTY, getter_name="property", affects_identity=False),
                 "y": UiPropSpec(name="y", annotation=TypeRef(expr='int'), mode=PropMode.READONLY, constructor_name=None, setter_kind=None, setter_name=None, getter_kind=AccessorKind.QT_PROPERTY, getter_name="property", affects_identity=False),
+                "items": UiPropSpec(name="items", annotation=TypeRef(expr='collections.abc.Sequence[str]'), mode=PropMode.CREATE_ONLY_REMOUNT, affects_identity=True),
+                "base_size_basew": UiPropSpec(name="base_size_basew", annotation=TypeRef(expr='int'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "base_size_baseh": UiPropSpec(name="base_size_baseh", annotation=TypeRef(expr='int'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "contents_margins_left": UiPropSpec(name="contents_margins_left", annotation=TypeRef(expr='int'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "contents_margins_top": UiPropSpec(name="contents_margins_top", annotation=TypeRef(expr='int'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "contents_margins_right": UiPropSpec(name="contents_margins_right", annotation=TypeRef(expr='int'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "contents_margins_bottom": UiPropSpec(name="contents_margins_bottom", annotation=TypeRef(expr='int'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "fixed_size_width": UiPropSpec(name="fixed_size_width", annotation=TypeRef(expr='int'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "fixed_size_height": UiPropSpec(name="fixed_size_height", annotation=TypeRef(expr='int'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "geometry_x": UiPropSpec(name="geometry_x", annotation=TypeRef(expr='int'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "geometry_y": UiPropSpec(name="geometry_y", annotation=TypeRef(expr='int'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "geometry_width": UiPropSpec(name="geometry_width", annotation=TypeRef(expr='int'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "geometry_height": UiPropSpec(name="geometry_height", annotation=TypeRef(expr='int'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "graphicsEffect": UiPropSpec(name="graphicsEffect", annotation=TypeRef(expr='PySide6.QtWidgets.QGraphicsEffect'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "item_data_index": UiPropSpec(name="item_data_index", annotation=TypeRef(expr='int'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "item_data_value": UiPropSpec(name="item_data_value", annotation=TypeRef(expr='typing.Any'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "item_data_role": UiPropSpec(name="item_data_role", annotation=TypeRef(expr='int'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "item_icon_index": UiPropSpec(name="item_icon_index", annotation=TypeRef(expr='int'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "item_icon_icon": UiPropSpec(name="item_icon_icon", annotation=TypeRef(expr='PySide6.QtGui.QIcon | PySide6.QtGui.QPixmap'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "item_text_index": UiPropSpec(name="item_text_index", annotation=TypeRef(expr='int'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "item_text_text": UiPropSpec(name="item_text_text", annotation=TypeRef(expr='str'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "lineEdit": UiPropSpec(name="lineEdit", annotation=TypeRef(expr='PySide6.QtWidgets.QLineEdit'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "shortcut_auto_repeat_id": UiPropSpec(name="shortcut_auto_repeat_id", annotation=TypeRef(expr='int'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "shortcut_auto_repeat_enable": UiPropSpec(name="shortcut_auto_repeat_enable", annotation=TypeRef(expr='bool'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "shortcut_enabled_id": UiPropSpec(name="shortcut_enabled_id", annotation=TypeRef(expr='int'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "shortcut_enabled_enable": UiPropSpec(name="shortcut_enabled_enable", annotation=TypeRef(expr='bool'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "size_increment_width": UiPropSpec(name="size_increment_width", annotation=TypeRef(expr='int'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "size_increment_height": UiPropSpec(name="size_increment_height", annotation=TypeRef(expr='int'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "size_policy_horizontal": UiPropSpec(name="size_policy_horizontal", annotation=TypeRef(expr='PySide6.QtWidgets.QSizePolicy.Policy'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "size_policy_vertical": UiPropSpec(name="size_policy_vertical", annotation=TypeRef(expr='PySide6.QtWidgets.QSizePolicy.Policy'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "view": UiPropSpec(name="view", annotation=TypeRef(expr='PySide6.QtWidgets.QAbstractItemView'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "windowFlags": UiPropSpec(name="windowFlags", annotation=TypeRef(expr='PySide6.QtCore.Qt.WindowType'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
+                "windowState": UiPropSpec(name="windowState", annotation=TypeRef(expr='PySide6.QtCore.Qt.WindowState'), mode=PropMode.CREATE_UPDATE, affects_identity=False),
             }),
             methods=frozendict({
+                "addItems": UiMethodSpec(
+                    name="addItems",
+                    mode=MethodMode.CREATE_ONLY_REMOUNT,
+                    params=(
+                        UiParamSpec(name="texts", annotation=TypeRef(expr='collections.abc.Sequence[str]'), default_repr=None),
+                    ),
+                    source_props=("items",),
+                    fill_policy=FillPolicy.RETAIN_EFFECTIVE,
+                    constructor_equivalent=False,
+                ),
                 "setBaseSize": UiMethodSpec(
                     name="setBaseSize",
                     mode=MethodMode.CREATE_UPDATE,
@@ -4063,6 +4106,16 @@ class PySide6UiLibrary:
                         UiParamSpec(name="bottom", annotation=TypeRef(expr='int'), default_repr=None),
                     ),
                     source_props=("contents_margins_left", "contents_margins_top", "contents_margins_right", "contents_margins_bottom"),
+                    fill_policy=FillPolicy.RETAIN_EFFECTIVE,
+                    constructor_equivalent=False,
+                ),
+                "setCurrentText": UiMethodSpec(
+                    name="setCurrentText",
+                    mode=MethodMode.CREATE_UPDATE,
+                    params=(
+                        UiParamSpec(name="text", annotation=TypeRef(expr='str'), default_repr=None),
+                    ),
+                    source_props=("currentText",),
                     fill_policy=FillPolicy.RETAIN_EFFECTIVE,
                     constructor_equivalent=False,
                 ),
@@ -4242,6 +4295,11 @@ class PySide6UiLibrary:
                 ),
             }),
             events=frozendict({
+                "on_currentTextChanged": UiEventSpec(
+                    name="on_currentTextChanged",
+                    signal_name="currentTextChanged",
+                    payload_policy=EventPayloadPolicy.FIRST_ARG,
+                ),
             }),
             mount_points=frozendict({
                 "action": MountPointSpec(
@@ -34343,6 +34401,7 @@ class PySide6UiLibrary:
         windowModified: bool | MissingType = MISSING,
         windowOpacity: float | MissingType = MISSING,
         windowTitle: str | MissingType = MISSING,
+        items: collections.abc.Sequence[str] | MissingType = MISSING,
         base_size_basew: int | MissingType = MISSING,
         base_size_baseh: int | MissingType = MISSING,
         contents_margins_left: int | MissingType = MISSING,
@@ -34375,6 +34434,7 @@ class PySide6UiLibrary:
         view: PySide6.QtWidgets.QAbstractItemView | MissingType = MISSING,
         windowFlags: PySide6.QtCore.Qt.WindowType | MissingType = MISSING,
         windowState: PySide6.QtCore.Qt.WindowState | MissingType = MISSING,
+        on_currentTextChanged: PyrolyzeHandler[[Any], None] | MissingType = MISSING,
     ) -> None:
         call_native(cls.__element)(
             kind="QComboBox",
@@ -34438,6 +34498,7 @@ class PySide6UiLibrary:
             windowModified=windowModified,
             windowOpacity=windowOpacity,
             windowTitle=windowTitle,
+            items=items,
             base_size_basew=base_size_basew,
             base_size_baseh=base_size_baseh,
             contents_margins_left=contents_margins_left,
@@ -34470,6 +34531,7 @@ class PySide6UiLibrary:
             view=view,
             windowFlags=windowFlags,
             windowState=windowState,
+            on_currentTextChanged=on_currentTextChanged,
         )
 
     @classmethod

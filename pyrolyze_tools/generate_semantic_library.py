@@ -938,6 +938,31 @@ def _render_widget_props(package_name: str, widget: DiscoveredWidgetClass) -> li
             f"getter_name={_render_getter_name(package_name, discovered_property)}, "
             f"affects_identity={_render_affects_identity(parameter is not None, discovered_property)}),"
         )
+    for method in widget.setter_methods:
+        learning = widget.method_learnings.get(method.name)
+        source_props = (
+            learning.source_props
+            if learning is not None and learning.source_props is not None
+            else _default_source_props_for_method(package_name, widget, method)
+        )
+        mode = (
+            learning.mode
+            if learning is not None and learning.mode is not None
+            else MethodMode.CREATE_UPDATE
+        )
+        for index, name in enumerate(source_props):
+            prop_learning = widget.prop_learnings.get(name)
+            if prop_learning is not None and prop_learning.public is False:
+                continue
+            if name in prop_names:
+                continue
+            parameter = method.parameters[index]
+            lines.append(
+                f'                "{name}": UiPropSpec(name="{name}", '
+                f'annotation={_render_type_ref(parameter.annotation_source)}, '
+                f'mode=PropMode.{mode.name}, affects_identity={mode is MethodMode.CREATE_ONLY_REMOUNT!r}),'
+            )
+            prop_names = (*prop_names, name)
     return lines
 
 
@@ -1840,6 +1865,14 @@ def _extract_pyside6_setters(
                 owner_class_name=base_class.__name__,
                 name=method_name,
                 parameters=parameters,
+            )
+    if widget_class.__name__ == "QComboBox":
+        # Options are additive in Qt; learnings make population remount-only.
+        for name, parameters in _extract_pyside6_named_methods(
+            widget_class, ("addItems", "setCurrentText")
+        ).items():
+            discovered[name] = DiscoveredSetterMethod(
+                owner_class_name=widget_class.__name__, name=name, parameters=parameters
             )
     return tuple(discovered[name] for name in sorted(discovered))
 

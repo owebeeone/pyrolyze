@@ -868,8 +868,25 @@ LEARNINGS: frozendict[str, UiWidgetLearning] = frozendict(
             )
         ),
         "QComboBox": UiWidgetLearning(
+            event_learnings=frozendict({
+                "on_currentTextChanged": UiEventLearning(
+                    signal_name="currentTextChanged",
+                    payload_policy=EventPayloadPolicy.FIRST_ARG,
+                ),
+            }),
             method_learnings=frozendict(
                 {
+                    "addItems": UiMethodLearning(
+                        # Qt appends; replacing options must create a fresh widget.
+                        source_props=("items",),
+                        mode=MethodMode.CREATE_ONLY_REMOUNT,
+                        constructor_equivalent=False,
+                    ),
+                    "setCurrentText": UiMethodLearning(
+                        source_props=("currentText",),
+                        mode=MethodMode.CREATE_UPDATE,
+                        constructor_equivalent=False,
+                    ),
                     "setBaseSize": UiMethodLearning(
                         source_props=("base_size_basew", "base_size_baseh"),
                         fill_policy=FillPolicy.RETAIN_EFFECTIVE,
