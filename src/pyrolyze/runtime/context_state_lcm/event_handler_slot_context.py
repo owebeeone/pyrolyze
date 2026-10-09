@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from contextlib import nullcontext
 from typing import Any, Callable
 
 from .context_base import PASS_TX_KEY
@@ -32,35 +33,38 @@ class EventHandlerSlotContextStateMgr(SlotContextStateMgr):
         self, *, callback: Callable[..., Any], dirty: bool
     ) -> Callable[..., None]:
         completion = _field_only_completion(self)
-        owner = None
-        if completion is not None:
-            if completion.active is None or completion._completing:
-                completion.reject(
-                    "callback selection requires an active render execution"
-                )
-            owner = completion.active
-            owner._require_open()
-            owner._require_identity()
-        elif self._transaction_manager.active_transaction_for(PASS_TX_KEY) is None:
-            raise RuntimeError("scope is not active")
-        callback_key = _callback_key(callback)
-        current = self.current
-        select = bool(
-            dirty
-            or self._callback is None
-            or current._callback is None
-            or current._callback_key != callback_key
-        )
-        # Callback properties/equality may execute user code and replace authority.
-        if owner is not None:
-            owner._require_open()
-            owner._require_identity()
-            if completion.active is not owner or completion._completing:
-                completion.reject("callback selection lost its render owner")
-        if select:
-            self._callback = callback
-            self._callback_key = callback_key
-        return self._dispatch_callable()
+        if completion is not None and (
+            completion.active is None or completion._completing
+        ):
+            completion.reject("callback selection requires an active render execution")
+        execution = nullcontext() if completion is None else completion.attempt_scope()
+        with execution:
+            owner = None
+            if completion is not None:
+                owner = completion.active
+                assert owner is not None
+                owner._require_open()
+                owner._require_identity()
+            elif self._transaction_manager.active_transaction_for(PASS_TX_KEY) is None:
+                raise RuntimeError("scope is not active")
+            callback_key = _callback_key(callback)
+            current = self.current
+            select = bool(
+                dirty
+                or self._callback is None
+                or current._callback is None
+                or current._callback_key != callback_key
+            )
+            # Callback properties/equality may execute user code and replace authority.
+            if owner is not None:
+                owner._require_open()
+                owner._require_identity()
+                if completion.active is not owner or completion._completing:
+                    completion.reject("callback selection lost its render owner")
+            if select:
+                self._callback = callback
+                self._callback_key = callback_key
+            return self._dispatch_callable()
 
     def _discard_selection(self) -> None:
         # Retained unactivated component failure discards only this selection.

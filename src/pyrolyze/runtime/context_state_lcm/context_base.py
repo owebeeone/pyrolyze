@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 import os
 from typing import Any, Callable, Iterator, TYPE_CHECKING, TypeVar
@@ -754,41 +754,43 @@ class ContextBaseStateMgr(StateMgrBase):
         if component_call_slot_context_cls is None:
             raise RuntimeError("component call slot context class is not configured")
         completion = _field_only_completion(self)
-        owner = None if completion is None else completion.active
-        site = _RuntimeCallSite(
-            self.resolve_slot_id(slot_id), self._resolve_owner_arg(parent_facade)
-        )
-        raw_component, raw_args, raw_kwargs, site_metadata = _resolve_runtime_site_call(
-            site,
-            component,
-            args,
-            kwargs,
-        )
-        if owner is not None:
-            owner._require_open()
-            owner._require_identity()
-        if raw_component is None:
-            self.omit_resolved_slot(site.slot_id)
+        execution = nullcontext() if completion is None else completion.attempt_scope()
+        with execution:
+            owner = None if completion is None else completion.active
+            site = _RuntimeCallSite(
+                self.resolve_slot_id(slot_id), self._resolve_owner_arg(parent_facade)
+            )
+            raw_component, raw_args, raw_kwargs, site_metadata = _resolve_runtime_site_call(
+                site,
+                component,
+                args,
+                kwargs,
+            )
+            if owner is not None:
+                owner._require_open()
+                owner._require_identity()
+            if raw_component is None:
+                self.omit_resolved_slot(site.slot_id)
+                return None
+            unwrapped_component, _ = _unwrap(raw_component)
+            metadata, _ = _component_call_key(unwrapped_component)
+            runtime_func = _resolve_runtime_component_func(getattr(metadata, "_func", None))
+            if metadata is None or runtime_func is None:
+                raise TypeError("component_call expects a ComponentRef with _pyrolyze_meta._func")
+            slot = self.ensure_resolved_slot(
+                site.slot_id, component_call_slot_context_cls, parent_facade=parent_facade
+            )
+            slot.site_metadata = site_metadata
+            slot.invoke(
+                raw_component,
+                raw_args,
+                raw_kwargs,
+                dirty_state=dirty_state,
+                _pyr_param_names=_pyr_param_names,
+                _pyr_args_dirty=_pyr_args_dirty,
+                _pyr_kwargs_dirty=_pyr_kwargs_dirty,
+            )
             return None
-        unwrapped_component, _ = _unwrap(raw_component)
-        metadata, _ = _component_call_key(unwrapped_component)
-        runtime_func = _resolve_runtime_component_func(getattr(metadata, "_func", None))
-        if metadata is None or runtime_func is None:
-            raise TypeError("component_call expects a ComponentRef with _pyrolyze_meta._func")
-        slot = self.ensure_resolved_slot(
-            site.slot_id, component_call_slot_context_cls, parent_facade=parent_facade
-        )
-        slot.site_metadata = site_metadata
-        slot.invoke(
-            raw_component,
-            raw_args,
-            raw_kwargs,
-            dirty_state=dirty_state,
-            _pyr_param_names=_pyr_param_names,
-            _pyr_args_dirty=_pyr_args_dirty,
-            _pyr_kwargs_dirty=_pyr_kwargs_dirty,
-        )
-        return None
 
     def event_handler(
         self,
