@@ -329,7 +329,8 @@ class ContextBaseStateMgr(StateMgrBase):
         # Admission inventory only: never used to restore managed membership.
         self._field_only_prior_children = tuple(children.items())
         if not getattr(self, "_field_only_has_snapshot", False):
-            self._pass_child_order = tuple(children)
+            # Dirtiness is scheduler state, not managed membership. Keep its
+            # retry baseline; independent invalidations are replayed separately.
             self._pass_child_dirty = {
                 slot_id: child._invoke_dirty for slot_id, child in children.items()
             }
@@ -371,7 +372,6 @@ class ContextBaseStateMgr(StateMgrBase):
             for slot_id, child in self.current.children_state.items():
                 child._invoke_dirty = self._pass_child_dirty.get(slot_id, child._invoke_dirty)
                 child._seen_in_pass = True
-        self._pass_child_order = ()
         self._pass_child_dirty = {}
         self._field_only_has_snapshot = False
         self._field_only_prior_children = ()

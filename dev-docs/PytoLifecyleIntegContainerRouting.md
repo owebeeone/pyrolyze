@@ -1,6 +1,6 @@
 # Lifecycle Scope Container Routing
 
-Status: implemented behind `_enable_container_render`, uncommitted. Normal-route
+Status: committed as `a87a7ac` behind `_enable_container_render`. Normal-route
 activation and aggregate implementation review remain pending. This completes
 adoption-audit B's bounded dispatch work, not adoption of the entire runtime.
 

@@ -118,6 +118,20 @@ attempt, candidate removal, external invalidation during success/rollback, and
 independent roots. Do not remove legacy storage while normal routing depends on
 it, or force scheduler state under the render key merely to eliminate a snapshot.
 
+Cleanup audit: the private path no longer captures or clears the legacy
+`_pass_child_order`; lifecycle already restores child membership and ordering.
+A narrow regression checks that a second pass with accepted children does not
+populate that legacy snapshot. The legacy path retains its own bookkeeping.
+
+`_pass_child_dirty` remains intentional: `_invoke_dirty` is nontransactional
+scheduler state, and rollback must restore the retry baseline before I6b replays
+independent invalidations. `_seen_in_pass` still participates in owned-handler
+selection. Moving either into transaction-managed storage requires a separate
+consumption/notification policy, not simply deleting restoration. Retirement
+inventories and local scope identities also remain necessary. This is a bounded
+cleanup, not completion of the entire dirty/visitation migration or permission
+to activate the lifecycle path by default.
+
 ### D: Aggregate Review And I7 Adoption
 
 After A-C, run the operator-requested aggregate implementation review over the

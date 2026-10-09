@@ -22,6 +22,16 @@ def _root() -> Any:
     return root
 
 
+def test_lifecycle_pass_does_not_capture_legacy_child_order() -> None:
+    root = _root()
+    with root.pass_scope():
+        runtime.LeafSlotContext(
+            root, root, runtime.SlotId(runtime.ModuleId("order"), 1), seen_in_pass=True
+        )
+    with root.pass_scope():
+        assert root._state_mgr._pass_child_order == ()
+
+
 @pytest.mark.parametrize(
     "slot_type",
     (
