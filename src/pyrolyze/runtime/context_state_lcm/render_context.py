@@ -44,10 +44,12 @@ class RenderContextStateMgr(ContextBaseStateMgr):
             owner_completion.reject("nested render scheduler ownership does not match")
         if shared_completion is not None:
             from pyrolyze.runtime.context_bare_refactor_lcm import RenderContext
+            from pyrolyze.runtime.context_lifecycle import RenderContext as LifecycleRenderContext
             from .component_call_slot_context import ComponentCallSlotContextStateMgr
 
             if (
-                type(self) is not RenderContextStateMgr or type(owner) is not RenderContext
+                type(self) is not RenderContextStateMgr
+                or type(owner) not in (RenderContext, LifecycleRenderContext)
                 or type(owner_slot_state_mgr) is not ComponentCallSlotContextStateMgr
                 or _field_only_completion(owner_slot_state_mgr) is not shared_completion
                 or owner_slot_state_mgr._parent_state_mgr.children_state.get(

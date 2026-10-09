@@ -10,7 +10,7 @@ def _selected_context_impl() -> str:
     explicit = os.environ.get("PYROLYZE_CONTEXT_IMPL")
     if explicit is not None:
         value = explicit.strip().lower()
-        if value in {"lcm", "original", "bare", "bare_refactor", "bare_refactor_lcm"}:
+        if value in {"lcm", "lifecycle", "original", "bare", "bare_refactor", "bare_refactor_lcm"}:
             return value
         raise RuntimeError(f"unsupported PYROLYZE_CONTEXT_IMPL={explicit!r}")
 
@@ -22,6 +22,7 @@ def _selected_context_impl() -> str:
 
 _IMPL_MODULES = {
     "lcm": ".context_lcm",
+    "lifecycle": ".context_lifecycle",
     "original": ".context_original",
     "bare": ".context_bare",
     "bare_refactor": ".context_bare_refactor",

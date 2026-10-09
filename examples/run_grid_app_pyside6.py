@@ -33,7 +33,6 @@ def build_app_host() -> tuple[Any, RenderContext]:
 
     def render_root() -> None:
         component._pyrolyze_meta._func(ctx, dirtyof())
-        reconcile_host()
 
     def post_flush(callback: Any) -> None:
         QTimer.singleShot(
@@ -46,6 +45,7 @@ def build_app_host() -> tuple[Any, RenderContext]:
 
     ctx.set_flush_poster(post_flush)
     ctx.mount(render_root)
+    reconcile_host()
     return host, ctx
 
 

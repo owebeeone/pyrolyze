@@ -602,42 +602,7 @@ class SlotCallEvaluator:
         self._visited = True
         self.expr.call_site_context_manager.mark_visited(self.slot_id)
         current_binding = self._binding_from_context(self._current_context)
-        if self._pass_invoke_state is CallSiteInvokeState.GET_SET and current_binding is not None:
-            self._preserve_dependencies_for_refresh()
-            previous_value = current_binding.exposed_value()
-            current_binding, refreshed = self._refresh_binding(current_binding)
-            if refreshed is None:
-                current_value = current_binding.exposed_value()
-                current_dirty = self.expr.dm.clean_shape_like(current_value) if self.expr.dm is not None else False
-            else:
-                current_value, refreshed_dirty = refreshed
-                current_dirty = (
-                    _structured_dirty_projection(
-                        previous=previous_value,
-                        current=current_value,
-                        initialized=True,
-                    )
-                    if refreshed_dirty
-                    else (self.expr.dm.clean_shape_like(current_value) if self.expr.dm is not None else False)
-                )
-            if self._current_context is not None and self.expr.execution is None:
-                self._current_context.invoke_state.value = self._next_invoke_state
-            elif self._current_context is not None:
-                self._staged_context = self._current_context.replace(
-                    **(
-                        {"binding": current_binding}
-                        if current_binding is not self._current_context.binding
-                        else {}
-                    ),
-                    invoke_state_value=self._next_invoke_state,
-                )
-                self.expr.execution.require_active()
-                self.expr.call_site_context_manager.stage(self.slot_id, self._staged_context)
-            self._current_value = current_value
-            self._current_dirty = current_dirty
-            self._evaluated = True
-            return
-
+        # A store refresh must not mask changes to the callable or its inputs.
         args_carrier = self._invoke_builder(self.args_lambda)
         dirt_carrier = self._invoke_builder(self.dirt_args_lambda)
         func = self._func_provider.get_func(self.expr)
@@ -739,6 +704,8 @@ class SlotCallEvaluator:
             )
         else:
             assert current_binding is not None
+            if self._pass_invoke_state is CallSiteInvokeState.GET_SET:
+                self._preserve_dependencies_for_refresh()
             previous_value = current_binding.exposed_value()
             current_binding, refreshed = self._refresh_binding(current_binding)
             if refreshed is None:

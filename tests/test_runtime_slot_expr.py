@@ -880,7 +880,7 @@ def test_slot_expr_external_store_ref_refreshes_without_reinvoking_call() -> Non
     assert dm.bind.value is True
 
 
-def test_slot_expr_invoke_get_shortcuts_provider_and_builder_evaluation() -> None:
+def test_slot_expr_invoke_get_checks_inputs_once_without_reinvoking_helper() -> None:
     store = {"value": 1}
     listeners: list[callable] = []
     source_call_count = {"count": 0}
@@ -929,10 +929,10 @@ def test_slot_expr_invoke_get_shortcuts_provider_and_builder_evaluation() -> Non
 
     assert expr.evaluate("value") == 2
     assert source_call_count["count"] == 1
-    assert provider_count["count"] == 1
-    assert provider_dirty_count["count"] == 1
-    assert args_builder_count["count"] == 1
-    assert dirt_builder_count["count"] == 1
+    assert provider_count["count"] == 2
+    assert provider_dirty_count["count"] == 2
+    assert args_builder_count["count"] == 2
+    assert dirt_builder_count["count"] == 2
     assert get_count["count"] == 2
     assert dm.bind.value is True
 

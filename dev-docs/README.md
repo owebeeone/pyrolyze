@@ -12,7 +12,10 @@ container routing is committed behind a private gate. The
 visitation and invalidation acknowledgment behind `_enable_pass_state_render`.
 The compiled site-selection correction separates dirty lookup from clean
 retention and null-selection removal; it is implemented and tested.
-Next: aggregate review and remaining admission audit, then normal-route adoption.
+Aggregate review's caught-preparation failure boundary is corrected in `0f88db2`.
+The adoption audit now records a real UI trial and the opt-in `lifecycle` selector
+for automatic root completion. Small native UI interactions pass; normal-route
+adoption remains blocked by the recorded consumer, rebinding, and scaling gaps.
 
 The [container routing checkpoint](PytoLifecyleIntegContainerRouting.md) classifies
 supported compiled/native/directive scope calls before constructing their slots.

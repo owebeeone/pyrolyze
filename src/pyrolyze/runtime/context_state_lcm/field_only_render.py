@@ -32,12 +32,13 @@ def _field_only_completion(context: Any) -> _FieldOnlyRenderCompletion | None:
 
 def _enable_field_only_render(root: RenderContextStateMgr) -> None:
     from pyrolyze.runtime.context_bare_refactor_lcm import RenderContext
+    from pyrolyze.runtime.context_lifecycle import RenderContext as LifecycleRenderContext
     from .context_base import PASS_TX_KEY
     from .render_context import RenderContextStateMgr
 
     if (
         type(root) is not RenderContextStateMgr
-        or type(root.owner) is not RenderContext
+        or type(root.owner) not in (RenderContext, LifecycleRenderContext)
         or root._scheduler_root_state_mgr is not root
         or root._owner_slot_state_mgr is not None
     ):

@@ -13,12 +13,59 @@ from pyrolyze.runtime.context_state_lcm.subscription_expr_render import (
 )
 from pyrolyze.runtime.slot_call_semantics import ExternalStoreRef, UseEffectRequest
 from tests.test_runtime_context_state_lcm_expression_render import _expr
+from tests.slot_expr_test_utils import eval_single_slot_expr
 
 
 def _root() -> Any:
     root = runtime.RenderContext()
     _enable_subscription_expr_render(root._state_mgr)
     return root
+
+
+@pytest.mark.parametrize("change", ("argument", "keyword", "callable"))
+def test_pending_refresh_does_not_mask_changed_invocation(change: str) -> None:
+    root = _root()
+    notifications: list[Any] = []
+    events: list[tuple[str, int]] = []
+    slot_id = runtime.SlotId(runtime.ModuleId("refresh-input-collision"), 1)
+
+    def first(value: int = 1) -> ExternalStoreRef[int]:
+        events.append(("first", value))
+
+        def subscribe(callback: Any) -> Any:
+            notifications.append(callback)
+            return lambda: notifications.remove(callback)
+
+        return ExternalStoreRef(("first", value), subscribe, lambda: value)
+
+    def second(value: int = 1) -> ExternalStoreRef[int]:
+        events.append(("second", value))
+        return ExternalStoreRef("second", lambda callback: lambda: None, lambda: 9)
+
+    with root.pass_scope():
+        if change == "argument":
+            _, value = eval_single_slot_expr(root, runtime.dirtyof(), slot_id, first, 1)
+        elif change == "keyword":
+            _, value = eval_single_slot_expr(root, runtime.dirtyof(), slot_id, first, value=1)
+        else:
+            _, value = eval_single_slot_expr(root, runtime.dirtyof(), slot_id, first)
+        assert value == 1
+    notifications[0]()
+    with root.pass_scope():
+        if change == "argument":
+            _, value = eval_single_slot_expr(
+                root, runtime.dirtyof(), slot_id, first, 2, args_dirty=(True,)
+            )
+        elif change == "keyword":
+            _, value = eval_single_slot_expr(
+                root, runtime.dirtyof(), slot_id, first,
+                value=2, kwargs_dirty={"value": True},
+            )
+        else:
+            _, value = eval_single_slot_expr(root, runtime.dirtyof(), slot_id, second)
+        assert value == (9 if change == "callable" else 2)
+    assert events == [("first", 1), ("second", 1) if change == "callable" else ("first", 2)]
+    assert len(notifications) == (0 if change == "callable" else 1)
 
 
 def test_failed_store_read_unsubscribes_with_retained_traceback_and_allows_retry() -> (

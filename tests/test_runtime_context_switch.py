@@ -19,6 +19,17 @@ def test_runtime_context_defaults_to_lcm(monkeypatch) -> None:
     assert hasattr(module, "RenderContext")
 
 
+def test_lifecycle_candidate_installs_completion_automatically(monkeypatch) -> None:
+    monkeypatch.setenv("PYROLYZE_CONTEXT_IMPL", "lifecycle")
+    module = _reload_runtime_context()
+    assert module.__PYROLYZE_CONTEXT_IMPLEMENTATION__ == "lcm"
+    root = module.RenderContext()
+    completion = getattr(root._state_mgr, "_field_only_completion", None)
+    assert completion is not None
+    assert completion.pass_state_selection_enabled
+    assert completion.root is root._state_mgr
+
+
 def test_runtime_context_can_switch_back_to_original(monkeypatch) -> None:
     monkeypatch.delenv("PYROLYZE_CONTEXT_IMPL", raising=False)
     monkeypatch.setenv("PYROLYZE_USE_CONTEXT_LCM", "0")

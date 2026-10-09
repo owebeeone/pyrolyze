@@ -6,6 +6,78 @@ switch normal routing. The single-cohort amendment remains authoritative.
 
 ## Current Routing
 
+### I7 Trial After Aggregate Review
+
+The aggregate review reproduced caught preparation errors publishing candidates
+in component resolution and callback selection. Commit `0f88db2` encloses both
+operations in the existing attempt scope: record the original failure immediately,
+then discard at outer completion even when the caller catches it. Regression
+coverage pins original exception identity, accepted-state preservation, and retry.
+The correction passed 1143 tests, with 20 skips and the two known host failures.
+
+The next checkpoint adds an **opt-in adoption candidate**, not default activation:
+`PYROLYZE_CONTEXT_IMPL=lifecycle` selects `context_lifecycle.py`. It reuses the
+decomposed facades and automatically installs the final pass-state completion on
+fresh independent roots; nested roots join their owner's completion. The explicit
+root-type guards admit this canonical facade, not arbitrary subclasses. Normal
+`lcm` and the original fallback remain unchanged while adoption gaps are resolved.
+
+Run a real UI trial from the repository root:
+
+```sh
+PYROLYZE_CONTEXT_IMPL=lifecycle \
+PYTHONPATH=src:../yidl-lifecycle/src:../yidl/src:../astichi/src \
+  ../.venv/bin/python examples/run_grid_app_pyside6.py
+```
+
+The hello sample launched successfully. The existing native grid interaction test
+passed through this candidate: cell updates, text edits, resizing, and layout
+replacement. Both runners now reconcile after `mount()` returns, with subsequent
+updates reconciled after the posted flush callback. They no longer read committed
+UI before the outer render callback returns.
+
+The initial default-activation experiment reported 1092 passing tests, 20 skips,
+and 53 failures (including the two known host failures). Default activation was
+withdrawn; do not treat these as new baseline debt or regenerate snapshots:
+
+- Remaining sample/host callbacks reconcile before outer publication.
+- Legacy handwritten container helpers remain deliberately unadmitted; classify
+  actual consumers before choosing an adapter or migrating test scaffolding.
+- Tests use old concrete binding types, manual slot preallocation, local completion,
+  or caught-error continuation expectations. Separate those assumptions from real
+  regressions before changing assertions.
+- `test_use_app_context_rebinds_when_requested_key_changes` originally returned the
+  old key's value on rerender. The refresh/input collision correction now checks
+  prepared invocation inputs before binding refresh. Its positional, keyword, and
+  callable-change regressions pass; clean notifications still avoid helper invocation.
+  The existing app-context test now advances past the correct locale selection but
+  fails on an extra rerender queued by override publication. That notification
+  acknowledgment issue remains a separate candidate-route defect.
+- Historical characterization snapshots describe the superseded completion model;
+  preserve that evidence rather than bless the new output blindly.
+- The 20-by-20 grid operation-budget trial was interrupted after extended execution
+  in transaction completion. Its stack showed `_CompletionSession._check_ownership`
+  repeatedly scanning the participant list. Profile the scaling before changing
+  ownership enforcement; this trial did not establish a passing large-grid budget.
+
+Next: close the candidate's functional and performance gaps, migrate canonical
+consumers, then switch `lcm` and retire the monolithic engine. Compatibility
+deletion remains gated on that verified adoption, not the successful small UI trial.
+
+With normal routing restored and the two sample runners corrected, regression
+verification reports 1144 passed, 20 skipped, and only the two known host failures.
+Candidate native checks pass the existing grid interaction and generic-harness
+tests; Python-backend checks pass the generic harness and preparation-failure
+regressions. These results do not certify the excluded large-grid trial or the
+remaining admission paths.
+
+After the refresh/input collision correction, normal regression reports 1147
+passed, 20 skipped, and the same two host failures. Focused native expression/store
+checks pass 58 tests, and Python-backend expression checks pass 50. The candidate
+app-context test still fails at its no-extra-render assertion, after correctly
+selecting the new key; redundant override-publication invalidation is not fixed
+by changing invocation precedence.
+
 `src/pyrolyze/runtime/context.py` still maps the default `lcm` selection to
 `context_lcm.py`, the older monolithic implementation. Explicit
 `bare_refactor_lcm` selects the decomposed classes, but does not install
