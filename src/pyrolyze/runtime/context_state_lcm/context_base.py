@@ -587,6 +587,14 @@ class ContextBaseStateMgr(StateMgrBase):
         **kwargs: Any,
     ) -> Any:
         self.require_active_scope()
+        completion = _field_only_completion(self)
+        if getattr(completion, "container_routing_enabled", False):
+            return completion.container_call(
+                self, slot_id, container_fn, args, kwargs,
+                parent=self._resolve_owner_arg(parent_facade),
+                dirty_state=dirty_state, param_names=_pyr_param_names,
+                args_dirty=_pyr_args_dirty, kwargs_dirty=_pyr_kwargs_dirty,
+            )
         container_slot_context_cls = REFRACTOR_CLASSES.container_slot_context_cls
         directive_slot_context_cls = REFRACTOR_CLASSES.directive_slot_context_cls
         if container_slot_context_cls is None or directive_slot_context_cls is None:

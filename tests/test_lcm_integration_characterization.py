@@ -98,6 +98,10 @@ def test_keyed_loop_lifecycle_golden() -> None:
     _check_baseline("keyed_loop_lifecycle.py", "keyed_loop_lifecycle", dict(os.environ))
 
 
+def test_container_routing_lifecycle_golden() -> None:
+    _check_baseline("container_routing_lifecycle.py", "container_routing_lifecycle", dict(os.environ))
+
+
 def test_directive_completion_lifecycle_golden() -> None:
     _check_baseline(
         "directive_completion_lifecycle.py", "directive_completion_lifecycle", dict(os.environ)

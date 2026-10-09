@@ -1,5 +1,9 @@
 # Keyed Loop Lifecycle Checkpoint
 
+Committed as `053dd3c` on main. Aggregate review and normal activation remain
+pending; [container routing](PytoLifecyleIntegContainerRouting.md) is the subsequent
+checkpoint.
+
 ## Scope
 
 Extend the I6b proof through `_enable_keyed_loop_render`, admitting exact keyed
@@ -81,7 +85,7 @@ structural, and compiler golden checks passed 82 tests. The focused ownership
 faults also passed 14 tests on Python 3.14's Python assembly backend, including
 started and unstarted expired iterators. The hash-insertion fault is armed by
 operation rather than hash-call count because tuple caching varies by interpreter.
-Changes remain uncommitted and do not authorize normal-route activation.
+The committed checkpoint does not authorize normal-route activation.
 
 Final affected Python-backend checks passed 15 tests. The final full native
 regression passed 1,098 tests, with 20 skips and only the same two known generic

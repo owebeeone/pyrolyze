@@ -6,8 +6,14 @@ landed; use its status and the recorded acceptance scope.
 ## Lifecycle Integration
 
 The [adoption audit](PytoLifecyleIntegAdoptionAudit.md) inventories remaining
-holders and confirmed gates after I6b. Next: keyed-loop item selection, container
-routing, common pass-state cleanup, aggregate review, then normal-route adoption.
+holders and confirmed gates after I6b. Keyed-loop selection is committed and
+container routing is implemented behind a private gate. Next: common pass-state
+cleanup, aggregate review, then normal-route adoption.
+
+The [container routing checkpoint](PytoLifecyleIntegContainerRouting.md) classifies
+supported compiled/native/directive scope calls before constructing their slots.
+It is implemented and tested behind its own private gate, uncommitted.
+Normal routing and arbitrary external context-manager admission are unchanged.
 
 The [keyed-loop checkpoint](PytoLifecyleIntegKeyedLoops.md) now implements managed
 item selection and original-owner iteration behind another proof gate. The

@@ -1,0 +1,7 @@
+{
+  "provisional": [],
+  "accepted": [[["frame", {"label": "old"}, [["native", {}, [["mount", ["menu"], [["text", {"label": "old"}, []]]]]]]]], ["subscribe:old"]],
+  "rollback": [[["frame", {"label": "old"}, [["native", {}, [["mount", ["menu"], [["text", {"label": "old"}, []]]]]]]]], ["subscribe:old", "subscribe:discard", "unsubscribe:discard"]],
+  "replacement": [[["frame", {"label": "new"}, [["native", {}, [["mount", ["corner"], [["text", {"label": "new"}, []]]]]]]]], ["subscribe:old", "subscribe:discard", "unsubscribe:discard", "subscribe:new", "unsubscribe:old"]],
+  "omitted": [[], ["subscribe:old", "subscribe:discard", "unsubscribe:discard", "subscribe:new", "unsubscribe:old", "unsubscribe:new"]]
+}

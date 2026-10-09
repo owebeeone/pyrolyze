@@ -100,6 +100,11 @@ Verify construction/evaluation failures, caught failures forcing outer discard,
 native-root validation, directive projection, and resource cleanup through the
 actual compiled entry points, not just direct state-manager methods.
 
+Subsequent implementation: [scope-container checkpoint](PytoLifecyleIntegContainerRouting.md)
+adds classification-before-construction behind `_enable_container_render`, with
+authored compiled coverage and focused original-owner/admission faults. Default
+activation and aggregate review remain pending.
+
 ### C: Common Pass-State Migration
 
 Complete the I3a dirty/visitation audit after loop and container coverage exists.

@@ -537,6 +537,11 @@ class _MountContainerCallHandle(AbstractContextManager[Any]):
         if self.context_param not in bound_kwargs:
             bound_kwargs[self.context_param] = ContainerCallRuntimeContext(self.slot)
         self._host_context = self.container_fn(*bound_args, **bound_kwargs)
+        from .field_only_render import _field_only_completion
+
+        completion = _field_only_completion(self.slot._state_mgr)
+        if getattr(completion, "container_routing_enabled", False):
+            completion.require_container_host(self._host_context)
         host_enter = getattr(self._host_context, "__enter__", None)
         if not callable(host_enter):
             raise TypeError("mount() container helpers must return a context manager")

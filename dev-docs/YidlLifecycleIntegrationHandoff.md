@@ -7,22 +7,33 @@ Original handoff snapshots below remain historical evidence, not current status.
 
 ## Resume Point
 
-The next keyed-loop checkpoint is implemented but uncommitted behind
+The [scope-container checkpoint](PytoLifecyleIntegContainerRouting.md) is now
+implemented, uncommitted, behind `_enable_container_render`. It classifies
+compiled/native/directive calls before slot construction, fences original-owner
+execution, and rejects external mount-helper hosts before entering them.
+Verification: 39 native scope/loop/compiler compatibility tests pass, plus 10
+container checks on each of the Python 3.12 and 3.14 Python assembly backends.
+Full native regression: 1,108 passed, 20 skipped, the same two host-ordering
+failures. No compiler or library changes were needed. Common dirty/visitation
+cleanup is next; normal activation and
+aggregate review remain pending.
+
+The keyed-loop checkpoint is committed as `053dd3c` behind
 `_enable_keyed_loop_render`; see [its status](PytoLifecyleIntegKeyedLoops.md).
 The operator approved explicit loop execution scopes: `break` keeps the visited
 prefix provisional, body exceptions abort the shared attempt, and generator
 cleanup does not infer failure. Compiler lowering and runtime wiring implement
 that boundary. Verification: 82 focused native checks, 15 affected Python-backend
 checks, and 14 Python 3.14 ownership checks pass. Full native regression:
-1,098 passed, 20 skipped, the same two host-ordering failures. Other admission-audit items remain
-pending, with recognized container routing next. Aggregate review and default
+1,098 passed, 20 skipped, the same two host-ordering failures. Container routing
+is the subsequent checkpoint above. Aggregate review and default
 activation are not authorized by this checkpoint.
 
 I6b is committed as `583241e` on main, not pushed by this request. The
 [adoption audit](PytoLifecyleIntegAdoptionAudit.md) is the next-step inventory.
 KeyedLoop/LoopItem admission and transactional item selection are implemented
-and tested in the uncommitted checkpoint above. Next are recognized container
-dispatch and common dirty/visitation state. Do not
+and tested in the committed checkpoint above. Container dispatch is implemented
+in the uncommitted checkpoint; common dirty/visitation state follows. Do not
 activate the normal route yet: the default `lcm` alias still selects the older
 monolithic runtime, and the explicit decomposed route does not automatically
 install the final completion gate. Aggregate review precedes adoption/deletion.
