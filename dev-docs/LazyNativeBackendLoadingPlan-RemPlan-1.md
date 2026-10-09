@@ -8,7 +8,7 @@ There was no blind convergence because only Safety found a blocking defect.
 
 | Finding | Disposition | Closure evidence |
 | --- | --- | --- |
-| Safety P2-1: interrupted multi-file regeneration admits an unrecoverable mixture | Accept. Define exclusive offline promotion, a retained complete backup, an interruption marker, restore-before-retry, complete-inventory validation, and a packaging admission gate. | Revised design must cover interruption and failures at every replacement/deletion boundary; future fault-injection tests must recover complete old or new output, preserve unrelated files, and verify fresh-process lookup and packaging. Safety must retrace the original partial-replacement counterexample. |
+| Safety P2-1: interrupted multi-file regeneration admits an unrecoverable mixture | Accept. Apply the operator's whole-directory staging proposal: place all generated artifacts under one replaceable root, require successful generation plus complete validation, retain the old directory during two-rename offline promotion, restore before retry, and gate packaging on complete output with no pending promotion. | Revised design must cover interruption at each directory rename and marker transition, failed generator exit, first generation and backup cleanup; future tests recover complete old or new output, preserve unrelated files, and verify fresh-process lookup and packaging. Safety must retrace the original partial-replacement counterexample. |
 
 One document patch closes the finding; no generator or runtime is implemented.
 The publication mutation boundary becomes explicit, so fresh Consistency and

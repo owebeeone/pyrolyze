@@ -53,8 +53,11 @@ Before: src/pyrolyze/backends/pyside6/
   learnings.py               # eagerly re-exported by package initializer
 
 After (proposed): src/pyrolyze/backends/pyside6/
-  generated_library.py       # stable public facade, mounts, UI_INTERFACE, WIDGET_SPECS
+  generated_library.py       # stable compatibility re-export; no generated payload
+  generated_library.pyi      # stable explicit re-export of the generated facade type
   _generated/__init__.py     # empty; never imports shards
+  _generated/facade.py       # public class, mounts, UI_INTERFACE, WIDGET_SPECS
+  _generated/facade.pyi      # explicit classmethod signatures, for static tools
   _generated/index.py        # public name / kind -> module, families, generation stamp
   _generated/names.json      # per-kind member-name/family lists; tooling reads on request
   _generated/q_label.py      # marked source: QLabel spec + explicit CQLabel method
@@ -62,7 +65,6 @@ After (proposed): src/pyrolyze/backends/pyside6/
   _generated/q_hbox_layout.py
   _generated/shared/widget_base.py  # only genuinely shared definitions
   _loading.py               # backend-owned attribute resolution and spec Mapping
-  generated_library.pyi     # same explicit classmethod signatures, for static tools
 ```
 
 Default boundary: one widget kind per shard. Initially keep its full member
@@ -92,6 +94,13 @@ methods. The facade, index, shared metadata modules, and loader need no marker
 unless they contain reactive definitions. Leave checked-in artifacts as authored
 source, never transformed output. The existing import hook transforms only the
 requested small shard and preserves packed tail-`kwds` lowering.
+
+Keep every replaceable generated artifact under the single `_generated/` root,
+including the facade, stubs and inventory. The public `generated_library` module
+and stub are stable re-export shims, not per-generation artifacts. Authors keep
+the same import path and class identity through these re-exports; loading the
+small generated facade must not import widget shards. Establish the shims once
+as a normal reviewed source migration, not during later catalog regeneration.
 
 The generated method keeps its full explicit parameters, positional/keyword-only
 shape, annotations, defaults (`MISSING` versus `...` included), handlers and
@@ -236,41 +245,44 @@ writer. Keep discovery/learnings as the source of truth and produce a sorted
 multi-file artifact set: facade, index, shards, name data, stubs and generation
 inventory. Stable filename assignment must handle existing kind/public-name
 collisions rather than recomputing names independently per shard. Regenerate to
-an empty staging directory and validate the complete set before promotion.
+an empty sibling staging directory and validate the complete set before promotion.
+Require the generator to exit successfully and complete-inventory validation
+to pass; successful exit alone is not proof that every artifact is present.
 Promotion is an exclusive offline maintenance operation, never a live runtime
 update: stop processes using the destination and exclude imports, builds,
 packaging and concurrent writers until promotion or recovery completes.
 
-Before changing any destination file, retain a complete validated backup of the
-previous owned inventory and its bytes outside the replacement set, and retain
-the complete validated candidate. Record the old and candidate inventories and
-content hashes in a recovery record. Publish an in-progress marker only after
-the recovery record and backup are complete; modify nothing if preparation
-fails. The marker covers the whole promotion, including stale-file deletion.
-Replace only inventory-owned files and remove only stale owned shards. Unrelated
-files are never backup, replacement or deletion targets.
+Promotion moves directories, never copies files over the existing catalog.
+Use same-filesystem sibling paths and refuse unexpected backup/pending state.
+Before renaming anything, record the validated old and candidate inventory
+identities in a promotion marker outside both directory roots. Rename the old
+`_generated/` directory to the retained backup, then rename the complete staging
+directory to `_generated/`. Do not describe these two renames as one atomic
+swap: there is an interruption window with no active directory. Validate the
+promoted inventory before removing the marker and admitting imports or builds.
+The generated root contains only owned output; stale shards disappear with the
+whole old directory. Unrelated handwritten files remain outside this root.
 
-Every caught replacement/deletion error restores the previous owned inventory
-from the retained backup, removing newly introduced owned files, and validates
-the complete restored set before clearing the marker. Process interruption
-leaves the marker and backup intact. On the next invocation, detect the marker
-before generating, importing, building or packaging from that destination;
-restore the previous complete set first, validate it, then permit a fresh retry.
-Do not infer completion from a partial candidate or merely matching one shard's
-stamp. If recovery fails, leave the marker and backup intact, report the failing
-operation, and prohibit use or packaging until recovery succeeds. A fresh Python
-process alone does not repair an incomplete on-disk catalog.
+On any promotion error or restart with a pending marker, restore the complete
+old directory before retrying: if it is still active, leave it intact; if it is
+in the backup location, move any candidate active directory aside and rename
+the backup to `_generated/`. Validate the old inventory before clearing the
+marker. Recovery is idempotent; keep the marker and backup if restoration or
+validation fails, report the failing operation, and prohibit destination use.
+For first generation with no old catalog, failed promotion returns to an absent
+destination, which is not admitted for import or packaging; retry from a newly
+validated candidate. Never delete the retained old generation until candidate
+validation and marker clearing succeed. Backup cleanup failure after admission
+does not invalidate the complete new catalog; it prevents another promotion
+until the backup is safely cleaned under the same exclusive access.
 
-After successful replacement and deletion, validate all indexed files, hashes,
-stamps and the complete owned inventory against the candidate, then clear the
-marker and release exclusive maintenance access. Keep the old backup until
-this final validation and admission complete. Runtime first-use stamp checks
-remain defense in depth, not the publication-recovery mechanism. Build/package
-entry points must reject a pending marker or an incomplete/mixed generated
-inventory; bypassing these checks or using the destination during exclusive
-maintenance is unsupported. This is a process-interruption and filesystem-error
-recovery contract, not an unproved power-loss durability guarantee. The exact
-writer/marker integration is a required slice-1 proof before catalog migration.
+Build/package entry points reject a pending marker, absent required catalog or
+incomplete/mixed generated inventory. Imports during maintenance are unsupported;
+after restart, the maintenance operator must recover before starting consumers.
+Runtime stamp checks remain defense in depth, not recovery. This is a bounded
+offline directory-promotion contract for process interruption and filesystem
+errors, not live update support or a power-loss durability claim. Prove the
+writer and packaging admission checks in slice 1 before catalog migration.
 
 No timestamps,
 absolute paths or hand-maintained signature copies. Two runs with pinned
@@ -356,14 +368,16 @@ success paths in bespoke units:
   Reuse `tests/test_import_hook_cache.py` and
   `tests/test_importer_cache_fingerprint.py` for cache fingerprint mechanics.
 - Generator promotion tests inject interruption and filesystem errors before
-  and after every replacement and stale-file deletion, including recovery
+  and after each directory rename and marker transition, including recovery
   failures and repeated recovery. Verify the marker blocks build/package
   admission until recovery or candidate validation completes; recovery yields
   exactly the old complete owned set, or successful promotion the new complete
   set, never an admitted mixture. Check unrelated files remain byte-identical,
   retry succeeds, and a fresh-process one-widget lookup plus package-inventory
   validation succeeds after admission. Include failures before marker creation
-  and during final validation/marker clearing. The writer must demonstrate this
+  and during final validation/marker clearing, first-generation promotion and
+  post-admission backup cleanup. Prove failed generator exit never promotes
+  output. The writer must demonstrate this
   contract in slice 1 before slice 2 can replace the real catalog.
 - Distribution verification builds wheel/sdist, inspects inventory, installs in
   fresh environments and repeats the same one-widget fixture there. Run the
