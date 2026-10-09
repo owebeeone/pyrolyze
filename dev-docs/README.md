@@ -12,6 +12,11 @@ records the exact accepted revision, verdicts and remaining slice-0 proof gates.
 This is design acceptance only: no lazy loader, compiler change or performance
 improvement has been implemented by this checkpoint.
 
+A separate [import-hook bytecode reuse correction](ImportHookBytecodeReuse.md)
+removes eager transformation before Python's warm bytecode lookup. Diagnostic
+compiler artifacts remain available on demand; this does not implement widget
+sharding or change the lazy-loading design's acceptance scope.
+
 ## Lifecycle Integration
 
 Lifecycle-backed completion is now the default runtime selection, including the

@@ -10,6 +10,7 @@ import os
 import sys
 import hashlib
 from pathlib import Path
+from threading import RLock
 from typing import Any, Callable
 
 from .compiler import compile_source_with_env, kernel_loader
@@ -44,8 +45,6 @@ class _PyRolyzeLoader(importlib.abc.SourceLoader):
         self._delegate = delegate
         self._compiler_fn = compiler_fn
         self._cache = cache
-        self._prepared_source: str | None = None
-        self._prepared_path: str | None = None
         self._prepared_artifact: Any | None = None
         self._prepared_transformer_fingerprint: str | None = None
 
@@ -85,14 +84,19 @@ class _PyRolyzeLoader(importlib.abc.SourceLoader):
     def source_to_code(self, data: bytes, path: str, *, _optimize: int = -1) -> Any:
         del _optimize
         source = importlib.util.decode_source(data)
-        artifact = self._consume_prepared_artifact(source=source, file_path=path)
-        if artifact is None:
-            artifact = self._resolve_artifact(source, file_path=path)
+        artifact = self._resolve_artifact(
+            source,
+            file_path=path,
+            transformer_fingerprint=self._prepared_transformer_fingerprint,
+        )
+        self._prepared_artifact = artifact
         transformed_source = getattr(artifact, "transformed_source", None)
         source_to_compile = transformed_source if isinstance(transformed_source, str) else source
         return compile(source_to_compile, path, "exec")
 
     def exec_module(self, module: Any) -> None:
+        self._prepared_artifact = None
+        self._prepared_transformer_fingerprint = None
         source = self.get_source(module.__name__)
         file_path = getattr(module, "__file__", None) or self._path
         if source is not None and should_transform(
@@ -101,23 +105,58 @@ class _PyRolyzeLoader(importlib.abc.SourceLoader):
             source_text=source,
         ):
             transformer_fingerprint = kernel_loader.active_transformer_fingerprint()
-            artifact = self._resolve_artifact(
-                source,
-                file_path=str(file_path),
-                transformer_fingerprint=transformer_fingerprint,
-            )
-            self._prepared_source = source
-            self._prepared_path = str(file_path)
-            self._prepared_artifact = artifact
             self._prepared_transformer_fingerprint = transformer_fingerprint
-            setattr(module, "__pyrolyze_artifact__", artifact)
         try:
-            super().exec_module(module)
+            # Let SourceLoader validate bytecode before requesting a transform.
+            code = self.get_code(module.__name__)
+            if code is None:
+                raise ImportError(f"Unable to load module code for '{module.__name__}'.")
+            if self._prepared_transformer_fingerprint is not None:
+                module.__dict__.pop("__pyrolyze_artifact__", None)
+            if self._prepared_artifact is not None:
+                setattr(module, "__pyrolyze_artifact__", self._prepared_artifact)
+            exec(code, module.__dict__)
+            if source is not None and self._prepared_transformer_fingerprint is not None:
+                self._install_lazy_artifact(
+                    module,
+                    source=source,
+                    file_path=str(file_path),
+                    transformer_fingerprint=self._prepared_transformer_fingerprint,
+                )
         finally:
-            self._prepared_source = None
-            self._prepared_path = None
             self._prepared_artifact = None
             self._prepared_transformer_fingerprint = None
+
+    def _install_lazy_artifact(
+        self,
+        module: Any,
+        *,
+        source: str,
+        file_path: str,
+        transformer_fingerprint: str,
+    ) -> None:
+        if "__pyrolyze_artifact__" in module.__dict__:
+            return
+        fallback = module.__dict__.get("__getattr__")
+        artifact_lock = RLock()
+
+        def module_getattr(name: str) -> Any:
+            if name == "__pyrolyze_artifact__":
+                with artifact_lock:
+                    if name in module.__dict__:
+                        return module.__dict__[name]
+                    artifact = self._resolve_artifact(
+                        source,
+                        file_path=file_path,
+                        transformer_fingerprint=transformer_fingerprint,
+                    )
+                    setattr(module, name, artifact)
+                    return artifact
+            if fallback is not None:
+                return fallback(name)
+            raise AttributeError(f"module '{module.__name__}' has no attribute '{name}'")
+
+        module.__getattr__ = module_getattr
 
     def _resolve_artifact(
         self,
@@ -146,15 +185,6 @@ class _PyRolyzeLoader(importlib.abc.SourceLoader):
             )
             self._cache.put(module_name=self._fullname, cache_key=cache_key, payload=artifact)
         return artifact
-
-    def _consume_prepared_artifact(self, *, source: str, file_path: str) -> Any | None:
-        if self._prepared_source == source and self._prepared_path == file_path:
-            artifact = self._prepared_artifact
-            self._prepared_source = None
-            self._prepared_path = None
-            self._prepared_artifact = None
-            return artifact
-        return None
 
 
 class PyRolyzeFinder(importlib.abc.MetaPathFinder):
