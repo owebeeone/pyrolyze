@@ -5,11 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
 
-from PySide6.QtWidgets import QApplication, QLayout, QWidget
+from PySide6.QtWidgets import QApplication, QBoxLayout, QLayout, QWidget
 
 from pyrolyze.api import MISSING, UIElement
-from pyrolyze.backends.model import AccessorKind, UiEventSpec, UiWidgetSpec
+from pyrolyze.backends.model import AccessorKind, MountState, UiEventSpec, UiWidgetSpec
 from pyrolyze.backends.mountable_engine import MountableEngine, MountedMountableNode, MountableNodeKey
+from .box_layout import reconcile_box_layout_children
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,9 +37,38 @@ class _WidgetPlacement:
     index: int | None
 
 
+class _PySide6MountableEngine(MountableEngine):
+    def _apply_child_mount_states(
+        self,
+        parent: object,
+        child_nodes: list[MountedMountableNode],
+        mount_states: Mapping[tuple[object, ...], MountState],
+        old_mount_states: Mapping[tuple[object, ...], MountState] | None,
+    ) -> None:
+        if not isinstance(parent, QBoxLayout):
+            super()._apply_child_mount_states(parent, child_nodes, mount_states, old_mount_states)
+            return
+        previous = old_mount_states or {}
+        shared_keys = {
+            key for key, state in (*previous.items(), *mount_states.items())
+            if state.mount_point.place_method_name in ("insertWidget", "insertLayout")
+        }
+        if not shared_keys:
+            super()._apply_child_mount_states(parent, child_nodes, mount_states, old_mount_states)
+            return
+        shared_states = {key: state for key, state in mount_states.items() if key in shared_keys}
+        reconcile_box_layout_children(parent, child_nodes, shared_states)
+        super()._apply_child_mount_states(
+            parent,
+            child_nodes,
+            {key: state for key, state in mount_states.items() if key not in shared_keys},
+            {key: state for key, state in previous.items() if key not in shared_keys},
+        )
+
+
 class PySide6WidgetEngine:
     def __init__(self, widget_specs: Mapping[str, UiWidgetSpec]):
-        self._engine = MountableEngine(
+        self._engine = _PySide6MountableEngine(
             widget_specs,
             read_current_prop_value=self._read_current_prop_value,
             connect_event_signal=self._connect_event_signal,

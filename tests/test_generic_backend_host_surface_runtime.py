@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from pyrolyze.api import pyrolyze
 from pyrolyze.backends.model import MountMutationPolicy, MountReplayKind, TypeRef
 from pyrolyze.compiler import load_transformed_namespace
@@ -15,8 +17,14 @@ from pyrolyze.testing.generic_backend import (
     MountVariantSpec,
     NodeGenSpec,
     ParamSpec,
+    generate_argument_fuzz_replay,
     run_pyro,
 )
+
+
+# A known adversarial sequence is fixed for the detector's negative control.
+# Exploratory backend fuzzing has separate fresh-seed/replay configuration.
+HOST_SURFACE_FUZZ_SEED = 19
 
 
 def _host_surface_backend() -> BuildPyroNodeBackend:
@@ -420,8 +428,10 @@ def panel(show_bottom):
     assert rerendered_host.index("controls") < rerendered_host.index("bottom")
 
 
-def test_buggy_reconcile_mode_keeps_retained_nested_row_above_trailing_sibling() -> None:
-    backend = _buggy_host_surface_backend()
+@pytest.mark.parametrize("inject_fault", (False, True))
+def test_seeded_replay_detects_injected_host_surface_ordering_fault(inject_fault: bool) -> None:
+    backend = _buggy_host_surface_backend() if inject_fault else _host_surface_backend()
+    seed = HOST_SURFACE_FUZZ_SEED
     namespace = _load_program(
         backend,
         "buggy_branch_before",
@@ -429,13 +439,14 @@ def test_buggy_reconcile_mode_keeps_retained_nested_row_above_trailing_sibling()
 from {backend.module_name} import host, row, text
 
 @pyrolyze
-def panel(show_top):
+def panel(show_top, show_page):
     with host("root"):
         if show_top:
             text("top", "Top")
         else:
             text("top", "Top changed")
-        text("page", "Page size: 50")
+        if show_page:
+            text("page", "Page size: 50")
         with row("controls"):
             text("minus", "-")
             text("count", "Count")
@@ -444,23 +455,39 @@ def panel(show_top):
 """,
     )
 
-    rerender_ctx = backend.context(namespace["panel"], True, initial_generation=0)
-    _ = rerender_ctx.get()
-    rerendered = run_pyro(rerender_ctx.run(False).get())
+    replay = generate_argument_fuzz_replay(
+        seed=seed,
+        step_count=32,
+        argument_space={"show_top": (False, True), "show_page": (False, True)},
+    )
+    first = replay.steps[0].arguments
+    rerender_ctx = backend.context(namespace["panel"], first["show_top"], first["show_page"])
+    mount_name = (
+        "child_buggy_nested_layout_surface" if inject_fault else "child_nested_layout_surface"
+    )
+    mismatches: list[tuple[int, tuple[str, ...], tuple[str, ...]]] = []
+    try:
+        for index, step in enumerate(replay.steps):
+            result = (
+                rerender_ctx.get() if index == 0
+                else rerender_ctx.run(step.arguments["show_top"], step.arguments["show_page"]).get()
+            )
+            snapshot = run_pyro(result)
+            structural_order = tuple(
+                entry.node.kwargs["name"]
+                for entry in snapshot.mounts[mount_name][0].entries
+            )
+            host_order = tuple(
+                entry.node.kwargs["name"]
+                for entry in snapshot.host_surfaces[mount_name].entries
+            )
+            # The fault changes physical placement, not logical structure.
+            assert structural_order.index("controls") < structural_order.index("bottom")
+            if host_order != structural_order:
+                mismatches.append((index, structural_order, host_order))
+    finally:
+        print(f"Detector seed={seed}; inject_fault={inject_fault}")
 
-    structural_order = tuple(
-        entry.node.kwargs["name"]
-        for entry in rerendered.mounts["child_buggy_nested_layout_surface"][0].entries
-    )
-    host_order = tuple(
-        entry.node.kwargs["name"]
-        for entry in rerendered.host_surfaces["child_buggy_nested_layout_surface"].entries
-    )
-
-    assert structural_order == ("top", "page", "controls", "bottom")
-    assert host_order == ("top", "page", "controls", "bottom")
-    assert host_order.index("controls") < host_order.index("bottom")
-    assert (
-        rerendered.host_surface_metadata["child_buggy_nested_layout_surface"]["host_surface_reconcile_mode"]
-        == "stale_nested_sync_append"
-    )
+    assert bool(mismatches) is inject_fault, f"seed={seed} mismatches={mismatches}"
+    if inject_fault:
+        assert any(host.index("controls") > host.index("bottom") for _, _, host in mismatches)

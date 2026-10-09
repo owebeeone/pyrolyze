@@ -2,6 +2,123 @@
 
 ## Purpose
 
+### Current Detection Checkpoint
+
+`tests/test_pyside6_host_surface_fuzz.py` now runs a bounded, compiler-generated
+panel against the real PySide6 host. The initial seed-19 probe drove 32 states covering optional
+sibling insertion/removal, sibling order reversal, and label changes around a
+retained nested layout. Every state checks actual layout item order against an
+independent authored-order oracle and a fresh render. Nested layout identity is
+checked across updates.
+
+Both widget-only and mixed-surface replays now require zero mismatches. Before
+the fix, the mixed replay detected identically wrong fresh/incremental placement
+and the retained layout moving below its trailing sibling. The production Qt
+box-layout adapter now reconciles widget and nested-layout mount routes in one
+physical sequence. Existing layout items and child identities are retained;
+stretch/alignment parameters remain attached to their mounted children. The
+original native-host regression is unchanged and passes in focused checks.
+
+This is a bounded detection slice, not completion of this recursive fuzz plan.
+The generic simulator still does not model distinct mount routes sharing one
+physical surface; arbitrary recursive generation, broader mount profiles, and
+replay artifact persistence remain pending.
+
+### Seeded Program History Checkpoint
+
+The same test module additionally generates authored program structure from a
+bounded node catalog: labels, buttons, line edits, widgets, group boxes, and
+horizontal/vertical layouts. Program seeds vary group order, container types,
+child types/counts, and conditional block placement. Four groups expose twenty
+independent boolean inputs. The compiler lowers all generated bodies.
+
+For each program, five seeded input combinations are rendered from fresh
+contexts and recorded as recursive physical-tree snapshots. A retained context
+then runs up to three rounds of eight random mutations, returning to each recorded
+combination after each round. Comparison includes node kinds, names, text,
+hierarchy, and physical child order, but excludes object identity. No authored
+expected-order oracle is used. Mismatch records retain the program seed,
+mutation seed, baseline inputs, and complete preceding mutation sequence.
+
+Two generated program seeds exercise widget-only and mixed-layout correctness. Before the
+fix, the latter found history dependence with identical unordered content,
+isolating placement drift. Both now require zero mismatches, without an
+authored-order oracle. Narrow Qt adapter checks additionally pin stretch,
+alignment, removal, and one linear item scan at 10, 100, and 1,000 children.
+This bounded random-program slice does not yet generate arbitrary recursive
+depths, cover every mount profile, or persist replay artifacts to disk.
+
+For larger local runs, set `PYROLYZE_FUZZ_MULTIPLIER=10` when running
+`tests/test_pyside6_host_surface_fuzz.py`. This scales placement states and
+history mutation rounds while retaining five baselines per program. The default
+multiplier is one to keep routine regression cost bounded. The tenfold workload
+with the time limit disabled has 4,800 history mutations, 600 baseline-return comparisons, and 640 placement
+state checks in the successful-only variants (6,720 renders including fresh
+renders and baseline setup).
+
+### Rollback Fault Injection
+
+Two additional mixed-layout program cases explicitly use lifecycle-backed
+completion. Every mutation round attempts changed inputs with an exception
+before controls are evaluated, and another exception after all children are
+evaluated. Neither failure may change committed UI or the reconciled physical
+tree. A successful baseline retry must then equal the independently recorded
+fresh tree. Replay histories include the fault controls, not just input flags.
+
+At multiplier ten with the time limit disabled these cases add 600 expected failed render attempts, 2,400
+successful random mutations, and 300 baseline-return comparisons. The complete
+fuzz module therefore performs 10,040 render attempts, including those expected
+failures. This checks rollback of render selection; it does not claim rollback
+of arbitrary external Qt side effects during authored evaluation.
+
+### Fresh Seeds and Replay
+
+Every pytest invocation chooses a fresh master seed from system entropy by
+default. Program seeds, placement inputs, and history mutations are all derived
+deterministically from that master seed. Each test prints its replay settings;
+pytest includes the captured output in a failure report. Set
+`PYROLYZE_FUZZ_SEED` to the reported integer and use the same
+`PYROLYZE_FUZZ_MULTIPLIER`, with `PYROLYZE_FUZZ_SECONDS=0`, to replay the same
+deterministic sequences without machine-speed-dependent stopping. The earlier fixed seeds
+were detection probes, not the final coverage policy. The narrow generator
+determinism check still uses fixed inputs intentionally.
+
+### Routine Time Budget
+
+`PYROLYZE_FUZZ_SECONDS` defaults to two seconds for the module's mutation work,
+divided among the placement/history variants. Compilation and initial fresh
+baseline construction are setup and reported separately from mutation work.
+Each case must complete at least one check; the budget is soft, because checks
+must finish their rollback/retry or comparison before stopping. The default
+multiplier-one calibration on the development machine measured 1.88 seconds of
+mutation work and 14.14 seconds for standalone pytest including imports/setup.
+
+The multiplier scales both the time allowance and maximum iteration counts.
+Zero seconds disables the deadline for fixed-count stress/replay runs. Timed
+runs stop at deterministic sequence prefixes and do not claim to visit every
+recorded baseline. Per-case output reports actual duration and completed checks.
+
+### Simulator Negative Control
+
+`tests/test_generic_backend_host_surface_runtime.py` now runs the same fixed-seed
+32-state replay against healthy and intentionally faulty simulator profiles.
+Logical child order is compared with physical host order. The healthy profile
+must report zero differences; `STALE_NESTED_SYNC_APPEND` must produce a detected
+controls-after-bottom mismatch. This replaces the contradictory assertion that
+fault-injected output should be correct. It does not change simulator behavior
+or relax the real Qt backend's zero-mismatch correctness tests. Seed 19 is pinned
+for this known-fault detector, independently of the fresh-seed Qt exploration.
+The detector does not import Qt and retains its inexpensive routine coverage.
+
+### Backend Coverage Follow-Up
+
+Keep the real Qt fuzz coverage. Broader backend coverage remains pending:
+run equivalent supported logical scenarios and seed-derived input histories
+through backend-specific adapters, compare each backend with its own fresh
+baseline, and compare normalized logical results where cross-backend semantics
+match. Do not equate toolkit class names, unsupported capabilities, or physical
+geometry. Native host checks remain necessary alongside simulator checks.
+
 This plan defines a replayable state-graph fuzzing strategy for PyRolyze
 structural rerender correctness.
 
@@ -453,6 +570,21 @@ This slice should be able to reproduce the existing:
 - add larger depth/branching runs
 - add replay artifact persistence helpers
 
+
+## Tk History Replay Checkpoint
+
+`tests/test_tkinter_host_surface_fuzz.py` runs an isolated Tk worker to avoid
+mixing Tk and Qt GUI stacks on macOS. Two seeded authored programs vary group
+order, pack direction, label/button kinds, and twenty conditional nodes. Five
+fresh baselines per program are compared with restored states after random
+mutations. Mid-tree and post-tree exceptions verify lifecycle rollback leaves
+accepted UI and physical placement unchanged before a successful retry.
+
+The worker snapshots toolkit classes, text, and physical `pack_slaves()` order,
+not Tcl-generated object paths. It uses the same seed, multiplier, and soft
+mutation-time budget environment settings as Qt and prints replay settings
+before executing. This checkpoint covers pack layouts; grid, notebook, and
+cross-backend logical equivalence remain future coverage. DearPyGui is deferred.
 
 ## Exit Criteria
 

@@ -586,6 +586,18 @@ class MountableEngine:
             )
         mount_states = self._build_mount_states(child_nodes, flattened_children)
 
+        self._apply_child_mount_states(parent, child_nodes, mount_states, old_mount_states)
+        for removed_child in _remaining_reusable_children(reusable_children):
+            self._dispose_node_subtree(removed_child)
+        return child_nodes, mount_states
+
+    def _apply_child_mount_states(
+        self,
+        parent: object,
+        child_nodes: list[MountedMountableNode],
+        mount_states: Mapping[tuple[object, ...], MountState],
+        old_mount_states: Mapping[tuple[object, ...], MountState] | None,
+    ) -> None:
         if old_mount_states is not None:
             for instance_key, old_state in old_mount_states.items():
                 if instance_key in mount_states:
@@ -606,9 +618,6 @@ class MountableEngine:
                 old_state=None if old_mount_states is None else old_mount_states.get(instance_key),
                 new_state=state,
             )
-        for removed_child in _remaining_reusable_children(reusable_children):
-            self._dispose_node_subtree(removed_child)
-        return child_nodes, mount_states
 
     def _flatten_child_attachments(
         self,
