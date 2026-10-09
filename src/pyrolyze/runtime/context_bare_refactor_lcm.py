@@ -565,6 +565,9 @@ class SlotCallSlotContext(RerunnableSlotContext):
     def binding(self) -> SlotCallBinding | None:
         return self._state_mgr.accepted_invocation().binding
 
+    def _published_slot_call_binding(self) -> SlotCallBinding | None:
+        return self._state_mgr.current._invocation.binding
+
     @property
     def site_metadata(self) -> tuple[RuntimeSiteMetadata[Any], ...]:
         return self._state_mgr._site_metadata

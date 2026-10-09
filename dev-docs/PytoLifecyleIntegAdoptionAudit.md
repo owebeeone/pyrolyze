@@ -52,7 +52,8 @@ withdrawn; do not treat these as new baseline debt or regenerate snapshots:
   callable-change regressions pass; clean notifications still avoid helper invocation.
   The existing app-context test now advances past the correct locale selection but
   fails on an extra rerender queued by override publication. That notification
-  acknowledgment issue remains a separate candidate-route defect.
+  acknowledgment issue was a separate candidate-route defect; see the correction
+  checkpoint below.
 - Historical characterization snapshots describe the superseded completion model;
   preserve that evidence rather than bless the new output blindly.
 - The 20-by-20 grid operation-budget trial was interrupted after extended execution
@@ -77,6 +78,44 @@ checks pass 58 tests, and Python-backend expression checks pass 50. The candidat
 app-context test still fails at its no-extra-render assertion, after correctly
 selecting the new key; redundant override-publication invalidation is not fixed
 by changing invocation precedence.
+
+### Override Read Acknowledgment Correction
+
+The operator-authorized
+[read acknowledgment correction](PytoLifecyleIntegOverrideReadAcknowledgment.md)
+is implemented on the opt-in candidate. A selected binding carries its exact
+override-read receipt; publication checks the current accepted reader before
+incrementing subscription revision or queuing invalidation. Skipped readers and
+independent events remain on the ordinary notification path. Resource ownership,
+AST lowering, compiler libraries, and normal routing are unchanged.
+
+The new canonical trace covers slot-call and expression readers through three
+override levels, resource reuse, selective acknowledgment, independent events,
+and the final selected read. Fault tests cover rollback, reentry, failed
+projection/publication, plain parent changes, and retained-snapshot collection.
+The original key-rebinding test and parent-through-None case pass under the
+explicit lifecycle selector. Two historical caught-error tests in the same file
+still require the recorded outer-abort consumer migration under that selector;
+they have not been weakened or reclassified as normal-route regressions.
+
+The lightweight review applies to the original design draft, not the runtime
+patch. Default activation, legacy consumer migration, and large-grid scaling
+remain separate gates. No historical snapshot was regenerated.
+
+Verification: normal native regression reports **1161 passed, 20 skipped, and
+the same two known host-ordering failures**. The **23 targeted Python-backend
+checks pass**, including the new canonical trace, fault cases, existing override
+tests, and the two app-context success cases under the lifecycle selector.
+No tests were disabled for this correction. `git diff --check` passes.
+
+Reproduce with the workspace dependencies available: run `pytest -q` for normal
+regression; for the focused correction use
+`tests/test_lcm_override_read_acknowledgment.py` and
+`tests/test_lcm_integration_characterization.py::test_override_read_acknowledgment_golden`.
+Set `ASTICHI_LOWER_ENGINE=python` to repeat on Python assembly. Set
+`PYROLYZE_CONTEXT_IMPL=lifecycle` for
+`tests/test_use_app_context_runtime.py::test_use_app_context_rebinds_when_requested_key_changes`
+and `test_use_app_context_reads_parent_value_through_none_override`.
 
 `src/pyrolyze/runtime/context.py` still maps the default `lcm` selection to
 `context_lcm.py`, the older monolithic implementation. Explicit

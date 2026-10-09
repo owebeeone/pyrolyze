@@ -40,6 +40,15 @@ class _ExpressionResourceHost:
     state_ref: weakref.ReferenceType[SlotExprSlotContextStateMgr]
     slot_id: Any
 
+    def _published_slot_call_binding(self) -> SlotCallBinding | None:
+        state = self.state_ref()
+        if state is None:
+            return None
+        context = state._call_site_context_manager.get_current(self.slot_id)
+        if context is None or context.is_closed or context.binding is None:
+            return None
+        return context.binding.binding
+
     def queue_slot_call_invalidation(self) -> None:
         state = self.state_ref()
         if state is None:

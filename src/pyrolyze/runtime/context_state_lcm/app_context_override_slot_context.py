@@ -58,32 +58,72 @@ class _CommittedAppContextOverrideKeyState:
     parent_drip: Drip[object] | None = None
     unsubscribe_parent: Callable[[], None] | None = None
     _parent_finalizer: weakref.finalize | None = field(default=None, init=False)
+    _provenance: tuple[object, ...] | None = field(default=None, init=False)
 
-    def sync_value(self, value: Any) -> None:
+    def sync_value(
+        self, value: Any, provenance: tuple[object, ...] | None = None
+    ) -> None:
         self._clear_parent_link()
-        self.drip.next(value)
+        self._deliver(value, provenance)
 
-    def sync_parent(self, parent_drip: Drip[object] | None) -> None:
+    def _deliver(self, value: Any, provenance: tuple[object, ...] | None) -> None:
+        if isinstance(self.drip, _OverrideDrip):
+            self.drip.publish(value, provenance)
+        else:
+            self.drip.next(value)
+
+    def sync_parent(
+        self,
+        parent_drip: Drip[object] | None,
+        provenance: tuple[object, ...] | None = None,
+    ) -> None:
+        self._provenance = provenance
+        parent_provenance = (
+            parent_drip._published_provenance
+            if isinstance(parent_drip, _OverrideDrip)
+            else None
+        )
+        effective_provenance = (
+            provenance + parent_provenance
+            if provenance is not None and parent_provenance is not None
+            else None
+        )
         if parent_drip is None:
             self._clear_parent_link()
             self.drip.next(APP_CONTEXT_MISSING)
             return
         if self.parent_drip is parent_drip and self.unsubscribe_parent is not None:
-            self.drip.next(parent_drip.get())
+            self._deliver(parent_drip.get(), effective_provenance)
             return
 
         self._clear_parent_link()
         self.parent_drip = parent_drip
-        self.drip.next(parent_drip.get())
+        self._deliver(parent_drip.get(), effective_provenance)
 
         if isinstance(self.drip, _OverrideDrip):
             target = weakref.ref(self)
+            initialized = False
 
             def on_parent_change(next_value: object | None) -> None:
+                nonlocal initialized
+                # sync_parent delivered this initial snapshot with provenance.
+                # Replaying the subscribe-time emission would erase it.
+                if not initialized:
+                    initialized = True
+                    return
                 state = target()
                 if state is not None:
-                    state.drip.next(
-                        APP_CONTEXT_MISSING if next_value is None else next_value
+                    source = state.parent_drip
+                    parent_publication = (
+                        source._publication
+                        if isinstance(source, _OverrideDrip)
+                        else None
+                    )
+                    state._deliver(
+                        APP_CONTEXT_MISSING if next_value is None else next_value,
+                        state._provenance + parent_publication
+                        if state._provenance is not None and parent_publication is not None
+                        else None,
                     )
 
         else:
@@ -181,7 +221,8 @@ class AppContextOverrideSlotContextStateMgr(RerunnableSlotContextStateMgr):
                             )
                         )
                 completion.require_resource_owner()
-                self._override = _OverrideSelection(keys, values)
+                assert owner is not None
+                self._override = _OverrideSelection(keys, values, owner.read_token)
             except BaseException as error:
                 if owner is not None:
                     owner.fail(error)

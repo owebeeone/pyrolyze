@@ -23,6 +23,7 @@ from yidl_lifecycle.bindings_refcount import BindingBase as RefCountedBindingBas
 
 from pyrolyze.runtime.slot_call_semantics import ExternalStoreRef, SlotCallBinding
 from .resource_ownership import _ResourceOwner
+from .override_lookup import _OverrideDrip, _OverrideRead, _OverrideReadReceipt
 
 if TYPE_CHECKING:
     from .subscription_render import _SubscriptionRenderCompletion
@@ -50,8 +51,20 @@ class _StoreSubscription(RefCountedBindingBase):
         def notify() -> None:
             resource = target()
             if resource is not None and not resource.is_closed:
-                resource.revision += 1
                 receiver = resource.host_ref()
+                if isinstance(resource.identity, _OverrideDrip) and receiver is not None:
+                    # Reused resources keep the old callback, not the latest
+                    # read. Only the published selection can acknowledge it.
+                    resolve = getattr(receiver, "_published_slot_call_binding", None)
+                    selected = None if resolve is None else resolve()
+                    if (
+                        type(selected) is _SubscriptionBinding
+                        and selected.resource is resource
+                        and selected.read_receipt is not None
+                        and selected.read_receipt.acknowledges(resource.identity)
+                    ):
+                        return
+                resource.revision += 1
                 if receiver is not None:
                     receiver.mark_slot_call_refresh_only()
 
@@ -90,6 +103,7 @@ class _SubscriptionBinding(SlotCallBinding):
     ref: ExternalStoreRef[Any]
     value: Any
     revision: int
+    read_receipt: _OverrideReadReceipt | None = None
 
     @classmethod
     def bind(
@@ -114,9 +128,13 @@ class _SubscriptionBinding(SlotCallBinding):
             assert isinstance(resource, _StoreSubscription)
         try:
             revision = resource.revision
-            value = ref.get()
+            value, receipt = (
+                ref.get.read()
+                if isinstance(ref.get, _OverrideRead)
+                else (ref.get(), None)
+            )
             completion.require_resource_owner()
-            return cls(resource, ref, value, revision)
+            return cls(resource, ref, value, revision, receipt)
         except BaseException:
             if owner is not None:
                 completion.release_resource(owner)
@@ -133,8 +151,12 @@ class _SubscriptionBinding(SlotCallBinding):
             return None
         completion.require_resource_owner()
         revision = self.resource.revision
-        value = self.ref.get()
+        value, receipt = (
+            self.ref.get.read()
+            if isinstance(self.ref.get, _OverrideRead)
+            else (self.ref.get(), None)
+        )
         completion.require_resource_owner()
         dirty = value != self.value
         completion.require_resource_owner()
-        return type(self)(self.resource, self.ref, value, revision), dirty
+        return type(self)(self.resource, self.ref, value, revision, receipt), dirty

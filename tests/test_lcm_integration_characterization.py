@@ -206,6 +206,12 @@ def test_reference_owned_callback_selection_baseline(implementation: str) -> Non
     )
 
 
+def test_override_read_acknowledgment_golden() -> None:
+    _check_baseline(
+        "override_read_acknowledgment.py", "override_read_acknowledgment", dict(os.environ)
+    )
+
+
 def _check_baseline(
     script: str,
     name: str,

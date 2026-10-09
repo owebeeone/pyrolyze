@@ -165,10 +165,12 @@ class ContextBaseStateMgr(StateMgrBase):
                 raise LookupError(f"no authored app context for key {key.debug_name!r}")
             return current
 
+        from .override_lookup import _OverrideDrip, _OverrideRead
+
         return ExternalStoreRef(
             identity=drip,
             subscribe=subscribe,
-            get=get,
+            get=_OverrideRead(drip) if isinstance(drip, _OverrideDrip) else get,
         )
 
     def current_generation_id(self) -> int:

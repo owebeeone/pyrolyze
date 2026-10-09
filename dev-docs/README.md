@@ -16,6 +16,13 @@ Aggregate review's caught-preparation failure boundary is corrected in `0f88db2`
 The adoption audit now records a real UI trial and the opt-in `lifecycle` selector
 for automatic root completion. Small native UI interactions pass; normal-route
 adoption remains blocked by the recorded consumer, rebinding, and scaling gaps.
+The [override read acknowledgment note](PytoLifecyleIntegOverrideReadAcknowledgment.md)
+records the bounded redundant-publication notification correction and its test
+matrix; runtime implementation is now present on the opt-in candidate. The lightweight
+[Safety draft review](PytoLifecyleIntegOverrideReadAcknowledgment-ReviewSafety.md)
+reported GO with no findings on the hash-recorded draft. This is readiness for
+bounded implementation, not runtime acceptance or default activation. Actual
+verification is recorded in the adoption audit.
 
 The [container routing checkpoint](PytoLifecyleIntegContainerRouting.md) classifies
 supported compiled/native/directive scope calls before constructing their slots.

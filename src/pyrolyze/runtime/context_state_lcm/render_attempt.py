@@ -48,6 +48,7 @@ class _RenderAttempt:
     manager: TransactionManager
     tx_key: Hashable
     transaction: LifecycleTransaction
+    read_token: object = field(default_factory=object, init=False, repr=False)
     first_failure: BaseException | None = field(default=None, init=False)
     finished: bool = field(default=False, init=False)
     publication_uncertain: bool = field(default=False, init=False)

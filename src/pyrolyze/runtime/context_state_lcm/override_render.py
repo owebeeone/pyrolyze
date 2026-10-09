@@ -58,7 +58,10 @@ class _OverrideRenderCompletion(_ComponentRenderCompletion):
         retained = {id(state) for state in _graph_states(self.root, current=True)}
         errors: list[BaseException] = []
         deliveries: list[
-            tuple[_CommittedAppContextOverrideKeyState, Any, Drip[object] | None]
+            tuple[
+                _CommittedAppContextOverrideKeyState, Any,
+                Drip[object] | None, tuple[object, ...] | None,
+            ]
         ] = []
         pending, self._overrides = self._overrides, {}
         for identity, state in pending.items():
@@ -69,6 +72,9 @@ class _OverrideRenderCompletion(_ComponentRenderCompletion):
                         key_state.deactivate()
                         state._committed_key_states.pop(key, None)
                     elif published:
+                        # Existing parent callbacks must use this accepted
+                        # selection before any stream in the batch delivers.
+                        key_state._provenance = selection.provenance()
                         value = selection.values[selection.keys.index(key)]
                         parent_drip = (
                             state._parent_state_mgr.effective_authored_app_context_lookup().resolve_drip(
@@ -84,16 +90,18 @@ class _OverrideRenderCompletion(_ComponentRenderCompletion):
                             or key_state.parent_drip is not parent_drip
                         ):
                             key_state.deactivate()
-                        deliveries.append((key_state, value, parent_drip))
+                        deliveries.append(
+                            (key_state, value, parent_drip, key_state._provenance)
+                        )
                 except BaseException as error:
                     errors.append(error)
                     self._cleanup_failure = error
-        for key_state, value, parent_drip in deliveries:
+        for key_state, value, parent_drip, provenance in deliveries:
             try:
                 if value is None:
-                    key_state.sync_parent(parent_drip)
+                    key_state.sync_parent(parent_drip, provenance)
                 else:
-                    key_state.sync_value(value)
+                    key_state.sync_value(value, provenance)
             except BaseException as error:
                 errors.append(error)
                 self._cleanup_failure = error
