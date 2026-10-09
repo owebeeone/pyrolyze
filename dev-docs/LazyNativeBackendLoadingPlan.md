@@ -236,8 +236,43 @@ writer. Keep discovery/learnings as the source of truth and produce a sorted
 multi-file artifact set: facade, index, shards, name data, stubs and generation
 inventory. Stable filename assignment must handle existing kind/public-name
 collisions rather than recomputing names independently per shard. Regenerate to
-an empty staging directory, validate the complete set, then replace only files
-owned by the generated inventory and remove stale owned shards. No timestamps,
+an empty staging directory and validate the complete set before promotion.
+Promotion is an exclusive offline maintenance operation, never a live runtime
+update: stop processes using the destination and exclude imports, builds,
+packaging and concurrent writers until promotion or recovery completes.
+
+Before changing any destination file, retain a complete validated backup of the
+previous owned inventory and its bytes outside the replacement set, and retain
+the complete validated candidate. Record the old and candidate inventories and
+content hashes in a recovery record. Publish an in-progress marker only after
+the recovery record and backup are complete; modify nothing if preparation
+fails. The marker covers the whole promotion, including stale-file deletion.
+Replace only inventory-owned files and remove only stale owned shards. Unrelated
+files are never backup, replacement or deletion targets.
+
+Every caught replacement/deletion error restores the previous owned inventory
+from the retained backup, removing newly introduced owned files, and validates
+the complete restored set before clearing the marker. Process interruption
+leaves the marker and backup intact. On the next invocation, detect the marker
+before generating, importing, building or packaging from that destination;
+restore the previous complete set first, validate it, then permit a fresh retry.
+Do not infer completion from a partial candidate or merely matching one shard's
+stamp. If recovery fails, leave the marker and backup intact, report the failing
+operation, and prohibit use or packaging until recovery succeeds. A fresh Python
+process alone does not repair an incomplete on-disk catalog.
+
+After successful replacement and deletion, validate all indexed files, hashes,
+stamps and the complete owned inventory against the candidate, then clear the
+marker and release exclusive maintenance access. Keep the old backup until
+this final validation and admission complete. Runtime first-use stamp checks
+remain defense in depth, not the publication-recovery mechanism. Build/package
+entry points must reject a pending marker or an incomplete/mixed generated
+inventory; bypassing these checks or using the destination during exclusive
+maintenance is unsupported. This is a process-interruption and filesystem-error
+recovery contract, not an unproved power-loss durability guarantee. The exact
+writer/marker integration is a required slice-1 proof before catalog migration.
+
+No timestamps,
 absolute paths or hand-maintained signature copies. Two runs with pinned
 Python/toolkit/generator/learnings inputs must have identical bytes and inventory.
 
@@ -320,6 +355,16 @@ success paths in bespoke units:
   dependency cycles, concurrent first requests and deterministic repeated errors.
   Reuse `tests/test_import_hook_cache.py` and
   `tests/test_importer_cache_fingerprint.py` for cache fingerprint mechanics.
+- Generator promotion tests inject interruption and filesystem errors before
+  and after every replacement and stale-file deletion, including recovery
+  failures and repeated recovery. Verify the marker blocks build/package
+  admission until recovery or candidate validation completes; recovery yields
+  exactly the old complete owned set, or successful promotion the new complete
+  set, never an admitted mixture. Check unrelated files remain byte-identical,
+  retry succeeds, and a fresh-process one-widget lookup plus package-inventory
+  validation succeeds after admission. Include failures before marker creation
+  and during final validation/marker clearing. The writer must demonstrate this
+  contract in slice 1 before slice 2 can replace the real catalog.
 - Distribution verification builds wheel/sdist, inspects inventory, installs in
   fresh environments and repeats the same one-widget fixture there. Run the
   configured matrix through `tests/versioned_test_harness.py`; regenerate goldens
@@ -372,4 +417,3 @@ published evidence of the actual startup/first-use/memory tradeoff.
    only deliberately. Lifecycle integration continues independently.
 
 This plan changes no backend, generator, compiler, runtime, lifecycle or tests.
-
