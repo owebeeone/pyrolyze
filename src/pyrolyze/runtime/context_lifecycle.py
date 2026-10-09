@@ -1,14 +1,15 @@
-"""Lifecycle adoption candidate with automatic root completion.
+"""Default lifecycle-backed runtime with automatic root completion.
 
-Select with PYROLYZE_CONTEXT_IMPL=lifecycle while normal-route admission and
-consumer migration are verified. This is not another transaction engine.
+Fresh independent roots own completion; nested roots share that outer decision.
+Explicit legacy selectors remain available during compatibility retirement.
+This is not another transaction engine.
 """
 
 from __future__ import annotations
 
 from . import context_bare_refactor_lcm as _facades
 from .app_context import AppContextLookup, AppContextStore
-from .context_state_lcm.pass_state_render import _enable_pass_state_render
+from .context_state_lcm.field_only_render import _require_fresh_render_root
 from .context_state_lcm.pass_state_render import _PassStateRenderCompletion
 
 
@@ -39,7 +40,7 @@ class RenderContext(_facades.RenderContext):
             authored_app_context_lookup=authored_app_context_lookup,
         )
         if owner_slot is None and scheduler_root is None:
-            _enable_pass_state_render(self._state_mgr)
+            _require_fresh_render_root(self._state_mgr)
             self._state_mgr._field_only_completion = _AdoptionRenderCompletion(self._state_mgr)
 
 

@@ -5,6 +5,13 @@ landed; use its status and the recorded acceptance scope.
 
 ## Lifecycle Integration
 
+Lifecycle-backed completion is now the default runtime selection, including the
+enabled legacy boolean setting. See the current routing section of the
+[adoption audit](PytoLifecyleIntegAdoptionAudit.md) for activation checks and the
+remaining compatibility-retirement scope. Explicit legacy selectors and private
+checkpoint helpers remain for their existing consumers; the staged rollout
+summaries below are historical acceptance limits, not current default routing.
+
 The [adoption audit](PytoLifecyleIntegAdoptionAudit.md) inventories remaining
 holders and includes the active handwritten-lowering removal project. That
 cleanup uses compiled fixtures and thin observers to prevent test/runtime drift.

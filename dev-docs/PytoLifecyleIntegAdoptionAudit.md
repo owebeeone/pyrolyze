@@ -6,6 +6,53 @@ switch normal routing. The single-cohort amendment remains authoritative.
 
 ## Current Routing
 
+### Default Lifecycle Activation (2026-10-10)
+
+After the nineteen adoption corrections and backend-ordering repair, the
+lifecycle-selected suite passed 1198 tests with 20 existing skips and no failures.
+The simulator fault control now requires detection, rather than requiring its
+deliberately corrupted output to be correct. Qt and Tk history replay check
+physical placement and rollback independently of toolkit object identities.
+
+Normal selection now uses `context_lifecycle.RenderContext`: no environment
+override or private activation call is required. The enabled legacy boolean
+also selects this implementation; its disabled setting retains the original
+fallback. Explicit `PYROLYZE_CONTEXT_IMPL=lcm` still selects the monolithic
+implementation for compatibility and historical characterization, while
+`lifecycle` explicitly selects the new default. Existing implementation markers
+remain `lcm` for compatibility; tests assert the actual selected class and root
+completion, not only that marker.
+
+A local activation review checked outer-attempt ownership/failure recording,
+field publication evidence, independent resource cleanup/delivery, graph
+retirement, lexical opaque scopes, and captured notification queues. It found
+no new blocking issue in those paths. This is a local review, not a newly issued
+independent reviewer verdict. Existing uncertainty quarantine and original-token
+checks remain intact. Default selector tests first reproduced the old selection
+and now pass. The hello runner mounts through the default route; Qt and Tk grid
+interaction tests, including the existing large-grid budget, pass without an
+implementation override.
+
+Default root construction now directly installs its final completion controller,
+instead of activating and replacing every private checkpoint in sequence. A
+narrow regression rejects any call to the former proof-gate entry point during
+default construction. Fresh-graph and exact-root validation are shared with the
+private activation helper and remain enforced; a subclass rejection regression
+pins that existing boundary. The private checkpoint constructors remain for their
+historical/probe consumers.
+
+Final verification without either selector environment variable: 1201 passed,
+20 existing skips, no failures, in 79.81 seconds. The 102 focused selector,
+container, completion, and field-only checks pass on native and Python assembly.
+The existing Tk Tix deprecation warning is unchanged. No golden files were
+regenerated for default activation.
+
+Compatibility retirement is a separate remaining step. The explicit legacy
+selectors and private checkpoint helpers still have historical/probe consumers;
+activation does not justify deleting those tests or changing their snapshots.
+Migrate those consumers and remove unused branches in bounded changes. The older
+sections below preserve evidence from the staged rollout, not current blockers.
+
 ### I7 Trial After Aggregate Review
 
 The aggregate review reproduced caught preparation errors publishing candidates

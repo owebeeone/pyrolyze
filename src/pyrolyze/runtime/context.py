@@ -16,8 +16,8 @@ def _selected_context_impl() -> str:
 
     raw = os.environ.get("PYROLYZE_USE_CONTEXT_LCM")
     if raw is None:
-        return "lcm"
-    return "lcm" if raw.strip().lower() not in {"", "0", "false", "no", "off"} else "original"
+        return "lifecycle"
+    return "lifecycle" if raw.strip().lower() not in {"", "0", "false", "no", "off"} else "original"
 
 
 _IMPL_MODULES = {

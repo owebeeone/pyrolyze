@@ -43,7 +43,7 @@ def _construction_completion(context: Any) -> _FieldOnlyRenderCompletion | None:
     return getattr(scheduler_root, "_field_only_completion", None)
 
 
-def _enable_field_only_render(root: RenderContextStateMgr) -> None:
+def _require_fresh_render_root(root: RenderContextStateMgr) -> None:
     from pyrolyze.runtime.context_bare_refactor_lcm import RenderContext
     from pyrolyze.runtime.context_lifecycle import RenderContext as LifecycleRenderContext
     from .context_base import PASS_TX_KEY
@@ -65,6 +65,10 @@ def _enable_field_only_render(root: RenderContextStateMgr) -> None:
         or getattr(root, "_has_entered_pass", False)
     ):
         raise RuntimeError("field-only activation requires a fresh graph")
+
+
+def _enable_field_only_render(root: RenderContextStateMgr) -> None:
+    _require_fresh_render_root(root)
     root._field_only_completion = _FieldOnlyRenderCompletion(root)
 
 
