@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -17,6 +18,8 @@ from pyrolyze.runtime import (
     dirtyof,
 )
 from pyrolyze.compiler import load_transformed_namespace
+from pyrolyze.runtime.context_lifecycle import RenderContext as LifecycleRenderContext
+from pyrolyze.runtime.context_state_lcm.render_attempt import RenderAttemptAborted
 
 
 module_registry = ModuleRegistry()
@@ -119,14 +122,17 @@ def test_internal_app_context_store_remains_separate_from_authored_overrides() -
 def test_open_app_context_override_validates_value_arity() -> None:
     ctx = RenderContext()
 
+    outcome = pytest.raises(RenderAttemptAborted) if isinstance(ctx, LifecycleRenderContext) else nullcontext()
+    with outcome:
+        with ctx.pass_scope():
+            with pytest.raises(RuntimeError, match="arity"):
+                with ctx.open_app_context_override(
+                    _OVERRIDE_SLOT, (_THEME_KEY, _LOCALE_KEY), "dark",
+                ):
+                    pass
     with ctx.pass_scope():
-        with pytest.raises(RuntimeError, match="arity"):
-            with ctx.open_app_context_override(
-                _OVERRIDE_SLOT,
-                (_THEME_KEY, _LOCALE_KEY),
-                "dark",
-            ):
-                pass
+        with ctx.open_app_context_override(_OVERRIDE_SLOT, (_THEME_KEY,), "dark"):
+            pass
 
 
 def test_open_app_context_override_rejects_key_tuple_changes_at_same_slot() -> None:
@@ -136,10 +142,15 @@ def test_open_app_context_override_rejects_key_tuple_changes_at_same_slot() -> N
         with ctx.open_app_context_override(_OVERRIDE_SLOT, (_THEME_KEY,), "dark"):
             pass
 
+    outcome = pytest.raises(RenderAttemptAborted) if isinstance(ctx, LifecycleRenderContext) else nullcontext()
+    with outcome:
+        with ctx.pass_scope():
+            with pytest.raises(RuntimeError, match="fixed"):
+                with ctx.open_app_context_override(_OVERRIDE_SLOT, (_LOCALE_KEY,), "en_AU"):
+                    pass
     with ctx.pass_scope():
-        with pytest.raises(RuntimeError, match="fixed"):
-            with ctx.open_app_context_override(_OVERRIDE_SLOT, (_LOCALE_KEY,), "en_AU"):
-                pass
+        with ctx.open_app_context_override(_OVERRIDE_SLOT, (_THEME_KEY,), "light") as scope:
+            assert scope.get_authored_app_context(_THEME_KEY) == "light"
 
 
 def test_authored_app_context_ref_notifies_only_changed_key() -> None:

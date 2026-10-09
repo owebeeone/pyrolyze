@@ -8,7 +8,6 @@ from pyrolyze.runtime import (
     DuplicateMountAdvertisementError,
     MountAdvertisementContextError,
     ModuleRegistry,
-    PyrolyzeMountAdvertisementBinding,
     RenderContext,
     SlotId,
     dirtyof,
@@ -74,7 +73,10 @@ def test_mount_advert_binding_commits_and_deactivates_publication() -> None:
         ),
     )
 
-    assert isinstance(slot_expr_binding_for(ctx, _ADVERT_SLOT), PyrolyzeMountAdvertisementBinding)
+    request = slot_expr_binding_for(ctx, _ADVERT_SLOT).exposed_value()
+    assert request.key == "body"
+    assert request.selectors == (menu,)
+    assert request.default is True
 
     with ctx.pass_scope():
         pass

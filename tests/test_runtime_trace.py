@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+import pytest
 from pyrolyze.hooks import use_state
 from pyrolyze.runtime import (
     ModuleRegistry,
@@ -155,6 +156,26 @@ def test_render_context_emits_invalidation_flush_and_boundary_records() -> None:
         assert invalidation[0].fields["source_slot"] == _STATE_SLOT
         assert [record.event for record in flush] == ["start", "end"]
         assert [record.event for record in boundary] == ["start", "end"]
+    finally:
+        reset_trace()
+
+
+def test_failed_boundary_emits_error_and_end_and_preserves_failure() -> None:
+    records: list[TraceRecord] = []
+    ctx = RenderContext()
+    error = ValueError("boundary failure")
+
+    def fail() -> None:
+        raise error
+
+    reset_trace()
+    try:
+        configure_trace(enabled={TraceChannel.BOUNDARY}, sink=records.append)
+        with pytest.raises(ValueError) as caught:
+            ctx.mount(fail)
+        assert caught.value is error
+        assert [record.event for record in records] == ["start", "error", "end"]
+        assert len({record.fields["boundary"] for record in records}) == 1
     finally:
         reset_trace()
 

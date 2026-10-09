@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from contextlib import contextmanager
 
 from pyrolyze.api import UIElement
 from pyrolyze.compiler import load_transformed_namespace
@@ -13,6 +14,7 @@ from pyrolyze.runtime.context_state_lcm.container_render import _enable_containe
 from pyrolyze.runtime.context_state_lcm.context_base import PASS_TX_KEY
 from pyrolyze.runtime.context_state_lcm.render_attempt import RenderAttemptAborted
 from pyrolyze.runtime.pyro_call import PyrolyzeWrap, ResolvedPyrolyzeCall
+from pyrolyze.runtime.context_lifecycle import RenderContext as LifecycleRenderContext
 
 
 def root_and_id():
@@ -35,6 +37,81 @@ def test_opaque_container_is_rejected_before_construction_or_invocation() -> Non
             assert slot_id not in root._state_mgr._slots_by_id
             assert slot_id not in root._state_mgr.children_state
     assert calls == []
+
+
+def test_adoption_plain_scope_exits_lexically_and_discards_failed_children() -> None:
+    root = LifecycleRenderContext()
+    slot_id = runtime.SlotId(runtime.ModuleId("plain-scope-adoption"), 1)
+    calls = []
+
+    @contextmanager
+    def scope():
+        calls.append("enter")
+        try:
+            yield
+        finally:
+            calls.append("exit")
+
+    with root.pass_scope():
+        with root.container_call(slot_id, scope) as child:
+            child.call_native(UIElement, kind="label", props={"text": "accepted"})
+        assert calls == ["enter", "exit"]
+        assert root.committed_ui() == ()
+    accepted = root.committed_ui()
+    with pytest.raises(ValueError, match="body failure"):
+        with root.pass_scope():
+            with root.container_call(slot_id, scope) as child:
+                child.call_native(UIElement, kind="label", props={"text": "discarded"})
+                raise ValueError("body failure")
+    assert root.committed_ui() == accepted
+    assert calls == ["enter", "exit", "enter", "exit"]
+
+
+def test_adoption_plain_scope_suppression_cannot_publish_failed_children() -> None:
+    root = LifecycleRenderContext()
+    slot_id = runtime.SlotId(runtime.ModuleId("plain-scope-suppression"), 1)
+    error = ValueError("suppressed body failure")
+
+    class SuppressingHost:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return True
+
+    with pytest.raises(RenderAttemptAborted) as caught:
+        with root.pass_scope():
+            with root.container_call(slot_id, SuppressingHost) as child:
+                child.call_native(UIElement, kind="label", props={"text": "discarded"})
+                raise error
+    assert caught.value.__cause__ is error
+    assert root.committed_ui() == ()
+
+
+def test_adoption_plain_scope_entry_replacement_unwinds_host_without_candidate_writes() -> None:
+    root = LifecycleRenderContext()
+    slot_id = runtime.SlotId(runtime.ModuleId("plain-scope-replacement"), 1)
+    manager = root._state_mgr._transaction_manager
+    calls = []
+
+    class ReplacingHost:
+        def __enter__(self):
+            calls.append("enter")
+            manager.rollback(PASS_TX_KEY)
+            manager.begin(PASS_TX_KEY)
+
+        def __exit__(self, *args):
+            calls.append("exit")
+
+    with pytest.raises((RuntimeError, BaseExceptionGroup)):
+        with root.pass_scope():
+            with root.container_call(slot_id, ReplacingHost):
+                pytest.fail("replacement must prevent body execution")
+    assert calls == ["enter", "exit"]
+    assert root.committed_ui() == ()
+    assert root._state_mgr.children_state == {}
+    assert manager.active_transaction_for(PASS_TX_KEY) is not None
+    manager.rollback(PASS_TX_KEY)
 
 
 def test_annotated_mount_helper_cannot_enter_an_external_context_manager() -> None:

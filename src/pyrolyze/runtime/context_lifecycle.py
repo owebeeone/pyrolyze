@@ -9,10 +9,18 @@ from __future__ import annotations
 from . import context_bare_refactor_lcm as _facades
 from .app_context import AppContextLookup, AppContextStore
 from .context_state_lcm.pass_state_render import _enable_pass_state_render
+from .context_state_lcm.pass_state_render import _PassStateRenderCompletion
 
 
 for _name in _facades.__all__:
     globals()[_name] = getattr(_facades, _name)
+
+
+class _AdoptionRenderCompletion(_PassStateRenderCompletion):
+    # Existing plain scopes keep lexical host effects. Only their Pyrolyze
+    # children join completion; private checkpoints retain stricter admission.
+    __slots__ = ()
+    opaque_containers_enabled = True
 
 
 class RenderContext(_facades.RenderContext):
@@ -32,6 +40,7 @@ class RenderContext(_facades.RenderContext):
         )
         if owner_slot is None and scheduler_root is None:
             _enable_pass_state_render(self._state_mgr)
+            self._state_mgr._field_only_completion = _AdoptionRenderCompletion(self._state_mgr)
 
 
 __PYROLYZE_CONTEXT_IMPLEMENTATION__ = "lcm"

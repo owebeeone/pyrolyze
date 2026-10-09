@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 import pytest
 
 from pyrolyze.api import use_app_context
 from pyrolyze.runtime import AppContextKey, ModuleRegistry, RenderContext, SlotId, dirtyof
 from tests.slot_expr_test_utils import eval_single_slot_expr
+from pyrolyze.runtime.context_lifecycle import RenderContext as LifecycleRenderContext
+from pyrolyze.runtime.context_state_lcm.render_attempt import RenderAttemptAborted
 
 
 module_registry = ModuleRegistry()
@@ -14,6 +17,7 @@ _OVERRIDE_SLOT = SlotId(_MODULE_ID, 1, line_no=10)
 _OUTER_OVERRIDE_SLOT = SlotId(_MODULE_ID, 2, line_no=11)
 _INNER_OVERRIDE_SLOT = SlotId(_MODULE_ID, 3, line_no=12)
 _READ_SLOT = SlotId(_MODULE_ID, 4, line_no=13)
+_RETRY_READ_SLOT = SlotId(_MODULE_ID, 5, line_no=14)
 
 _THEME_KEY = AppContextKey("theme", factory=lambda _host: "factory-theme")
 _LOCALE_KEY = AppContextKey("locale", factory=lambda _host: "factory-locale")
@@ -32,17 +36,29 @@ def test_use_app_context_reads_current_override_value() -> None:
 def test_use_app_context_rejects_non_key_arguments() -> None:
     ctx = RenderContext()
 
+    outcome = pytest.raises(RenderAttemptAborted) if isinstance(ctx, LifecycleRenderContext) else nullcontext()
+    with outcome:
+        with ctx.pass_scope():
+            with pytest.raises(TypeError, match="AppContextKey"):
+                eval_single_slot_expr(ctx, dirtyof(), _READ_SLOT, use_app_context, "theme")
     with ctx.pass_scope():
-        with pytest.raises(TypeError, match="AppContextKey"):
-            eval_single_slot_expr(ctx, dirtyof(), _READ_SLOT, use_app_context, "theme")
+        with ctx.open_app_context_override(_OVERRIDE_SLOT, (_THEME_KEY,), "dark") as scope:
+            _, value = eval_single_slot_expr(scope, dirtyof(), _RETRY_READ_SLOT, use_app_context, _THEME_KEY)
+    assert value == "dark"
 
 
 def test_use_app_context_raises_when_no_provider_exists() -> None:
     ctx = RenderContext()
 
+    outcome = pytest.raises(RenderAttemptAborted) if isinstance(ctx, LifecycleRenderContext) else nullcontext()
+    with outcome:
+        with ctx.pass_scope():
+            with pytest.raises(LookupError, match="theme"):
+                eval_single_slot_expr(ctx, dirtyof(), _READ_SLOT, use_app_context, _THEME_KEY)
     with ctx.pass_scope():
-        with pytest.raises(LookupError, match="theme"):
-            eval_single_slot_expr(ctx, dirtyof(), _READ_SLOT, use_app_context, _THEME_KEY)
+        with ctx.open_app_context_override(_OVERRIDE_SLOT, (_THEME_KEY,), "dark") as scope:
+            _, value = eval_single_slot_expr(scope, dirtyof(), _RETRY_READ_SLOT, use_app_context, _THEME_KEY)
+    assert value == "dark"
 
 
 def test_use_app_context_rebinds_when_requested_key_changes() -> None:

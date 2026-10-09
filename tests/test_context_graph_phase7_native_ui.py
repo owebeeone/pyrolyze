@@ -155,14 +155,12 @@ def test_component_wrapped_none_is_ignored_and_invalid_result_raises() -> None:
     ctx = RenderContext()
 
     with ctx.pass_scope():
-        assert ctx.visit_slot_and_dirty(_NONE_SLOT) is True
         ctx.component_call(_NONE_SLOT, _pyr_none, dirty_state=dirtyof())
 
     assert ctx.debug_ui() == ()
 
     with pytest.raises(TypeError, match="UIElement or None"):
         with ctx.pass_scope():
-            assert ctx.visit_slot_and_dirty(_BAD_SLOT) is True
             ctx.component_call(_BAD_SLOT, _pyr_invalid, dirty_state=dirtyof())
 
     assert ctx.debug_ui() == ()
@@ -173,7 +171,6 @@ def test_container_native_helper_requires_exactly_one_root_element() -> None:
 
     with pytest.raises(RuntimeError, match="exactly one root UIElement"):
         with ctx.pass_scope():
-            assert ctx.visit_slot_and_dirty(_DOUBLE_SECTION_SLOT) is True
             with ctx.container_call(
                 _DOUBLE_SECTION_SLOT,
                 _pyr_double_root,
@@ -187,7 +184,6 @@ def test_failed_native_rerun_rolls_back_to_last_committed_ui() -> None:
     ctx = RenderContext()
 
     with ctx.pass_scope():
-        assert ctx.visit_slot_and_dirty(_BADGE_SLOT) is True
         ctx.component_call(
             _BADGE_SLOT,
             _pyr_badge,
@@ -202,7 +198,6 @@ def test_failed_native_rerun_rolls_back_to_last_committed_ui() -> None:
 
     with pytest.raises(TypeError, match="UIElement or None"):
         with ctx.pass_scope():
-            assert ctx.visit_slot_and_dirty(_BADGE_SLOT) is False
             ctx.component_call(_BADGE_SLOT, _pyr_invalid, dirty_state=dirtyof())
 
     assert ctx.debug_ui() == (
@@ -214,7 +209,6 @@ def test_container_call_accepts_builtin_function_without_attribute_cache_support
 
     with ctx.pass_scope():
         builtin_container_slot = SlotId(_MODULE_ID, 8, line_no=17)
-        assert ctx.visit_slot_and_dirty(builtin_container_slot) is True
         with ctx.container_call(builtin_container_slot, len, [1, 2, 3]) as slot:
             slot.call_native(
                 UIElement,

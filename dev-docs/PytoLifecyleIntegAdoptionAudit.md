@@ -227,6 +227,54 @@ two known host-ordering failures; lifecycle routing 1,156 passed, 20 skipped,
 previous adoption failure. No shared diagnostic-file collision occurred.
 `git diff --check` passes; Ruff is unavailable in the current environment.
 
+### Sequential Adoption Corrections
+
+The 21-failure run was investigated by contract, not treated as 21 obsolete
+assertions. Nineteen adoption cases now pass in the focused native run:
+
+- Runtime boundary tracing now emits start/error/end on lifecycle boundaries,
+  preserving the original exception. A narrow failure trace regression covers
+  error and final cleanup as well as the original successful invalidation case.
+- Six API probes no longer allocate an untyped slot before the component,
+  container, or directive API resolves the actual slot type. Their validation,
+  committed UI, nested structure, and rollback assertions remain.
+- Four caught-error tests retain the original local diagnostic assertion, then
+  expect lifecycle outer abort and prove a valid retry. Legacy completion remains
+  separately asserted while default activation is still gated.
+- Three binding checks inspect the shared exposed-value/request contract,
+  subscription identity, and published mount fields instead of old concrete
+  classes. Cleanup assertions remain.
+- Subscription replacement keeps the accepted subscription through the candidate
+  read and releases it after completion. The trace test explicitly distinguishes
+  this lifecycle ordering from legacy in-place replacement.
+- The adoption controller reuses the existing generic scope handle for plain
+  context managers and non-context-manager helper results. Enter/exit effects
+  remain lexical and are not claimed to roll back. Child candidacy stays under
+  the outer attempt. Original-owner fences protect entry; local exception
+  suppression cannot clear rollback-only. Private proof gates remain restricted.
+
+Focused native lifecycle verification: 66 passed. The backend ordering cases
+remain separate: the generic case deliberately selects faulty reconciliation,
+whereas the PySide case exposes widget and nested-layout mounts competing for
+one physical ordered surface. Resolving those requires distinguishing a negative
+fault-detection test from production shared-surface reconciliation; no assertion
+or fault mode has been silently changed in this checkpoint.
+
+Final verification: both sequential full native runs report 1,179 passed,
+20 existing skips, and only the two backend ordering failures. All 66 affected
+checks pass on both native and Python assembly. Changes are not default
+activation and do not alter Astichi, YIDL, or lifecycle library policy.
+
+Proposed backend follow-up: represent the widget/layout mounts of a box layout
+as one physical ordered surface, preserve each child's mount parameters and
+identity, and reconcile that combined order on initial mount and update. The
+generic simulator should exercise the same shared-surface boundary rather than
+requiring its deliberately faulty mode to produce correct order. Before changing
+the fault-mode test's intent, confirm whether it is a negative detection case or
+a deliberately red canary. Avoid a post-hoc per-child layout scan or reorder
+repair that introduces O(N^2) work; pin ordering, retention, removal, and scaling
+with an end-to-end mixed-child fixture.
+
 ### Large-Grid Performance Correction (2026-10-09)
 
 Profiling confirmed O(N^2) ownership checks in `yidl-lifecycle`: each callback

@@ -17,7 +17,6 @@ def test_open_directive_commits_retained_mount_directive() -> None:
     menu = MountSelector.named("menu")
 
     with ctx.pass_scope():
-        assert ctx.visit_slot_and_dirty(_DIRECTIVE_SLOT) is True
         with ctx.open_directive(_DIRECTIVE_SLOT, validate_mount_selectors, menu) as mount_ctx:
             mount_ctx.call_native(UIElement, kind="badge", props={"text": "File"})
 
@@ -38,7 +37,6 @@ def test_open_directive_preserves_nested_lexical_structure() -> None:
     inner = MountSelector.named("corner_widget")(corner="top_left")
 
     with ctx.pass_scope():
-        assert ctx.visit_slot_and_dirty(_OUTER_DIRECTIVE_SLOT) is True
         with ctx.open_directive(
             _OUTER_DIRECTIVE_SLOT,
             validate_mount_selectors,

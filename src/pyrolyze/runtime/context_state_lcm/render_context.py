@@ -211,6 +211,13 @@ class RenderContextStateMgr(ContextBaseStateMgr):
             if owner_slot is not None:
                 owner_slot._capture_pass_revision()
         self._scheduler.enter_active(boundary_facade)
+        if trace_enabled(TraceChannel.BOUNDARY):
+            emit_trace(
+                TraceChannel.BOUNDARY,
+                "start",
+                boundary=self._debug_boundary_id(),
+                queued=tuple(boundary._debug_boundary_id() for boundary in self._scheduler.queue),
+            )
         try:
             callback()
             if pass_state is not None:
@@ -218,8 +225,14 @@ class RenderContextStateMgr(ContextBaseStateMgr):
                 if owner_slot is not None:
                     # A scheduled child rerender need not revisit its parent.
                     owner_slot._invoke_dirty = False
+        except BaseException:
+            if trace_enabled(TraceChannel.BOUNDARY):
+                emit_trace(TraceChannel.BOUNDARY, "error", boundary=self._debug_boundary_id())
+            raise
         finally:
             self._scheduler.exit_active(boundary_facade)
+            if trace_enabled(TraceChannel.BOUNDARY):
+                emit_trace(TraceChannel.BOUNDARY, "end", boundary=self._debug_boundary_id())
 
     def pass_scope(self) -> Any:
         return super().pass_scope()

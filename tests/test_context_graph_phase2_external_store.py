@@ -4,8 +4,8 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Generic, TypeVar
 
 from pyrolyze.compiler import load_transformed_namespace
+from pyrolyze.runtime.context_lifecycle import RenderContext as LifecycleRenderContext
 from pyrolyze.runtime.context import (
-    ExternalStoreBinding,
     ExternalStoreRef,
     SlotRuntimeContext,
     SlotValueBinding,
@@ -162,7 +162,8 @@ def test_external_store_notification_refreshes_via_get_without_helper_rerun() ->
         ("get", "weather", "sunny"),
     ]
     assert store.active_listener_count == 1
-    assert isinstance(_binding_for(ctx), ExternalStoreBinding)
+    assert _binding_for(ctx).exposed_value() == "sunny"
+    assert _binding_for(ctx).ref.identity is store.identity
 
     pyr_reader(ctx, dirtyof(grip_name=False), "weather")
 
@@ -214,12 +215,14 @@ def test_rebinding_external_store_subscribes_new_before_unsubscribing_old() -> N
     pyr_reader(ctx, dirtyof(grip_name=True), "beta")
 
     assert observed == [("A", True), ("B", True)]
-    assert log == [
-        ("helper", "beta"),
-        ("subscribe", "beta"),
-        ("unsubscribe", "alpha"),
-        ("get", "beta", "B"),
-    ]
+    expected_tail = (
+        [("get", "beta", "B"), ("unsubscribe", "alpha")]
+        if isinstance(ctx, LifecycleRenderContext)
+        else [("unsubscribe", "alpha"), ("get", "beta", "B")]
+    )
+    assert log == [("helper", "beta"), ("subscribe", "beta"), *expected_tail]
+    assert alpha.active_listener_count == 0
+    assert beta.active_listener_count == 1
     assert alpha.active_listener_count == 0
     assert beta.active_listener_count == 1
 
@@ -240,7 +243,8 @@ def test_switching_from_external_helper_to_plain_helper_unsubscribes_old_binding
 
     pyr_reader(ctx, dirtyof(helper=True, grip_name=True), external_helper, "weather")
     assert store.active_listener_count == 1
-    assert isinstance(_binding_for(ctx), ExternalStoreBinding)
+    assert _binding_for(ctx).exposed_value() == "sunny"
+    assert _binding_for(ctx).ref.identity is store.identity
     log.clear()
 
     pyr_reader(ctx, dirtyof(helper=True, grip_name=False), plain_helper, "weather")

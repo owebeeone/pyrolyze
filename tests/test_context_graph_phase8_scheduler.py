@@ -158,7 +158,6 @@ def test_committed_ui_exposes_non_debug_snapshot_api() -> None:
     ctx = RenderContext()
 
     with ctx.pass_scope():
-        assert ctx.visit_slot_and_dirty(_BUTTON_SLOT) is True
         ctx.component_call(
             _BUTTON_SLOT,
             _pyr_button,

@@ -464,24 +464,41 @@ class _ContainerCallHandle(AbstractContextManager[Any]):
     args: tuple[Any, ...]
     kwargs: dict[str, Any]
     _host_context: Any = None
+    require_original: Callable[[], None] | None = None
 
     def __enter__(self) -> Any:
+        if self.require_original is not None:
+            self.require_original()
         bound_args = tuple(_bind_pending_event_plain_value(self.slot, value) for value in self.args)
         bound_kwargs = {
             key: _bind_pending_event_plain_value(self.slot, value)
             for key, value in self.kwargs.items()
         }
+        if self.require_original is not None:
+            self.require_original()
         self._host_context = self.container_fn(*bound_args, **bound_kwargs)
+        if self.require_original is not None:
+            self.require_original()
         host_enter = getattr(self._host_context, "__enter__", None)
         if callable(host_enter):
             host_enter()
-        self.slot._begin_scope_pass()
+        # Host effects are lexical, not transactional. Fence reentry before
+        # starting candidate bookkeeping and still unwind an entered host.
+        try:
+            if self.require_original is not None:
+                self.require_original()
+            self.slot._begin_scope_pass()
+        except BaseException as error:
+            host_exit = getattr(self._host_context, "__exit__", None)
+            if callable(host_exit):
+                host_exit(type(error), error, error.__traceback__)
+            raise
         return self.slot
 
     def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
         suppress = False
         try:
-            _finish_context_pass(self.slot, commit=exc_type is None)
+            _finish_context_pass(self.slot, commit=exc_type is None, cause=exc)
         finally:
             host_exit = getattr(self._host_context, "__exit__", None)
             if callable(host_exit):

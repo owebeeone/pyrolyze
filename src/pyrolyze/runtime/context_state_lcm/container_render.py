@@ -9,6 +9,7 @@ from typing import Any
 
 from ._support import (
     _RuntimeCallSite,
+    _ContainerCallHandle,
     _DirectiveCallHandle,
     _MountContainerCallHandle,
     _NativeContainerCallHandle,
@@ -29,6 +30,7 @@ from .render_context import RenderContextStateMgr
 @dataclass(eq=False, slots=True)
 class _ContainerRenderCompletion(_KeyedLoopRenderCompletion):
     container_routing_enabled = True
+    opaque_containers_enabled = False
 
     def require_container_host(self, host: object) -> None:
         self.require_resource_owner()
@@ -88,7 +90,8 @@ class _ContainerRenderCompletion(_KeyedLoopRenderCompletion):
                 context.omit_resolved_slot(site.slot_id)
                 return None
             handle: (
-                _MountContainerCallHandle
+                _ContainerCallHandle
+                | _MountContainerCallHandle
                 | _NativeContainerCallHandle
                 | _PyrolyzeContainerCallHandle
             )
@@ -127,16 +130,25 @@ class _ContainerRenderCompletion(_KeyedLoopRenderCompletion):
                 else:
                     native_param = _native_context_param_name(func)
                     if native_param is None:
-                        self.reject(
-                            "opaque container helpers are not admitted by the container proof"
+                        if not self.opaque_containers_enabled:
+                            self.reject(
+                                "opaque container helpers are not admitted by the container proof"
+                            )
+                        handle = _ContainerCallHandle(
+                            slot=None,
+                            container_fn=func,
+                            args=raw_args,
+                            kwargs=raw_kwargs,
+                            require_original=lambda: self._require_original(owner),
                         )
-                    handle = _NativeContainerCallHandle(
-                        slot=None,
-                        container_fn=func,
-                        args=raw_args,
-                        kwargs=raw_kwargs,
-                        context_param=native_param,
-                    )
+                    else:
+                        handle = _NativeContainerCallHandle(
+                            slot=None,
+                            container_fn=func,
+                            args=raw_args,
+                            kwargs=raw_kwargs,
+                            context_param=native_param,
+                        )
                 slot_type = ContainerSlotContext
             self._require_original(owner)
             slot = context.ensure_resolved_slot(
