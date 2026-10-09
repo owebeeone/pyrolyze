@@ -3,6 +3,15 @@
 Start here for current work. A plan is not proof that its implementation has
 landed; use its status and the recorded acceptance scope.
 
+## Native Library Loading
+
+The [lazy native backend loading plan](LazyNativeBackendLoadingPlan.md) passed
+independent Consistency and Safety design review after one regeneration-recovery
+correction. The [review checkpoint](LazyNativeBackendLoadingPlan-ReviewCheckpoint.md)
+records the exact accepted revision, verdicts and remaining slice-0 proof gates.
+This is design acceptance only: no lazy loader, compiler change or performance
+improvement has been implemented by this checkpoint.
+
 ## Lifecycle Integration
 
 Lifecycle-backed completion is now the default runtime selection, including the
