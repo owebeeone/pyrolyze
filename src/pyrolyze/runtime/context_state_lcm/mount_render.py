@@ -73,12 +73,18 @@ class _MountRenderCompletion(_AsyncEffectRenderCompletion):
         )
 
     def _advertisements_for(
-        self, render: RenderContextStateMgr, *, current: bool
+        self,
+        render: RenderContextStateMgr,
+        *,
+        current: bool,
+        states: tuple[Any, ...] | None = None,
     ) -> dict[Any, PyrolyzeMountAdvertisement]:
         from .slot_call_slot_context import SlotCallSlotContextStateMgr
 
         entries: dict[Any, PyrolyzeMountAdvertisement] = {}
-        for state in _graph_states(render, current=current, render_local=True):
+        if states is None:
+            states = _graph_states(render, current=current, render_local=True)
+        for state in states:
             if (
                 not isinstance(state, SlotCallSlotContextStateMgr)
                 or state._render_context_state_mgr is not render

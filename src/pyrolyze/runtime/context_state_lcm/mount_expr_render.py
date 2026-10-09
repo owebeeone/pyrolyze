@@ -73,10 +73,14 @@ class _MountExprRenderCompletion(_AsyncEffectExprRenderCompletion):
     def _advertisements_for(
         self, render: RenderContextStateMgr, *, current: bool
     ) -> dict[Any, PyrolyzeMountAdvertisement]:
+        # Share this operation's traversal with additional collectors rather than
+        # walking the same subtree again. Preserve collector order and verify
+        # reentry semantics; never reuse this snapshot across staging/publication.
+        states = _graph_states(render, current=current, render_local=True)
         entries = super(_MountExprRenderCompletion, self)._advertisements_for(
-            render, current=current
+            render, current=current, states=states
         )
-        for state in _graph_states(render, current=current, render_local=True):
+        for state in states:
             if (
                 not isinstance(state, SlotExprSlotContextStateMgr)
                 or state._render_context_state_mgr is not render
