@@ -1,9 +1,76 @@
 from __future__ import annotations
 
 import pytest
+from typing import Any
 
 from pyrolyze.runtime import context_bare_refactor_lcm as runtime
 from pyrolyze.runtime.context_state_lcm.component_render import _enable_component_render
+from pyrolyze.runtime.context_state_lcm.context_base import PASS_TX_KEY
+
+
+def test_rerun_captures_argument_values_before_preparation_reentry(
+    monkeypatch: Any,
+) -> None:
+    from pyrolyze.runtime.context_state_lcm import component_call_slot_context
+    from pyrolyze.runtime.context_state_lcm._support import dirtyof
+
+    root = runtime.RenderContext()
+    _enable_component_render(root._state_mgr)
+    slot_id = runtime.SlotId(runtime.ModuleId("rerun-snapshot"), 1)
+    observed: list[int] = []
+
+    def render(context: Any, dirty: Any, value: int) -> None:
+        with context.pass_scope():
+            observed.append(value)
+
+    with root.pass_scope():
+        slot = root._ensure_slot(slot_id, runtime.ComponentCallSlotContext)
+        slot.invoke(render, (1,), {}, dirty_state=dirtyof(value=True))
+
+    def clean(previous: Any) -> Any:
+        slot._state_mgr._call_author_args = (2,)
+        return dirtyof(value=False)
+
+    monkeypatch.setattr(component_call_slot_context, "_clean_dirty_state", clean)
+    with root.pass_scope():
+        root._ensure_slot(slot_id, runtime.ComponentCallSlotContext)
+        slot._state_mgr._rerun_child()
+    assert observed == [1, 1]
+    assert slot._state_mgr.current._call_author_args == (2,)
+
+
+def test_argument_conversion_cannot_stage_into_replacement_transaction() -> None:
+    root = runtime.RenderContext()
+    _enable_component_render(root._state_mgr)
+    slot_id = runtime.SlotId(runtime.ModuleId("conversion-token"), 1)
+
+    def render(context: Any, value: Any) -> None:
+        with context.pass_scope():
+            pass
+
+    with root.pass_scope():
+        slot = root._ensure_slot(slot_id, runtime.ComponentCallSlotContext)
+        slot.invoke(render, (1,), {})
+    manager = root._state_mgr._transaction_manager
+    replacement: Any = None
+
+    class Argument:
+        def to_frozen(self) -> int:
+            nonlocal replacement
+            manager.rollback(PASS_TX_KEY)
+            replacement = manager.begin(PASS_TX_KEY)
+            return 2
+
+    try:
+        with pytest.raises(RuntimeError, match="missing or replaced"):
+            with root.pass_scope():
+                root._ensure_slot(slot_id, runtime.ComponentCallSlotContext)
+                slot.invoke(render, (Argument(),), {})
+        assert manager.active_transaction_for(PASS_TX_KEY) is replacement
+        assert id(slot._state_mgr._y_state) not in replacement.dirty_contexts
+        assert slot._state_mgr.current._call_args == (1,)
+    finally:
+        manager.rollback(PASS_TX_KEY)
 
 
 def test_failed_initial_selection_is_not_retained() -> None:

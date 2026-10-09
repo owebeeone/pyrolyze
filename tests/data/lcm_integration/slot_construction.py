@@ -51,7 +51,7 @@ def characterize() -> list[dict[str, object]]:
         (LeafSlotContextStateMgr, "_last_kwargs"),
         (ContainerSlotContextStateMgr, "_expects_native_root"),
         (SlotExprSlotContextStateMgr, "_call_site_context_manager"),
-        (ComponentCallSlotContextStateMgr, "_call_state"),
+        (ComponentCallSlotContextStateMgr, "_call_args"),
     )
     common_names = ("_parent_state_mgr", "_slot_id", "_legacy_invoke_dirty", "_legacy_seen_in_pass", "_site_metadata")
     input_names = ("parent_state_mgr", "slot_id", "invoke_dirty", "seen_in_pass")

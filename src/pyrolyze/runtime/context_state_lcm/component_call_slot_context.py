@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any, Callable
 
-from pyrolyze.freezable import freezable_dataclass, frozen_dataclass
 from .lifecycle_adapter import const, local_store, managed, managed_context
 from pyrolyze.runtime.slot_kinds import ContextKind
 
@@ -26,25 +25,11 @@ from .field_only_render import _field_only_completion
 from .rerunnable_slot_context import RerunnableSlotContextStateMgr
 
 
-@freezable_dataclass(frozen_type="FrozenComponentCallInvocationState")
-class ComponentCallInvocationState:
-    runtime_func: Callable[..., Any] | None = None
-    bound_receiver: object = _BOUND_METHOD_SELF_MISSING
-    args: tuple[Any, ...] = ()
-    kwargs: dict[str, Any] | None = None
-    author_args: tuple[Any, ...] = ()
-    author_kwargs: dict[str, Any] | None = None
-    dirty_state: DirtyStateContext | None = None
-    pending_dirty_state: DirtyStateContext | None = None
-    uses_dirty_state_api: bool = False
-    packed_kwargs: bool = False
-    packed_kwarg_param_names: tuple[str, ...] = ()
-    param_names: tuple[str, ...] = ()
-
-
-@frozen_dataclass(mutable_type=ComponentCallInvocationState)
-class FrozenComponentCallInvocationState:
-    pass
+def _freeze_call_value(value: Any) -> Any:
+    # Preserve the old record's value-conversion contract without re-inspecting
+    # dataclass annotations or allocating an intermediate invocation record.
+    convert = getattr(value, "to_frozen", None)
+    return convert() if callable(convert) else value
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,10 +54,37 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
         tx_key=PASS_TX_KEY,
     )
     _pass_owned_event_handler_order: tuple[Any, ...] = local_store(default_factory=tuple)
-    _call_state: FrozenComponentCallInvocationState = managed(
-        default_factory=FrozenComponentCallInvocationState,
-        init=False,
-        tx_key=PASS_TX_KEY,
+    _call_runtime_func: Callable[..., Any] | None = managed(
+        init=False, default=None, tx_key=PASS_TX_KEY
+    )
+    _call_bound_receiver: Any = managed(
+        init=False, default=_BOUND_METHOD_SELF_MISSING, tx_key=PASS_TX_KEY
+    )
+    _call_args: tuple[Any, ...] = managed(init=False, default=(), tx_key=PASS_TX_KEY)
+    _call_kwargs: dict[str, Any] | None = managed(
+        init=False, default=None, tx_key=PASS_TX_KEY
+    )
+    _call_author_args: tuple[Any, ...] = managed(
+        init=False, default=(), tx_key=PASS_TX_KEY
+    )
+    _call_author_kwargs: dict[str, Any] | None = managed(
+        init=False, default=None, tx_key=PASS_TX_KEY
+    )
+    _call_dirty_state: DirtyStateContext | None = managed(
+        init=False, default=None, tx_key=PASS_TX_KEY
+    )
+    _call_pending_dirty_state: DirtyStateContext | None = managed(
+        init=False, default=None, tx_key=PASS_TX_KEY
+    )
+    _call_uses_dirty_state_api: bool = managed(
+        init=False, default=False, tx_key=PASS_TX_KEY
+    )
+    _call_packed_kwargs: bool = managed(init=False, default=False, tx_key=PASS_TX_KEY)
+    _call_packed_kwarg_param_names: tuple[str, ...] = managed(
+        init=False, default=(), tx_key=PASS_TX_KEY
+    )
+    _call_param_names: tuple[str, ...] = managed(
+        init=False, default=(), tx_key=PASS_TX_KEY
     )
 
     def _selection_record(self) -> _ComponentSelection:
@@ -190,20 +202,12 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
                     key: _bind_pending_event_plain_value(self, _unwrap(value)[0])
                     for key, value in kwargs.items()
                 }
-                self._call_state = ComponentCallInvocationState(
-                    runtime_func=runtime_func,
-                    bound_receiver=bound_receiver,
-                    args=args_for_rerun,
-                    kwargs=kwargs_for_rerun,
-                    author_args=(),
-                    author_kwargs={},
-                    dirty_state=None,
-                    pending_dirty_state=None,
-                    uses_dirty_state_api=False,
-                    packed_kwargs=packed_kwargs,
-                    packed_kwarg_param_names=packed_kwarg_param_names,
-                    param_names=param_names,
-                ).to_frozen()
+                call_args = args_for_rerun
+                call_kwargs = kwargs_for_rerun
+                call_author_args = ()
+                call_author_kwargs = {}
+                call_dirty_state = None
+                call_pending_dirty_state = None
             else:
                 author_args = tuple(
                     _bind_pending_event_plain_value(self, _unwrap(arg)[0])
@@ -213,20 +217,39 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
                     key: _bind_pending_event_plain_value(self, _unwrap(value)[0])
                     for key, value in kwargs.items()
                 }
-                self._call_state = ComponentCallInvocationState(
-                    runtime_func=runtime_func,
-                    bound_receiver=bound_receiver,
-                    args=(),
-                    kwargs={},
-                    author_args=author_args,
-                    author_kwargs=author_kwargs,
-                    dirty_state=dirty_state,
-                    pending_dirty_state=dirty_state,
-                    uses_dirty_state_api=True,
-                    packed_kwargs=packed_kwargs,
-                    packed_kwarg_param_names=packed_kwarg_param_names,
-                    param_names=param_names,
-                ).to_frozen()
+                call_args = ()
+                call_kwargs = {}
+                call_author_args = author_args
+                call_author_kwargs = author_kwargs
+                call_dirty_state = dirty_state
+                call_pending_dirty_state = dirty_state
+            call_runtime_func = _freeze_call_value(runtime_func)
+            call_bound_receiver = _freeze_call_value(bound_receiver)
+            call_args = tuple(_freeze_call_value(value) for value in call_args)
+            call_author_args = tuple(
+                _freeze_call_value(value) for value in call_author_args
+            )
+            call_dirty_state = _freeze_call_value(call_dirty_state)
+            call_pending_dirty_state = _freeze_call_value(call_pending_dirty_state)
+            call_packed_kwarg_param_names = tuple(
+                _freeze_call_value(value) for value in packed_kwarg_param_names
+            )
+            call_param_names = tuple(_freeze_call_value(value) for value in param_names)
+            if invocation_owner is not None:
+                invocation_owner._require_open()
+                invocation_owner._require_identity()
+            self._call_runtime_func = call_runtime_func
+            self._call_bound_receiver = call_bound_receiver
+            self._call_args = call_args
+            self._call_kwargs = call_kwargs
+            self._call_author_args = call_author_args
+            self._call_author_kwargs = call_author_kwargs
+            self._call_dirty_state = call_dirty_state
+            self._call_pending_dirty_state = call_pending_dirty_state
+            self._call_uses_dirty_state_api = dirty_state is not None
+            self._call_packed_kwargs = packed_kwargs
+            self._call_packed_kwarg_param_names = call_packed_kwarg_param_names
+            self._call_param_names = call_param_names
             child_context = self._child_context_state_mgr.owner
             self._child_context_state_mgr._authored_app_context_lookup = (
                 self._parent_state_mgr.effective_authored_app_context_lookup()
@@ -318,62 +341,71 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
 
     def _rerun_child(self) -> None:
         child_context = None if self._child_context_state_mgr is None else self._child_context_state_mgr.owner
-        call_state = self._call_state
-        runtime_func = call_state.runtime_func
+        # Capture one invocation before preparation or user callbacks can reenter.
+        runtime_func = self._call_runtime_func
+        bound_receiver = self._call_bound_receiver
+        args = self._call_args
+        kwargs = self._call_kwargs
+        author_args = self._call_author_args
+        author_kwargs = self._call_author_kwargs
+        previous_dirty_state = self._call_dirty_state
+        pending_dirty_state = self._call_pending_dirty_state
+        uses_dirty_state_api = self._call_uses_dirty_state_api
+        uses_packed_kwargs = self._call_packed_kwargs
+        packed_kwarg_param_names = self._call_packed_kwarg_param_names
         if child_context is None or runtime_func is None:
             raise RuntimeError("component child is not mounted")
         refresh_parent = not self._parent_state_mgr.is_scope_active()
         with self.publish_write_scope():
-            if call_state.uses_dirty_state_api:
-                dirty_state = call_state.pending_dirty_state
+            if uses_dirty_state_api:
+                dirty_state = pending_dirty_state
                 if dirty_state is None:
-                    dirty_state = _clean_dirty_state(call_state.dirty_state)
+                    dirty_state = _clean_dirty_state(previous_dirty_state)
                 else:
-                    self._call_state = replace(call_state, pending_dirty_state=None)
-                    call_state = self._call_state
-                if call_state.packed_kwargs:
+                    self._call_pending_dirty_state = None
+                if uses_packed_kwargs:
                     packed_kwargs = pack_function_args(
-                        call_state.packed_kwarg_param_names,
-                        call_state.author_args,
-                        call_state.author_kwargs or {},
+                        packed_kwarg_param_names,
+                        author_args,
+                        author_kwargs or {},
                     )
-                    if call_state.bound_receiver is _BOUND_METHOD_SELF_MISSING:
+                    if bound_receiver is _BOUND_METHOD_SELF_MISSING:
                         runtime_func(child_context, dirty_state, **packed_kwargs)
                     else:
-                        runtime_func(call_state.bound_receiver, child_context, dirty_state, **packed_kwargs)
-                elif call_state.bound_receiver is _BOUND_METHOD_SELF_MISSING:
+                        runtime_func(bound_receiver, child_context, dirty_state, **packed_kwargs)
+                elif bound_receiver is _BOUND_METHOD_SELF_MISSING:
                     runtime_func(
                         child_context,
                         dirty_state,
-                        *call_state.author_args,
-                        **(call_state.author_kwargs or {}),
+                        *author_args,
+                        **(author_kwargs or {}),
                     )
                 else:
                     runtime_func(
-                        call_state.bound_receiver,
+                        bound_receiver,
                         child_context,
                         dirty_state,
-                        *call_state.author_args,
-                        **(call_state.author_kwargs or {}),
+                        *author_args,
+                        **(author_kwargs or {}),
                     )
-            elif call_state.packed_kwargs:
+            elif uses_packed_kwargs:
                 packed_kwargs = pack_function_args(
-                    call_state.packed_kwarg_param_names,
-                    call_state.args,
-                    call_state.kwargs or {},
+                    packed_kwarg_param_names,
+                    args,
+                    kwargs or {},
                 )
-                if call_state.bound_receiver is _BOUND_METHOD_SELF_MISSING:
+                if bound_receiver is _BOUND_METHOD_SELF_MISSING:
                     runtime_func(child_context, **packed_kwargs)
                 else:
-                    runtime_func(call_state.bound_receiver, child_context, **packed_kwargs)
-            elif call_state.bound_receiver is _BOUND_METHOD_SELF_MISSING:
-                runtime_func(child_context, *call_state.args, **(call_state.kwargs or {}))
+                    runtime_func(bound_receiver, child_context, **packed_kwargs)
+            elif bound_receiver is _BOUND_METHOD_SELF_MISSING:
+                runtime_func(child_context, *args, **(kwargs or {}))
             else:
                 runtime_func(
-                    call_state.bound_receiver,
+                    bound_receiver,
                     child_context,
-                    *call_state.args,
-                    **(call_state.kwargs or {}),
+                    *args,
+                    **(kwargs or {}),
                 )
             self.ui_state = child_context._state_mgr.ui_state
             if refresh_parent:
@@ -384,7 +416,7 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
         if getattr(completion, "component_selection_enabled", False):
             completion.require_retirement_allowed(self)
             self._set_selection(_ComponentSelection())
-            self._call_state = replace(self._call_state, pending_dirty_state=None)
+            self._call_pending_dirty_state = None
             self.ui_state = ()
             return
         child_context = None if self._child_context_state_mgr is None else self._child_context_state_mgr.owner
@@ -401,5 +433,5 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
             child_context._state_mgr.clear_registered_slots()
         child_context._state_mgr._mounted_callback = None
         self._child_context_state_mgr = None
-        self._call_state = replace(self._call_state, pending_dirty_state=None)
+        self._call_pending_dirty_state = None
         self.ui_state = ()

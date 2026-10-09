@@ -6,6 +6,48 @@ activation or completion of all I3c work. Read the single-cohort amendment befor
 the older I3/I3c clauses.
 The operator requested implementation review rather than another design loop.
 
+## Component Invocation Storage (2026-10-09)
+
+Implemented and tested; not independently reviewed. This supersedes
+the older description of component invocation as one managed frozen call record.
+It does not change the leaf or slot-call record contracts below.
+
+`ComponentCallSlotContextStateMgr` now declares its twelve invocation values as
+managed fields on `PASS_TX_KEY`. The mutable/frozen invocation dataclass pair,
+per-call record construction, generic annotation-driven freezing and
+`replace(..., pending_dirty_state=None)` operations are removed. No new lifecycle
+class, marker or equality operator is introduced. Existing component selection
+and the outer completion owner are unchanged.
+
+Preserved contracts:
+
+- Prepare all argument bindings and conversions before assigning fields. Retain
+  the old conversion order and `to_frozen()` calls on values, including tuple
+  elements; do not add deep dictionary freezing the old record did not perform.
+- After conversion, verify the captured render owner before any candidate writes.
+  User conversion can replace the transaction; writes must not enter that new one.
+- Rerender captures its invocation values into locals before preparation or user
+  callbacks can reenter. A current/working facade is a live view, not a snapshot.
+- Rollback preserves the accepted values. The callback golden captures those
+  references rather than retaining the removed frozen record. Field publication
+  remains the shared outer render decision; this is not multi-key atomicity.
+
+Canonical component/callback/construction JSON stays unchanged. The component
+fixture additionally asserts provisional/current arguments, rollback, retry and
+custom argument conversion. Narrow fault tests cover transaction replacement
+during conversion and preparation reentry after the argument capture.
+
+Initial unprofiled sequential 5/10/20 grid measurement: 20x20 logical update
+0.668 s, first layout toggle 1.111 s, versus 0.720 s and 1.101 s after the graph
+correction. This is a modest update improvement, not demonstrated toggle speedup;
+host reconciliation is excluded. No annotation-cache optimization is included.
+
+Full normal-route regression: 1,168 passed, 20 existing skips and the two known
+host-ordering failures. The later added argument-capture case also passes in the
+eight-test focused component run. Seventeen targeted Python-assembly checks and
+the unchanged opt-in lifecycle large-grid UI operation budget pass. Canonical
+JSON is unchanged; default activation remains unchanged.
+
 ## Leaf Checkpoint
 
 The source audit corrects the old I0 inventory: leaf arguments are currently

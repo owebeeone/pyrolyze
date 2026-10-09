@@ -12,6 +12,7 @@ from pyrolyze.runtime.slot_call_semantics import ExternalStoreRef
 
 
 def characterize() -> dict[str, Any]:
+    _verify_argument_conversion()
     root = runtime.RenderContext()
     _enable_component_render(root._state_mgr)
     slot_id = runtime.SlotId(runtime.ModuleId("component-selection"), 1)
@@ -34,6 +35,8 @@ def characterize() -> dict[str, Any]:
     with root.pass_scope():
         slot = root._ensure_slot(slot_id, runtime.ComponentCallSlotContext)
         slot.invoke(render, (1,), {})
+        assert slot._state_mgr._call_args == (1,)
+        assert slot._state_mgr.current._call_args == ()
         result["provisional"] = [
             slot._state_mgr.current._selection.child is None,
             slot_id not in root._state_mgr.current.children_state,
@@ -45,6 +48,8 @@ def characterize() -> dict[str, Any]:
         with root.pass_scope():
             reused = root._ensure_slot(slot_id, runtime.ComponentCallSlotContext)
             reused.invoke(render, (2,), {})
+            assert slot._state_mgr._call_args == (2,)
+            assert slot._state_mgr.current._call_args == (1,)
             result["during_retry"] = values()
             raise ValueError("discard")
     except ValueError:
@@ -54,9 +59,11 @@ def characterize() -> dict[str, Any]:
         slot._state_mgr.current._selection is retained,
         values(),
     ]
+    assert slot._state_mgr.current._call_args == (1,)
     with root.pass_scope():
         reused = root._ensure_slot(slot_id, runtime.ComponentCallSlotContext)
         reused.invoke(render, (3,), {})
+    assert slot._state_mgr.current._call_args == (3,)
     result["retry"] = [reused is slot, slot.child_context is child, values()]
 
     events: list[str] = []
@@ -120,6 +127,49 @@ def characterize() -> dict[str, Any]:
         values(),
     ]
     return result
+
+
+def _verify_argument_conversion() -> None:
+    root = runtime.RenderContext()
+    _enable_component_render(root._state_mgr)
+    observed: list[Any] = []
+    converted = object()
+
+    class Argument:
+        def to_frozen(self) -> object:
+            return converted
+
+    def render(context: Any, argument: Any) -> None:
+        with context.pass_scope():
+            observed.append(argument)
+
+    with root.pass_scope():
+        slot = root._ensure_slot(
+            runtime.SlotId(runtime.ModuleId("conversion"), 1),
+            runtime.ComponentCallSlotContext,
+        )
+        slot.invoke(render, (Argument(),), {})
+    assert observed == [converted]
+    error = ValueError("conversion failed")
+
+    class FailingArgument:
+        def to_frozen(self) -> object:
+            raise error
+
+    try:
+        with root.pass_scope():
+            root._ensure_slot(slot.slot_id, runtime.ComponentCallSlotContext)
+            slot.invoke(render, (FailingArgument(),), {})
+    except ValueError as caught:
+        assert caught is error
+    else:
+        raise AssertionError("failed conversion must propagate")
+    assert slot._state_mgr.current._call_args[0] is converted
+    assert observed == [converted]
+    with root.pass_scope():
+        root._ensure_slot(slot.slot_id, runtime.ComponentCallSlotContext)
+        slot.invoke(render, (Argument(),), {})
+    assert observed == [converted, converted]
 
 
 if __name__ == "__main__":

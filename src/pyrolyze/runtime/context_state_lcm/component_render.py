@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import Any
 
 from .callback_render import _graph_states, _graph_states_many
@@ -61,9 +61,7 @@ class _ComponentRenderCompletion(_MountExprRenderCompletion):
                         continue
                     if isinstance(state, ComponentCallSlotContextStateMgr):
                         state._selection = _ComponentSelection()
-                        state._call_state = replace(
-                            state._call_state, pending_dirty_state=None
-                        )
+                        state._call_pending_dirty_state = None
                     if isinstance(state, ContextBaseStateMgr):
                         state.children_state = {}
                         state.own_ui_state = ()

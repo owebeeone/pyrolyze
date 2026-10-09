@@ -319,7 +319,14 @@ def _preparation_failure() -> list[dict[str, Any]]:
             root.component_call(
                 _slot(10), component, binding(first) if initial else None, None
             )
-        before = root._slots_by_id[_slot(10)]._state_mgr.current._call_state
+        invocation_fields = (
+            "_call_runtime_func", "_call_bound_receiver", "_call_args", "_call_kwargs",
+            "_call_author_args", "_call_author_kwargs", "_call_dirty_state",
+            "_call_pending_dirty_state", "_call_uses_dirty_state_api",
+            "_call_packed_kwargs", "_call_packed_kwarg_param_names", "_call_param_names",
+        )
+        accepted = root._slots_by_id[_slot(10)]._state_mgr.current
+        before = tuple(getattr(accepted, name) for name in invocation_fields)
         dispatch = held[-1] if initial else None
         if dispatch is not None:
             dispatch()
@@ -344,7 +351,7 @@ def _preparation_failure() -> list[dict[str, Any]]:
         assert _generation(root) == 1
         assert not root.debug_is_active(_slot(2))
         assert root.debug_is_active(_slot()) is initial
-        assert root._slots_by_id[_slot(10)]._state_mgr.current._call_state is before
+        assert all(getattr(accepted, name) is value for name, value in zip(invocation_fields, before))
         completion = root._state_mgr._field_only_completion
         assert completion.last.first_failure is error
         assert completion.last.published is False

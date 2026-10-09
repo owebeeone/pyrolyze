@@ -93,7 +93,8 @@ This does not activate normal lifecycle routing or resolve the host-ordering bug
 Verification after the graph correction: 59 native focused/canonical checks and
 31 targeted Python-backend checks pass, with no golden changes. The full normal
 route suite reports 1,167 passed, 20 existing skips and the same two known
-host-ordering failures. The implementation remains uncommitted.
+host-ordering failures. The graph correction is committed as `9f52d76`; the
+library ownership correction is committed in `yidl-lifecycle` as `029c4a8`.
 
 With normal routing restored and the two sample runners corrected, regression
 verification reports 1144 passed, 20 skipped, and only the two known host failures.
