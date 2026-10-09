@@ -89,7 +89,7 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
 
     def _selection_record(self) -> _ComponentSelection:
         completion = _field_only_completion(self)
-        if getattr(completion, "component_selection_enabled", False):
+        if completion is not None and completion.component_selection_enabled:
             return self._selection
         return self._legacy_selection
 

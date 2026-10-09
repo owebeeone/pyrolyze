@@ -99,7 +99,7 @@ class StateMgrBase:
         completion = _field_only_completion(self)
         return (
             completion
-            if getattr(completion, "pass_state_selection_enabled", False)
+            if completion is not None and completion.pass_state_selection_enabled
             else None
         )
 
@@ -153,11 +153,11 @@ class StateMgrBase:
             kwargs.get("render_context_state_mgr"),
             kwargs.get("render_context"),
         )
-        from .field_only_render import _field_only_completion, _nearest_render_state
+        from .field_only_render import _construction_completion, _nearest_render_state
 
         parent_state = kwargs.get("parent_state_mgr")
-        render_completion = _field_only_completion(render_state)
-        parent_completion = _field_only_completion(parent_state)
+        render_completion = _construction_completion(render_state)
+        parent_completion = _construction_completion(parent_state)
         completion = parent_completion or render_completion
         if completion is not None:
             if (

@@ -25,6 +25,19 @@ def _nearest_render_state(context: Any) -> Any:
 
 
 def _field_only_completion(context: Any) -> _FieldOnlyRenderCompletion | None:
+    if context is None:
+        return None
+    root = context._render_context_state_mgr
+    if root is None:
+        root = context
+    try:
+        return root._scheduler_root_state_mgr._field_only_completion
+    except AttributeError:
+        return _construction_completion(root)
+
+
+def _construction_completion(context: Any) -> _FieldOnlyRenderCompletion | None:
+    # Construction also accepts graph adapters without runtime context fields.
     root = _nearest_render_state(context)
     scheduler_root = getattr(root, "_scheduler_root_state_mgr", root)
     return getattr(scheduler_root, "_field_only_completion", None)
@@ -57,6 +70,9 @@ def _enable_field_only_render(root: RenderContextStateMgr) -> None:
 
 @dataclass(eq=False, slots=True)
 class _FieldOnlyRenderCompletion:
+    component_selection_enabled = False
+    pass_state_selection_enabled = False
+
     root: RenderContextStateMgr
     active: _RenderAttempt | None = field(default=None, init=False)
     last: _RenderAttempt | None = field(default=None, init=False)

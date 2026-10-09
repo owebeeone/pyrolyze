@@ -69,6 +69,7 @@ class RenderContextStateMgr(ContextBaseStateMgr):
             **kwargs,
         )
         self._slots_by_id: dict[Any, Any] = {}
+        self._field_only_completion = None
         self._mount_advertisements_by_slot: dict[Any, Any] = {}
         self._owner_slot_state_mgr = owner_slot_state_mgr
         self._mounted_callback: Callable[[], None] | None = None
