@@ -1,4 +1,7 @@
-"""Dear PyGui unified native adapter."""
+"""Dear PyGui unified native adapter.
+
+Optional text preserves native props when omitted; an empty string clears them.
+"""
 
 from __future__ import annotations
 
@@ -19,22 +22,22 @@ class DpgUnifiedNativeLibrary(UnifiedNativeLibrary):
     def native_library_type(self) -> type[Any]:
         return DearPyGuiUiLibrary
 
-    def push_button(self, *, text: str = "", **props: Any) -> UIElement:
+    def push_button(self, *, text: str | None = None, **props: Any) -> UIElement:
         merged = {**props}
-        if text:
+        if text is not None:
             merged["label"] = text
         return UIElement(kind="DpgButton", props=merged)
 
-    def toggle(self, *, checked: bool = False, text: str = "", **props: Any) -> UIElement:
+    def toggle(self, *, checked: bool = False, text: str | None = None, **props: Any) -> UIElement:
         merged = {**props}
-        if text:
+        if text is not None:
             merged["label"] = text
         merged["value"] = checked
         return UIElement(kind="DpgCheckbox", props=merged)
 
-    def text_field(self, *, text: str = "", **props: Any) -> UIElement:
+    def text_field(self, *, text: str | None = None, **props: Any) -> UIElement:
         merged = {**props}
-        if text:
+        if text is not None:
             merged["value"] = text
         return UIElement(kind="DpgInputText", props=merged)
 
