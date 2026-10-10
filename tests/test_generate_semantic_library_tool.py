@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import inspect
+import importlib
+import ast
+from dataclasses import replace
 from pathlib import Path
 import sys
 
@@ -39,6 +42,7 @@ from pyrolyze_tools.generate_semantic_library import (
     main,
     write_generated_library,
 )
+from pyrolyze_tools.generate_grouped_native_library import generate_grouped_library_sources, write_grouped_library
 
 
 def _write_fake_widget_package(root: Path) -> None:
@@ -69,6 +73,72 @@ def _write_fake_widget_package(root: Path) -> None:
         "class NotAWidget:\n"
         "    pass\n"
     )
+
+
+@pytest.mark.parametrize("maximum_kinds", (1, 2))
+def test_grouped_library_files_are_reproducible_and_separately_loadable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, maximum_kinds: int
+) -> None:
+    _write_fake_widget_package(tmp_path)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    widgets = discover_widget_classes(
+        "fakewidgets", widget_base_specs=("fakewidgets.base:WidgetBase",)
+    )
+    families = {widget.public_name: "controls" for widget in widgets}
+    package_name = f"grouped_fixture_{maximum_kinds}"
+    first = tmp_path / package_name
+    second = tmp_path / "second_output"
+    write_grouped_library("fakewidgets", widgets, families=families, maximum_kinds=maximum_kinds, output_dir=first)
+    write_grouped_library("fakewidgets", tuple(reversed(widgets)), families=families,
+                          maximum_kinds=maximum_kinds, output_dir=second)
+    assert {p.name: p.read_bytes() for p in first.iterdir()} == {
+        p.name: p.read_bytes() for p in second.iterdir()
+    }
+    index = importlib.import_module(f"{package_name}.index")
+    assert all(f"{package_name}.{entry.module_name}" not in sys.modules for entry in index.ENTRIES.values())
+    alpha = index.ENTRIES["AlphaWidget"]
+    shard = importlib.import_module(f"{package_name}.{alpha.module_name}")
+    library = getattr(shard, alpha.class_name)
+    assert set(library.WIDGET_SPECS) == {
+        kind for kind, entry in index.ENTRIES.items() if entry.module_name == alpha.module_name
+    }
+    assert shard.GENERATION == index.GENERATION
+    assert inspect.signature(library.CAlphaWidget).parameters["visible"].default is True
+    stub = ast.parse((first / "facade.pyi").read_text())
+    stub_class = next(node for node in stub.body if isinstance(node, ast.ClassDef))
+    stub_method = next(node for node in stub_class.body if isinstance(node, ast.FunctionDef) and node.name == "CAlphaWidget")
+    assert tuple(arg.arg for arg in [*stub_method.args.args, *stub_method.args.kwonlyargs] if arg.arg != "cls") == tuple(
+        inspect.signature(library.CAlphaWidget).parameters
+    )
+    assert all(
+        f"{package_name}.{entry.module_name}" not in sys.modules
+        for entry in index.ENTRIES.values() if entry.module_name != alpha.module_name
+    )
+    assert "__pyr_" not in (first / f"{alpha.module_name}.py").read_text()
+    with pytest.raises(FileExistsError):
+        write_grouped_library("fakewidgets", widgets, families=families,
+                              maximum_kinds=maximum_kinds, output_dir=first)
+
+
+def test_grouped_emission_assigns_kind_names_across_the_catalog() -> None:
+    first = DiscoveredWidgetClass("fakewidgets.left", "Button", "CLeftButton", ())
+    second = replace(first, module_name="fakewidgets.right", public_name="CRightButton")
+    sources = generate_grouped_library_sources(
+        "fakewidgets", (first, second),
+        families={"CLeftButton": "left", "CRightButton": "right"}, maximum_kinds=1,
+    )
+    namespace: dict[str, object] = {}
+    exec(sources["index.py"], namespace)
+    entries = namespace["ENTRIES"]
+    assert set(entries) == {"left_Button", "right_Button"}
+    for kind, entry in entries.items():
+        assert f'kind="{kind}"' in sources[f"{entry.module_name}.py"]
+
+
+def test_grouped_emission_rejects_incomplete_family_assignments() -> None:
+    widget = DiscoveredWidgetClass("fakewidgets", "Button", "CButton", ())
+    with pytest.raises(ValueError, match="every public name"):
+        generate_grouped_library_sources("fakewidgets", (widget,), families={}, maximum_kinds=1)
 
 
 def test_discover_modules_recurses_package(tmp_path: Path, monkeypatch) -> None:

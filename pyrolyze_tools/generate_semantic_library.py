@@ -716,9 +716,16 @@ def generate_library_source(
     root_module_name: str,
     widgets: Sequence[DiscoveredWidgetClass],
 ) -> str:
+    return _generate_library_source(root_module_name, widgets, _assign_kind_names(root_module_name, widgets))
+
+
+def _generate_library_source(
+    root_module_name: str,
+    widgets: Sequence[DiscoveredWidgetClass],
+    kind_names: Mapping[tuple[str, str], str],
+) -> str:
     package_name = root_module_name.split(".", 1)[0]
     class_name = _library_class_name(package_name)
-    kind_names = _assign_kind_names(root_module_name, widgets)
     lines = [
         "#@pyrolyze",
         "",

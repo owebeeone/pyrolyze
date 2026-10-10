@@ -1,6 +1,8 @@
 # Lazy Native Backend Loading Plan
 
-Status: design for review; no implementation or performance acceptance.
+Status: Qt grouped loading implemented; current acceptance and measurements are
+recorded in [the implementation plan](LazyNativeBackendLoadingImplementationPlan.md).
+Historical review scope below is unchanged. Tk and DearPyGui remain separate.
 Recorded: 2026-10-10. Source inspection began at Pyrolyze
 `87db47160f845e9b3633163c214f0b0fad76a2ec`, with existing local work present.
 All source paths below are relative to the Pyrolyze repository root.
@@ -67,13 +69,28 @@ After (proposed): src/pyrolyze/backends/pyside6/
   _loading.py               # backend-owned attribute resolution and spec Mapping
 ```
 
-Default boundary: one widget kind per shard. Initially keep its full member
-metadata there. A small cohesive family is allowed only when definitions really
-depend on each other; record its full load set in the index and acceptance fixture.
+Revision after the GO/GO review: configurable grouped shards replace the fixed
+one-kind default. This amendment needs focused review; the previous verdicts
+apply to the earlier committed design, not this grouping policy.
+
+The offline generator accepts a positive maximum kinds-per-module setting.
+One is supported, but the production default remains undecided until measurement.
+Keep each kind's full member metadata together. Use explicit family assignments
+and stable kind ordering to partition families into bounded groups; do not depend
+on discovery order or runtime reflection. Record configuration, group membership,
+and dependency closure in the generated index and generation stamp. Identical
+input and configuration must produce byte-identical output. The per-kind filenames
+above illustrate size one; grouped output uses deterministic group filenames.
+
+Resolving any member imports and constructs every definition in its group, plus
+declared dependencies. This is intentional co-loading, not per-kind laziness.
+Record the full load set in the index and acceptance fixture. Keep unrelated
+families separate; shared helpers remain separate and do not count as kinds.
 Do not group all `QWidget` subclasses, all controls, or all layouts together merely
 because they share native ancestry. Native inheritance does not require loading
 the ancestor's Pyrolyze wrapper/spec. Start with distinct label, push-button, and
-layout shards; unrelated chart/designer/dialog definitions must remain cold.
+layout groups for the dependency proof; unrelated chart/designer/dialog
+definitions must remain cold.
 
 | Surface | Proposed responsibility |
 | --- | --- |
@@ -160,8 +177,9 @@ widget definitions. Emit explicit direct dependencies in the index and check
 that shared-fragment imports form a DAG. No live reflection or widget probing
 at runtime; generator discovery/probing remains an offline regeneration cost.
 
-`sys.modules` is the module cache. Each shard constructs a single immutable spec
-and descriptors at module execution. The facade caches the bound callable, and
+`sys.modules` is the module cache. Each shard constructs one immutable spec and
+its descriptors per indexed kind at module execution. The facade caches each
+requested bound callable, and
 the spec mapping retains that same spec. Engines/hosts share definitions, but
 keep their native object/type caches and mount state as today. Key caches by
 backend module and kind/public name, not by render, host, props, or lifecycle
@@ -170,7 +188,14 @@ again; native object construction remains per mount.
 
 Serialize first resolution/publication with a small backend-owned reentrant
 lock and a resolution-in-progress check, using Python import locking for module
-execution. Validate before publishing either spec or callable. Reentrant cycles
+execution. Validate every indexed member of a loaded group before publishing any
+of its specs or callables through the facade or spec mapping. A malformed member
+fails the whole group; no valid sibling may escape through a partial cache.
+Cache the group failure consistently with requested-member diagnostic context,
+without retaining tracebacks. Unrelated groups remain usable. Successful imports
+may remain in Python's module cache, but do not prove validated publication.
+Test a group containing one valid and one malformed member, subsequent sibling
+requests, concurrent resolution, and an unaffected unrelated group. Reentrant cycles
 report the requested dependency chain; concurrent lookups must return identical
 published objects. Loading never creates GUI resources and does not relax toolkit
 thread rules. No production reload/invalidation API in slice one: regeneration
@@ -180,12 +205,13 @@ contract; import-hook cache invalidation alone cannot safely replace live specs.
 ## Preventing accidental catalog realization
 
 - `WIDGET_SPECS` implements `__iter__`, `__len__`, containment and key views from
-  the index. `__getitem__`/`.get` resolve one kind. `.get` defaults only for an
+  the index. `__getitem__`/`.get` resolve one kind by loading its entire group
+  and declared dependencies. `.get` defaults only for an
   unknown key; it must propagate failures for a known entry. `.values()`,
   `.items()`, and `dict(WIDGET_SPECS)` explicitly traverse resolved values and
   may load the catalog when consumed. Startup/registration code must not use them.
 - `UI_INTERFACE` enumeration and `dir` on the author facade advertise names
-  without loading them. `inspect.signature(Qt.CQLabel)` loads one widget.
+  without loading them. `inspect.signature(Qt.CQLabel)` loads its widget group.
   Full `inspect.getmembers(Qt)` or explicit consumption of all spec values is
   deliberate full introspection and may load all definitions; document that
   distinction. Documentation generation consumes discovery/name artifacts
@@ -409,6 +435,16 @@ method (record units and tool); toolkit native allocations are not fully visible
 to `tracemalloc`. Record memory deltas from a pre-import checkpoint, not merely
 peak RSS for the entire process. Use `perf_counter_ns` spans for wall time;
 instrumented load/transform accounting may need separate runs to avoid skew.
+
+Compare the eager catalog with group-size candidates such as 1, 4, 8, and 16,
+using identical sparse and representative application workloads. Report the
+configured cap, actual group sizes, module count, constructed versus requested
+kinds, dependency loads, cold/warm timing, and retained Python memory and RSS.
+Add generator coverage for deterministic grouping, same-group co-loading,
+cross-group isolation, and unchanged callable/spec identity under concurrent
+and reentrant resolution. The cap is a definition-count bound, not a memory bound.
+Choose the default from measured file-count, first-use, and memory tradeoffs;
+do not promise proportional memory savings or reduced Qt native-library memory.
 
 Python-cold import is not a claim of cold filesystem/OS caches. Label that state
 honestly. Keep visible-window layout/paint/event-pump measurements separate from

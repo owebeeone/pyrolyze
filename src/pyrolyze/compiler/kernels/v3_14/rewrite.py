@@ -2467,6 +2467,13 @@ def _collect_imported_annotated_symbols(
     component_event_params: dict[str, frozenset[str]] = {}
     return_kinds: dict[str, str] = {}
 
+    # Manifest enumeration must not realize unused lazy definitions. Include
+    # member-value references and nested bodies, not just direct call targets.
+    referenced_members: dict[str, set[str]] = {}
+    for node in ast.walk(module_ast):
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+            referenced_members.setdefault(node.value.id, set()).add(node.attr)
+
     for statement in module_ast.body:
         if not isinstance(statement, ast.ImportFrom):
             continue
@@ -2563,7 +2570,9 @@ def _collect_imported_annotated_symbols(
             if inspect.isclass(imported_value):
                 ui_interface = getattr(imported_value, "UI_INTERFACE", None)
                 if ui_interface is not None:
-                    for public_name in ui_interface.entries:
+                    for public_name in sorted(referenced_members.get(local_name, ())):
+                        if public_name not in ui_interface.entries:
+                            continue
                         attribute_value = getattr(imported_value, public_name, None)
                         if attribute_value is None:
                             continue

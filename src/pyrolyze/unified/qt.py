@@ -13,6 +13,7 @@ without a separate ``PySide6UiLibrary`` import. :data:`QtUx` is an alias of
 from __future__ import annotations
 
 from typing import Any
+from abc import ABCMeta
 
 from pyrolyze.api import UIElement
 from pyrolyze.backends.pyside6.generated_library import PySide6UiLibrary
@@ -20,7 +21,22 @@ from pyrolyze.backends.pyside6.generated_library import PySide6UiLibrary
 from pyrolyze.unified.base import UnifiedNativeLibrary
 
 
-class QtUnifiedNativeLibrary(UnifiedNativeLibrary):
+class _QtStructuralMeta(ABCMeta):
+    def __getattr__(cls, name: str) -> Any:
+        if name not in PySide6UiLibrary.UI_INTERFACE.entries:
+            raise AttributeError(name)
+        callback = getattr(PySide6UiLibrary, name)
+        setattr(cls, name, callback)
+        return callback
+
+    def __dir__(cls) -> list[str]:
+        return sorted(set(super().__dir__()) | set(PySide6UiLibrary.UI_INTERFACE.entries))
+
+
+class QtUnifiedNativeLibrary(UnifiedNativeLibrary, metaclass=_QtStructuralMeta):
+    def __getattr__(self, name: str) -> Any:
+        return getattr(type(self), name)
+
     @property
     def backend_id(self) -> str:
         return "qt"
@@ -160,8 +176,6 @@ def _register_structural_component_refs(cls: type[QtUnifiedNativeLibrary]) -> No
     native = PySide6UiLibrary
     cls.UI_INTERFACE = native.UI_INTERFACE.bind_owner(cls)
     cls.mounts = native.mounts
-    for public_name in native.UI_INTERFACE.entries:
-        setattr(cls, public_name, getattr(native, public_name))
 
 
 _register_structural_component_refs(QtUnifiedNativeLibrary)

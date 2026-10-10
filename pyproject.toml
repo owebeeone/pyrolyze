@@ -1,6 +1,7 @@
 [build-system]
 requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
+build-backend = "pyrolyze_build_backend"
+backend-path = ["."]
 
 [project]
 name = "pyrolyze"
@@ -39,6 +40,9 @@ yidl-lifecycle = { path = "../yidl-lifecycle", editable = true }
 [tool.pyrolyze.test-matrix]
 python = ["3.12", "3.13", "3.14", "3.15"]
 
+[tool.pyrolyze]
+generated-package-directories = ["src/pyrolyze/backends/pyside6/_generated"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
@@ -57,3 +61,6 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"*" = ["*.pyi", "inventory.json"]

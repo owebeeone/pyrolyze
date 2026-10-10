@@ -1,0 +1,4 @@
+include pyrolyze_build_backend.py
+include pyrolyze_tools/__init__.py
+include pyrolyze_tools/generated_library_publication.py
+recursive-include src *.pyi inventory.json
