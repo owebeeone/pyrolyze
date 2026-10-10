@@ -25,12 +25,18 @@ sharding or change the lazy-loading design's acceptance scope.
 
 ## Lifecycle Integration
 
-Lifecycle-backed completion is now the default runtime selection, including the
-enabled legacy boolean setting. See the current routing section of the
-[adoption audit](PytoLifecyleIntegAdoptionAudit.md) for activation checks and the
-remaining compatibility-retirement scope. Explicit legacy selectors and private
-checkpoint helpers remain for their existing consumers; the staged rollout
-summaries below are historical acceptance limits, not current default routing.
+Lifecycle-backed completion is the only public runtime path. The
+[compatibility retirement record](LifecycleCompatibilityRetirement.md) describes
+removed engines, selectors, duplicate storage, local completion, and the current
+coverage mapping. It takes precedence over historical rollout instructions.
+The [adoption audit](PytoLifecyleIntegAdoptionAudit.md) records the adoption work
+that preceded retirement.
+
+### Historical Checkpoints
+
+The summaries below describe their original staged acceptance limits. Private
+activation helpers and old runtime selectors mentioned there are retired;
+these summaries do not describe current runtime availability.
 
 The [adoption audit](PytoLifecyleIntegAdoptionAudit.md) inventories remaining
 holders and includes the active handwritten-lowering removal project. That

@@ -3,8 +3,7 @@ from __future__ import annotations
 import pytest
 
 from pyrolyze.compiler import load_transformed_namespace
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
-from pyrolyze.runtime.context_state_lcm.pass_state_render import _enable_pass_state_render
+from pyrolyze.runtime import context_lifecycle as runtime
 from pyrolyze.runtime.context_state_lcm.render_attempt import RenderAttemptAborted
 from pyrolyze.runtime.pyro_call import PyrolyzeWrap
 
@@ -35,7 +34,6 @@ def test_caught_preparation_failure_discards_candidates_and_allows_retry(
             raise failure
 
     root = runtime.RenderContext()
-    _enable_pass_state_render(root._state_mgr)
     slot_id = runtime.SlotId(runtime.ModuleId("preparation-failure"), 1)
     failure_id = runtime.SlotId(runtime.ModuleId("preparation-failure"), 2)
 
@@ -44,13 +42,13 @@ def test_caught_preparation_failure_discards_candidates_and_allows_retry(
 
     with root.pass_scope():
         select("accepted")
-    accepted = root._state_mgr.current.children_state
+    accepted = root.current.children_state
     with pytest.raises(RenderAttemptAborted):
         with root.pass_scope():
             select("candidate")
             with pytest.raises(ValueError) as caught:
                 if callback_failure:
-                    root._state_mgr.event_handler(
+                    root.event_handler(
                         failure_id, dirty=True, callback=FailingCallback()
                     )
                 else:
@@ -59,9 +57,9 @@ def test_caught_preparation_failure_discards_candidates_and_allows_retry(
                         dirty_state=runtime.dirtyof(),
                     )
             assert caught.value is failure
-    assert root._state_mgr.current.children_state is accepted
+    assert root.current.children_state is accepted
     assert [node.kind for node in root.debug_ui()] == ["accepted"]
-    assert root._state_mgr._field_only_completion.last.first_failure is failure
+    assert root._field_only_completion.last.first_failure is failure
     with root.pass_scope():
         select("retry")
     assert [node.kind for node in root.debug_ui()] == ["retry"]

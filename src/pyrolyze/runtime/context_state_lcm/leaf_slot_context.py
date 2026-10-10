@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from contextlib import nullcontext
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any, Callable
 
 from ._base import USE_OWNER
 from .context_base import PASS_TX_KEY
 from .rerunnable_slot_context import RerunnableSlotContextStateMgr
 from .field_only_render import _field_only_completion
-from .lifecycle_adapter import local_store, managed, managed_context
+from .lifecycle_adapter import managed, managed_context
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,12 +24,7 @@ class LeafSlotContextStateMgr(RerunnableSlotContextStateMgr):
         compare="identity",
         tx_key=PASS_TX_KEY,
     )
-    # Unactivated callers still expose attempted, rather than accepted, inputs.
-    _legacy_invocation: _LeafInvocation = local_store(default_factory=_LeafInvocation)
-
     def _argument_record(self) -> _LeafInvocation:
-        if _field_only_completion(self) is None:
-            return self._legacy_invocation
         return self._invocation
 
     @property
@@ -42,25 +36,14 @@ class LeafSlotContextStateMgr(RerunnableSlotContextStateMgr):
         return self._argument_record().kwargs
 
     def accepted_invocation(self) -> _LeafInvocation:
-        if _field_only_completion(self) is None:
-            return self._legacy_invocation
         return self.current._invocation
-
-    def _remember_legacy_arguments(
-        self, args: tuple[Any, ...], kwargs: dict[str, Any]
-    ) -> None:
-        # Preserve the reference's partial update if keyword preparation fails.
-        self._legacy_invocation = replace(self._legacy_invocation, args=args)
-        items = tuple(sorted(kwargs.items()))
-        self._legacy_invocation = replace(self._legacy_invocation, kwargs=items)
 
     def invoke(
         self, leaf_fn: Callable[..., Any], args: tuple[Any, ...], kwargs: dict[str, Any]
     ) -> Any:
         completion = _field_only_completion(self)
         if completion is None:
-            self._remember_legacy_arguments(args, kwargs)
-            return leaf_fn(*args, **kwargs)
+            raise RuntimeError("render completion is not configured")
         with completion.attempt_scope():
             owner = completion.active
             assert owner is not None
@@ -82,8 +65,8 @@ class LeafSlotContextStateMgr(RerunnableSlotContextStateMgr):
         context_facade = self._resolve_owner_arg(context_facade)
         completion = _field_only_completion(self)
         if completion is None:
-            self._remember_legacy_arguments(args, kwargs)
-        execution = nullcontext() if completion is None else completion.attempt_scope()
+            raise RuntimeError("render completion is not configured")
+        execution = completion.attempt_scope()
         with execution:
             self.begin_pass()
             try:

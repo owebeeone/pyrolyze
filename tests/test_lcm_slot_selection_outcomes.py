@@ -5,11 +5,8 @@ from typing import Any
 import pytest
 
 from pyrolyze.compiler import load_transformed_namespace
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
+from pyrolyze.runtime import context_lifecycle as runtime
 from pyrolyze.runtime.context_state_lcm.context_base import ContextBaseStateMgr
-from pyrolyze.runtime.context_state_lcm.pass_state_render import (
-    _enable_pass_state_render,
-)
 from pyrolyze.runtime.pyro_call import PyrolyzeComponentWrap
 
 
@@ -41,7 +38,6 @@ def panel(target: ComponentRef):
         module_name="slot_selection_outcomes",
     )
     root = runtime.RenderContext()
-    _enable_pass_state_render(root._state_mgr)
     slot_id = runtime.SlotId(runtime.ModuleId("selection-outcomes"), 1)
 
     def render(target: Any, *, dirty: bool = True) -> None:

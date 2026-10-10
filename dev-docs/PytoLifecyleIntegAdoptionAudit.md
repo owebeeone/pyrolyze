@@ -1,5 +1,11 @@
 # Lifecycle Adoption Audit
 
+Current compatibility retirement is recorded in
+[LifecycleCompatibilityRetirement.md](LifecycleCompatibilityRetirement.md).
+The selectors, private activation helpers, and old-engine routes described
+below have now been retired. The dated sections retain their original evidence
+and are not current routing instructions.
+
 Audited after I6b commit `583241e` on 2026-10-09. This is the remaining-state
 and activation audit, not aggregate code-review acceptance or authorization to
 switch normal routing. The single-cohort amendment remains authoritative.

@@ -7,32 +7,25 @@ import pytest
 
 
 def test_completion_lookup_uses_declared_context_fields(monkeypatch: Any) -> None:
-    from pyrolyze.runtime import context_bare_refactor_lcm as runtime
+    from pyrolyze.runtime import context_lifecycle as runtime
     from pyrolyze.runtime.context_state_lcm import field_only_render
 
     root = runtime.RenderContext()
-    enabled_root = runtime.RenderContext()
-    field_only_render._enable_field_only_render(enabled_root._state_mgr)
-    completion = enabled_root._state_mgr._field_only_completion
+    completion = root._field_only_completion
 
     def reject_lookup(*args: Any) -> Any:
         raise AssertionError("completion lookup must not probe attribute names")
 
     monkeypatch.setattr(field_only_render, "getattr", reject_lookup, raising=False)
     assert field_only_render._field_only_completion(None) is None
-    assert field_only_render._field_only_completion(root._state_mgr) is None
-    assert field_only_render._field_only_completion(enabled_root._state_mgr) is completion
+    assert field_only_render._field_only_completion(root) is completion
 
 
 def test_mount_collectors_share_one_local_graph_walk(monkeypatch: Any) -> None:
-    from pyrolyze.runtime import context_bare_refactor_lcm as runtime
+    from pyrolyze.runtime import context_lifecycle as runtime
     from pyrolyze.runtime.context_state_lcm import mount_render, mount_expr_render
-    from pyrolyze.runtime.context_state_lcm.component_render import (
-        _enable_component_render,
-    )
 
     root = runtime.RenderContext()
-    _enable_component_render(root._state_mgr)
     original = mount_render._graph_states
     walks: list[object] = []
 
@@ -42,8 +35,8 @@ def test_mount_collectors_share_one_local_graph_walk(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(mount_render, "_graph_states", walk)
     monkeypatch.setattr(mount_expr_render, "_graph_states", walk)
-    root._state_mgr._field_only_completion._advertisements_for(
-        root._state_mgr, current=False
+    root._field_only_completion._advertisements_for(
+        root, current=False
     )
     assert len(walks) == 1
 

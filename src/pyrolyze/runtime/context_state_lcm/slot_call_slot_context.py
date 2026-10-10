@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from contextlib import nullcontext
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Callable, TypeVar
 
@@ -21,7 +20,6 @@ from pyrolyze.runtime.slot_call_core import (
     SlotCallCommitResult,
     SlotCallStateSnapshot,
     call_with_optional_runtime_context,
-    commit_slot_call_invocation,
     prepare_slot_call,
     refresh_slot_call_binding,
     should_invoke_slot_call,
@@ -62,20 +60,12 @@ class SlotCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
         compare="identity",
         tx_key=PASS_TX_KEY,
     )
-    # Unactivated binding handlers still own their existing immediate selection.
-    _legacy_invocation: _SlotCallInvocation = local_store(
-        default_factory=_SlotCallInvocation
-    )
     _runtime_locals: dict[str, Any] = local_store(default_factory=dict)
 
     def _invocation_record(self) -> _SlotCallInvocation:
-        if _field_only_completion(self) is None:
-            return self._legacy_invocation
         return self._invocation
 
     def accepted_invocation(self) -> _SlotCallInvocation:
-        if _field_only_completion(self) is None:
-            return self._legacy_invocation
         return self.current._invocation
 
     @property
@@ -109,9 +99,10 @@ class SlotCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
         runtime_context_factory: Callable[[], Any] | object = USE_FACTORY,
     ) -> Any:
         completion = _field_only_completion(self)
-        execution = nullcontext() if completion is None else completion.attempt_scope()
-        with execution:
-            owner = None if completion is None else completion.active
+        if completion is None:
+            raise RuntimeError("render completion is not configured")
+        with completion.attempt_scope():
+            owner = completion.active
             if owner is not None:
                 completion.require_slot_type(type(self.owner))
                 owner._require_open()
@@ -176,8 +167,6 @@ class SlotCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
                 commit_result["last_kwargs"],
                 commit_result["binding"],
             )
-            if owner is None:
-                self._legacy_invocation = invocation
             result_dirty = commit_result["result_dirty"]
         else:
             result_dirty = False
@@ -304,12 +293,7 @@ class SlotCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
                 completion.discard_unstaged_selection(binding, self)
                 raise
         else:
-            commit_result = commit_slot_call_invocation(
-                host=host,
-                prepared=prepared,
-                previous_binding=previous_binding,
-                result=result,
-            )
+            raise RuntimeError("render completion is not configured")
         return {
             "binding": commit_result.binding,
             "function_identity": commit_result.function_identity,
@@ -371,12 +355,6 @@ class SlotCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
             binding.commit()
         self.sync_binding_committed_ui()
 
-    def _complete_legacy_selection(self, *, committed: bool) -> None:
-        if committed:
-            self.commit_binding()
-        else:
-            self.rollback_binding()
-
     def rollback_binding(self) -> None:
         binding = self._binding
         if binding is not None:
@@ -392,14 +370,13 @@ class SlotCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
         binding = self._binding
         completion = _field_only_completion(self)
         if completion is None:
-            self._legacy_invocation = replace(self._legacy_invocation, binding=None)
-        else:
-            completion.require_retirement_allowed(self)
-            if completion.active is None:
-                completion.reject("slot-call retirement requires an active render")
-            completion.active._require_open()
-            completion.active._require_identity()
-            self._stage_slot_call_retirement()
+            raise RuntimeError("render completion is not configured")
+        completion.require_retirement_allowed(self)
+        if completion.active is None:
+            completion.reject("slot-call retirement requires an active render")
+        completion.active._require_open()
+        completion.active._require_identity()
+        self._stage_slot_call_retirement()
         if binding is not None:
             binding.deactivate()
         self.ui_state = ()

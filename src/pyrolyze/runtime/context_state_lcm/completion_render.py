@@ -1,4 +1,4 @@
-"""Private I6b gate: directives and captured outer-completion callbacks."""
+"""Directive selection and captured outer-completion callbacks."""
 
 from __future__ import annotations
 
@@ -8,9 +8,8 @@ from typing import Any
 
 from .callback_render import _graph_states
 from .context_base import ContextBaseStateMgr
-from .override_render import _OverrideRenderCompletion, _enable_override_render
+from .override_render import _OverrideRenderCompletion
 from .render_attempt import _raise_with_cleanup
-from .render_context import RenderContextStateMgr
 
 
 @dataclass(eq=False, slots=True)
@@ -33,7 +32,7 @@ class _CompletionRenderCompletion(_OverrideRenderCompletion):
             self._invalidated_states[id(state)] = state
 
     def require_slot_type(self, slot_type: type[Any]) -> None:
-        from pyrolyze.runtime.context_bare_refactor_lcm import DirectiveSlotContext
+        from pyrolyze.runtime.context_lifecycle import DirectiveSlotContext
 
         if slot_type is not DirectiveSlotContext:
             super(_CompletionRenderCompletion, self).require_slot_type(slot_type)
@@ -98,8 +97,3 @@ class _CompletionRenderCompletion(_OverrideRenderCompletion):
         # a later observer failure must not suppress independent callbacks.
         self._publication_ready = published
         super(_CompletionRenderCompletion, self)._after_field_publication(published)
-
-
-def _enable_completion_render(root: RenderContextStateMgr) -> None:
-    _enable_override_render(root)
-    root._field_only_completion = _CompletionRenderCompletion(root)

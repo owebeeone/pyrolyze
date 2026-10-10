@@ -1,4 +1,4 @@
-"""Synchronous effects on the outer render decision; no async/mount activation."""
+"""Synchronous effect selection and delivery on the outer render decision."""
 
 from __future__ import annotations
 
@@ -19,11 +19,7 @@ from pyrolyze.runtime.slot_call_semantics import (
 from .callback_render import _graph_states
 from .effect_binding import _EffectBinding
 from .render_attempt import _raise_with_cleanup
-from .render_context import RenderContextStateMgr
-from .subscription_render import (
-    _SubscriptionRenderCompletion,
-    _enable_subscription_render,
-)
+from .subscription_render import _SubscriptionRenderCompletion
 
 
 class _EffectDeliveryResource(Protocol):
@@ -32,9 +28,6 @@ class _EffectDeliveryResource(Protocol):
     def start(self) -> None: ...
 
 
-def _enable_effect_render(root: RenderContextStateMgr) -> None:
-    _enable_subscription_render(root)
-    root._field_only_completion = _EffectRenderCompletion(root)
 
 
 @dataclass(eq=False, slots=True)

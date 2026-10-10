@@ -4,21 +4,13 @@ from typing import Any, Callable
 
 from .lifecycle_adapter import TransactionManager
 from pyrolyze.runtime.slot_kinds import ContextKind
-from pyrolyze.runtime.slot_call_semantics import PyrolyzeMountAdvertisementBinding
 from pyrolyze.runtime.trace import TraceChannel, emit_trace, trace_enabled
 
 from ._base import USE_OWNER
 from .context_base import ContextBaseStateMgr
 from .context_base import PASS_TX_KEY
 from .field_only_render import _field_only_completion
-from ._support import (
-    DuplicateMountAdvertisementError,
-    MountAdvertisementContextError,
-    REFRACTOR_CLASSES,
-    REFRACTOR_RUNTIME,
-    _InvalidationScheduler,
-    _resolve_mount_advertisement_owner,
-)
+from ._support import DuplicateMountAdvertisementError, MountAdvertisementContextError, REFRACTOR_RUNTIME, _InvalidationScheduler, _resolve_mount_advertisement_owner
 
 
 class RenderContextStateMgr(ContextBaseStateMgr):
@@ -43,14 +35,14 @@ class RenderContextStateMgr(ContextBaseStateMgr):
         ):
             owner_completion.reject("nested render scheduler ownership does not match")
         if shared_completion is not None:
-            from pyrolyze.runtime.context_bare_refactor_lcm import RenderContext
-            from pyrolyze.runtime.context_lifecycle import RenderContext as LifecycleRenderContext
+            from pyrolyze.runtime.context_lifecycle import RenderContext
+            from pyrolyze.runtime.context_lifecycle import ComponentCallSlotContext
             from .component_call_slot_context import ComponentCallSlotContextStateMgr
 
             if (
-                type(self) is not RenderContextStateMgr
-                or type(owner) not in (RenderContext, LifecycleRenderContext)
-                or type(owner_slot_state_mgr) is not ComponentCallSlotContextStateMgr
+                type(self) is not RenderContext
+                or owner is not self
+                or type(owner_slot_state_mgr) is not ComponentCallSlotContext
                 or _field_only_completion(owner_slot_state_mgr) is not shared_completion
                 or owner_slot_state_mgr._parent_state_mgr.children_state.get(
                     owner_slot_state_mgr.current_slot_id()
@@ -73,7 +65,6 @@ class RenderContextStateMgr(ContextBaseStateMgr):
         self._mount_advertisements_by_slot: dict[Any, Any] = {}
         self._owner_slot_state_mgr = owner_slot_state_mgr
         self._mounted_callback: Callable[[], None] | None = None
-        self._post_commit_callbacks: list[Callable[[], None]] = []
         self._queued_invalidations: list[Any] = []
         self._flush_poster: Callable[[Callable[[], None]], None] | None = None
         self._flush_posted = False
@@ -109,7 +100,7 @@ class RenderContextStateMgr(ContextBaseStateMgr):
         return self._context_kind
 
     def register_slot(self, slot: Any) -> None:
-        self.register_slot_state_mgr(slot._state_mgr)
+        self.register_slot_state_mgr(slot)
 
     def register_slot_state_mgr(self, slot_state_mgr: Any) -> None:
         completion = _field_only_completion(self)
@@ -153,50 +144,10 @@ class RenderContextStateMgr(ContextBaseStateMgr):
 
     def _run_boundary(self, boundary_facade: Any = USE_OWNER) -> None:
         completion = _field_only_completion(self)
-        if completion is not None:
-            with completion.attempt_scope():
-                self._run_field_only_boundary(boundary_facade)
-            return
-        boundary_facade = self._resolve_owner_arg(boundary_facade)
-        callback = self._mounted_callback
-        if callback is None:
-            raise RuntimeError("render context is not mounted")
-        scheduler_root = self._scheduler_root_state_mgr
-        scheduler = self._scheduler
-        is_outermost_boundary = not scheduler.active
-        tracker = scheduler_root._app_context_store.get(self._generation_tracker_key)
-        if is_outermost_boundary:
-            tracker.begin()
-        scheduler.enter_active(boundary_facade)
-        if trace_enabled(TraceChannel.BOUNDARY):
-            emit_trace(
-                TraceChannel.BOUNDARY,
-                "start",
-                boundary=self._debug_boundary_id(),
-                queued=tuple(boundary._debug_boundary_id() for boundary in scheduler.queue),
-            )
-        try:
-            callback()
-            if is_outermost_boundary:
-                tracker.commit()
-        except BaseException:
-            if trace_enabled(TraceChannel.BOUNDARY):
-                emit_trace(
-                    TraceChannel.BOUNDARY,
-                    "error",
-                    boundary=self._debug_boundary_id(),
-                )
-            if is_outermost_boundary:
-                tracker.rollback()
-            raise
-        finally:
-            scheduler.exit_active(boundary_facade)
-            if trace_enabled(TraceChannel.BOUNDARY):
-                emit_trace(
-                    TraceChannel.BOUNDARY,
-                    "end",
-                    boundary=self._debug_boundary_id(),
-                )
+        if completion is None:
+            raise RuntimeError("render completion is not configured")
+        with completion.attempt_scope():
+            self._run_field_only_boundary(boundary_facade)
 
     def _run_field_only_boundary(self, boundary_facade: Any) -> None:
         self._require_owned_render()
@@ -274,19 +225,7 @@ class RenderContextStateMgr(ContextBaseStateMgr):
     def begin_pass(self) -> None:
         super().begin_pass()
 
-    def end_pass(self) -> None:
-        super().end_pass()
-        if _field_only_completion(self) is not None:
-            return
-        self._rebuild_mount_advertisement_surface()
-        self._flush_post_commit()
 
-    def rollback_pass(self, cause: BaseException | None = None) -> None:
-        super().rollback_pass(cause)
-        if _field_only_completion(self) is not None:
-            return
-        self._rebuild_mount_advertisement_surface()
-        self._post_commit_callbacks.clear()
 
     def debug_children_of(self, slot_id: Any = None) -> tuple[Any, ...]:
         if slot_id is None:
@@ -295,7 +234,7 @@ class RenderContextStateMgr(ContextBaseStateMgr):
             slot = self._published_slot(slot_id)
             if slot is None:
                 return ()
-            children = slot._state_mgr.children_by_slot_id()
+            children = slot.children_by_slot_id()
         return tuple(children.keys())
 
     def debug_is_active(self, slot_id: Any) -> bool:
@@ -334,7 +273,7 @@ class RenderContextStateMgr(ContextBaseStateMgr):
             slot = self._published_slot(slot_id)
             if slot is None:
                 return ()
-            return slot._state_mgr.committed_ui()
+            return slot.committed_ui()
 
     def committed_ui(self) -> tuple[Any, ...]:
         return super().committed_ui()
@@ -365,7 +304,7 @@ class RenderContextStateMgr(ContextBaseStateMgr):
         return self._owner_slot_state_mgr.current_slot_id()
 
     def _is_ancestor_boundary_of(self, other: Any) -> bool:
-        current_state_mgr = other._state_mgr
+        current_state_mgr = other
         while current_state_mgr is not None:
             if current_state_mgr is self:
                 return True
@@ -381,11 +320,6 @@ class RenderContextStateMgr(ContextBaseStateMgr):
         boundary_facade = self._resolve_owner_arg(boundary_facade)
         self._scheduler.remove(boundary_facade)
 
-    def _flush_post_commit(self) -> None:
-        callbacks = self._post_commit_callbacks
-        self._post_commit_callbacks = []
-        for callback in callbacks:
-            callback()
 
     def _post_flush_if_needed(self, *, was_pending: bool) -> None:
         scheduler_root = self._scheduler_root_state_mgr
@@ -398,42 +332,9 @@ class RenderContextStateMgr(ContextBaseStateMgr):
         scheduler_root._flush_posted = True
         scheduler_root._flush_poster(lambda: scheduler_root.run_pending_invalidations())
 
-    def _rebuild_mount_advertisement_surface(self) -> None:
-        slot_call_slot_context_cls = REFRACTOR_CLASSES.slot_call_slot_context_cls
-        slot_expr_slot_context_cls = REFRACTOR_CLASSES.slot_expr_slot_context_cls
-        next_entries: dict[Any, Any] = {}
-        for slot_id, slot_state_mgr in self._slots_by_id.items():
-            slot = slot_state_mgr.owner
-            if slot_call_slot_context_cls is not None and isinstance(slot, slot_call_slot_context_cls):
-                binding = slot.binding
-                if not isinstance(binding, PyrolyzeMountAdvertisementBinding):
-                    continue
-                advertisement = binding.retained_advertisement()
-                if advertisement is None:
-                    continue
-                next_entries[slot_id] = advertisement
-                continue
-            if slot_expr_slot_context_cls is not None and isinstance(slot, slot_expr_slot_context_cls):
-                for call_site_context in slot.call_site_context_manager._current.values():
-                    binding = call_site_context.binding
-                    wrapped_binding = getattr(binding, "binding", None) if binding is not None else None
-                    if not isinstance(wrapped_binding, PyrolyzeMountAdvertisementBinding):
-                        continue
-                    advertisement = wrapped_binding.retained_advertisement()
-                    if advertisement is None or advertisement.source_slot_id is None:
-                        continue
-                    next_entries[advertisement.source_slot_id] = advertisement
-        for surface_owner_id in {
-            advertisement.surface_owner_id for advertisement in next_entries.values()
-        }:
-            self._validate_mount_advertisement_surface(
-                next_entries,
-                surface_owner_id=surface_owner_id,
-            )
-        self._mount_advertisements_by_slot = next_entries
 
     def queue_invalidation_from(self, slot: object, *, include_source: bool = True) -> None:
-        slot_state_mgr = slot._state_mgr if hasattr(slot, "_state_mgr") else slot
+        slot_state_mgr = slot
         boundary_state_mgr = slot_state_mgr._render_context_state_mgr
         completion = _field_only_completion(self)
         note_invalidation = getattr(completion, "note_invalidation", None)
@@ -484,15 +385,12 @@ class RenderContextStateMgr(ContextBaseStateMgr):
 
     def enqueue_post_commit(self, callback: Callable[[], None]) -> None:
         completion = _field_only_completion(self)
-        if completion is not None and getattr(
-            completion, "directive_selection_enabled", False
-        ):
-            completion.enqueue_post_commit(self, callback)
-            return
-        self._post_commit_callbacks.append(callback)
+        if completion is None:
+            raise RuntimeError("render completion is not configured")
+        completion.enqueue_post_commit(self, callback)
 
     def publish_mount_advertisement(self, slot: Any, request: Any) -> Any:
-        slot_state_mgr = slot._state_mgr if hasattr(slot, "_state_mgr") else slot
+        slot_state_mgr = slot
         parent = _resolve_mount_advertisement_owner(slot_state_mgr._parent_state_mgr)
         if parent is None:
             raise MountAdvertisementContextError("advertise_mount() requires a native container owner")

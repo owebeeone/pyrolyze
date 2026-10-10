@@ -5,14 +5,12 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
+from pyrolyze.runtime import context_lifecycle as runtime
 from pyrolyze.runtime.app_context import AppContextKey
-from pyrolyze.runtime.context_state_lcm.override_render import _enable_override_render
 
 
 def characterize() -> dict[str, Any]:
     root = runtime.RenderContext()
-    _enable_override_render(root._state_mgr)
     key = AppContextKey("theme", lambda host: "unused")
     module = runtime.ModuleId("override-proof")
     outer_id, inner_id = runtime.SlotId(module, 1), runtime.SlotId(module, 2)
@@ -26,8 +24,8 @@ def characterize() -> dict[str, Any]:
     observations = []
 
     def changed() -> None:
-        tracker = root._state_mgr.get_app_context(
-            root._state_mgr._generation_tracker_key
+        tracker = root.get_app_context(
+            root._generation_tracker_key
         )
         observations.append(
             [

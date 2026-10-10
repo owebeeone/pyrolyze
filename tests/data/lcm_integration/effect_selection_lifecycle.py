@@ -5,8 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any, Callable
 
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
-from pyrolyze.runtime.context_state_lcm.effect_render import _enable_effect_render
+from pyrolyze.runtime import context_lifecycle as runtime
 from pyrolyze.runtime.slot_call_semantics import UseEffectRequest
 
 
@@ -16,7 +15,6 @@ def _source(request: UseEffectRequest) -> UseEffectRequest:
 
 def characterize() -> dict[str, Any]:
     root = runtime.RenderContext()
-    _enable_effect_render(root._state_mgr)
     slot_id = runtime.SlotId(runtime.ModuleId("tests.effect_selection"), 1)
     events: list[list[Any]] = []
     slot: Any = None
@@ -26,7 +24,7 @@ def characterize() -> dict[str, Any]:
         slot = root._ensure_slot(slot_id, runtime.SlotCallSlotContext)
 
         def effect() -> Callable[[], None]:
-            completion = root._state_mgr._field_only_completion
+            completion = root._field_only_completion
             events.append(["setup", label, completion.last.published])
             return lambda: events.append(["cleanup", label])
 
@@ -82,7 +80,7 @@ def characterize() -> dict[str, Any]:
         evaluate("latest", ("pending",))
     with root.pass_scope():
         slot.deactivate()
-    result["ready"] = root._state_mgr._field_only_completion.last.reuse_ready
+    result["ready"] = root._field_only_completion.last.reuse_ready
     result["events"] = events
     return result
 

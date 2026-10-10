@@ -12,7 +12,7 @@ from .component_call_slot_context import (
 )
 from .context_base import ContextBaseStateMgr
 from .field_only_render import _field_only_completion
-from .mount_expr_render import _MountExprRenderCompletion, _enable_mount_expr_render
+from .mount_expr_render import _MountExprRenderCompletion
 from .render_attempt import _raise_with_cleanup
 from .render_context import RenderContextStateMgr
 
@@ -109,8 +109,3 @@ class _ComponentRenderCompletion(_MountExprRenderCompletion):
             raise BaseExceptionGroup("component retirement failed", errors)
         if failure is not None:
             raise failure
-
-
-def _enable_component_render(root: RenderContextStateMgr) -> None:
-    _enable_mount_expr_render(root)
-    root._field_only_completion = _ComponentRenderCompletion(root)

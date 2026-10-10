@@ -12,6 +12,28 @@ from pyrolyze.runtime.context_state_lcm.slot_expr_slot_context import SlotExprSl
 from pyrolyze.runtime.slot_kinds import ContextKind
 
 
+def test_managed_context_can_own_itself_without_an_outer_facade() -> None:
+    from pyrolyze.runtime.context_state_lcm._base import StateMgrBase
+
+    context = StateMgrBase()
+    assert context.owner is context
+    assert context.current.owner is context
+    assert context._owner_facade() is context
+    assert context._context_kind is ContextKind.SLOT
+
+
+def test_public_render_context_is_itself_lifecycle_managed() -> None:
+    from pyrolyze.runtime.context import RenderContext
+
+    context = RenderContext()
+    assert not hasattr(context, "_state_mgr")
+    assert context.owner is context
+    assert callable(getattr(context, "_y_get_transaction_manager", None))
+    assert context.current is not context
+    assert context.current.owner is context
+    assert context.current._y_get_transaction_manager() is context._y_get_transaction_manager()
+
+
 class Owner:
     _context_kind = ContextKind.SLOT
     _generation_tracker_key_const = object()

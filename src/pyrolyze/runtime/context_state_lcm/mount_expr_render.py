@@ -20,10 +20,7 @@ from pyrolyze.runtime.slot_call_semantics import (
     UseEffectHandler,
 )
 from pyrolyze.runtime.slot_identity import SlotIdPath
-from .async_effect_expr_render import (
-    _AsyncEffectExprRenderCompletion,
-    _enable_async_effect_expr_render,
-)
+from .async_effect_expr_render import _AsyncEffectExprRenderCompletion
 from .callback_render import _graph_states
 from .mount_binding import _MountAdvertisementBinding
 from .render_context import RenderContextStateMgr
@@ -47,9 +44,6 @@ class _MountExpressionExecution(_SubscriptionExpressionExecution):
         self.require_active()
 
 
-def _enable_mount_expr_render(root: RenderContextStateMgr) -> None:
-    _enable_async_effect_expr_render(root)
-    root._field_only_completion = _MountExprRenderCompletion(root)
 
 
 @dataclass(eq=False, slots=True)

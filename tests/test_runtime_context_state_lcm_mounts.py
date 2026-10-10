@@ -5,10 +5,9 @@ from typing import Any
 import pytest
 
 from pyrolyze.api import UIElement, advertise_mount
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
-from pyrolyze.runtime.context_bare_refactor_lcm import ContextBase
+from pyrolyze.runtime import context_lifecycle as runtime
+from pyrolyze.runtime.context_lifecycle import ContextBase
 from pyrolyze.runtime.context_state_lcm.context_base import PASS_TX_KEY
-from pyrolyze.runtime.context_state_lcm.mount_render import _enable_mount_render
 from pyrolyze.runtime.context_state_lcm.render_attempt import RenderAttemptAborted
 from pyrolyze.runtime.context_state_lcm._support import (
     DuplicateMountAdvertisementError,
@@ -19,7 +18,6 @@ from pyrolyze.runtime.slot_call_semantics import UseEffectRequest
 
 def _root() -> Any:
     root = runtime.RenderContext()
-    _enable_mount_render(root._state_mgr)
     return root
 
 
@@ -28,7 +26,7 @@ def _id(index: int) -> Any:
 
 
 def _native(ctx: ContextBase) -> None:
-    ctx._state_mgr.own_ui_state = (UIElement(kind="section", props={}),)
+    ctx.own_ui_state = (UIElement(kind="section", props={}),)
 
 
 def _select(
@@ -65,7 +63,7 @@ def test_duplicate_candidate_surface_is_discarded_before_effect_delivery(
     assert [advert.key for advert in root.debug_mount_advertisements()] == ["accepted"]
     assert root.debug_ui()[0].children[0].key == "accepted"
     assert events == []
-    assert root._state_mgr._field_only_completion.last.published is False
+    assert root._field_only_completion.last.published is False
     with root.pass_scope():
         with root.container_call(_id(1), _native) as container:
             _select(container, "retry")
@@ -78,12 +76,12 @@ def test_root_owner_rejection_is_still_transactional() -> None:
         with root.pass_scope():
             _select(root, "invalid")
     assert root.debug_mount_advertisements() == ()
-    assert root._state_mgr.current.children_state == {}
+    assert root.current.children_state == {}
 
 
 def test_duplicate_key_comparison_cannot_publish_under_replacement_token() -> None:
     root = _root()
-    manager = root._state_mgr._transaction_manager
+    manager = root._transaction_manager
     replacement: Any = None
 
     class Key:
@@ -103,19 +101,6 @@ def test_duplicate_key_comparison_cannot_publish_under_replacement_token() -> No
     manager.rollback(PASS_TX_KEY)
 
 
-def test_opaque_container_factory_is_rejected_before_external_work() -> None:
-    root = _root()
-    events: list[str] = []
-
-    def factory() -> None:
-        events.append("called")
-
-    with pytest.raises(RuntimeError, match="opaque container"):
-        with root.pass_scope():
-            with root.container_call(_id(1), factory):
-                pass
-    assert events == []
-    assert root._state_mgr.current.children_state == {}
 
 
 def test_caught_native_helper_failure_preserves_the_original_abort_cause() -> None:
@@ -133,7 +118,7 @@ def test_caught_native_helper_failure_preserves_the_original_abort_cause() -> No
             except ValueError as error:
                 assert error is cause
     assert caught.value.__cause__ is cause
-    assert root._state_mgr.current.children_state == {}
+    assert root.current.children_state == {}
 
 
 def test_surface_validation_is_closed_to_render_reentry() -> None:

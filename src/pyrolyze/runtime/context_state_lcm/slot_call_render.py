@@ -1,4 +1,4 @@
-"""Private plain-value slot-call admission; external resource routes stay gated."""
+"""Slot-call result selection and extensible binding admission."""
 
 from __future__ import annotations
 
@@ -7,8 +7,7 @@ from typing import Any
 
 from yidl_lifecycle.bindings import BindingBase
 
-from .callback_render import _CallbackRenderCompletion, _enable_callback_render
-from .render_context import RenderContextStateMgr
+from .callback_render import _CallbackRenderCompletion
 from pyrolyze.runtime.slot_call_semantics import (
     SlotValueHandler,
     SlotValueBinding,
@@ -18,15 +17,12 @@ from pyrolyze.runtime.slot_call_semantics import (
 )
 
 
-def _enable_slot_call_render(root: RenderContextStateMgr) -> None:
-    _enable_callback_render(root)
-    root._field_only_completion = _SlotCallRenderCompletion(root)
 
 
 @dataclass(eq=False, slots=True)
 class _SlotCallRenderCompletion(_CallbackRenderCompletion):
     def require_slot_type(self, slot_type: type[Any]) -> None:
-        from pyrolyze.runtime.context_bare_refactor_lcm import SlotCallSlotContext
+        from pyrolyze.runtime.context_lifecycle import SlotCallSlotContext
 
         if slot_type is not SlotCallSlotContext:
             super(_SlotCallRenderCompletion, self).require_slot_type(slot_type)

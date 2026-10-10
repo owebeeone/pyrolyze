@@ -22,15 +22,16 @@ def test_runtime_context_defaults_to_lifecycle_completion(monkeypatch) -> None:
 
     assert module.RenderContext is RenderContext
     root = module.RenderContext()
-    completion = root._state_mgr._field_only_completion
+    completion = root._field_only_completion
     assert completion is not None
     assert completion.pass_state_selection_enabled
-    assert completion.root is root._state_mgr
+    assert completion.root is root
 
 
-def test_enabled_legacy_boolean_selects_lifecycle_completion(monkeypatch) -> None:
+@pytest.mark.parametrize("legacy_setting", ("0", "1", "false", "true"))
+def test_retired_boolean_cannot_select_a_fallback(monkeypatch, legacy_setting) -> None:
     monkeypatch.delenv("PYROLYZE_CONTEXT_IMPL", raising=False)
-    monkeypatch.setenv("PYROLYZE_USE_CONTEXT_LCM", "1")
+    monkeypatch.setenv("PYROLYZE_USE_CONTEXT_LCM", legacy_setting)
     module = _reload_runtime_context()
     from pyrolyze.runtime.context_lifecycle import RenderContext
 
@@ -42,23 +43,12 @@ def test_explicit_lifecycle_selector_installs_completion_automatically(monkeypat
     module = _reload_runtime_context()
     assert module.__PYROLYZE_CONTEXT_IMPLEMENTATION__ == "lcm"
     root = module.RenderContext()
-    completion = getattr(root._state_mgr, "_field_only_completion", None)
+    completion = getattr(root, "_field_only_completion", None)
     assert completion is not None
     assert completion.pass_state_selection_enabled
-    assert completion.root is root._state_mgr
+    assert completion.root is root
 
 
-def test_default_construction_does_not_activate_private_checkpoints(monkeypatch) -> None:
-    from pyrolyze.runtime import context_lifecycle
-
-    def reject_private_activation(root: object) -> None:
-        raise AssertionError("default roots must directly install final completion")
-
-    monkeypatch.setattr(
-        context_lifecycle, "_enable_pass_state_render", reject_private_activation, raising=False
-    )
-    root = context_lifecycle.RenderContext()
-    assert root._state_mgr._field_only_completion is not None
 
 
 def test_default_root_preserves_exact_type_activation_guard() -> None:
@@ -71,11 +61,10 @@ def test_default_root_preserves_exact_type_activation_guard() -> None:
         UnrecognizedRoot()
 
 
-def test_runtime_context_can_switch_back_to_original(monkeypatch) -> None:
-    monkeypatch.delenv("PYROLYZE_CONTEXT_IMPL", raising=False)
-    monkeypatch.setenv("PYROLYZE_USE_CONTEXT_LCM", "0")
-
+@pytest.mark.parametrize("legacy_setting", ("original", "bare", "bare_refactor", "bare_refactor_lcm", "lcm"))
+def test_retired_selector_cannot_select_a_fallback(monkeypatch, legacy_setting) -> None:
+    monkeypatch.setenv("PYROLYZE_CONTEXT_IMPL", legacy_setting)
     module = _reload_runtime_context()
+    from pyrolyze.runtime.context_lifecycle import RenderContext
 
-    assert module.__PYROLYZE_CONTEXT_IMPLEMENTATION__ == "original"
-    assert hasattr(module, "RenderContext")
+    assert module.RenderContext is RenderContext

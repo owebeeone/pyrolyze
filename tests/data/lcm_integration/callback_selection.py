@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from types import SimpleNamespace
 from typing import Any, Callable
 
 from pyrolyze.runtime import context as runtime
@@ -99,43 +98,6 @@ def observe(root_factory: Callable[[], Any] = runtime.RenderContext) -> dict[str
     }
 
 
-def observe_owned_child_failure() -> dict[str, Any]:
-    root = runtime.RenderContext()
-    calls: list[str] = []
-    held: list[Any] = []
-
-    def child(context: Any, handler: Any, fail: bool) -> None:
-        with context.pass_scope():
-            held.append(handler)
-            if fail:
-                raise ValueError("owned child failed")
-
-    component = SimpleNamespace(_pyrolyze_meta=SimpleNamespace(_func=child))
-    first = lambda: calls.append("A")
-    second = lambda: calls.append("B")
-
-    def invoke(callback: Any, fail: bool) -> None:
-        binding = root.event_handler_binding(_slot(1), callback=callback, dirty=True)
-        root.component_call(_slot(10), component, binding, fail)
-
-    with root.pass_scope():
-        invoke(first, False)
-    dispatch = held[-1]
-    dispatch()
-    with root.pass_scope():
-        try:
-            invoke(second, True)
-        except ValueError:
-            pass
-    assert held[-1] is dispatch
-    dispatch()
-    assert calls == ["A", "A"]
-    with root.pass_scope():
-        invoke(second, False)
-    assert held[-1] is dispatch
-    dispatch()
-    assert calls == ["A", "A", "B"]
-    return {"calls": calls, "stable_dispatch": True}
 
 
 if __name__ == "__main__":

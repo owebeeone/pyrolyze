@@ -23,7 +23,13 @@ def unavailable() -> None:
 
 
 def _default_context_kind(self: StateMgrBase) -> ContextKind:
+    if self.owner is self:
+        return getattr(self, "_runtime_context_kind", ContextKind.SLOT)
     return getattr(self.owner, "_context_kind", ContextKind.SLOT)
+
+
+def _default_owner(self: StateMgrBase) -> StateMgrBase:
+    return self
 
 
 def _resolve_render_context_state_mgr_initvar(
@@ -34,7 +40,7 @@ def _resolve_render_context_state_mgr_initvar(
     del cls
     if render_context_state_mgr is not None:
         return render_context_state_mgr
-    return getattr(render_context, "_state_mgr", None)
+    return render_context
 
 
 def _copy_parent_state_mgr(cls: type[StateMgrBase], parent_state_mgr: Any) -> Any:
@@ -45,11 +51,6 @@ def _copy_parent_state_mgr(cls: type[StateMgrBase], parent_state_mgr: Any) -> An
 def _copy_slot_id(cls: type[StateMgrBase], slot_id: Any) -> Any:
     del cls
     return slot_id
-
-
-def _copy_invoke_dirty(cls: type[StateMgrBase], invoke_dirty: bool) -> bool:
-    del cls
-    return invoke_dirty
 
 
 def _copy_seen_in_pass(cls: type[StateMgrBase], seen_in_pass: bool) -> bool:
@@ -65,7 +66,7 @@ def _initial_revision(cls: type[StateMgrBase], invoke_dirty: bool) -> int:
 @managed_context
 class StateMgrBase:
     # Roots use neutral slot inputs; descendants share this one construction schema.
-    owner: Any = const()
+    owner: Any = const(default_factory=_default_owner, allow_self_factory=True)
     render_context_state_mgr: Any = initvar(default=None)
     render_context: Any = initvar(default=None)
     parent_state_mgr: Any = initvar(default=None)
@@ -81,8 +82,6 @@ class StateMgrBase:
     )
     _parent_state_mgr: Any = field(init=False, default_factory=_copy_parent_state_mgr)
     _slot_id: Any = field(init=False, default_factory=_copy_slot_id)
-    _legacy_invoke_dirty: bool = field(init=False, default_factory=_copy_invoke_dirty)
-    _legacy_seen_in_pass: bool = field(init=False, default_factory=_copy_seen_in_pass)
     # Notifications survive rollback; only their successful consumption and
     # local visitation participate in the shared render transaction.
     _requested_revision: int = field(init=False, default_factory=_initial_revision)
@@ -111,18 +110,14 @@ class StateMgrBase:
 
     @property
     def _invoke_dirty(self) -> bool:
-        if self._pass_state_completion() is None:
-            return self._legacy_invoke_dirty
         return self._requested_revision != self._handled_revision
 
     @_invoke_dirty.setter
     def _invoke_dirty(self, value: bool) -> None:
         completion = self._pass_state_completion()
-        if completion is None:
-            self._legacy_invoke_dirty = value
-        elif value:
+        if value:
             self._requested_revision += 1
-        elif completion.active is None:
+        elif completion is None or completion.active is None:
             # Explicit out-of-pass clearing keeps the existing boolean API;
             # it cancels a request, rather than claiming a render handled it.
             self._requested_revision = self.current._handled_revision
@@ -132,22 +127,23 @@ class StateMgrBase:
 
     @property
     def _seen_in_pass(self) -> bool:
-        if self._pass_state_completion() is None:
-            return self._legacy_seen_in_pass
         return self._pass_seen_in_pass
 
     @_seen_in_pass.setter
     def _seen_in_pass(self, value: bool) -> None:
         completion = self._pass_state_completion()
-        if completion is None:
-            self._legacy_seen_in_pass = value
-        else:
+        if completion is not None:
             completion.require_resource_owner()
-            self._pass_seen_in_pass = value
+        self._pass_seen_in_pass = value
 
     @classmethod
     def create(cls, owner: Any, **kwargs: Any) -> Self:
         """Construct through the runtime's boundary-resolution entry point."""
+        return cls(owner=owner, **cls.construction_kwargs(owner, **kwargs))
+
+    @classmethod
+    def construction_kwargs(cls, owner: Any, **kwargs: Any) -> dict[str, Any]:
+        """Validate ownership before initializing or publishing a context."""
         render_state = _resolve_render_context_state_mgr_initvar(
             cls,
             kwargs.get("render_context_state_mgr"),
@@ -173,7 +169,7 @@ class StateMgrBase:
         manager = getattr(render_state, "_transaction_manager", None)
         if manager is not None:
             kwargs["transaction_manager"] = manager
-        return cls(owner=owner, **kwargs)
+        return kwargs
 
     @property
     def _transaction_manager(self) -> TransactionManager:
@@ -201,8 +197,4 @@ class StateMgrBase:
         return ()
 
     def parent_context(self) -> Any | None:
-        return None
-
-    def _complete_legacy_selection(self, *, committed: bool) -> None:
-        """Compatibility-only domain completion; lifecycle gates bypass this."""
         return None

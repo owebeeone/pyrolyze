@@ -8,10 +8,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from ._support import _KeyedLoopIterable, _unwrap
-from .completion_render import _CompletionRenderCompletion, _enable_completion_render
+from .completion_render import _CompletionRenderCompletion
 from .context_base import ContextBaseStateMgr
 from .render_attempt import _LocalRenderScope, _RenderAttempt
-from .render_context import RenderContextStateMgr
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,7 +46,7 @@ class _KeyedLoopRenderCompletion(_CompletionRenderCompletion):
     keyed_loop_selection_enabled = True
 
     def require_slot_type(self, slot_type: type[Any]) -> None:
-        from pyrolyze.runtime.context_bare_refactor_lcm import (
+        from pyrolyze.runtime.context_lifecycle import (
             KeyedLoopSlotContext,
             LoopItemSlotContext,
         )
@@ -63,7 +62,7 @@ class _KeyedLoopRenderCompletion(_CompletionRenderCompletion):
         key_fn: Callable[[Any], Any],
         parent: Any,
     ) -> _KeyedLoopIterable[Any]:
-        from pyrolyze.runtime.context_bare_refactor_lcm import KeyedLoopSlotContext
+        from pyrolyze.runtime.context_lifecycle import KeyedLoopSlotContext
 
         self.require_resource_owner()
         assert self.active is not None
@@ -78,14 +77,9 @@ class _KeyedLoopRenderCompletion(_CompletionRenderCompletion):
             )
             owner._require_identity()
             return _KeyedLoopIterable(
-                owner_state_mgr=slot._state_mgr,
+                owner_state_mgr=slot,
                 parent_facade=slot,
                 values=normalized,
                 key_fn=key_fn,
                 execution=_KeyedLoopExecution(self, owner),
             )
-
-
-def _enable_keyed_loop_render(root: RenderContextStateMgr) -> None:
-    _enable_completion_render(root)
-    root._field_only_completion = _KeyedLoopRenderCompletion(root)

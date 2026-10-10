@@ -6,17 +6,13 @@ import json
 from typing import Any
 
 from pyrolyze.api import UIElement
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
+from pyrolyze.runtime import context_lifecycle as runtime
 from pyrolyze.runtime.context_state_lcm.context_base import PASS_TX_KEY
-from pyrolyze.runtime.context_state_lcm.field_only_render import (
-    _enable_field_only_render,
-)
 from pyrolyze.runtime.context_state_lcm.render_attempt import RenderAttemptAborted
 
 
 def _root() -> Any:
     root = runtime.RenderContext()
-    _enable_field_only_render(root._state_mgr)
     return root
 
 
@@ -25,7 +21,7 @@ def _id() -> Any:
 
 
 def _arguments(leaf: Any) -> dict[str, Any]:
-    state = leaf._state_mgr
+    state = leaf
     return {
         "accepted": [list(leaf.last_args), list(map(list, leaf.last_kwargs))],
         "candidate": [list(state._last_args), list(map(list, state._last_kwargs))],
@@ -53,8 +49,8 @@ def _native_invocations() -> dict[str, Any]:
 
     with root.pass_scope():
         leaf = invoke("A")
-    state = leaf._state_mgr
-    manager = root._state_mgr._transaction_manager
+    state = leaf
+    manager = root._transaction_manager
     facts = {
         fact["field_name"]: fact
         for fact in state.__yidl_lifecycle_definition__["fields"]
@@ -64,8 +60,7 @@ def _native_invocations() -> dict[str, Any]:
             "candidate_managed": facts["_invocation"]["field_kind"] == "managed",
             "candidate_key": facts["_invocation"]["tx_key_key"] == PASS_TX_KEY,
             "candidate_identity": facts["_invocation"]["compare"] == "identity",
-            "compatibility_local": facts["_legacy_invocation"]["field_kind"]
-            == "local_store",
+            "compatibility_removed": "_legacy_invocation" not in facts,
             "same_manager": state._transaction_manager is manager,
         },
         "initial": _arguments(leaf),
@@ -106,9 +101,8 @@ def _native_invocations() -> dict[str, Any]:
     result["ui"] = [element.props["value"] for element in root.debug_ui()]
     result["ready"] = (
         manager.active_transaction_for(PASS_TX_KEY) is None
-        and root._state_mgr._field_only_completion.last.reuse_ready
+        and root._field_only_completion.last.reuse_ready
     )
-    result["compatibility_unused"] = state._legacy_invocation.args == ()
     return result
 
 
@@ -139,39 +133,12 @@ def _plain_invocations() -> dict[str, Any]:
     return result
 
 
-def _legacy_attempts() -> dict[str, Any]:
-    root = runtime.RenderContext()
-    with root.pass_scope():
-        leaf = root._ensure_slot(_id(), runtime.LeafSlotContext)
-    result: dict[str, Any] = {
-        "result": leaf.invoke(lambda value, *, flag: value + flag, (1,), {"flag": 2}),
-        "plain": _arguments(leaf),
-    }
-
-    def fail(value: int) -> None:
-        raise ValueError("legacy plain failed")
-
-    try:
-        leaf.invoke(fail, (3,), {})
-    except ValueError:
-        pass
-    result["plain_failure_keeps_attempt"] = _arguments(leaf)
-    try:
-        leaf.invoke_native(
-            lambda context, value: value, (7,), {}, context_param="context"
-        )
-    except TypeError as error:
-        result["native_error"] = str(error)
-    result["native_failure_keeps_attempt"] = _arguments(leaf)
-    result["managed_record_unused"] = leaf._state_mgr.current._invocation.args == ()
-    return result
 
 
 def characterize() -> dict[str, Any]:
     return {
         "native": _native_invocations(),
         "plain": _plain_invocations(),
-        "legacy": _legacy_attempts(),
     }
 
 

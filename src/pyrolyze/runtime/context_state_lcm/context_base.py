@@ -6,37 +6,14 @@ import os
 from typing import Any, Callable, Iterator, TYPE_CHECKING, TypeVar
 
 from pyrolyze.api import MountDirective, UIElement
-from .lifecycle_adapter import PASS_TX_KEY, const, local_store, managed, managed_context
+from .lifecycle_adapter import PASS_TX_KEY, const, managed, managed_context
 from pyrolyze.runtime.app_context import APP_CONTEXT_MISSING, EMPTY_APP_CONTEXT_LOOKUP
 from pyrolyze.runtime.slot_kinds import ContextKind
 from pyrolyze.runtime.slot_call_semantics import ExternalStoreRef
 from pyrolyze.runtime.slot_expr import SlotExpr
 from ._base import StateMgrBase, USE_OWNER, _resolve_render_context_state_mgr_initvar
 from .field_only_render import _field_only_completion
-from ._support import (
-    PendingEventHandlerBinding,
-    REFRACTOR_CLASSES,
-    SlotOwnershipError,
-    _AppContextOverrideHandle,
-    _CommittedUiEntry,
-    _ContainerCallHandle,
-    _ContextSlotExprHost,
-    _DirectiveCallHandle,
-    _KeyedLoopIterable,
-    _MountContainerCallHandle,
-    _NativeContainerCallHandle,
-    _PyrolyzeContainerCallHandle,
-    _RuntimeCallSite,
-    _clean_dirty_state,
-    _component_call_key,
-    _container_runtime_context_param_name,
-    _native_context_param_name,
-    _native_emission_slot_identity,
-    _resolve_runtime_component_func,
-    _resolve_runtime_site_call,
-    _unwrap,
-    _unwrap_native_value,
-)
+from ._support import PendingEventHandlerBinding, REFRACTOR_CLASSES, SlotOwnershipError, _AppContextOverrideHandle, _CommittedUiEntry, _ContextSlotExprHost, _DirectiveCallHandle, _RuntimeCallSite, _component_call_key, _native_emission_slot_identity, _resolve_runtime_component_func, _resolve_runtime_site_call, _unwrap, _unwrap_native_value
 
 
 T = TypeVar("T")
@@ -94,14 +71,8 @@ class ContextBaseStateMgr(StateMgrBase):
         default_factory=tuple,
         tx_key=PASS_TX_KEY,
     )
-    _pass_child_order: tuple[Any, ...] = local_store(default_factory=tuple)
-    _pass_child_dirty: dict[Any, bool] = local_store(default_factory=dict)
-    _pass_started_tx: bool = local_store(default=False)
 
-    # Integration note:
-    # The field declarations above are the lifecycle target semantics.
-    # Production still uses legacy local completion. SC2's private field-only
-    # graph gate exercises outer ownership without activating resource routes.
+    # All managed graph fields publish through the shared outer completion.
 
     def root_context_state_mgr(self) -> Any:
         if self._render_context_state_mgr is None:
@@ -226,7 +197,7 @@ class ContextBaseStateMgr(StateMgrBase):
 
     def register_child(self, slot_id: Any, child: Any) -> None:
         next_children = dict(self.children_state)
-        next_children[slot_id] = child._state_mgr
+        next_children[slot_id] = child
         self.children_state = next_children
 
     def register_child_state_mgr(self, slot_id: Any, child_state_mgr: Any) -> None:
@@ -245,100 +216,27 @@ class ContextBaseStateMgr(StateMgrBase):
     def begin_pass(self) -> None:
         self._has_entered_pass = True
         completion = _field_only_completion(self)
-        if completion is not None:
-            completion.begin_pass(self)
-            return
-        if self._pass_child_order:
-            raise RuntimeError("scope already active")
-        txm = self._transaction_manager
-        if txm is None:
-            raise RuntimeError("transaction manager is not configured")
-        self._pass_started_tx = False
-        if not self.is_scope_active():
-            txm.begin(PASS_TX_KEY)
-            self._pass_started_tx = True
-        self._pass_child_order = tuple(self.children_state.keys())
-        self._pass_child_dirty = {
-            slot_id: child_state_mgr._invoke_dirty
-            for slot_id, child_state_mgr in self.children_state.items()
-        }
-        self.own_ui_entries_state = ()
-        self.own_ui_state = ()
-        for child_state_mgr in self.children_state.values():
-            child_state_mgr._seen_in_pass = False
+        if completion is None:
+            raise RuntimeError("render completion is not configured")
+        completion.begin_pass(self)
 
     def end_pass(self) -> None:
         completion = _field_only_completion(self)
-        if completion is not None:
-            completion.finish_pass(self)
-            return
-        self.require_active_scope()
-        unseen_slots = [
-            slot_id
-            for slot_id, child_state_mgr in self.children_state.items()
-            if not child_state_mgr._seen_in_pass
-        ]
-        for slot_id in unseen_slots:
-            child_state_mgr = self.children_state.get(slot_id)
-            if child_state_mgr is not None:
-                child_state_mgr.deactivate()
-
-        for child_state_mgr in self.children_state.values():
-            child_state_mgr._complete_legacy_selection(committed=True)
-
-        if hasattr(self, "_expects_native_root"):
-            self._committed_native_root = self._expects_native_root
-
-        self.ui_state = self.build_committed_ui()
-
-        for child_state_mgr in self.children_state.values():
-            child_state_mgr._invoke_dirty = False
-
-        if self._pass_started_tx:
-            self._transaction_manager.commit(PASS_TX_KEY)
-        self._pass_started_tx = False
-        self._pass_child_order = ()
-        self._pass_child_dirty = {}
+        if completion is None:
+            raise RuntimeError("render completion is not configured")
+        completion.finish_pass(self)
 
     def rollback_pass(self, cause: BaseException | None = None) -> None:
         completion = _field_only_completion(self)
-        if completion is not None:
-            completion.finish_pass(self, cause or RuntimeError("local render pass aborted"))
-            return
-        if not self.is_scope_active():
-            raise RuntimeError("scope is not active")
-        committed_ids = set(self._pass_child_order)
-        for slot_id, child_state_mgr in list(self.children_state.items()):
-            if slot_id not in committed_ids:
-                child_state_mgr.deactivate()
-                continue
-            child_state_mgr._complete_legacy_selection(committed=False)
-            child_state_mgr._invoke_dirty = self._pass_child_dirty.get(
-                slot_id,
-                child_state_mgr._invoke_dirty,
-            )
-            child_state_mgr._seen_in_pass = True
-
-        if self._pass_started_tx:
-            self._transaction_manager.rollback(PASS_TX_KEY)
-        self._pass_started_tx = False
-        self._pass_child_order = ()
-        self._pass_child_dirty = {}
+        if completion is None:
+            raise RuntimeError("render completion is not configured")
+        completion.finish_pass(self, cause or RuntimeError("local render pass aborted"))
 
     def _begin_field_only_pass(self) -> None:
         self._has_entered_pass = True
         children = self.children_state
         # Admission inventory only: never used to restore managed membership.
         self._field_only_prior_children = tuple(children.items())
-        if self._pass_state_completion() is None and not getattr(
-            self, "_field_only_has_snapshot", False
-        ):
-            # Dirtiness is scheduler state, not managed membership. Keep its
-            # retry baseline; independent invalidations are replayed separately.
-            self._pass_child_dirty = {
-                slot_id: child._invoke_dirty for slot_id, child in children.items()
-            }
-            self._field_only_has_snapshot = True
         self._capture_pass_revision()
         self.own_ui_entries_state = ()
         self.own_ui_state = ()
@@ -375,13 +273,6 @@ class ContextBaseStateMgr(StateMgrBase):
         return None
 
     def _clear_field_only_pass(self, *, published: bool) -> None:
-        if self._pass_state_completion() is None:
-            if not published:
-                for slot_id, child in self.current.children_state.items():
-                    child._invoke_dirty = self._pass_child_dirty.get(slot_id, child._invoke_dirty)
-                    child._seen_in_pass = True
-            self._pass_child_dirty = {}
-            self._field_only_has_snapshot = False
         self._field_only_prior_children = ()
         self._field_only_local_scope = None
         self._field_only_outer_pass = False
@@ -431,9 +322,9 @@ class ContextBaseStateMgr(StateMgrBase):
         if owner is not None:
             owner._require_open()
             owner._require_identity()
-        if existing is not None and existing._state_mgr._parent_state_mgr is not self:
+        if existing is not None and existing._parent_state_mgr is not self:
             raise SlotOwnershipError(
-                f"slot {slot_id!r} is owned by {type(existing._state_mgr._parent_state_mgr.owner).__name__}, "
+                f"slot {slot_id!r} is owned by {type(existing._parent_state_mgr.owner).__name__}, "
                 f"not {self._owner_type_name}"
             )
         if existing is not None and not isinstance(existing, slot_type):
@@ -445,14 +336,14 @@ class ContextBaseStateMgr(StateMgrBase):
             slot = slot_type(render_context=root_context, parent=parent_facade, slot_id=slot_id)
             existing = slot
         next_children = dict(self.children_state)
-        next_children[slot_id] = existing._state_mgr
+        next_children[slot_id] = existing
         if owner is not None:
             # Key hashing/equality can execute user code even after selection.
             owner._require_open()
             owner._require_identity()
         self.children_state = next_children
-        existing._state_mgr._seen_in_pass = True
-        existing._state_mgr._capture_pass_revision()
+        existing._seen_in_pass = True
+        existing._capture_pass_revision()
         return existing
 
     def materialize_pending_event_handler(
@@ -533,13 +424,13 @@ class ContextBaseStateMgr(StateMgrBase):
             raise RuntimeError("slot expr slot context class is not configured")
         expr_slot = self.ensure_slot(slot_id, slot_expr_slot_context_cls, parent_facade=slot_context_facade)
         completion = _field_only_completion(self)
-        execution = None if completion is None else completion.expression_execution(expr_slot._state_mgr)
+        execution = None if completion is None else completion.expression_execution(expr_slot)
         expression = (
             SlotExpr(value_lambda, dirty_lambda)
             .apply_slot_context(slot_context_facade)
             .apply_host_factory(
                 lambda call_site_slot_id: _ContextSlotExprHost(
-                    expr_slot._state_mgr,
+                    expr_slot,
                     expr_slot._resolve_slot_id(call_site_slot_id),
                 )
             )
@@ -556,7 +447,7 @@ class ContextBaseStateMgr(StateMgrBase):
         completion = _field_only_completion(self)
         owner = None if completion is None else completion.active
         slot = self.root_context_state_mgr().get_registered_slot(slot_id)
-        if slot is not None and slot._state_mgr._parent_state_mgr is not self:
+        if slot is not None and slot._parent_state_mgr is not self:
             raise SlotOwnershipError(f"slot {slot_id!r} belongs to another context")
         next_children = dict(self.children_state)
         next_children.pop(slot_id, None)
@@ -576,7 +467,7 @@ class ContextBaseStateMgr(StateMgrBase):
         if owner is not None:
             owner._require_open()
             owner._require_identity()
-        if slot is not None and slot._state_mgr._parent_state_mgr is not self:
+        if slot is not None and slot._parent_state_mgr is not self:
             raise SlotOwnershipError(f"slot {resolved!r} belongs to another context")
         self.require_active_scope()
         return slot is None or slot.invoke_dirty
@@ -595,7 +486,7 @@ class ContextBaseStateMgr(StateMgrBase):
         self.ensure_resolved_slot(resolved, type(slot), parent_facade=parent_facade)
         if self._pass_state_completion() is not None:
             # No execution occurred: acknowledge only work already handled.
-            slot._state_mgr._pass_requested_revision = slot._state_mgr._handled_revision
+            slot._pass_requested_revision = slot._handled_revision
 
     def visit_slot_and_dirty(self, slot_id: Any, *, parent_facade: Any = USE_OWNER) -> bool:
         self.require_active_scope()
@@ -615,19 +506,9 @@ class ContextBaseStateMgr(StateMgrBase):
     ) -> Any:
         self.require_active_scope()
         completion = _field_only_completion(self)
-        if getattr(completion, "keyed_loop_selection_enabled", False):
-            return completion.keyed_loop(self, slot_id, values, key_fn, parent_facade)
-        keyed_loop_slot_context_cls = REFRACTOR_CLASSES.keyed_loop_slot_context_cls
-        if keyed_loop_slot_context_cls is None:
-            raise RuntimeError("keyed loop slot context class is not configured")
-        loop_slot = self.ensure_slot(slot_id, keyed_loop_slot_context_cls, parent_facade=parent_facade)
-        raw_values, _ = _unwrap(values)
-        return _KeyedLoopIterable(
-            owner_state_mgr=loop_slot._state_mgr,
-            parent_facade=loop_slot,
-            values=tuple(raw_values),
-            key_fn=key_fn,
-        )
+        if completion is None:
+            raise RuntimeError("render completion is not configured")
+        return completion.keyed_loop(self, slot_id, values, key_fn, parent_facade)
 
     def container_call(
         self,
@@ -643,71 +524,13 @@ class ContextBaseStateMgr(StateMgrBase):
     ) -> Any:
         self.require_active_scope()
         completion = _field_only_completion(self)
-        if getattr(completion, "container_routing_enabled", False):
-            return completion.container_call(
-                self, slot_id, container_fn, args, kwargs,
-                parent=self._resolve_owner_arg(parent_facade),
-                dirty_state=dirty_state, param_names=_pyr_param_names,
-                args_dirty=_pyr_args_dirty, kwargs_dirty=_pyr_kwargs_dirty,
-            )
-        container_slot_context_cls = REFRACTOR_CLASSES.container_slot_context_cls
-        directive_slot_context_cls = REFRACTOR_CLASSES.directive_slot_context_cls
-        if container_slot_context_cls is None or directive_slot_context_cls is None:
-            raise RuntimeError("container/directive slot context classes are not configured")
-        slot = self.ensure_slot(slot_id, container_slot_context_cls, parent_facade=parent_facade)
-        raw_container_fn, raw_args, raw_kwargs, site_metadata = _resolve_runtime_site_call(
-            slot,
-            container_fn,
-            args,
-            kwargs,
-        )
-        slot.site_metadata = site_metadata
-        if raw_container_fn is None:
-            return None
-        completion = _field_only_completion(self)
-        if completion is not None:
-            completion.require_container_call(raw_container_fn)
-        mount_context_param = _container_runtime_context_param_name(raw_container_fn)
-        if mount_context_param is not None:
-            directive_slot = self.ensure_slot(slot_id, directive_slot_context_cls, parent_facade=parent_facade)
-            return _MountContainerCallHandle(
-                slot=directive_slot,
-                container_fn=raw_container_fn,
-                args=raw_args,
-                kwargs=raw_kwargs,
-                context_param=mount_context_param,
-            )
-        metadata, bound_receiver = _component_call_key(raw_container_fn)
-        runtime_func = _resolve_runtime_component_func(getattr(metadata, "_func", None))
-        if metadata is not None and runtime_func is not None:
-            return _PyrolyzeContainerCallHandle(
-                slot=slot,
-                runtime_func=runtime_func,
-                bound_receiver=bound_receiver,
-                args=raw_args,
-                kwargs=raw_kwargs,
-                dirty_state=dirty_state or _clean_dirty_state(None),
-                param_names=tuple(getattr(metadata, "param_names", ())),
-                dynamic_param_names=_pyr_param_names,
-                dynamic_args_dirty=_pyr_args_dirty,
-                dynamic_kwargs_dirty=_pyr_kwargs_dirty,
-                packed_kwargs=bool(getattr(metadata, "packed_kwargs", False)),
-                packed_kwarg_param_names=tuple(getattr(metadata, "packed_kwarg_param_names", ())),
-            )
-        native_context_param = _native_context_param_name(raw_container_fn)
-        if native_context_param is not None:
-            return _NativeContainerCallHandle(
-                slot=slot,
-                container_fn=raw_container_fn,
-                args=raw_args,
-                kwargs=raw_kwargs,
-                context_param=native_context_param,
-            )
-        return _ContainerCallHandle(
-            slot=slot,
-            container_fn=raw_container_fn,
-            args=raw_args,
-            kwargs=raw_kwargs,
+        if completion is None:
+            raise RuntimeError("render completion is not configured")
+        return completion.container_call(
+            self, slot_id, container_fn, args, kwargs,
+            parent=self._resolve_owner_arg(parent_facade),
+            dirty_state=dirty_state, param_names=_pyr_param_names,
+            args_dirty=_pyr_args_dirty, kwargs_dirty=_pyr_kwargs_dirty,
         )
 
     def open_directive(
@@ -825,7 +648,7 @@ class ContextBaseStateMgr(StateMgrBase):
         raw_args = tuple(_unwrap_native_value(arg) for arg in args)
         raw_kwargs = {key: _unwrap_native_value(value) for key, value in kwargs.items()}
         call_site_id = raw_kwargs.pop("__pyr_call_site_id", None)
-        context_facade = raw_kwargs.pop("__pyr_context_facade")
+        context_facade = raw_kwargs.pop("__pyr_context_facade", self.owner)
         result = factory(*raw_args, **raw_kwargs)
         if result is None:
             return None

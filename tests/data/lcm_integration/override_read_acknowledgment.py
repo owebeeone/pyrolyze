@@ -6,9 +6,8 @@ import json
 from typing import Any
 
 from pyrolyze.api import use_app_context
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
+from pyrolyze.runtime import context_lifecycle as runtime
 from pyrolyze.runtime.app_context import AppContextKey
-from pyrolyze.runtime.context_state_lcm.pass_state_render import _enable_pass_state_render
 from pyrolyze.runtime.dirt import DM
 from pyrolyze.runtime.slot_expr import LiteralFunctionProvider, slot_params, slot_params_dirt
 
@@ -26,14 +25,13 @@ def read(scope: Any, slot_id: Any, key: Any, expression: bool) -> Any:
     slot = scope._ensure_slot(slot_id, runtime.SlotCallSlotContext)
     slot.invoke_dirty = True
     slot.evaluate(use_app_context, (key,), {})
-    return slot._state_mgr._invocation.binding
+    return slot._invocation.binding
 
 
 def characterize() -> dict[str, Any]:
     result: dict[str, Any] = {}
     for expression in (False, True):
         root = runtime.RenderContext()
-        _enable_pass_state_render(root._state_mgr)
         key = AppContextKey("theme", lambda host: "unused")
         module = runtime.ModuleId("override-read-proof")
         outer_id, middle_id, inner_id, first_id, second_id = (

@@ -6,15 +6,13 @@ import json
 from typing import Any
 
 from pyrolyze.api import UIElement
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
-from pyrolyze.runtime.context_state_lcm.component_render import _enable_component_render
+from pyrolyze.runtime import context_lifecycle as runtime
 from pyrolyze.runtime.slot_call_semantics import ExternalStoreRef
 
 
 def characterize() -> dict[str, Any]:
     _verify_argument_conversion()
     root = runtime.RenderContext()
-    _enable_component_render(root._state_mgr)
     slot_id = runtime.SlotId(runtime.ModuleId("component-selection"), 1)
     result: dict[str, Any] = {}
 
@@ -35,35 +33,35 @@ def characterize() -> dict[str, Any]:
     with root.pass_scope():
         slot = root._ensure_slot(slot_id, runtime.ComponentCallSlotContext)
         slot.invoke(render, (1,), {})
-        assert slot._state_mgr._call_args == (1,)
-        assert slot._state_mgr.current._call_args == ()
+        assert slot._call_args == (1,)
+        assert slot.current._call_args == ()
         result["provisional"] = [
-            slot._state_mgr.current._selection.child is None,
-            slot_id not in root._state_mgr.current.children_state,
+            slot.current._selection.child is None,
+            slot_id not in root.current.children_state,
         ]
     child = slot.child_context
     result["accepted"] = [child is not None, values()]
-    retained = slot._state_mgr.current._selection
+    retained = slot.current._selection
     try:
         with root.pass_scope():
             reused = root._ensure_slot(slot_id, runtime.ComponentCallSlotContext)
             reused.invoke(render, (2,), {})
-            assert slot._state_mgr._call_args == (2,)
-            assert slot._state_mgr.current._call_args == (1,)
+            assert slot._call_args == (2,)
+            assert slot.current._call_args == (1,)
             result["during_retry"] = values()
             raise ValueError("discard")
     except ValueError:
         pass
     result["discard"] = [
         slot.child_context is child,
-        slot._state_mgr.current._selection is retained,
+        slot.current._selection is retained,
         values(),
     ]
-    assert slot._state_mgr.current._call_args == (1,)
+    assert slot.current._call_args == (1,)
     with root.pass_scope():
         reused = root._ensure_slot(slot_id, runtime.ComponentCallSlotContext)
         reused.invoke(render, (3,), {})
-    assert slot._state_mgr.current._call_args == (3,)
+    assert slot.current._call_args == (3,)
     result["retry"] = [reused is slot, slot.child_context is child, values()]
 
     events: list[str] = []
@@ -102,8 +100,8 @@ def characterize() -> dict[str, Any]:
     result["resource_discard"] = [
         list(events),
         slot.child_context is old,
-        candidate._state_mgr._mounted_callback is None,
-        old._state_mgr._mounted_callback is not None,
+        candidate._mounted_callback is None,
+        old._mounted_callback is not None,
     ]
     with root.pass_scope():
         root._ensure_slot(slot_id, runtime.ComponentCallSlotContext)
@@ -114,16 +112,16 @@ def characterize() -> dict[str, Any]:
     result["replacement"] = [
         list(events),
         new is not old,
-        old._state_mgr._mounted_callback is None,
+        old._mounted_callback is None,
         list(old.debug_ui()),
-        superseded._state_mgr._mounted_callback is None,
+        superseded._mounted_callback is None,
     ]
     with root.pass_scope():
         pass
     result["omission"] = [
         list(events),
         slot.child_context is None,
-        new._state_mgr._mounted_callback is None,
+        new._mounted_callback is None,
         values(),
     ]
     return result
@@ -131,7 +129,6 @@ def characterize() -> dict[str, Any]:
 
 def _verify_argument_conversion() -> None:
     root = runtime.RenderContext()
-    _enable_component_render(root._state_mgr)
     observed: list[Any] = []
     converted = object()
 
@@ -164,7 +161,7 @@ def _verify_argument_conversion() -> None:
         assert caught is error
     else:
         raise AssertionError("failed conversion must propagate")
-    assert slot._state_mgr.current._call_args[0] is converted
+    assert slot.current._call_args[0] is converted
     assert observed == [converted]
     with root.pass_scope():
         root._ensure_slot(slot.slot_id, runtime.ComponentCallSlotContext)

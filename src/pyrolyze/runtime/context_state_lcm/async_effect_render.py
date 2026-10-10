@@ -1,4 +1,4 @@
-"""Private async-effect admission, sharing synchronous completion and ownership."""
+"""Async-effect admission, sharing synchronous completion and ownership."""
 
 from __future__ import annotations
 
@@ -18,17 +18,9 @@ from pyrolyze.runtime.slot_call_semantics import (
     select_slot_call_handler,
 )
 from .async_effect_binding import _AsyncEffectBinding
-from .effect_render import (
-    _EffectDeliveryResource,
-    _EffectRenderCompletion,
-    _enable_effect_render,
-)
-from .render_context import RenderContextStateMgr
+from .effect_render import _EffectDeliveryResource, _EffectRenderCompletion
 
 
-def _enable_async_effect_render(root: RenderContextStateMgr) -> None:
-    _enable_effect_render(root)
-    root._field_only_completion = _AsyncEffectRenderCompletion(root)
 
 
 @dataclass(eq=False, slots=True)

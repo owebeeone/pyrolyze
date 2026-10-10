@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Any
 
-from .component_render import _ComponentRenderCompletion, _enable_component_render
+from .component_render import _ComponentRenderCompletion
 from .callback_render import _graph_states, _graph_states_many
 from .app_context_override_slot_context import (
     AppContextOverrideSlotContextStateMgr,
@@ -11,7 +11,6 @@ from .app_context_override_slot_context import (
 )
 from pyrolyze.runtime.drip import Drip
 from .override_lookup import _OverrideSelection
-from .render_context import RenderContextStateMgr
 
 
 @dataclass(eq=False, slots=True)
@@ -22,7 +21,7 @@ class _OverrideRenderCompletion(_ComponentRenderCompletion):
     )
 
     def require_slot_type(self, slot_type: type[Any]) -> None:
-        from pyrolyze.runtime.context_bare_refactor_lcm import (
+        from pyrolyze.runtime.context_lifecycle import (
             AppContextOverrideSlotContext,
         )
 
@@ -108,8 +107,3 @@ class _OverrideRenderCompletion(_ComponentRenderCompletion):
             if len(errors) == 1:
                 raise errors[0]
             raise BaseExceptionGroup("override publication failed", errors)
-
-
-def _enable_override_render(root: RenderContextStateMgr) -> None:
-    _enable_component_render(root)
-    root._field_only_completion = _OverrideRenderCompletion(root)

@@ -2,14 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
+from pyrolyze.runtime import context_lifecycle as runtime
 from pyrolyze.runtime.app_context import AppContextKey
-from pyrolyze.runtime.context_state_lcm.override_render import _enable_override_render
 
 
 def test_failed_override_does_not_notify_accepted_subscribers() -> None:
     root = runtime.RenderContext()
-    _enable_override_render(root._state_mgr)
     key = AppContextKey("theme", lambda host: "unused")
     slot_id = runtime.SlotId(runtime.ModuleId("override-proof"), 1)
     with root.pass_scope():
@@ -45,7 +43,6 @@ def test_independent_parent_event_survives_failed_candidate() -> None:
             EMPTY_APP_CONTEXT_LOOKUP, {key: parent}
         )
     )
-    _enable_override_render(root._state_mgr)
     slot_id = runtime.SlotId(runtime.ModuleId("override-proof"), 1)
     with root.pass_scope():
         with root.open_app_context_override(slot_id, (key,), None) as scope:
@@ -69,7 +66,6 @@ def test_caught_structure_failure_aborts_outer_attempt() -> None:
     from pyrolyze.runtime.context_state_lcm.render_attempt import RenderAttemptAborted
 
     root = runtime.RenderContext()
-    _enable_override_render(root._state_mgr)
     key = AppContextKey("theme", lambda host: "unused")
     slot_id = runtime.SlotId(runtime.ModuleId("override-proof"), 1)
     with pytest.raises(RenderAttemptAborted):
@@ -77,12 +73,11 @@ def test_caught_structure_failure_aborts_outer_attempt() -> None:
             with pytest.raises(RuntimeError, match="arity"):
                 with root.open_app_context_override(slot_id, (key,)):
                     pass
-    assert root._state_mgr.current.children_state == {}
+    assert root.current.children_state == {}
 
 
 def test_observer_failure_preserves_publication_and_drains_other_keys() -> None:
     root = runtime.RenderContext()
-    _enable_override_render(root._state_mgr)
     keys = tuple(AppContextKey(name, lambda host: "unused") for name in ("a", "b"))
     slot_id = runtime.SlotId(runtime.ModuleId("override-proof"), 1)
     with root.pass_scope():
@@ -107,7 +102,7 @@ def test_observer_failure_preserves_publication_and_drains_other_keys() -> None:
         assert caught.value is error
         assert events == [2]
         assert scope.committed_values == (2, 2)
-        completion = root._state_mgr._field_only_completion
+        completion = root._field_only_completion
         assert completion.last.published is True
         with pytest.raises(RuntimeError, match="not ready"):
             with root.pass_scope():
@@ -119,7 +114,6 @@ def test_observer_failure_preserves_publication_and_drains_other_keys() -> None:
 
 def test_observer_reentry_cannot_start_another_render() -> None:
     root = runtime.RenderContext()
-    _enable_override_render(root._state_mgr)
     key = AppContextKey("theme", lambda host: "unused")
     slot_id = runtime.SlotId(runtime.ModuleId("override-proof"), 1)
     with root.pass_scope():
@@ -163,7 +157,6 @@ def test_parent_stream_does_not_retain_discarded_render_graph() -> None:
                 EMPTY_APP_CONTEXT_LOOKUP, {key: parent}
             )
         )
-        _enable_override_render(root._state_mgr)
         with root.pass_scope():
             with root.open_app_context_override(
                 runtime.SlotId(runtime.ModuleId("override-proof"), 1), (key,), None
@@ -180,7 +173,6 @@ def test_parent_stream_does_not_retain_discarded_render_graph() -> None:
 
 def test_concrete_transition_detaches_parent_before_parent_publication() -> None:
     root = runtime.RenderContext()
-    _enable_override_render(root._state_mgr)
     key = AppContextKey("theme", lambda host: "unused")
     module = runtime.ModuleId("override-proof")
     outer_id, inner_id = runtime.SlotId(module, 1), runtime.SlotId(module, 2)

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from contextlib import nullcontext
 from typing import Any, Callable
 
 from .context_base import PASS_TX_KEY
@@ -33,20 +32,15 @@ class EventHandlerSlotContextStateMgr(SlotContextStateMgr):
         self, *, callback: Callable[..., Any], dirty: bool
     ) -> Callable[..., None]:
         completion = _field_only_completion(self)
-        if completion is not None and (
-            completion.active is None or completion._completing
-        ):
+        if completion is None:
+            raise RuntimeError("render completion is not configured")
+        if completion.active is None or completion._completing:
             completion.reject("callback selection requires an active render execution")
-        execution = nullcontext() if completion is None else completion.attempt_scope()
-        with execution:
-            owner = None
-            if completion is not None:
-                owner = completion.active
-                assert owner is not None
-                owner._require_open()
-                owner._require_identity()
-            elif self._transaction_manager.active_transaction_for(PASS_TX_KEY) is None:
-                raise RuntimeError("scope is not active")
+        with completion.attempt_scope():
+            owner = completion.active
+            assert owner is not None
+            owner._require_open()
+            owner._require_identity()
             callback_key = _callback_key(callback)
             current = self.current
             select = bool(
@@ -66,12 +60,6 @@ class EventHandlerSlotContextStateMgr(SlotContextStateMgr):
                 self._callback_key = callback_key
             return self._dispatch_callable()
 
-    def _discard_selection(self) -> None:
-        # Retained unactivated component failure discards only this selection.
-        current = self.current
-        self._callback = current._callback
-        self._callback_key = current._callback_key
-
     def _stage_retirement(self) -> None:
         self._callback = None
         self._callback_key = None
@@ -90,12 +78,6 @@ class EventHandlerSlotContextStateMgr(SlotContextStateMgr):
             if children.get(self._slot_id) is self:
                 children.pop(self._slot_id)
                 parent.children_state = children
-            if (
-                completion is None
-                and self._render_context_state_mgr._slots_by_id.get(self._slot_id)
-                is self
-            ):
-                self._render_context_state_mgr.unregister_slot(self._slot_id)
 
     def _dispatch_callable(self) -> Callable[..., None]:
         if self._dispatch is None:

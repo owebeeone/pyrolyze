@@ -5,12 +5,9 @@ from typing import Any
 import pytest
 
 from pyrolyze.api import UIElement, advertise_mount
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
-from pyrolyze.runtime.context_bare_refactor_lcm import ContextBase
+from pyrolyze.runtime import context_lifecycle as runtime
+from pyrolyze.runtime.context_lifecycle import ContextBase
 from pyrolyze.runtime.context_state_lcm.context_base import PASS_TX_KEY
-from pyrolyze.runtime.context_state_lcm.mount_expr_render import (
-    _enable_mount_expr_render,
-)
 from pyrolyze.runtime.context_state_lcm._support import (
     DuplicateMountAdvertisementError,
     MountAdvertisementContextError,
@@ -31,12 +28,11 @@ def _id(index: int) -> Any:
 
 def _root() -> Any:
     root = runtime.RenderContext()
-    _enable_mount_expr_render(root._state_mgr)
     return root
 
 
 def _native(ctx: ContextBase) -> None:
-    ctx._state_mgr.own_ui_state = (UIElement(kind="section", props={}),)
+    ctx.own_ui_state = (UIElement(kind="section", props={}),)
 
 
 def _select(container: Any, key: Any, *, default: bool = False, index: int = 2) -> Any:
@@ -77,7 +73,7 @@ def test_surface_validation_combines_expression_and_ordinary_calls(
     assert [item.key for item in root.debug_mount_advertisements()] == ["accepted"]
     assert root.debug_ui()[0].children[0].key == "accepted"
     assert events == []
-    assert root._state_mgr._field_only_completion.last.published is False
+    assert root._field_only_completion.last.published is False
 
 
 def test_separate_expression_collections_cannot_overwrite_duplicate_entries() -> None:
@@ -96,12 +92,12 @@ def test_missing_native_owner_rejects_expression_before_publication() -> None:
         with root.pass_scope():
             _select(root, "invalid")
     assert root.debug_mount_advertisements() == ()
-    assert root._state_mgr._field_only_completion.last.published is False
+    assert root._field_only_completion.last.published is False
 
 
 def test_key_comparison_replacing_token_cannot_publish_candidate_surface() -> None:
     root = _root()
-    manager = root._state_mgr._transaction_manager
+    manager = root._transaction_manager
     replacement: Any = None
     with root.pass_scope():
         with root.container_call(_id(1), _native) as container:

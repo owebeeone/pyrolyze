@@ -4,11 +4,10 @@ from typing import Any
 
 import pytest
 
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
+from pyrolyze.runtime import context_lifecycle as runtime
 from pyrolyze.runtime.call_site_context import CallSiteContextManager
 from pyrolyze.runtime.context_state_lcm.context_base import PASS_TX_KEY
 from pyrolyze.runtime.context_state_lcm.render_attempt import RenderAttemptAborted
-from pyrolyze.runtime.context_state_lcm.slot_expr_render import _enable_slot_expr_render
 from pyrolyze.runtime.dirt import DM
 from pyrolyze.runtime.slot_call_semantics import UseEffectRequest
 from pyrolyze.runtime.slot_expr import (
@@ -21,7 +20,6 @@ from pyrolyze.runtime.slot_expr import (
 
 def _root() -> Any:
     root = runtime.RenderContext()
-    _enable_slot_expr_render(root._state_mgr)
     return root
 
 
@@ -39,18 +37,6 @@ def _expr(root: Any, source: Any, *, args: Any = lambda: slot_params()) -> SlotE
     ).apply_dirt_sink(DM())
 
 
-def test_resource_expression_result_is_rejected_before_setup_and_allows_retry() -> None:
-    root = _root()
-    events: list[str] = []
-    with pytest.raises(RuntimeError, match="resource expression results"):
-        with root.pass_scope():
-            _expr(
-                root, lambda: UseEffectRequest(lambda: events.append("setup"), ())
-            ).evaluate()
-    assert events == []
-    assert root._state_mgr.current.children_state == {}
-    with root.pass_scope():
-        assert _expr(root, lambda: 7).evaluate() == 7
 
 
 def test_caught_argument_preparation_failure_poison_outer_without_early_publication() -> (
@@ -81,7 +67,7 @@ def test_caught_argument_preparation_failure_poison_outer_without_early_publicat
 
 def test_source_replacing_token_cannot_write_candidates_to_replacement() -> None:
     root = _root()
-    manager = root._state_mgr._transaction_manager
+    manager = root._transaction_manager
     replacement: Any = None
 
     def replace_token() -> int:
@@ -97,7 +83,7 @@ def test_source_replacing_token_cannot_write_candidates_to_replacement() -> None
     assert manager.active_transaction_for(PASS_TX_KEY) is replacement
     assert expression.call_site_context_manager.iter_current() == ()
     assert expression.call_site_context_manager._staged == {}
-    assert not root._state_mgr._field_only_completion.last.reuse_ready
+    assert not root._field_only_completion.last.reuse_ready
     manager.rollback(PASS_TX_KEY)
 
 
@@ -106,13 +92,13 @@ def test_borrowed_collection_manager_cannot_complete_the_render() -> None:
     with root.pass_scope():
         expression = _expr(root, lambda: 1)
         manager = expression.call_site_context_manager
-        token = root._state_mgr._transaction_manager.active_transaction_for(PASS_TX_KEY)
+        token = root._transaction_manager.active_transaction_for(PASS_TX_KEY)
         with pytest.raises(RuntimeError, match="outer render owns"):
             manager.commit_pass()
         with pytest.raises(RuntimeError, match="outer render owns"):
             manager.rollback_pass()
         assert (
-            root._state_mgr._transaction_manager.active_transaction_for(PASS_TX_KEY)
+            root._transaction_manager.active_transaction_for(PASS_TX_KEY)
             is token
         )
         expression.evaluate()
@@ -138,6 +124,6 @@ def test_recursive_evaluation_of_the_same_expression_collection_is_rejected() ->
     with pytest.raises(RuntimeError, match="recursive expression evaluation"):
         with root.pass_scope():
             _expr(root, recurse).evaluate()
-    assert root._state_mgr.current.children_state == {}
+    assert root.current.children_state == {}
     with root.pass_scope():
         assert _expr(root, lambda: 3).evaluate() == 3

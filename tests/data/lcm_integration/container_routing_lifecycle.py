@@ -7,15 +7,14 @@ from typing import Any
 
 from pyrolyze.api import MountDirective
 from pyrolyze.compiler import load_transformed_namespace
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
-from pyrolyze.runtime.context_state_lcm.container_render import _enable_container_render
+from pyrolyze.runtime import context_lifecycle as runtime
 
 
 def characterize() -> dict[str, Any]:
     namespace = load_transformed_namespace(
         """
 from pyrolyze.api import ComponentRef, MountSelector, UIElement, call_native, mount, pyrolyze, pyrolyze_slotted
-from pyrolyze.runtime.context_bare_refactor_lcm import ContextBase
+from pyrolyze.runtime.context_lifecycle import ContextBase
 from pyrolyze.runtime.slot_call_semantics import ExternalStoreRef
 
 calls = []
@@ -45,7 +44,6 @@ def panel(label, target, native: ComponentRef):
         module_name="container_routing_authored",
     )
     root = runtime.RenderContext()
-    _enable_container_render(root._state_mgr)
     slot_id = runtime.SlotId(runtime.ModuleId("container-routing"), 1)
 
     def projection(node):

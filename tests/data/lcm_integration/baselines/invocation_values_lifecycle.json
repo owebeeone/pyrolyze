@@ -1,61 +1,4 @@
 {
-  "legacy": {
-    "managed_record_unused": true,
-    "native_error": "@pyrolyze functions must return None",
-    "native_failure_keeps_attempt": {
-      "accepted": [
-        [
-          7
-        ],
-        []
-      ],
-      "candidate": [
-        [
-          7
-        ],
-        []
-      ]
-    },
-    "plain": {
-      "accepted": [
-        [
-          1
-        ],
-        [
-          [
-            "flag",
-            2
-          ]
-        ]
-      ],
-      "candidate": [
-        [
-          1
-        ],
-        [
-          [
-            "flag",
-            2
-          ]
-        ]
-      ]
-    },
-    "plain_failure_keeps_attempt": {
-      "accepted": [
-        [
-          3
-        ],
-        []
-      ],
-      "candidate": [
-        [
-          3
-        ],
-        []
-      ]
-    },
-    "result": 3
-  },
   "native": {
     "after_child_catch": {
       "accepted": [
@@ -194,12 +137,11 @@
       "C"
     ],
     "caught_child": "leaf invocation failed",
-    "compatibility_unused": true,
     "declarations": {
       "candidate_identity": true,
       "candidate_key": true,
       "candidate_managed": true,
-      "compatibility_local": true,
+      "compatibility_removed": true,
       "same_manager": true
     },
     "initial": {

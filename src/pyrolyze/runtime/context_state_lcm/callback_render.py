@@ -1,4 +1,4 @@
-"""Private callback selection admission; other resource routes remain gated."""
+"""Callback selection and ownership under shared render completion."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from .field_only_render import _FieldOnlyRenderCompletion, _enable_field_only_render
+from .field_only_render import _FieldOnlyRenderCompletion
 
 if TYPE_CHECKING:
     from ._base import StateMgrBase
@@ -14,9 +14,6 @@ if TYPE_CHECKING:
     from .render_context import RenderContextStateMgr
 
 
-def _enable_callback_render(root: RenderContextStateMgr) -> None:
-    _enable_field_only_render(root)
-    root._field_only_completion = _CallbackRenderCompletion(root)
 
 
 def _graph_states(
@@ -83,7 +80,7 @@ class _CallbackRenderCompletion(_FieldOnlyRenderCompletion):
         return None
 
     def require_slot_type(self, slot_type: type[Any]) -> None:
-        from pyrolyze.runtime.context_bare_refactor_lcm import EventHandlerSlotContext
+        from pyrolyze.runtime.context_lifecycle import EventHandlerSlotContext
 
         if slot_type is not EventHandlerSlotContext:
             super(_CallbackRenderCompletion, self).require_slot_type(slot_type)
@@ -142,7 +139,6 @@ class _CallbackRenderCompletion(_FieldOnlyRenderCompletion):
 
         super(_CallbackRenderCompletion, self)._reconcile_registry()
         for state in self.owned_handler_passes:
-            state._pass_owned_event_handler_order = ()
             for child in state.current.children_state.values():
                 if isinstance(child, EventHandlerSlotContextStateMgr) and not getattr(
                     self, "pass_state_selection_enabled", False

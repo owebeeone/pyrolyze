@@ -6,11 +6,8 @@ import weakref
 
 import pytest
 
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
+from pyrolyze.runtime import context_lifecycle as runtime
 from pyrolyze.runtime.context_state_lcm.context_base import PASS_TX_KEY
-from pyrolyze.runtime.context_state_lcm.subscription_expr_render import (
-    _enable_subscription_expr_render,
-)
 from pyrolyze.runtime.slot_call_semantics import ExternalStoreRef, UseEffectRequest
 from tests.test_runtime_context_state_lcm_expression_render import _expr
 from tests.slot_expr_test_utils import eval_single_slot_expr
@@ -18,7 +15,6 @@ from tests.slot_expr_test_utils import eval_single_slot_expr
 
 def _root() -> Any:
     root = runtime.RenderContext()
-    _enable_subscription_expr_render(root._state_mgr)
     return root
 
 
@@ -93,7 +89,7 @@ def test_failed_store_read_unsubscribes_with_retained_traceback_and_allows_retry
 
 def test_store_read_replacing_token_cannot_stage_into_replacement() -> None:
     root = _root()
-    manager = root._state_mgr._transaction_manager
+    manager = root._transaction_manager
     events: list[str] = []
     replacement: Any = None
 
@@ -118,15 +114,6 @@ def test_store_read_replacing_token_cannot_stage_into_replacement() -> None:
     manager.rollback(PASS_TX_KEY)
 
 
-def test_effect_expressions_remain_rejected_before_setup() -> None:
-    root = _root()
-    events: list[str] = []
-    with pytest.raises(RuntimeError, match="resource expression results"):
-        with root.pass_scope():
-            _expr(
-                root, lambda: UseEffectRequest(lambda: events.append("setup"), ())
-            ).evaluate()
-    assert events == []
 
 
 def test_unsubscribe_failure_preserves_publication_and_quarantines_reuse() -> None:
@@ -146,7 +133,7 @@ def test_unsubscribe_failure_preserves_publication_and_quarantines_reuse() -> No
             pass
     assert caught.value is error
     assert expression.call_site_context_manager.iter_current() == ()
-    completion = root._state_mgr._field_only_completion
+    completion = root._field_only_completion
     assert completion.last.published is True
     assert completion._cleanup_failure is error
 

@@ -41,7 +41,7 @@ def _raise_with_cleanup(
 class _RenderAttempt:
     """Own one explicit key; local scopes never complete its transaction.
 
-    SC2's private field-only gate uses this helper; production routes do not.
+    The lifecycle runtime uses this helper for the shared outer render decision.
     Root owners retain failed, uncertified completions instead of retrying.
     """
 

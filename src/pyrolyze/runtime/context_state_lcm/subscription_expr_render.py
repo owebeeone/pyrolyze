@@ -25,12 +25,7 @@ from pyrolyze.runtime.slot_expr import _SlotExprCallSiteBinding
 from .async_effect_binding import _AsyncEffectBinding
 from .resource_ownership import _ResourceOwner
 from .render_attempt import _raise_with_cleanup
-from .render_context import RenderContextStateMgr
-from .slot_expr_render import (
-    _ExpressionExecution,
-    _SlotExprRenderCompletion,
-    _enable_slot_expr_render,
-)
+from .slot_expr_render import _ExpressionExecution, _SlotExprRenderCompletion
 from .slot_expr_slot_context import SlotExprSlotContextStateMgr
 from .subscription_binding import _SubscriptionBinding
 
@@ -155,9 +150,6 @@ class _SubscriptionExpressionExecution(_ExpressionExecution):
         return self.wrap_binding(selected), dirty
 
 
-def _enable_subscription_expr_render(root: RenderContextStateMgr) -> None:
-    _enable_slot_expr_render(root)
-    root._field_only_completion = _SubscriptionExprRenderCompletion(root)
 
 
 @dataclass(eq=False, slots=True)

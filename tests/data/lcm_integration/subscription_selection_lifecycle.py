@@ -8,10 +8,7 @@ import json
 from typing import Any, Callable
 import weakref
 
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
-from pyrolyze.runtime.context_state_lcm.subscription_render import (
-    _enable_subscription_render,
-)
+from pyrolyze.runtime import context_lifecycle as runtime
 from pyrolyze.runtime.slot_call_semantics import ExternalStoreRef
 
 
@@ -59,7 +56,6 @@ def characterize() -> dict[str, Any]:
         Store(name, value, events) for name, value in (("a", 1), ("b", 3), ("c", 4))
     )
     root = runtime.RenderContext()
-    _enable_subscription_render(root._state_mgr)
     slot: Any = None
 
     def evaluate(store: Store) -> Any:
@@ -70,15 +66,15 @@ def characterize() -> dict[str, Any]:
     result: dict[str, Any] = {}
     with root.pass_scope():
         evaluate(a)
-        result["pending_accepted"] = slot._state_mgr._binding_owner.is_accepted
+        result["pending_accepted"] = slot._binding_owner.is_accepted
     facts = {
         row["field_name"]: row
-        for row in slot._state_mgr.__yidl_lifecycle_definition__["fields"]
+        for row in slot.__yidl_lifecycle_definition__["fields"]
     }
     result["owned"] = facts["_binding_owner"]["field_kind"] == "owned"
     result["initial"] = [
         slot.binding.exposed_value(),
-        slot._state_mgr.current._binding_owner.is_accepted,
+        slot.current._binding_owner.is_accepted,
     ]
 
     a.notify(2)
@@ -120,7 +116,7 @@ def characterize() -> dict[str, Any]:
 
     retained = slot.binding
     with root.pass_scope():
-        slot._state_mgr._invoke_dirty = True
+        slot._invoke_dirty = True
         evaluate(b)
     result["same_subscription"] = slot.binding.resource is retained.resource
     with root.pass_scope():
@@ -144,12 +140,11 @@ def characterize() -> dict[str, Any]:
     with root.pass_scope():
         slot.deactivate()
     result["explicit_removal"] = [slot.binding is None, len(a.callbacks)]
-    result["ready"] = root._state_mgr._field_only_completion.last.reuse_ready
+    result["ready"] = root._field_only_completion.last.reuse_ready
     result["events"] = events
 
     live = Store("live", 5, [])
     graph = runtime.RenderContext()
-    _enable_subscription_render(graph._state_mgr)
     with graph.pass_scope():
         child = graph._ensure_slot(_id(), runtime.SlotCallSlotContext)
         child.evaluate(_source, (live.ref(),), {})

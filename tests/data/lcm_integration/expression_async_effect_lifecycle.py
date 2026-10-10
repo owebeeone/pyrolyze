@@ -5,10 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any, Callable
 
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
-from pyrolyze.runtime.context_state_lcm.async_effect_expr_render import (
-    _enable_async_effect_expr_render,
-)
+from pyrolyze.runtime import context_lifecycle as runtime
 from pyrolyze.runtime.dirt import DM
 from pyrolyze.runtime.slot_call_semantics import (
     AsyncEffectHandle,
@@ -23,7 +20,6 @@ from pyrolyze.runtime.slot_expr import (
 
 def characterize() -> dict[str, Any]:
     root = runtime.RenderContext()
-    _enable_async_effect_expr_render(root._state_mgr)
     module = runtime.ModuleId("tests.expression_async_effect")
     events: list[list[Any]] = []
     callbacks: dict[str, Callable[[], None]] = {}
@@ -47,7 +43,7 @@ def characterize() -> dict[str, Any]:
 
         def start(done: Callable[[], None]) -> AsyncEffectHandle:
             events.append(
-                ["start", label, root._state_mgr._field_only_completion.last.published]
+                ["start", label, root._field_only_completion.last.published]
             )
             callbacks[label] = done
             return Handle(label)

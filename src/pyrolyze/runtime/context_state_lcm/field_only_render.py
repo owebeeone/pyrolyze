@@ -1,4 +1,4 @@
-"""Private SC2 activation; resource-bearing graphs remain on the legacy route."""
+"""Shared render completion foundation and graph ownership validation."""
 
 from __future__ import annotations
 
@@ -44,14 +44,12 @@ def _construction_completion(context: Any) -> _FieldOnlyRenderCompletion | None:
 
 
 def _require_fresh_render_root(root: RenderContextStateMgr) -> None:
-    from pyrolyze.runtime.context_bare_refactor_lcm import RenderContext
-    from pyrolyze.runtime.context_lifecycle import RenderContext as LifecycleRenderContext
+    from pyrolyze.runtime.context_lifecycle import RenderContext
     from .context_base import PASS_TX_KEY
-    from .render_context import RenderContextStateMgr
 
     if (
-        type(root) is not RenderContextStateMgr
-        or type(root.owner) not in (RenderContext, LifecycleRenderContext)
+        type(root) is not RenderContext
+        or root.owner is not root
         or root._scheduler_root_state_mgr is not root
         or root._owner_slot_state_mgr is not None
     ):
@@ -67,9 +65,6 @@ def _require_fresh_render_root(root: RenderContextStateMgr) -> None:
         raise RuntimeError("field-only activation requires a fresh graph")
 
 
-def _enable_field_only_render(root: RenderContextStateMgr) -> None:
-    _require_fresh_render_root(root)
-    root._field_only_completion = _FieldOnlyRenderCompletion(root)
 
 
 @dataclass(eq=False, slots=True)
@@ -88,7 +83,7 @@ class _FieldOnlyRenderCompletion:
     _completion_requested: bool = field(default=False, init=False)
 
     def require_slot_type(self, slot_type: type[Any]) -> None:
-        from pyrolyze.runtime.context_bare_refactor_lcm import (
+        from pyrolyze.runtime.context_lifecycle import (
             ComponentCallSlotContext,
             LeafSlotContext,
             SlotContext,

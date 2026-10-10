@@ -6,17 +6,13 @@ import json
 from typing import Any
 
 from pyrolyze.api import MountSelector, UIElement, validate_mount_selectors
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
-from pyrolyze.runtime.context_state_lcm.completion_render import (
-    _enable_completion_render,
-)
+from pyrolyze.runtime import context_lifecycle as runtime
 
 
 def characterize() -> dict[str, Any]:
     root = runtime.RenderContext()
-    _enable_completion_render(root._state_mgr)
     slot_id = runtime.SlotId(runtime.ModuleId("completion-proof"), 1)
-    tracker = root._state_mgr.get_app_context(root._state_mgr._generation_tracker_key)
+    tracker = root.get_app_context(root._generation_tracker_key)
     calls = []
     result: dict[str, Any] = {}
 
@@ -72,12 +68,12 @@ def characterize() -> dict[str, Any]:
             slot.append_slot_expr_post_commit_callback(
                 lambda: expressions.append("expression")
             )
-            root._state_mgr.queue_invalidation_from(slot)
+            root.queue_invalidation_from(slot)
         result["expression_before_exit"] = list(expressions)
     result["expression_after_exit"] = expressions
     result["independent_invalidation"] = [
-        root._state_mgr._scheduler.has_pending_work(),
-        slot._state_mgr._invoke_dirty,
+        root._scheduler.has_pending_work(),
+        slot._invoke_dirty,
     ]
     return result
 

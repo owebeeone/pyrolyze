@@ -2,17 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
+from pyrolyze.runtime import context_lifecycle as runtime
 from pyrolyze.runtime.context_state_lcm.context_base import PASS_TX_KEY
-from pyrolyze.runtime.context_state_lcm.keyed_loop_render import (
-    _enable_keyed_loop_render,
-)
 from pyrolyze.runtime.context_state_lcm.render_attempt import RenderAttemptAborted
 
 
 def root_and_id():
     root = runtime.RenderContext()
-    _enable_keyed_loop_render(root._state_mgr)
     return root, runtime.SlotId(runtime.ModuleId("loop-faults"), 1)
 
 
@@ -28,7 +24,7 @@ def test_caught_duplicate_key_discards_outer_attempt() -> None:
         with root.pass_scope():
             with pytest.raises(RuntimeError, match="duplicate key"):
                 consume(root, slot_id, [1, 1])
-    assert root._state_mgr.current.children_state == {}
+    assert root.current.children_state == {}
 
 
 def test_caught_normalization_failure_discards_outer_attempt() -> None:
@@ -49,7 +45,7 @@ def test_caught_normalization_failure_discards_outer_attempt() -> None:
 @pytest.mark.parametrize("replace_in_key", [True, False])
 def test_user_key_or_comparison_cannot_write_into_replacement(replace_in_key) -> None:
     root, slot_id = root_and_id()
-    manager = root._state_mgr._transaction_manager
+    manager = root._transaction_manager
 
     def replace():
         manager.rollback(PASS_TX_KEY)
@@ -72,7 +68,7 @@ def test_user_key_or_comparison_cannot_write_into_replacement(replace_in_key) ->
         with root.pass_scope():
             consume(root, slot_id, [Value()], key_fn=key)
     assert manager.active_transaction_for(PASS_TX_KEY) is not None
-    loop = root._state_mgr.current.children_state[slot_id]
+    loop = root.current.children_state[slot_id]
     item = next(iter(loop.current.children_state.values()))
     assert item._selection is item.current._selection
     manager.rollback(PASS_TX_KEY)
@@ -80,12 +76,12 @@ def test_user_key_or_comparison_cannot_write_into_replacement(replace_in_key) ->
 
 def test_hash_during_membership_insertion_cannot_stage_replacement(monkeypatch) -> None:
     root, slot_id = root_and_id()
-    manager = root._state_mgr._transaction_manager
+    manager = root._transaction_manager
 
     with root.pass_scope():
         consume(root, slot_id, [1], key_fn=lambda value: 7)
-    loop = root._state_mgr.current.children_state[slot_id]
-    state_type = type(root._state_mgr)
+    loop = root.current.children_state[slot_id]
+    state_type = type(root)
     original_lookup = state_type.get_registered_slot
     original_hash = runtime.SlotId.__hash__
     armed = False
@@ -128,7 +124,7 @@ def test_explicit_early_close_inside_successful_scope_keeps_prefix() -> None:
             with item.pass_scope():
                 item.current_value()
             iterator.close()
-    loop_state = root._state_mgr.current.children_state[slot_id]
+    loop_state = root.current.children_state[slot_id]
     assert len(loop_state.current.children_state) == 1
 
 
@@ -145,7 +141,7 @@ def test_caught_loop_body_failure_discards_prefix() -> None:
                             item.current_value()
                         raise error
     assert caught.value.__cause__ is error
-    assert root._state_mgr.current.children_state == {}
+    assert root.current.children_state == {}
 
 
 @pytest.mark.parametrize("started", [True, False])
@@ -175,8 +171,8 @@ def test_retained_unexited_iterator_does_not_delay_outer_completion() -> None:
             item = next(iterator)
             with item.pass_scope():
                 item.current_value()
-    assert root._state_mgr._field_only_completion.active is None
-    assert root._state_mgr.current.children_state == {}
+    assert root._field_only_completion.active is None
+    assert root.current.children_state == {}
     iterator.close()
 
 
@@ -203,7 +199,7 @@ def test_stale_iterator_cannot_join_new_attempt() -> None:
         with pytest.raises(RuntimeError, match="finished"):
             next(iterator)
         consume(root, slot_id, [3])
-    assert root._state_mgr._field_only_completion.last.published is True
+    assert root._field_only_completion.last.published is True
 
 
 @pytest.mark.parametrize("fail_in_hash", [True, False])
@@ -225,4 +221,4 @@ def test_hash_and_key_failures_preserve_original_cause(fail_in_hash) -> None:
             with pytest.raises(ValueError):
                 consume(root, slot_id, [1], key_fn=key)
     assert caught.value.__cause__ is error
-    assert root._state_mgr.current.children_state == {}
+    assert root.current.children_state == {}

@@ -23,11 +23,6 @@ class _DummyOwner:
     _pass_scope_handle_cls = _DummyPassScope
 
 
-class _RenderContextWithStateMgr:
-    def __init__(self, state_mgr: object) -> None:
-        self._state_mgr = state_mgr
-
-
 class _RenderContextStateMgrStub:
     def __init__(self, transaction_manager: TransactionManager | None) -> None:
         self._transaction_manager = transaction_manager
@@ -79,7 +74,7 @@ def test_ordinary_derived_context_factory_preserves_boundary_manager() -> None:
     txm = TransactionManager(tx_keys=(PASS_TX_KEY,))
     mgr = _DerivedContextBaseStateMgr.create(
         owner=_DummyOwner(),
-        render_context=_RenderContextWithStateMgr(_RenderContextStateMgrStub(txm)),
+        render_context=_RenderContextStateMgrStub(txm),
     )
 
     assert mgr._transaction_manager is txm
@@ -92,25 +87,6 @@ def test_context_factory_accepts_explicit_manager_without_render_context() -> No
     assert mgr._generation_tracker_key is txm
 
 
-def test_context_factories_keep_nested_render_completion_independent() -> None:
-    from pyrolyze.runtime.context_bare_refactor_lcm import LeafSlotContext, RenderContext
-    from pyrolyze.runtime.slot_identity import ModuleId, SlotId
-
-    module = ModuleId("tests.context_constructor_boundaries")
-    root = RenderContext()
-    with root.pass_scope():
-        root_slot = LeafSlotContext(render_context=root, parent=root, slot_id=SlotId(module, 1))
-    nested = RenderContext(owner_slot=root_slot, scheduler_root=root)
-    with nested.pass_scope():
-        nested_slot = LeafSlotContext(
-            render_context=nested, parent=nested, slot_id=SlotId(module, 2)
-        )
-
-    assert root_slot._state_mgr._transaction_manager is root._state_mgr._transaction_manager
-    assert nested_slot._state_mgr._transaction_manager is nested._state_mgr._transaction_manager
-    assert nested._state_mgr._transaction_manager is not root._state_mgr._transaction_manager
-
-
 def test_context_base_resolves_render_context_state_mgr_from_explicit_initvar() -> None:
     explicit_state_mgr = object()
     from_render_context = object()
@@ -118,7 +94,7 @@ def test_context_base_resolves_render_context_state_mgr_from_explicit_initvar() 
     mgr = ContextBaseStateMgr(
         owner=_DummyOwner(),
         render_context_state_mgr=explicit_state_mgr,
-        render_context=_RenderContextWithStateMgr(from_render_context),
+        render_context=from_render_context,
     )
 
     assert mgr._render_context_state_mgr is explicit_state_mgr
@@ -133,7 +109,7 @@ def test_context_base_resolves_render_context_state_mgr_from_render_context_init
 
     mgr = ContextBaseStateMgr(
         owner=_DummyOwner(),
-        render_context=_RenderContextWithStateMgr(from_render_context),
+        render_context=from_render_context,
     )
 
     assert mgr._render_context_state_mgr is from_render_context
@@ -201,12 +177,10 @@ def test_scope_activity_tracks_transaction_state() -> None:
 
 
 def test_begin_end_and_rollback_pass_manage_pass_transaction() -> None:
-    txm = TransactionManager(tx_keys={PASS_TX_KEY})
-    render_context_state_mgr = _RenderContextStateMgrStub(transaction_manager=txm)
-    mgr = ContextBaseStateMgr.create(
-        owner=_DummyOwner(),
-        render_context_state_mgr=render_context_state_mgr,
-    )
+    from pyrolyze.runtime.context_lifecycle import RenderContext
+
+    mgr = RenderContext()
+    txm = mgr._transaction_manager
 
     mgr.begin_pass()
     assert txm.active_transaction_for(PASS_TX_KEY) is not None

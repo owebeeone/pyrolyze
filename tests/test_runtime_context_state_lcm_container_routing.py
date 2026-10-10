@@ -5,12 +5,11 @@ from contextlib import contextmanager
 
 from pyrolyze.api import UIElement
 from pyrolyze.compiler import load_transformed_namespace
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
-from pyrolyze.runtime.context_bare_refactor_lcm import (
+from pyrolyze.runtime import context_lifecycle as runtime
+from pyrolyze.runtime.context_lifecycle import (
     ContextBase,
     ContainerCallRuntimeContext,
 )
-from pyrolyze.runtime.context_state_lcm.container_render import _enable_container_render
 from pyrolyze.runtime.context_state_lcm.context_base import PASS_TX_KEY
 from pyrolyze.runtime.context_state_lcm.render_attempt import RenderAttemptAborted
 from pyrolyze.runtime.pyro_call import PyrolyzeWrap, ResolvedPyrolyzeCall
@@ -19,24 +18,9 @@ from pyrolyze.runtime.context_lifecycle import RenderContext as LifecycleRenderC
 
 def root_and_id():
     root = runtime.RenderContext()
-    _enable_container_render(root._state_mgr)
     return root, runtime.SlotId(runtime.ModuleId("container-faults"), 1)
 
 
-def test_opaque_container_is_rejected_before_construction_or_invocation() -> None:
-    root, slot_id = root_and_id()
-    calls = []
-
-    def opaque():
-        calls.append("called")
-
-    with pytest.raises(RenderAttemptAborted):
-        with root.pass_scope():
-            with pytest.raises(RuntimeError, match="opaque container"):
-                root.container_call(slot_id, opaque)
-            assert slot_id not in root._state_mgr._slots_by_id
-            assert slot_id not in root._state_mgr.children_state
-    assert calls == []
 
 
 def test_adoption_plain_scope_exits_lexically_and_discards_failed_children() -> None:
@@ -91,7 +75,7 @@ def test_adoption_plain_scope_suppression_cannot_publish_failed_children() -> No
 def test_adoption_plain_scope_entry_replacement_unwinds_host_without_candidate_writes() -> None:
     root = LifecycleRenderContext()
     slot_id = runtime.SlotId(runtime.ModuleId("plain-scope-replacement"), 1)
-    manager = root._state_mgr._transaction_manager
+    manager = root._transaction_manager
     calls = []
 
     class ReplacingHost:
@@ -109,7 +93,7 @@ def test_adoption_plain_scope_entry_replacement_unwinds_host_without_candidate_w
                 pytest.fail("replacement must prevent body execution")
     assert calls == ["enter", "exit"]
     assert root.committed_ui() == ()
-    assert root._state_mgr.children_state == {}
+    assert root.children_state == {}
     assert manager.active_transaction_for(PASS_TX_KEY) is not None
     manager.rollback(PASS_TX_KEY)
 
@@ -186,7 +170,7 @@ def test_invalid_native_root_aborts_attempt(roots) -> None:
 
 def test_resolution_cannot_construct_into_replacement_transaction() -> None:
     root, slot_id = root_and_id()
-    manager = root._state_mgr._transaction_manager
+    manager = root._transaction_manager
 
     def native(ctx: ContextBase):
         ctx.call_native(UIElement, kind="root", props={})
@@ -200,15 +184,15 @@ def test_resolution_cannot_construct_into_replacement_transaction() -> None:
     with pytest.raises((RuntimeError, BaseExceptionGroup)):
         with root.pass_scope():
             root.container_call(slot_id, ReplacingWrap(native))
-    assert slot_id not in root._state_mgr._slots_by_id
-    assert root._state_mgr.children_state == {}
+    assert slot_id not in root._slots_by_id
+    assert root.children_state == {}
     assert manager.active_transaction_for(PASS_TX_KEY) is not None
     manager.rollback(PASS_TX_KEY)
 
 
 def test_container_entry_cannot_publish_after_transaction_replacement() -> None:
     root, slot_id = root_and_id()
-    manager = root._state_mgr._transaction_manager
+    manager = root._transaction_manager
 
     def native(ctx: ContextBase):
         ctx.call_native(UIElement, kind="never published", props={})
@@ -236,4 +220,4 @@ def test_stale_handle_cannot_join_a_new_attempt() -> None:
         with pytest.raises(RuntimeError, match="finished"):
             with handle:
                 pass
-    assert root._state_mgr._field_only_completion.last.published
+    assert root._field_only_completion.last.published

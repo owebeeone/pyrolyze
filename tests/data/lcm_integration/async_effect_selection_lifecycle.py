@@ -5,10 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any, Callable
 
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
-from pyrolyze.runtime.context_state_lcm.async_effect_render import (
-    _enable_async_effect_render,
-)
+from pyrolyze.runtime import context_lifecycle as runtime
 from pyrolyze.runtime.slot_call_semantics import (
     AsyncEffectHandle,
     UseEffectAsyncRequest,
@@ -17,7 +14,6 @@ from pyrolyze.runtime.slot_call_semantics import (
 
 def characterize() -> dict[str, Any]:
     root = runtime.RenderContext()
-    _enable_async_effect_render(root._state_mgr)
     posted: list[Callable[[], None]] = []
     root.set_flush_poster(posted.append)
     events: list[list[Any]] = []
@@ -39,7 +35,7 @@ def characterize() -> dict[str, Any]:
 
         def start(done: Callable[[], None]) -> AsyncEffectHandle:
             events.append(
-                ["start", label, root._state_mgr._field_only_completion.last.published]
+                ["start", label, root._field_only_completion.last.published]
             )
             callbacks[label] = done
             return Handle(label)
@@ -99,14 +95,13 @@ def characterize() -> dict[str, Any]:
     with root.pass_scope():
         slot.deactivate()
     result["events"] = events
-    result["ready"] = root._state_mgr._field_only_completion.last.reuse_ready
+    result["ready"] = root._field_only_completion.last.reuse_ready
     result["scheduler"] = _scheduler_trace()
     return result
 
 
 def _scheduler_trace() -> list[Any]:
     root = runtime.RenderContext()
-    _enable_async_effect_render(root._state_mgr)
     events: list[Any] = []
     callbacks: list[Callable[[], None]] = []
     posted: list[Callable[[], None]] = []

@@ -5,11 +5,10 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
-from pyrolyze.runtime.context_bare_refactor_lcm import SlotRuntimeContext
+from pyrolyze.runtime import context_lifecycle as runtime
+from pyrolyze.runtime.context_lifecycle import SlotRuntimeContext
 from pyrolyze.runtime.context_state_lcm.context_base import PASS_TX_KEY
 from pyrolyze.runtime.context_state_lcm.render_attempt import RenderAttemptAborted
-from pyrolyze.runtime.context_state_lcm.slot_call_render import _enable_slot_call_render
 
 
 def _id() -> Any:
@@ -17,7 +16,7 @@ def _id() -> Any:
 
 
 def _selection(slot: Any) -> dict[str, Any]:
-    state = slot._state_mgr
+    state = slot
     return {
         "accepted": [
             slot.function_identity.__name__,
@@ -37,7 +36,6 @@ def _selection(slot: Any) -> dict[str, Any]:
 
 def _private_values() -> dict[str, Any]:
     root = runtime.RenderContext()
-    _enable_slot_call_render(root._state_mgr)
     calls: list[list[Any]] = []
     injections: list[bool] = []
     slot: Any = None
@@ -62,7 +60,7 @@ def _private_values() -> dict[str, Any]:
 
     with root.pass_scope():
         first = evaluate(source, 2, offset=1)
-    state = slot._state_mgr
+    state = slot
     facts = {
         row["field_name"]: row for row in state.__yidl_lifecycle_definition__["fields"]
     }
@@ -75,7 +73,7 @@ def _private_values() -> dict[str, Any]:
             == "const",
             "runtime_locals": facts["_runtime_locals"]["field_kind"] == "local_store",
             "same_manager": state._transaction_manager
-            is root._state_mgr._transaction_manager,
+            is root._transaction_manager,
         },
         "initial": _selection(slot),
         "initial_result": [first.dirty, first.value],
@@ -141,34 +139,15 @@ def _private_values() -> dict[str, Any]:
     )
     result["calls"] = calls
     result["runtime_injected"] = all(injections) and bool(injections)
-    result["ready"] = root._state_mgr._field_only_completion.last.reuse_ready
-    result["legacy_unused"] = state._legacy_invocation.binding is None
+    result["ready"] = root._field_only_completion.last.reuse_ready
+    result["legacy_removed"] = not hasattr(state, "_legacy_invocation")
     return result
 
 
-def _legacy_values() -> dict[str, Any]:
-    root = runtime.RenderContext()
-    with root.pass_scope():
-        slot = root._ensure_slot(_id(), runtime.SlotCallSlotContext)
-        slot.evaluate(lambda value: value, (1,), {})
-    binding = slot.binding
-    try:
-        with root.pass_scope():
-            root._ensure_slot(_id(), runtime.SlotCallSlotContext)
-            slot.evaluate(lambda value: value, (2,), {})
-            raise ValueError("legacy parent failed")
-    except ValueError:
-        pass
-    return {
-        "reused_binding": slot.binding is binding,
-        "last_arguments": list(slot.last_args),
-        "immediate_value": binding.exposed_value(),
-        "managed_unused": slot._state_mgr.current._invocation.binding is None,
-    }
 
 
 def characterize() -> dict[str, Any]:
-    return {"private": _private_values(), "legacy": _legacy_values()}
+    return {"private": _private_values()}
 
 
 if __name__ == "__main__":

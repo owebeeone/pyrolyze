@@ -5,12 +5,9 @@ import weakref
 
 import pytest
 
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
+from pyrolyze.runtime import context_lifecycle as runtime
 from pyrolyze.runtime.context_state_lcm.context_base import PASS_TX_KEY
 from pyrolyze.runtime.context_state_lcm.render_attempt import RenderAttemptAborted
-from pyrolyze.runtime.context_state_lcm.subscription_render import (
-    _enable_subscription_render,
-)
 from pyrolyze.runtime.context_state_lcm import subscription_binding
 from pyrolyze.runtime.context_state_lcm.resource_ownership import _ResourceOwner
 from pyrolyze.runtime.slot_call_semantics import ExternalStoreRef, UseEffectRequest
@@ -18,7 +15,6 @@ from pyrolyze.runtime.slot_call_semantics import ExternalStoreRef, UseEffectRequ
 
 def _root() -> Any:
     root = runtime.RenderContext()
-    _enable_subscription_render(root._state_mgr)
     return root
 
 
@@ -31,7 +27,7 @@ def _evaluate(root: Any, result: Any, index: int = 1) -> Any:
 
 def test_private_owners_release_explicit_references_once() -> None:
     root = _root()
-    completion = root._state_mgr._field_only_completion
+    completion = root._field_only_completion
     resource = subscription_binding._StoreSubscription(
         "shared", weakref.ref(root), weakref.ref(completion)
     )
@@ -77,7 +73,7 @@ def test_caught_get_failure_discards_subscription_and_allows_retry() -> None:
 @pytest.mark.parametrize("step", ("subscribe", "get"))
 def test_subscription_reentry_cannot_stage_on_replacement_token(step: str) -> None:
     root = _root()
-    manager = root._state_mgr._transaction_manager
+    manager = root._transaction_manager
     events: list[str] = []
     replacement: Any = None
 
@@ -107,7 +103,7 @@ def test_subscription_reentry_cannot_stage_on_replacement_token(step: str) -> No
         if step == "subscribe"
         else ["subscribe", "get", "unsubscribe"]
     )
-    assert root._state_mgr.current.children_state == {}
+    assert root.current.children_state == {}
     with pytest.raises(RuntimeError, match="not ready"):
         with root.pass_scope():
             pass
@@ -148,7 +144,7 @@ def test_subscription_cleanup_failures_drain_and_quarantine(publish: bool) -> No
     if not publish:
         assert cause in errors
     assert events == [1, 2]
-    assert root._state_mgr._field_only_completion.last.published is publish
+    assert root._field_only_completion.last.published is publish
     assert [
         slot.binding.exposed_value() if slot.binding is not None else None
         for slot in slots
@@ -158,13 +154,6 @@ def test_subscription_cleanup_failures_drain_and_quarantine(publish: bool) -> No
             pass
 
 
-def test_subscription_gate_still_rejects_effects_before_delivery() -> None:
-    root = _root()
-    events: list[str] = []
-    with pytest.raises(RuntimeError, match="not admitted"):
-        with root.pass_scope():
-            _evaluate(root, UseEffectRequest(lambda: events.append("effect")))
-    assert events == []
 
 
 def test_failed_cleanup_cannot_reenter_completion() -> None:
@@ -184,7 +173,7 @@ def test_failed_cleanup_cannot_reenter_completion() -> None:
             _evaluate(root, ExternalStoreRef("reenter", subscribe, lambda: 1))
             raise ValueError("parent failed")
     assert events == ["unsubscribe"]
-    assert root._state_mgr.current.children_state == {}
+    assert root.current.children_state == {}
 
 
 def test_get_and_cleanup_failures_preserve_both_original_errors() -> None:
@@ -209,7 +198,7 @@ def test_get_and_cleanup_failures_preserve_both_original_errors() -> None:
 
 def test_identity_comparison_reentry_prevents_new_subscription() -> None:
     root = _root()
-    manager = root._state_mgr._transaction_manager
+    manager = root._transaction_manager
     events: list[str] = []
     replacement: Any = None
     with root.pass_scope():
@@ -240,7 +229,7 @@ def test_identity_comparison_reentry_prevents_new_subscription() -> None:
 
 def test_value_comparison_reentry_discards_unstaged_subscription() -> None:
     root = _root()
-    manager = root._state_mgr._transaction_manager
+    manager = root._transaction_manager
     events: list[str] = []
     replacement: Any = None
     with root.pass_scope():

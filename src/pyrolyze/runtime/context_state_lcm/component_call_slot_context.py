@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any, Callable
 
-from .lifecycle_adapter import const, local_store, managed, managed_context
+from .lifecycle_adapter import const, managed, managed_context
 from pyrolyze.runtime.slot_kinds import ContextKind
 
 from ._base import USE_FACTORY, USE_OWNER, _copy_parent_state_mgr, _copy_slot_id
@@ -43,17 +43,12 @@ class _ComponentSelection:
 class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
     _parent_state_mgr: Any = const(init=False, default_factory=_copy_parent_state_mgr)
     _slot_id: Any = const(init=False, default_factory=_copy_slot_id)
-    # The compatibility route retains its last-attempt selection until adoption.
-    _legacy_selection: _ComponentSelection = local_store(
-        default_factory=_ComponentSelection
-    )
     _selection: _ComponentSelection = managed(
         default_factory=_ComponentSelection,
         init=False,
         compare="identity",
         tx_key=PASS_TX_KEY,
     )
-    _pass_owned_event_handler_order: tuple[Any, ...] = local_store(default_factory=tuple)
     _call_runtime_func: Callable[..., Any] | None = managed(
         init=False, default=None, tx_key=PASS_TX_KEY
     )
@@ -88,20 +83,17 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
     )
 
     def _selection_record(self) -> _ComponentSelection:
-        completion = _field_only_completion(self)
-        if completion is not None and completion.component_selection_enabled:
-            return self._selection
-        return self._legacy_selection
+        return self._selection
 
     def _set_selection(self, selection: _ComponentSelection) -> None:
         completion = _field_only_completion(self)
-        if getattr(completion, "component_selection_enabled", False):
-            assert completion.active is not None
-            completion.active._require_open()
-            completion.active._require_identity()
-            self._selection = selection
-        else:
-            self._legacy_selection = selection
+        if completion is None:
+            raise RuntimeError("render completion is not configured")
+        completion.require_resource_owner()
+        assert completion.active is not None
+        completion.active._require_open()
+        completion.active._require_identity()
+        self._selection = selection
 
     @property
     def _component_identity(self) -> Any:
@@ -134,7 +126,8 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
         _pyr_kwargs_dirty: dict[str, Any] | None = None,
     ) -> Any:
         owner_slot_facade = self._resolve_owner_arg(owner_slot_facade)
-        scheduler_root_facade = self._resolve_owner_arg(scheduler_root_facade)
+        if scheduler_root_facade is USE_OWNER:
+            scheduler_root_facade = self._render_context_state_mgr._scheduler_root_state_mgr.owner
         if render_context_factory is USE_FACTORY:
             render_context_cls = REFRACTOR_CLASSES.render_context_cls
             if render_context_cls is None:
@@ -163,21 +156,16 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
         schema = (len(args), tuple(sorted(kwargs)))
         if self._child_context_state_mgr is None or self._component_identity != identity_key or self._schema != schema:
             completion = _field_only_completion(self)
-            if getattr(completion, "component_selection_enabled", False):
-                # Keep the accepted child alive until the outer decision. The
-                # empty candidate allows construction of its replacement.
-                self._set_selection(_ComponentSelection())
-            elif completion is not None and self._child_context_state_mgr is not None:
-                completion.reject("component replacement is not admitted by SC2")
-            else:
-                self._dispose_child_context()
+            # Keep the accepted child alive until the outer decision. The
+            # empty candidate allows construction of its replacement.
+            self._set_selection(_ComponentSelection())
             child_context = render_context_factory(
                 owner_slot=owner_slot_facade,
                 scheduler_root=scheduler_root_facade,
                 authored_app_context_lookup=self._parent_state_mgr.effective_authored_app_context_lookup(),
             )
             self._set_selection(
-                _ComponentSelection(identity_key, schema, child_context._state_mgr)
+                _ComponentSelection(identity_key, schema, child_context)
             )
 
         self._begin_owned_event_handler_pass()
@@ -259,82 +247,30 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
         except BaseException as error:
             if invocation_owner is not None:
                 invocation_owner.fail(error)
-            self.rollback_owned_event_handlers()
             raise
         self.ui_state = self._child_context_state_mgr.ui_state
         return None
 
-    def _complete_legacy_selection(self, *, committed: bool) -> None:
-        if committed:
-            self.commit_owned_event_handlers()
-        else:
-            self.rollback_owned_event_handlers()
 
-    def commit_owned_event_handlers(self) -> None:
-        if not self._pass_owned_event_handler_order and not any(
-            child.context_kind() == ContextKind.EVENT_HANDLER and child._seen_in_pass
-            for child in self.children_state.values()
-        ):
-            return
-        unseen_slots = [
-            slot_id
-            for slot_id, child in self.children_state.items()
-            if child.context_kind() == ContextKind.EVENT_HANDLER and not child._seen_in_pass
-        ]
-        for slot_id in unseen_slots:
-            child = self.children_state.get(slot_id)
-            if child is not None:
-                child.deactivate()
 
-        self._pass_owned_event_handler_order = ()
-
-    def rollback_owned_event_handlers(self) -> None:
-        if _field_only_completion(self) is not None:
-            return
-        if not self._pass_owned_event_handler_order and not any(
-            child.context_kind() == ContextKind.EVENT_HANDLER and child._seen_in_pass
-            for child in self.children_state.values()
-        ):
-            return
-        committed_ids = set(self._pass_owned_event_handler_order)
-        for slot_id, child in list(self.children_state.items()):
-            if child.context_kind() != ContextKind.EVENT_HANDLER:
-                continue
-            if slot_id not in committed_ids:
-                child.deactivate()
-                continue
-            child._discard_selection()
-            child._seen_in_pass = True
-        self._pass_owned_event_handler_order = ()
 
     def deactivate(self) -> None:
         completion = _field_only_completion(self)
-        if completion is not None:
-            completion.require_retirement_allowed(self)
-        if getattr(completion, "component_selection_enabled", False):
-            self._dispose_child_context()
-            self.children_state = {}
-            children = dict(self._parent_state_mgr.children_state)
-            if children.get(self._slot_id) is self:
-                children.pop(self._slot_id)
-                self._parent_state_mgr.children_state = children
-            return
-        with self.publish_write_scope():
-            self._dispose_child_context()
-            super().deactivate()
+        if completion is None:
+            raise RuntimeError("render completion is not configured")
+        completion.require_retirement_allowed(self)
+        self._dispose_child_context()
+        self.children_state = {}
+        children = dict(self._parent_state_mgr.children_state)
+        if children.get(self._slot_id) is self:
+            children.pop(self._slot_id)
+            self._parent_state_mgr.children_state = children
 
     def _begin_owned_event_handler_pass(self) -> None:
         completion = _field_only_completion(self)
-        if completion is not None:
-            completion.note_owned_event_handler_pass(self)
-        # The component proof uses managed membership; only the unactivated
-        # compatibility route needs an order snapshot for manual restoration.
-        if not getattr(completion, "component_selection_enabled", False):
-            self._pass_owned_event_handler_order = tuple(
-                slot_id
-                for slot_id, child in self.children_state.items()
-                if child.context_kind() == ContextKind.EVENT_HANDLER
-            )
+        if completion is None:
+            raise RuntimeError("render completion is not configured")
+        completion.note_owned_event_handler_pass(self)
         for child in self.children_state.values():
             if child.context_kind() == ContextKind.EVENT_HANDLER:
                 child._seen_in_pass = False
@@ -407,31 +343,15 @@ class ComponentCallSlotContextStateMgr(RerunnableSlotContextStateMgr):
                     *args,
                     **(kwargs or {}),
                 )
-            self.ui_state = child_context._state_mgr.ui_state
+            self.ui_state = child_context.ui_state
             if refresh_parent:
                 self._parent_state_mgr.refresh_committed_ui_from_children()
 
     def _dispose_child_context(self) -> None:
         completion = _field_only_completion(self)
-        if getattr(completion, "component_selection_enabled", False):
-            completion.require_retirement_allowed(self)
-            self._set_selection(_ComponentSelection())
-            self._call_pending_dirty_state = None
-            self.ui_state = ()
-            return
-        child_context = None if self._child_context_state_mgr is None else self._child_context_state_mgr.owner
-        if child_context is None:
-            return
-        completion = _field_only_completion(self)
-        if completion is not None:
-            completion.require_retirement_allowed(self)
-        child_context._remove_from_scheduler()
-        with child_context._state_mgr.publish_write_scope():
-            for child in list(child_context._state_mgr.children_state.values()):
-                child.deactivate()
-            child_context._state_mgr.children_state = {}
-            child_context._state_mgr.clear_registered_slots()
-        child_context._state_mgr._mounted_callback = None
-        self._child_context_state_mgr = None
+        if completion is None:
+            raise RuntimeError("render completion is not configured")
+        completion.require_retirement_allowed(self)
+        self._set_selection(_ComponentSelection())
         self._call_pending_dirty_state = None
         self.ui_state = ()

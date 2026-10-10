@@ -16,19 +16,13 @@ from pyrolyze.runtime.slot_call_semantics import (
     UseEffectHandler,
     select_slot_call_handler,
 )
-from .async_effect_render import (
-    _AsyncEffectRenderCompletion,
-    _enable_async_effect_render,
-)
+from .async_effect_render import _AsyncEffectRenderCompletion
 from .callback_render import _graph_states
 from .mount_binding import _MountAdvertisementBinding
 from .render_context import RenderContextStateMgr
 from ._support import _native_context_param_name
 
 
-def _enable_mount_render(root: RenderContextStateMgr) -> None:
-    _enable_async_effect_render(root)
-    root._field_only_completion = _MountRenderCompletion(root)
 
 
 @dataclass(eq=False, slots=True)
@@ -40,7 +34,7 @@ class _MountRenderCompletion(_AsyncEffectRenderCompletion):
         self.require_resource_owner()
 
     def require_slot_type(self, slot_type: type[Any]) -> None:
-        from pyrolyze.runtime.context_bare_refactor_lcm import ContainerSlotContext
+        from pyrolyze.runtime.context_lifecycle import ContainerSlotContext
 
         if slot_type is not ContainerSlotContext:
             super(_MountRenderCompletion, self).require_slot_type(slot_type)

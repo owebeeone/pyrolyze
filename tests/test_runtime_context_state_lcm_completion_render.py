@@ -3,15 +3,11 @@ from __future__ import annotations
 import pytest
 
 from pyrolyze.api import UIElement, no_emit, validate_mount_selectors
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
-from pyrolyze.runtime.context_state_lcm.completion_render import (
-    _enable_completion_render,
-)
+from pyrolyze.runtime import context_lifecycle as runtime
 
 
 def root_and_id():
     root = runtime.RenderContext()
-    _enable_completion_render(root._state_mgr)
     return root, runtime.SlotId(runtime.ModuleId("completion-proof"), 1)
 
 
@@ -48,7 +44,7 @@ def test_callbacks_drain_system_failures_without_undoing_publication() -> None:
     assert calls == ["first", "second", "last"]
     assert caught.value.exceptions == errors
     assert root.debug_ui()[0].kind == "accepted"
-    assert root._state_mgr._field_only_completion.last.published is True
+    assert root._field_only_completion.last.published is True
     with pytest.raises(RuntimeError, match="not ready"):
         with root.pass_scope():
             pass
@@ -80,12 +76,12 @@ def test_independent_invalidation_survives_failed_render() -> None:
             pass
     with pytest.raises(ValueError, match="discard"):
         with root.pass_scope():
-            root._state_mgr.queue_invalidation_from(child)
+            root.queue_invalidation_from(child)
             root._enqueue_post_commit(lambda: pytest.fail("discarded callback"))
             raise ValueError("discard")
-    assert root._state_mgr._scheduler.has_pending_work()
+    assert root._scheduler.has_pending_work()
     assert root._queued_invalidations == [child]
-    assert child._state_mgr._invoke_dirty
+    assert child._invoke_dirty
 
 
 def test_lone_callback_failure_is_preserved() -> None:
@@ -110,7 +106,7 @@ def test_caught_invalid_selector_aborts_outer_render() -> None:
             with pytest.raises(TypeError, match="SlotSelector"):
                 with root.open_directive(slot_id, lambda: (object(),)):
                     pass
-    assert root._state_mgr.current.children_state == {}
+    assert root.current.children_state == {}
 
 
 def test_superseded_child_callback_is_not_delivered() -> None:
@@ -185,14 +181,14 @@ def test_incomplete_registry_reconciliation_blocks_observers(monkeypatch) -> Non
             root._enqueue_post_commit(lambda: calls.append("observer"))
     assert caught.value is error
     assert calls == []
-    assert root._state_mgr._field_only_completion.last.published is True
+    assert root._field_only_completion.last.published is True
 
 
 def test_selector_iteration_cannot_write_into_replacement_transaction() -> None:
     from pyrolyze.runtime.context_state_lcm.context_base import PASS_TX_KEY
 
     root, slot_id = root_and_id()
-    manager = root._state_mgr._transaction_manager
+    manager = root._transaction_manager
 
     class Selectors:
         def __iter__(self):
@@ -205,6 +201,6 @@ def test_selector_iteration_cannot_write_into_replacement_transaction() -> None:
             with root.open_directive(slot_id, lambda: Selectors()):
                 pass
     assert manager.active_transaction_for(PASS_TX_KEY) is not None
-    assert root._state_mgr.current.children_state == {}
-    assert not root._state_mgr._field_only_completion.last.reuse_ready
+    assert root.current.children_state == {}
+    assert not root._field_only_completion.last.reuse_ready
     manager.rollback(PASS_TX_KEY)

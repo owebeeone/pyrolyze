@@ -6,18 +6,16 @@ import weakref
 
 import pytest
 
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
+from pyrolyze.runtime import context_lifecycle as runtime
 from pyrolyze.runtime.app_context import (
     AppContextKey, EMPTY_APP_CONTEXT_LOOKUP, OverlayAppContextLookup,
 )
-from pyrolyze.runtime.context_state_lcm.pass_state_render import _enable_pass_state_render
 from pyrolyze.runtime.drip import Drip
 from tests.data.lcm_integration.override_read_acknowledgment import read
 
 
 def _setup() -> tuple[Any, Any, Any, Any]:
     root = runtime.RenderContext()
-    _enable_pass_state_render(root._state_mgr)
     key = AppContextKey("theme", lambda host: "unused")
     module = runtime.ModuleId("override-read-faults")
     return root, key, runtime.SlotId(module, 1), runtime.SlotId(module, 2)
@@ -95,7 +93,6 @@ def test_plain_parent_change_after_read_still_notifies(expression: bool) -> None
             EMPTY_APP_CONTEXT_LOOKUP, {key: parent}
         )
     )
-    _enable_pass_state_render(root._state_mgr)
     with root.pass_scope():
         with root.open_app_context_override(override_id, (key,), None) as scope:
             selected = read(scope, reader_id, key, expression)

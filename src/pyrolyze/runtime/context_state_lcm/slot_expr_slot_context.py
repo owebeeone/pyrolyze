@@ -55,12 +55,6 @@ class SlotExprSlotContextStateMgr(RerunnableSlotContextStateMgr):
             return
         self._staged_post_commit_callbacks += (callback,)
 
-    def _complete_legacy_selection(self, *, committed: bool) -> None:
-        if committed:
-            self.commit_binding()
-        else:
-            self.rollback_binding()
-
     def commit_binding(self) -> None:
         self.require_active_scope()
         for call_site_id in self._staged_call_site_ids:

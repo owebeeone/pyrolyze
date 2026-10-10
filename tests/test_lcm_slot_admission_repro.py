@@ -5,12 +5,8 @@ from typing import Any
 import pytest
 
 from pyrolyze.compiler import load_transformed_namespace
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
-from pyrolyze.runtime.context_state_lcm.container_render import _enable_container_render
+from pyrolyze.runtime import context_lifecycle as runtime
 from pyrolyze.runtime.context_state_lcm.context_base import ContextBaseStateMgr
-from pyrolyze.runtime.context_state_lcm.pass_state_render import (
-    _enable_pass_state_render,
-)
 
 
 @pytest.mark.parametrize("dirty", [False, True])
@@ -36,7 +32,6 @@ def test_compiled_component_admission_does_not_depend_on_dirty_short_circuit(
 
     monkeypatch.setattr(ContextBaseStateMgr, "ensure_resolved_slot", trace)
     root = runtime.RenderContext()
-    _enable_container_render(root._state_mgr)
 
     def render() -> None:
         with root.pass_scope():
@@ -115,7 +110,6 @@ def test_other_compiled_paths_do_not_allocate_generic_placeholders(
 
     monkeypatch.setattr(ContextBaseStateMgr, "ensure_resolved_slot", trace)
     root = runtime.RenderContext()
-    _enable_pass_state_render(root._state_mgr)
 
     def render() -> None:
         with root.pass_scope():

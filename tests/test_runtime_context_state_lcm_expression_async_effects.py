@@ -7,10 +7,7 @@ import weakref
 import pytest
 
 from pyrolyze.api import advertise_mount
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
-from pyrolyze.runtime.context_state_lcm.async_effect_expr_render import (
-    _enable_async_effect_expr_render,
-)
+from pyrolyze.runtime import context_lifecycle as runtime
 from pyrolyze.runtime.context_state_lcm.context_base import PASS_TX_KEY
 from pyrolyze.runtime.slot_call_semantics import (
     AsyncEffectHandle,
@@ -21,7 +18,6 @@ from tests.test_runtime_context_state_lcm_expression_effects import _evaluate
 
 def _root() -> Any:
     root = runtime.RenderContext()
-    _enable_async_effect_expr_render(root._state_mgr)
     return root
 
 
@@ -45,7 +41,7 @@ def test_start_failure_fences_callback_and_drains_independent_start() -> None:
             )
     assert caught.value is error
     assert events == ["later"]
-    assert root._state_mgr._field_only_completion.last.published is True
+    assert root._field_only_completion.last.published is True
     callbacks[0]()
     assert posted == []
     with pytest.raises(RuntimeError, match="not ready"):
@@ -82,7 +78,7 @@ def test_cancel_failure_drains_cleanup_and_other_expression_delivery() -> None:
             )
     assert caught.value.exceptions == (cancel_error, cleanup_error)
     assert events == ["cancel", "cleanup", "independent"]
-    assert root._state_mgr._field_only_completion.last.published is True
+    assert root._field_only_completion.last.published is True
 
 
 def test_completion_during_start_does_not_resurrect_finished_handle() -> None:
@@ -150,7 +146,7 @@ def test_start_reentry_does_not_suppress_independent_operation() -> None:
 
 def test_dependency_comparison_cannot_stage_into_replacement() -> None:
     root = _root()
-    manager = root._state_mgr._transaction_manager
+    manager = root._transaction_manager
     events: list[str] = []
     replacement: Any = None
     with root.pass_scope():
@@ -178,11 +174,3 @@ def test_dependency_comparison_cannot_stage_into_replacement() -> None:
     assert collection.iter_current()[0] is accepted
     assert events == ["old"]
     manager.rollback(PASS_TX_KEY)
-
-
-def test_mount_expression_is_rejected_before_advertisement_publication() -> None:
-    root = _root()
-    with pytest.raises(RuntimeError, match="resource expression results"):
-        with root.pass_scope():
-            _evaluate(root, advertise_mount("not-admitted"))
-    assert root.debug_mount_advertisements() == ()

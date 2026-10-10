@@ -7,16 +7,12 @@ from typing import Any
 
 from pyrolyze.api import UIElement
 from pyrolyze.compiler import load_transformed_namespace
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
-from pyrolyze.runtime.context_state_lcm.keyed_loop_render import (
-    _enable_keyed_loop_render,
-)
+from pyrolyze.runtime import context_lifecycle as runtime
 from pyrolyze.runtime.slot_call_semantics import ExternalStoreRef
 
 
 def characterize() -> dict[str, Any]:
     root = runtime.RenderContext()
-    _enable_keyed_loop_render(root._state_mgr)
     module = runtime.ModuleId("loop-proof")
     loop_id = runtime.SlotId(module, 1)
     result: dict[str, Any] = {}
@@ -68,7 +64,7 @@ def characterize() -> dict[str, Any]:
         pass
     result["rollback"] = [
         values(),
-        identities["a"]._state_mgr.current._selection.value,
+        identities["a"].current._selection.value,
         list(resources),
     ]
     with root.pass_scope():
@@ -106,7 +102,6 @@ def panel(values, stop=False):
         module_name="keyed_lifecycle_authored",
     )
     compiled_root = runtime.RenderContext()
-    _enable_keyed_loop_render(compiled_root._state_mgr)
     component_id = runtime.SlotId(module, 4)
     for rows in ([("a", 1), ("b", 2)], [("b", 3), ("a", 1)]):
         with compiled_root.pass_scope():

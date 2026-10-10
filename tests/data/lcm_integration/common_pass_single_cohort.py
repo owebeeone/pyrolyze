@@ -9,11 +9,8 @@ from typing import Any
 from unittest.mock import patch
 
 from pyrolyze.api import UIElement
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
+from pyrolyze.runtime import context_lifecycle as runtime
 from pyrolyze.runtime.context_state_lcm.context_base import PASS_TX_KEY
-from pyrolyze.runtime.context_state_lcm.field_only_render import (
-    _enable_field_only_render,
-)
 from pyrolyze.runtime.context_state_lcm.render_attempt import RenderAttemptAborted
 from yidl_lifecycle.transaction_yidl import DEFAULT_TRANSACTION
 from yidl_lifecycle.lifecycle import lifecycle, managed
@@ -21,7 +18,6 @@ from yidl_lifecycle.lifecycle import lifecycle, managed
 
 def _root() -> Any:
     root = runtime.RenderContext()
-    _enable_field_only_render(root._state_mgr)
     return root
 
 
@@ -30,7 +26,7 @@ def _slot_id(index: int) -> Any:
 
 
 def _ui(context: Any) -> list[str]:
-    return [item.props["value"] for item in context._state_mgr.committed_ui()]
+    return [item.props["value"] for item in context.committed_ui()]
 
 
 def _emit(context: Any, value: str, fail: bool = False) -> None:
@@ -57,7 +53,7 @@ def _component(root: Any, value: str, index: int = 2) -> Any:
 
 
 def _tracker(root: Any) -> Any:
-    state = root._state_mgr
+    state = root
     return state.get_app_context(state._generation_tracker_key)
 
 
@@ -67,7 +63,7 @@ def _clean_and_failures() -> dict[str, Any]:
         leaf = _leaf(root, "old")
         component = _component(root, "nested-old")
     nested = component.child_context
-    manager = root._state_mgr._transaction_manager
+    manager = root._transaction_manager
     result: dict[str, Any] = {}
     result["participant_audit"] = all(
         not state.__yidl_lifecycle_definition__["transaction_methods"]
@@ -76,10 +72,10 @@ def _clean_and_failures() -> dict[str, Any]:
             for fact in state.__yidl_lifecycle_definition__["fields"]
         )
         for state in (
-            root._state_mgr,
-            leaf._state_mgr,
-            component._state_mgr,
-            nested._state_mgr,
+            root,
+            leaf,
+            component,
+            nested,
         )
     )
     with root.pass_scope():
@@ -87,16 +83,16 @@ def _clean_and_failures() -> dict[str, Any]:
         _leaf(root, "new")
         _component(root, "nested-new")
         result["clean_inside"] = {
-            "shared_manager": leaf._state_mgr._transaction_manager is manager
-            and nested._state_mgr._transaction_manager is manager,
+            "shared_manager": leaf._transaction_manager is manager
+            and nested._transaction_manager is manager,
             "current": _ui(root),
             "leaf_current": _ui(leaf),
             "nested_current": _ui(nested),
             "candidate": [
-                item.props["value"] for item in root._state_mgr.build_committed_ui()
+                item.props["value"] for item in root.build_committed_ui()
             ],
-            "local_released": not leaf._state_mgr.is_scope_active()
-            and not nested._state_mgr.is_scope_active(),
+            "local_released": not leaf.is_scope_active()
+            and not nested.is_scope_active(),
             "same_token": manager.active_transaction_for(PASS_TX_KEY) is token,
             "generation": _tracker(root).committed_generation_id,
         }
@@ -144,7 +140,7 @@ def _clean_and_failures() -> dict[str, Any]:
         "ui": _ui(root),
         "new_token": fresh_token is not token,
         "inactive": manager.active_transaction_for(PASS_TX_KEY) is None,
-        "no_local_scope": not root._state_mgr.is_scope_active(),
+        "no_local_scope": not root.is_scope_active(),
         "generation": _tracker(root).committed_generation_id,
     }
     return result
@@ -189,7 +185,7 @@ class _RejectingValidator:
 
 def _validation_and_permissions() -> dict[str, Any]:
     root = _root()
-    manager = root._state_mgr._transaction_manager
+    manager = root._transaction_manager
     other = OtherKeyValues(transaction_manager=manager)
     validator = _RejectingValidator()
     result: dict[str, Any] = {}
@@ -228,11 +224,11 @@ def _validation_and_permissions() -> dict[str, Any]:
 def _entry_and_isolation() -> dict[str, Any]:
     root = _root()
     other = _root()
-    manager = root._state_mgr._transaction_manager
-    other_manager = other._state_mgr._transaction_manager
+    manager = root._transaction_manager
+    other_manager = other._transaction_manager
     result: dict[str, Any] = {"different_managers": manager is not other_manager}
     external = manager.begin(PASS_TX_KEY)
-    result["external_not_local"] = not root._state_mgr.is_scope_active()
+    result["external_not_local"] = not root.is_scope_active()
     try:
         with root.pass_scope():
             raise AssertionError("externally owned key was admitted")
@@ -249,7 +245,7 @@ def _entry_and_isolation() -> dict[str, Any]:
             _emit(root, "one-reset")
             with root.pass_scope():
                 result["reentry_ui"] = [
-                    item.props["value"] for item in root._state_mgr.own_ui_state
+                    item.props["value"] for item in root.own_ui_state
                 ]
         result["other_preserved"] = (
             other_manager.active_transaction_for(PASS_TX_KEY) is other_token
@@ -281,18 +277,18 @@ def _standalone_and_boundaries() -> dict[str, Any]:
     root.mount(render)
     leaf = root._slots_by_id[_slot_id(1)]
     leaf.invoke_native(_emit, ("standalone",), {}, context_param="context")
-    with root._state_mgr.publish_write_scope():
-        root._state_mgr.refresh_committed_ui_from_children()
+    with root.publish_write_scope():
+        root.refresh_committed_ui_from_children()
     nested = root._slots_by_id[_slot_id(2)].child_context
     sibling = root._slots_by_id[_slot_id(4)].child_context
-    root._state_mgr._scheduler.request(nested)
-    root._state_mgr._scheduler.request(sibling)
+    root._scheduler.request(nested)
+    root._scheduler.request(sibling)
     root.run_pending_invalidations()
     return {
         "ui": _ui(root),
         "generation": _tracker(root).committed_generation_id,
         "pending": len(root.debug_pending_boundaries()),
-        "active": root._state_mgr._transaction_manager.active_transaction_for(
+        "active": root._transaction_manager.active_transaction_for(
             PASS_TX_KEY
         )
         is not None,
@@ -380,7 +376,7 @@ def _candidate_retirement() -> dict[str, Any]:
             old.deactivate()
             inside = {
                 "candidate": [
-                    slot.slot_index for slot in root._state_mgr.children_state
+                    slot.slot_index for slot in root.children_state
                 ],
                 "published": [slot.slot_index for slot in root.debug_children_of()],
             }
@@ -453,9 +449,9 @@ def _completion_evidence() -> dict[str, Any]:
     )
     for case in cases:
         root = _root()
-        completion = root._state_mgr._field_only_completion
+        completion = root._field_only_completion
         tracker = _tracker(root)
-        manager = root._state_mgr._transaction_manager
+        manager = root._transaction_manager
         decisions = []
         commit, rollback = tracker.commit, tracker.rollback
 

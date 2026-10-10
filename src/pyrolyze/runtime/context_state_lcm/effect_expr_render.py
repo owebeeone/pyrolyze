@@ -19,17 +19,10 @@ from pyrolyze.runtime.slot_call_semantics import (
 from .callback_render import _graph_states
 from .effect_render import _EffectDeliveryResource
 from .render_attempt import _raise_with_cleanup
-from .render_context import RenderContextStateMgr
 from .slot_expr_slot_context import SlotExprSlotContextStateMgr
-from .subscription_expr_render import (
-    _SubscriptionExprRenderCompletion,
-    _enable_subscription_expr_render,
-)
+from .subscription_expr_render import _SubscriptionExprRenderCompletion
 
 
-def _enable_effect_expr_render(root: RenderContextStateMgr) -> None:
-    _enable_subscription_expr_render(root)
-    root._field_only_completion = _EffectExprRenderCompletion(root)
 
 
 @dataclass(eq=False, slots=True)

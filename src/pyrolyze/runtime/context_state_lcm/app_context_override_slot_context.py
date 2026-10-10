@@ -4,13 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 import weakref
 
-from pyrolyze.runtime.app_context import (
-    APP_CONTEXT_MISSING,
-    EMPTY_APP_CONTEXT_LOOKUP,
-    AppContextKey,
-    AppContextLookup,
-    OverlayAppContextLookup,
-)
+from pyrolyze.runtime.app_context import APP_CONTEXT_MISSING, EMPTY_APP_CONTEXT_LOOKUP, AppContextKey, AppContextLookup
 from pyrolyze.runtime.drip import Drip
 
 from .rerunnable_slot_context import RerunnableSlotContextStateMgr
@@ -156,23 +150,9 @@ class _CommittedAppContextOverrideKeyState:
 @managed_context
 class AppContextOverrideSlotContextStateMgr(RerunnableSlotContextStateMgr):
     _structure_error_cls: Any = const(init=False, default_factory=_structure_error)
-    _declared_keys: tuple[Any, ...] = local_store(default=())
-    _legacy_committed_values: tuple[Any, ...] = local_store(default=())
     _committed_key_states: dict[Any, _CommittedAppContextOverrideKeyState] = (
         local_store(default_factory=dict)
     )
-    _committed_lookup: AppContextLookup = local_store(
-        default_factory=_empty_authored_app_context_lookup
-    )
-    _pass_committed_values: tuple[Any, ...] = local_store(default=())
-    _pass_committed_lookup: AppContextLookup = local_store(
-        default_factory=_empty_authored_app_context_lookup
-    )
-    _pending_values: tuple[Any, ...] = local_store(default=())
-    _pending_lookup: AppContextLookup = local_store(
-        default_factory=_empty_authored_app_context_lookup
-    )
-    _pending_initialized: bool = local_store(default=False)
     _override: _OverrideSelection = managed(
         default_factory=_OverrideSelection,
         init=False,
@@ -193,146 +173,62 @@ class AppContextOverrideSlotContextStateMgr(RerunnableSlotContextStateMgr):
 
     @property
     def _committed_values(self) -> tuple[Any, ...]:
-        if self._override_completion() is not None:
-            return self.current._override.values
-        return self._legacy_committed_values
+        return self.current._override.values
 
-    @_committed_values.setter
-    def _committed_values(self, values: tuple[Any, ...]) -> None:
-        self._legacy_committed_values = values
 
     def stage_override(self, keys: tuple[Any, ...], values: tuple[Any, ...]) -> None:
         completion = self._override_completion()
-        if completion is not None:
-            owner = completion.active
-            try:
-                completion.require_resource_owner()
-                self._validate_override(keys, values)
-                selection = self._override
-                if selection.keys and selection.keys != keys:
-                    completion.reject(
-                        "app_context_override fixed keys cannot change at one slot"
-                    )
-                for key in keys:
-                    if key not in self._committed_key_states:
-                        self._committed_key_states[key] = (
-                            _CommittedAppContextOverrideKeyState(
-                                key, _OverrideDrip(self, key)
-                            )
+        if completion is None:
+            raise RuntimeError("render completion is not configured")
+        owner = completion.active
+        try:
+            completion.require_resource_owner()
+            self._validate_override(keys, values)
+            selection = self._override
+            if selection.keys and selection.keys != keys:
+                completion.reject(
+                    "app_context_override fixed keys cannot change at one slot"
+                )
+            for key in keys:
+                if key not in self._committed_key_states:
+                    self._committed_key_states[key] = (
+                        _CommittedAppContextOverrideKeyState(
+                            key, _OverrideDrip(self, key)
                         )
-                completion.require_resource_owner()
-                assert owner is not None
-                self._override = _OverrideSelection(keys, values, owner.read_token)
-            except BaseException as error:
-                if owner is not None:
-                    owner.fail(error)
-                raise
-            return
-        self._validate_override(keys, values)
-        if self._declared_keys and self._declared_keys != keys:
-            raise self._structure_error_cls(
-                "app_context_override fixed keys cannot change at one slot"
-            )
-        if not self._declared_keys:
-            self._declared_keys = keys
-        self._apply_pending_values(values)
-        self._pending_values = values
-        self._pending_lookup = OverlayAppContextLookup(
-            parent=self._parent_state_mgr.effective_authored_app_context_lookup(),
-            drips={key: self._committed_key_states[key].drip for key in keys},
-        )
-        self._pending_initialized = True
+                    )
+            completion.require_resource_owner()
+            assert owner is not None
+            self._override = _OverrideSelection(keys, values, owner.read_token)
+        except BaseException as error:
+            if owner is not None:
+                owner.fail(error)
+            raise
 
     def effective_authored_app_context_lookup(self) -> AppContextLookup:
-        if self._override_completion() is not None:
-            return self._managed_lookup
-        if self.is_scope_active() and self._pending_initialized:
-            return self._pending_lookup
-        if self._declared_keys:
-            return self._committed_lookup
-        return self._parent_state_mgr.effective_authored_app_context_lookup()
+        return self._managed_lookup
 
     def begin_scope_pass(self) -> None:
-        if self._override_completion() is not None:
-            super().begin_pass()
-            return
-        self._pass_committed_values = self._committed_values
-        self._pass_committed_lookup = self._committed_lookup
         super().begin_pass()
 
     def commit_scope_pass(self) -> None:
-        if self._override_completion() is not None:
-            super().end_pass()
-            return
-        if not self._pending_initialized:
-            raise RuntimeError("app_context_override slot was not staged")
-        self._committed_values = self._pending_values
-        self._committed_lookup = OverlayAppContextLookup(
-            parent=self._parent_state_mgr.effective_authored_app_context_lookup(),
-            drips={
-                key: self._committed_key_states[key].drip for key in self._declared_keys
-            },
-        )
         super().end_pass()
-        self._pending_values = ()
-        self._pending_lookup = EMPTY_APP_CONTEXT_LOOKUP
-        self._pending_initialized = False
-        self._pass_committed_values = ()
-        self._pass_committed_lookup = EMPTY_APP_CONTEXT_LOOKUP
 
     def rollback_scope_pass(self) -> None:
-        if self._override_completion() is not None:
-            super().rollback_pass()
-            return
         super().rollback_pass()
-        self._committed_values = self._pass_committed_values
-        self._committed_lookup = self._pass_committed_lookup
-        if self._declared_keys and len(self._pass_committed_values) == len(
-            self._declared_keys
-        ):
-            self._apply_values(self._pass_committed_values)
-        elif not self._pass_committed_values:
-            for state in self._committed_key_states.values():
-                state.deactivate()
-        self._pending_values = ()
-        self._pending_lookup = EMPTY_APP_CONTEXT_LOOKUP
-        self._pending_initialized = False
-        self._pass_committed_values = ()
-        self._pass_committed_lookup = EMPTY_APP_CONTEXT_LOOKUP
 
     def deactivate(self) -> None:
         completion = self._override_completion()
-        if completion is not None:
-            completion.require_resource_owner()
-            self._override = _OverrideSelection()
-            self.children_state = {}
-            children = dict(self._parent_state_mgr.children_state)
-            if children.get(self._slot_id) is self:
-                children.pop(self._slot_id)
-                self._parent_state_mgr.children_state = children
-            return
-        for state in self._committed_key_states.values():
-            state.deactivate()
-        self._committed_key_states = {}
-        self._pending_values = ()
-        self._pending_lookup = EMPTY_APP_CONTEXT_LOOKUP
-        self._pending_initialized = False
-        super().deactivate()
+        if completion is None:
+            raise RuntimeError("render completion is not configured")
+        completion.require_resource_owner()
+        self._override = _OverrideSelection()
+        self.children_state = {}
+        children = dict(self._parent_state_mgr.children_state)
+        if children.get(self._slot_id) is self:
+            children.pop(self._slot_id)
+            self._parent_state_mgr.children_state = children
 
-    def _apply_pending_values(self, values: tuple[Any, ...]) -> None:
-        self._apply_values(values)
 
-    def _apply_values(self, values: tuple[Any, ...]) -> None:
-        parent_lookup = self._parent_state_mgr.effective_authored_app_context_lookup()
-        for key, value in zip(self._declared_keys, values, strict=True):
-            state = self._committed_key_states.get(key)
-            if state is None:
-                state = _CommittedAppContextOverrideKeyState(key=key)
-                self._committed_key_states[key] = state
-            if value is None:
-                state.sync_parent(parent_lookup.resolve_drip(key))
-            else:
-                state.sync_value(value)
 
     def _validate_override(
         self,

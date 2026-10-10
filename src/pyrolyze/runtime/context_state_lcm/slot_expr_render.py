@@ -27,9 +27,8 @@ from pyrolyze.runtime.slot_expr import _SlotExprCallSiteBinding
 from .callback_render import _graph_states
 from .context_base import PASS_TX_KEY
 from .lifecycle_adapter import managed_context, owned, transient
-from .mount_render import _MountRenderCompletion, _enable_mount_render
+from .mount_render import _MountRenderCompletion
 from .render_attempt import _RenderAttempt, _raise_with_cleanup
-from .render_context import RenderContextStateMgr
 from .slot_expr_slot_context import SlotExprSlotContextStateMgr
 
 
@@ -43,9 +42,6 @@ class RenderCallSitePassContext(CallSitePassContext):
     visited: frozenset[Any] = transient(default_factory=frozenset, tx_key=PASS_TX_KEY)
 
 
-def _enable_slot_expr_render(root: RenderContextStateMgr) -> None:
-    _enable_mount_render(root)
-    root._field_only_completion = _SlotExprRenderCompletion(root)
 
 
 @dataclass(eq=False, slots=True)
@@ -117,7 +113,7 @@ class _SlotExprRenderCompletion(_MountRenderCompletion):
     _evaluating_states: set[int] = field(default_factory=set, init=False)
 
     def require_slot_type(self, slot_type: type[Any]) -> None:
-        from pyrolyze.runtime.context_bare_refactor_lcm import SlotExprSlotContext
+        from pyrolyze.runtime.context_lifecycle import SlotExprSlotContext
 
         if slot_type is not SlotExprSlotContext:
             super(_SlotExprRenderCompletion, self).require_slot_type(slot_type)

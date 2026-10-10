@@ -7,15 +7,13 @@ from types import SimpleNamespace
 from typing import Any
 
 from callback_selection import observe as reference_observe
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
-from pyrolyze.runtime.context_state_lcm.callback_render import _enable_callback_render
+from pyrolyze.runtime import context_lifecycle as runtime
 from pyrolyze.runtime.context_state_lcm.context_base import PASS_TX_KEY
 from pyrolyze.runtime.context_state_lcm.render_attempt import RenderAttemptAborted
 
 
 def _root() -> Any:
     root = runtime.RenderContext()
-    _enable_callback_render(root._state_mgr)
     return root
 
 
@@ -24,7 +22,7 @@ def _slot(index: int = 1) -> Any:
 
 
 def _generation(root: Any) -> int:
-    state = root._state_mgr
+    state = root
     return state.get_app_context(state._generation_tracker_key).committed_generation_id
 
 
@@ -44,7 +42,7 @@ def _membership() -> dict[str, Any]:
     with root.pass_scope():
         dispatch = root.event_handler(_slot(), callback=callback, dirty=False)
         assert _call(dispatch) == "event handler is inactive"
-    state = root._slots_by_id[_slot()]._state_mgr
+    state = root._slots_by_id[_slot()]
     facts = {
         fact["field_name"]: fact
         for fact in state.__yidl_lifecycle_definition__["fields"]
@@ -53,7 +51,7 @@ def _membership() -> dict[str, Any]:
     assert facts["_callback"]["tx_key_key"] == PASS_TX_KEY
     assert facts["_callback"]["compare"] == "identity"
     assert facts["_dispatch"]["field_kind"] == "local_store"
-    assert state._transaction_manager is root._state_mgr._transaction_manager
+    assert state._transaction_manager is root._transaction_manager
     assert not hasattr(state, "_committed_callback")
     assert not hasattr(state, "commit_handler")
     assert root.debug_ui() == ()
@@ -185,8 +183,8 @@ def _nested() -> dict[str, Any]:
     dispatch()
     assert calls == ["A", "A", "A", "A", "A", "D"]
     assert (
-        component.child_context._state_mgr._transaction_manager
-        is root._state_mgr._transaction_manager
+        component.child_context._transaction_manager
+        is root._transaction_manager
     )
     return {"calls": calls, "generation": _generation(root), "shared_manager": True}
 
@@ -230,7 +228,9 @@ def _owned() -> dict[str, Any]:
     component = root._slots_by_id[_slot(10)]
     component.child_context._run_boundary()
     dispatch()
-    root._slots_by_id[_slot(2)].deactivate()
+    with root.pass_scope():
+        root._ensure_slot(_slot(10), runtime.ComponentCallSlotContext)
+        root._slots_by_id[_slot(2)].deactivate()
     dispatch()
     assert root.debug_is_active(_slot())
     with root.pass_scope():
@@ -238,9 +238,9 @@ def _owned() -> dict[str, Any]:
             root._ensure_slot(_slot(10), runtime.ComponentCallSlotContext) is component
         )
     dispatch()
-    state = component._state_mgr
-    assert state._pass_owned_event_handler_order == ()
-    assert root._slots_by_id[_slot()]._state_mgr._seen_in_pass
+    state = component
+    assert not hasattr(state, "_pass_owned_event_handler_order")
+    assert root._slots_by_id[_slot()]._seen_in_pass
     with root.pass_scope():
         invoke(False)
         dispatch()
@@ -325,7 +325,7 @@ def _preparation_failure() -> list[dict[str, Any]]:
             "_call_pending_dirty_state", "_call_uses_dirty_state_api",
             "_call_packed_kwargs", "_call_packed_kwarg_param_names", "_call_param_names",
         )
-        accepted = root._slots_by_id[_slot(10)]._state_mgr.current
+        accepted = root._slots_by_id[_slot(10)].current
         before = tuple(getattr(accepted, name) for name in invocation_fields)
         dispatch = held[-1] if initial else None
         if dispatch is not None:
@@ -352,7 +352,7 @@ def _preparation_failure() -> list[dict[str, Any]]:
         assert not root.debug_is_active(_slot(2))
         assert root.debug_is_active(_slot()) is initial
         assert all(getattr(accepted, name) is value for name, value in zip(invocation_fields, before))
-        completion = root._state_mgr._field_only_completion
+        completion = root._field_only_completion
         assert completion.last.first_failure is error
         assert completion.last.published is False
         assert completion.last.reuse_ready

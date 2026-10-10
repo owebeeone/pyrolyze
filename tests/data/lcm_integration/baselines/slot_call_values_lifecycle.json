@@ -22,7 +22,6 @@
     "calls": [["source", 2, 1], ["source", 4, 1], ["source", 5, 1], ["source", 4, 1], ["source", 6, 1], ["source", 6, 1], ["fail", 8], ["alternate", 6, 1], ["alternate", 6, 1], ["alternate", 6, 1]],
     "runtime_injected": true,
     "ready": true,
-    "legacy_unused": true
-  },
-  "legacy": {"reused_binding": true, "last_arguments": [2], "immediate_value": 2, "managed_unused": true}
+    "legacy_removed": true
+  }
 }

@@ -1,4 +1,4 @@
-"""Classify scope containers before construction on the private lifecycle route."""
+"""Classify scope containers before lifecycle-backed construction."""
 
 from __future__ import annotations
 
@@ -22,9 +22,8 @@ from ._support import (
     _resolve_runtime_site_call,
 )
 from .context_base import ContextBaseStateMgr
-from .keyed_loop_render import _KeyedLoopRenderCompletion, _enable_keyed_loop_render
+from .keyed_loop_render import _KeyedLoopRenderCompletion
 from .render_attempt import _RenderAttempt
-from .render_context import RenderContextStateMgr
 
 
 @dataclass(eq=False, slots=True)
@@ -71,7 +70,7 @@ class _ContainerRenderCompletion(_KeyedLoopRenderCompletion):
         args_dirty: tuple[Any, ...] | None,
         kwargs_dirty: dict[str, Any] | None,
     ) -> AbstractContextManager[Any] | None:
-        from pyrolyze.runtime.context_bare_refactor_lcm import (
+        from pyrolyze.runtime.context_lifecycle import (
             ContainerSlotContext,
             DirectiveSlotContext,
         )
@@ -155,11 +154,6 @@ class _ContainerRenderCompletion(_KeyedLoopRenderCompletion):
                 site.slot_id, slot_type, parent_facade=parent
             )
             self._require_original(owner)
-            slot._state_mgr._site_metadata = metadata
+            slot._site_metadata = metadata
             handle.slot = slot
             return self._scope_handle(owner, handle)
-
-
-def _enable_container_render(root: RenderContextStateMgr) -> None:
-    _enable_keyed_loop_render(root)
-    root._field_only_completion = _ContainerRenderCompletion(root)

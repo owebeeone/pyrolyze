@@ -410,7 +410,7 @@ def _finish_context_pass(
         if cause is not None:
             from .field_only_render import _field_only_completion
 
-            completion = _field_only_completion(context._state_mgr)
+            completion = _field_only_completion(context)
             if completion is not None and completion.active is not None:
                 completion.active.fail(cause)
         context.rollback_pass()
@@ -418,7 +418,7 @@ def _finish_context_pass(
     try:
         context.end_pass()
     except BaseException:
-        if context._state_mgr.is_scope_active():
+        if context.is_scope_active():
             context.rollback_pass()
         raise
 
@@ -536,7 +536,7 @@ class _DirectiveCallHandle(AbstractContextManager[Any]):
                 raise RuntimeError("mount(no_emit) does not allow emitted children")
             _finish_context_pass(self.slot, commit=True)
         except BaseException:
-            if self.slot._state_mgr.is_scope_active():
+            if self.slot.is_scope_active():
                 _finish_context_pass(self.slot, commit=False)
             raise
         return False
@@ -562,7 +562,7 @@ class _MountContainerCallHandle(AbstractContextManager[Any]):
         self._host_context = self.container_fn(*bound_args, **bound_kwargs)
         from .field_only_render import _field_only_completion
 
-        completion = _field_only_completion(self.slot._state_mgr)
+        completion = _field_only_completion(self.slot)
         if getattr(completion, "container_routing_enabled", False):
             completion.require_container_host(self._host_context)
         host_enter = getattr(self._host_context, "__enter__", None)
@@ -618,7 +618,7 @@ class _NativeContainerCallHandle(AbstractContextManager[Any]):
             result = self.container_fn(self.slot, *bound_args, **bound_kwargs)
             if result is not None:
                 raise TypeError("@pyrolyze functions must return None")
-            if self.slot._state_mgr.staged_ui_len() != 1:
+            if self.slot.staged_ui_len() != 1:
                 raise RuntimeError("native container helpers must emit exactly one root UIElement")
         except BaseException as error:
             _finish_context_pass(self.slot, commit=False, cause=error)
@@ -691,7 +691,7 @@ class _PyrolyzeContainerCallHandle(AbstractContextManager[Any]):
                     )
             if result is not None:
                 raise TypeError("@pyrolyze functions must return None")
-            if self.slot._state_mgr.staged_ui_len() != 1:
+            if self.slot.staged_ui_len() != 1:
                 raise RuntimeError("native container helpers must emit exactly one root UIElement")
         except BaseException:
             self.slot._rollback_scope_pass()

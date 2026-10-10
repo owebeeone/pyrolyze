@@ -5,9 +5,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
+from pyrolyze.runtime import context_lifecycle as runtime
 from pyrolyze.runtime.context_state_lcm.render_attempt import RenderAttemptAborted
-from pyrolyze.runtime.context_state_lcm.slot_expr_render import _enable_slot_expr_render
 from pyrolyze.runtime.dirt import DM
 from pyrolyze.runtime.slot_expr import (
     LiteralFunctionProvider,
@@ -18,7 +17,6 @@ from pyrolyze.runtime.slot_expr import (
 
 def characterize() -> dict[str, Any]:
     root = runtime.RenderContext()
-    _enable_slot_expr_render(root._state_mgr)
     module = runtime.ModuleId("tests.expression_selection")
     expr_id = runtime.SlotId(module, 1)
     call_id = runtime.SlotId(module, 2)
@@ -51,7 +49,7 @@ def characterize() -> dict[str, Any]:
         result["first"] = evaluate(1)
         result["initial_provisional"] = current()
         result["same_manager"] = (
-            manager._transaction_manager is root._state_mgr._transaction_manager
+            manager._transaction_manager is root._transaction_manager
         )
     result["initial"] = current()
     with root.pass_scope():
@@ -89,9 +87,8 @@ def characterize() -> dict[str, Any]:
         pass
     result["removed"] = current()
     result["calls"] = calls
-    result["ready"] = root._state_mgr._field_only_completion.last.reuse_ready
+    result["ready"] = root._field_only_completion.last.reuse_ready
     branch_root = runtime.RenderContext()
-    _enable_slot_expr_render(branch_root._state_mgr)
     branch_manager: Any = None
 
     def branch_source(value: int) -> int:

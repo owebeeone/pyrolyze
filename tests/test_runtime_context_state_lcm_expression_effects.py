@@ -4,14 +4,11 @@ from typing import Any, Callable
 
 import pytest
 
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
+from pyrolyze.runtime import context_lifecycle as runtime
 from pyrolyze.runtime.context_state_lcm.context_base import PASS_TX_KEY
-from pyrolyze.runtime.context_state_lcm.effect_expr_render import (
-    _enable_effect_expr_render,
-)
 from pyrolyze.runtime.context_state_lcm.render_attempt import RenderAttemptAborted
 from pyrolyze.runtime.dirt import DM
-from pyrolyze.runtime.slot_call_semantics import UseEffectAsyncRequest, UseEffectRequest
+from pyrolyze.runtime.slot_call_semantics import PyrolyzeMountAdvertisementRequest, UseEffectRequest
 from pyrolyze.runtime.slot_expr import (
     LiteralFunctionProvider,
     slot_params,
@@ -21,7 +18,6 @@ from pyrolyze.runtime.slot_expr import (
 
 def _root() -> Any:
     root = runtime.RenderContext()
-    _enable_effect_expr_render(root._state_mgr)
     return root
 
 
@@ -66,7 +62,7 @@ def test_setup_failures_drain_and_preserve_published_values() -> None:
         manager.iter_current()[0].binding.binding.resource.started
         for manager in managers
     )
-    assert root._state_mgr._field_only_completion.last.published is True
+    assert root._field_only_completion.last.published is True
     with pytest.raises(RuntimeError, match="not ready"):
         with root.pass_scope():
             pass
@@ -95,7 +91,7 @@ def test_failed_cleanup_blocks_only_its_replacement() -> None:
     assert caught.value is error
     assert events == ["cleanup", "independent"]
     assert manager.iter_current()[0].binding.binding.resource.started is False
-    assert root._state_mgr._field_only_completion.last.published is True
+    assert root._field_only_completion.last.published is True
 
 
 def test_invalid_cleanup_is_reported_after_publication() -> None:
@@ -104,7 +100,7 @@ def test_invalid_cleanup_is_reported_after_publication() -> None:
         with root.pass_scope():
             manager = _evaluate(root, UseEffectRequest(lambda: 1))
     assert manager.iter_current()[0].binding.binding.resource.started
-    assert root._state_mgr._field_only_completion.last.published is True
+    assert root._field_only_completion.last.published is True
 
 
 def test_setup_reentry_does_not_suppress_later_effects() -> None:
@@ -124,7 +120,7 @@ def test_setup_reentry_does_not_suppress_later_effects() -> None:
 
 def test_dependency_comparison_cannot_stage_into_replacement_transaction() -> None:
     root = _root()
-    manager = root._state_mgr._transaction_manager
+    manager = root._transaction_manager
     events: list[str] = []
     replacement: Any = None
     with root.pass_scope():
@@ -159,7 +155,7 @@ def test_caught_expression_failure_prevents_candidate_setup() -> None:
             _evaluate(root, UseEffectRequest(lambda: events.append("setup")))
             try:
                 _evaluate(
-                    root, UseEffectAsyncRequest(lambda done: events.append("async")), 2
+                    root, PyrolyzeMountAdvertisementRequest(key="missing-owner"), 2
                 )
             except RuntimeError:
                 pass

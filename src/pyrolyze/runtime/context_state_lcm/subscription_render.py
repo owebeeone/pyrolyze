@@ -1,4 +1,4 @@
-"""Private subscription completion; effects and mounts remain on legacy routes."""
+"""Subscription selection and delivery under shared render completion."""
 
 from __future__ import annotations
 
@@ -18,15 +18,11 @@ from pyrolyze.runtime.slot_call_semantics import (
 )
 from .callback_render import _graph_states
 from .render_attempt import _raise_with_cleanup
-from .render_context import RenderContextStateMgr
-from .slot_call_render import _SlotCallRenderCompletion, _enable_slot_call_render
+from .slot_call_render import _SlotCallRenderCompletion
 from .resource_ownership import _ResourceOwner
 from .subscription_binding import _SubscriptionBinding
 
 
-def _enable_subscription_render(root: RenderContextStateMgr) -> None:
-    _enable_slot_call_render(root)
-    root._field_only_completion = _SubscriptionRenderCompletion(root)
 
 
 @dataclass(eq=False, slots=True, weakref_slot=True)

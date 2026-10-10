@@ -5,10 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any, Callable
 
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
-from pyrolyze.runtime.context_state_lcm.effect_expr_render import (
-    _enable_effect_expr_render,
-)
+from pyrolyze.runtime import context_lifecycle as runtime
 from pyrolyze.runtime.dirt import DM
 from pyrolyze.runtime.slot_call_semantics import UseEffectRequest
 from pyrolyze.runtime.slot_expr import (
@@ -20,7 +17,6 @@ from pyrolyze.runtime.slot_expr import (
 
 def characterize() -> dict[str, Any]:
     root = runtime.RenderContext()
-    _enable_effect_expr_render(root._state_mgr)
     module = runtime.ModuleId("tests.expression_effect")
     events: list[list[Any]] = []
     manager: Any = None
@@ -33,7 +29,7 @@ def characterize() -> dict[str, Any]:
 
         def effect() -> Callable[[], None]:
             events.append(
-                ["setup", label, root._state_mgr._field_only_completion.last.published]
+                ["setup", label, root._field_only_completion.last.published]
             )
             return lambda: events.append(["cleanup", label])
 

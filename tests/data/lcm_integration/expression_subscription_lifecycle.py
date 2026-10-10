@@ -6,10 +6,7 @@ import json
 from typing import Any
 
 from subscription_selection_lifecycle import Store
-from pyrolyze.runtime import context_bare_refactor_lcm as runtime
-from pyrolyze.runtime.context_state_lcm.subscription_expr_render import (
-    _enable_subscription_expr_render,
-)
+from pyrolyze.runtime import context_lifecycle as runtime
 from pyrolyze.runtime.dirt import DM
 from pyrolyze.runtime.slot_expr import (
     LiteralFunctionProvider,
@@ -22,7 +19,6 @@ def characterize() -> dict[str, Any]:
     events: list[list[Any]] = []
     a, b = Store("a", 1, events), Store("b", 2, events)
     root = runtime.RenderContext()
-    _enable_subscription_expr_render(root._state_mgr)
     module = runtime.ModuleId("tests.expression_subscription")
     manager: Any = None
 
