@@ -2,7 +2,7 @@
 
 ## Status and scope
 
-Qt migration implemented. Implements the proposed boundaries in
+Qt and Tk migrations implemented. Implements the proposed boundaries in
 [the design](LazyNativeBackendLoadingPlan.md), including its grouped-module
 amendment. A direct focused review identified the grouped failure-publication
 gap; the owner adopted whole-group validation and failure isolation. This does
@@ -12,7 +12,7 @@ contract changes.
 Start with the supported Qt catalog, not new Qt type coverage. Preserve authored
 names, explicit signatures, handler annotations, mount routing, callable identity,
 and ordinary spec objects. Keep lifecycle completion and scheduling unchanged.
-Tk and DearPyGui migration are separate follow-ups. The bytecode reuse fix remains
+Tk now reuses those boundaries; DearPyGui remains a separate follow-up. The bytecode reuse fix remains
 in place; this work targets eager definition construction and retained memory too.
 
 ## Checkpoints
@@ -26,7 +26,8 @@ expressions, signatures, and the mount namespace match the accepted eager source
 The registry is a read-only Mapping rather than a concrete frozendict.
 Package learnings and unified structural helpers are also demand-loaded.
 Import constructs zero kinds; requesting a label constructs four; the six-kind
-demo workload constructs 19 across five groups. Tk and DearPyGui remain eager.
+demo workload constructs 19 across five groups. DearPyGui remains eager; Tk's
+subsequent checkpoint is recorded below.
 
 Offline regeneration reconstructs accepted definitions from the active groups.
 Promotion waits for the generator subprocess to exit successfully. Import
@@ -67,6 +68,74 @@ deprecation warning. The focused Python-assembly run passed 97 checks with four
 existing skips. Actual project wheel and source-distribution builds passed both
 source and finished-archive admission. Existing native Qt and grid integration
 tests are included; no new manual GUI interaction claim is made.
+
+### Tk acceptance
+
+Tk uses the same loader and offline publication machinery. Its accepted 105
+kinds are divided by their defining module into 29 shards, capped at four kinds,
+with 32 Python files and 34 inventoried artifacts. All spec expressions, wrapper
+bodies, and mount namespaces match the accepted eager source by AST comparison.
+The stable import preserves the author surface, while the immutable registry
+uses Mapping rather than concrete frozendict, as for Qt. Learnings load only on
+request. The existing unified Tk adapter does not enumerate native definitions,
+so no adapter or compiler changes were required for this checkpoint.
+
+Fresh-process compiler coverage proves importing the facade constructs zero
+kinds and compiling a label loads one four-kind group. The six-control benchmark
+loads four groups and constructs 16 kinds rather than 105. With compiler startup
+excluded, retained definition allocations fell from 1.18 MB to 0.51 MB. Three-run
+warm medians were 8.36 ms eager versus 9.15 ms grouped for that workload: no
+meaningful warm-start improvement is claimed. Import-only retained allocations
+fell from 1.18 MB to 0.12 MB. The cap remains four for consistency with the bounded
+Qt policy, not a claim of an independently optimal Tk group size.
+
+Including compiler initialization, the same workload's three-run warm median
+was 1.07 seconds eager and 1.03 seconds grouped; this small difference is not
+treated as a significant startup win. Retained Python allocations were 25.45 MB
+versus 24.78 MB. The definition-only saving is a small share of the complete
+first-use footprint. First-run probes share caches from preceding workloads,
+so they do not establish a uniform cold-start comparison.
+
+The shared generator command has thin Qt and Tk entry points. Replacement still
+waits for a successful generator subprocess, reconstructs accepted source from
+current groups, and uses the existing identity-checked promotion/recovery path.
+Reconstruction retains the accepted private helper's decorator and explanatory
+comment from the shards, rather than substituting the simplified facade helper.
+The existing round-trip regression now requires byte-identical regeneration;
+both real Qt and Tk catalogs reproduce their admitted identities.
+Build admission now explicitly requires both catalog directories. Actual wheel
+and source archives passed source and archive validation; the extracted wheel
+kept unrelated Tk groups cold, and the extracted real source archive rebuilt.
+
+Verification: the final full default suite passed 1,264 checks with 20 existing
+skips in 75.98 seconds, with
+the existing Tix deprecation warning. The affected Python-assembly run passed
+75 checks with four existing skips, including native-host, grid, unified, and
+history/rollback fuzz coverage. After the reconstruction correction, the focused
+Python-assembly generator/sparse-loading checks also passed all 43 checks.
+No new manual GUI interaction claim is made.
+
+Reproduce Tk's definition-cost comparison:
+
+```sh
+PYTHONPATH=.:src python scripts/benchmark_grouped_qt.py \
+  --root-module tkinter \
+  --accepted-catalog src/pyrolyze/backends/tkinter/_generated \
+  --maximum-kinds 4 --preload-compiler
+```
+
+Under exclusive offline maintenance, regenerate into a new staging directory
+and promote only after generation succeeds:
+
+```sh
+PYTHONPATH=.:src python -m pyrolyze_tools.generate_grouped_tk_library \
+  --maximum-kinds 4 \
+  --staging-dir src/pyrolyze/backends/tkinter/_generated_staging \
+  --promote-to src/pyrolyze/backends/tkinter/_generated
+```
+
+Backup cleanup remains an explicit identity-checked maintenance operation.
+DearPyGui's generated item classes and curated author surface have not changed.
 
 ### Implementation evidence
 

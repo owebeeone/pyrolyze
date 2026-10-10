@@ -36,9 +36,14 @@ def test_checked_in_groups_can_supply_the_next_partition(tmp_path: Path) -> None
     widgets = tuple(DiscoveredWidgetClass("builtins", name, f"C{name}", ()) for name in ("Button", "Row"))
     root = tmp_path / "generated"
     write_grouped_library("builtins", widgets, families={"CButton": "controls", "CRow": "controls"},
-                          maximum_kinds=1, output_dir=root)
+                          maximum_kinds=1, output_dir=root,
+                          accepted_source=generate_library_source("builtins", widgets))
     source = catalog_source_from_groups(root)
     assert catalog_public_names(source) == {"CButton", "CRow"}
+    replay = generate_grouped_library_sources("builtins", widgets,
+                                              families={"CButton": "controls", "CRow": "controls"},
+                                              maximum_kinds=1, accepted_source=source)
+    assert replay == {path.name: path.read_text() for path in root.iterdir() if path.is_file()}
     regrouped = generate_grouped_library_sources("builtins", widgets,
                                                  families={"CButton": "controls", "CRow": "controls"},
                                                  maximum_kinds=2, accepted_source=source)

@@ -1,4 +1,4 @@
-"""Offline grouped Qt generation; promotion requires exclusive maintenance."""
+"""Offline grouped Tk generation; promotion requires exclusive maintenance."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from pyrolyze_tools.generate_grouped_native_command import main as generate_grou
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    return generate_grouped(argv, root_module="PySide6",
-                            command_module="pyrolyze_tools.generate_grouped_qt_library")
+    return generate_grouped(argv, root_module="tkinter",
+                            command_module="pyrolyze_tools.generate_grouped_tk_library")
 
 
 if __name__ == "__main__":

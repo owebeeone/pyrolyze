@@ -1,8 +1,8 @@
 # Lazy Native Backend Loading Plan
 
-Status: Qt grouped loading implemented; current acceptance and measurements are
+Status: Qt and Tk grouped loading implemented; current acceptance and measurements are
 recorded in [the implementation plan](LazyNativeBackendLoadingImplementationPlan.md).
-Historical review scope below is unchanged. Tk and DearPyGui remain separate.
+Historical review scope below is unchanged. DearPyGui remains a separate follow-up.
 Recorded: 2026-10-10. Source inspection began at Pyrolyze
 `87db47160f845e9b3633163c214f0b0fad76a2ec`, with existing local work present.
 All source paths below are relative to the Pyrolyze repository root.

@@ -13,10 +13,10 @@ This is design acceptance only: no lazy loader, compiler change or performance
 improvement has been implemented by this checkpoint.
 
 The [grouped implementation plan](LazyNativeBackendLoadingImplementationPlan.md)
-tracks the subsequent grouping amendment and completed Qt catalog migration.
-Qt now loads bounded groups on demand; timing and memory evidence are recorded
-there. The amendment remains outside the historical verdicts. Tk and DearPyGui
-have not been migrated.
+tracks the subsequent grouping amendment and completed Qt and Tk catalog migrations.
+Both now load bounded groups on demand; timing and memory evidence are recorded
+there. The amendment remains outside the historical verdicts. DearPyGui has not
+been migrated.
 
 A separate [import-hook bytecode reuse correction](ImportHookBytecodeReuse.md)
 removes eager transformation before Python's warm bytecode lookup. Diagnostic

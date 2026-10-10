@@ -1,4 +1,4 @@
-"""Compare accepted eager source with grouped Qt in fresh processes."""
+"""Compare accepted eager source with grouped Qt or Tk in fresh processes."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from pyrolyze_tools.preserve_native_catalog import catalog_source_from_groups
 PROBE = '''
 import importlib,json,resource,sys,time,tracemalloc
 import pyrolyze
-import PySide6.QtWidgets
+importlib.import_module(sys.argv[6])
 if sys.argv[5] == 'preloaded':
     from pyrolyze.compiler import load_transformed_namespace
     load_transformed_namespace('from pyrolyze.api import pyrolyze\\n@pyrolyze\\ndef empty() -> None:\\n    pass\\n',
@@ -29,7 +29,7 @@ sys.path.insert(0, sys.argv[1])
 instrument = sys.argv[4] == 'memory'
 if instrument: tracemalloc.start()
 started = time.perf_counter()
-library = importlib.import_module(sys.argv[2]).PySide6UiLibrary
+library = getattr(importlib.import_module(sys.argv[2]), sys.argv[7])
 for name in json.loads(sys.argv[3]): getattr(library, name)
 elapsed = time.perf_counter() - started
 specs = library.WIDGET_SPECS
@@ -48,33 +48,40 @@ def main() -> None:
     accepted_input.add_argument("--accepted-catalog", type=Path)
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--preload-compiler", action="store_true")
+    parser.add_argument("--root-module", choices=("PySide6", "tkinter"), default="PySide6")
+    parser.add_argument("--maximum-kinds", type=int, nargs="+", default=[1, 4, 8, 16])
     args = parser.parse_args()
     accepted = (args.accepted_source.read_text() if args.accepted_source
                 else catalog_source_from_groups(args.accepted_catalog))
     names = catalog_public_names(accepted)
-    widgets = [widget for widget in apply_learnings(discover_widget_classes("PySide6"), load_learnings("PySide6"))
+    widgets = [widget for widget in apply_learnings(discover_widget_classes(args.root_module), load_learnings(args.root_module))
                if widget.public_name in names]
     families = {widget.public_name: "layouts" if widget.class_name.endswith("Layout") else widget.module_name
                 for widget in widgets}
     workloads = {"import": (), "label": ("CQLabel",),
                  "demo": ("CQMainWindow", "CQVBoxLayout", "CQLabel", "CQPushButton", "CQLineEdit", "CQComboBox")}
-    with tempfile.TemporaryDirectory(prefix="qt-group-bench-") as temporary:
+    toolkit, library_name = "PySide6.QtWidgets", "PySide6UiLibrary"
+    if args.root_module == "tkinter":
+        toolkit, library_name = "tkinter", "TkinterUiLibrary"
+        workloads = {"import": (), "label": ("CLabel",),
+                     "demo": ("CFrame", "CLabel", "CButton", "CEntry", "CCombobox", "CTtkButton")}
+    with tempfile.TemporaryDirectory(prefix="native-group-bench-") as temporary:
         root = Path(temporary)
         eager = root / "eager"
         eager.mkdir()
         (eager / "__init__.py").write_text("")
         (eager / "facade.py").write_text(accepted)
         packages = {"eager": eager}
-        for cap in (1, 4, 8, 16):
+        for cap in args.maximum_kinds:
             package = root / f"grouped_{cap}"
-            write_grouped_library("PySide6", widgets, families=families, maximum_kinds=cap,
+            write_grouped_library(args.root_module, widgets, families=families, maximum_kinds=cap,
                                   output_dir=package, accepted_source=accepted)
             packages[package.name] = package
         for name, package in packages.items():
             for workload, members in workloads.items():
                 command = [sys.executable, "-c", PROBE, str(root), f"{name}.facade", json.dumps(members)]
                 def run(mode: str) -> dict[str, object]:
-                    result = subprocess.run([*command, mode, "preloaded" if args.preload_compiler else "normal"], env=os.environ.copy(),
+                    result = subprocess.run([*command, mode, "preloaded" if args.preload_compiler else "normal", toolkit, library_name], env=os.environ.copy(),
                                             text=True, capture_output=True)
                     if result.returncode:
                         raise RuntimeError(result.stderr)

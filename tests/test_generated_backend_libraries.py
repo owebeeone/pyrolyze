@@ -6,8 +6,6 @@ from pathlib import Path
 from collections.abc import Mapping
 import pytest
 
-from frozendict import frozendict
-
 from pyrolyze.api import MISSING
 from pyrolyze.backends.model import MountReplayKind, UiEventSpec, UiInterface, UiMethodSpec, UiWidgetSpec
 
@@ -16,7 +14,7 @@ def test_checked_in_ui_libraries_are_plain_pyrolyze_source_not_compiled_output()
     repo_root = Path(__file__).resolve().parents[1]
     targets = (
         *(repo_root / "src" / "pyrolyze" / "backends" / "pyside6" / "_generated").glob("family_*.py"),
-        repo_root / "src" / "pyrolyze" / "backends" / "tkinter" / "generated_library.py",
+        *(repo_root / "src" / "pyrolyze" / "backends" / "tkinter" / "_generated").glob("family_*.py"),
     )
 
     compiled_markers = (
@@ -59,7 +57,9 @@ def test_generated_backend_libraries_import() -> None:
     assert isinstance(pyside6_module.PySide6UiLibrary.WIDGET_SPECS, Mapping)
     with pytest.raises(TypeError):
         pyside6_module.PySide6UiLibrary.WIDGET_SPECS["invalid"] = None
-    assert isinstance(tkinter_module.TkinterUiLibrary.WIDGET_SPECS, frozendict)
+    assert isinstance(tkinter_module.TkinterUiLibrary.WIDGET_SPECS, Mapping)
+    with pytest.raises(TypeError):
+        tkinter_module.TkinterUiLibrary.WIDGET_SPECS["invalid"] = None
     assert all(isinstance(spec, UiWidgetSpec) for spec in pyside6_module.PySide6UiLibrary.WIDGET_SPECS.values())
     assert all(isinstance(spec, UiWidgetSpec) for spec in tkinter_module.TkinterUiLibrary.WIDGET_SPECS.values())
 

@@ -46,6 +46,7 @@ def catalog_source_from_groups(directory: Path) -> str:
     facade = _library(ast.parse(facade_source))
     values: dict[str, str] = {}
     functions: dict[str, str] = {}
+    element_helper = ""
     header = ""
     for path in sorted(directory.glob("family_*.py")):
         source = path.read_text()
@@ -62,6 +63,9 @@ def catalog_source_from_groups(directory: Path) -> str:
                 raise ValueError("duplicate accepted kind")
             values[kind] = _segment(byte_lines, value)
         for node in library.body:
+            if isinstance(node, ast.FunctionDef) and node.name == "__element" and not element_helper:
+                start = min(item.lineno for item in [node, *node.decorator_list]) - 1
+                element_helper = "".join(lines[start:node.end_lineno])
             if isinstance(node, ast.FunctionDef) and not node.name.startswith("_"):
                 if node.name in functions:
                     raise ValueError("duplicate accepted callable")
@@ -76,10 +80,12 @@ def catalog_source_from_groups(directory: Path) -> str:
                                                     for target in node.targets))
         keep = keep or isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == "ROOT_MODULE"
         keep = keep or isinstance(node, ast.ClassDef) and node.name == "mounts"
-        keep = keep or isinstance(node, ast.FunctionDef) and node.name == "__element"
+        keep = keep or isinstance(node, ast.FunctionDef) and node.name == "__element" and not element_helper
         if keep:
             start = min(item.lineno for item in [node, *getattr(node, "decorator_list", [])]) - 1
             body += "".join(facade_lines[start:node.end_lineno]) + "\n"
+    # The facade's generic helper omits accepted comments between decorator/body.
+    body += element_helper + "\n"
     body += "    WIDGET_SPECS: ClassVar[frozendict[str, UiWidgetSpec]] = frozendict({\n"
     body += "".join(f"        {kind!r}: {value},\n" for kind, value in sorted(values.items())) + "    })\n\n"
     body += "\n\n".join(functions[name] for name in sorted(functions)) + "\n"

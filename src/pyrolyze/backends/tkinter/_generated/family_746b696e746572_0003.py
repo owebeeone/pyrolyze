@@ -1,0 +1,508 @@
+#@pyrolyze
+
+"""Generated UI interface stubs for discovered widgets."""
+
+from __future__ import annotations
+
+import tkinter
+
+from typing import Any, ClassVar
+
+from frozendict import frozendict
+
+from pyrolyze.api import MISSING, MissingType, MountSelector, PyrolyzeHandler, UIElement, call_native, pyrolyze, ui_interface
+from pyrolyze.backends.model import (
+    AccessorKind,
+    ChildPolicy,
+    EventPayloadPolicy,
+    FillPolicy,
+    MethodMode,
+    MountReplayKind,
+    MountParamSpec,
+    MountPointSpec,
+    PropMode,
+    TypeRef,
+    UiEventSpec,
+    UiInterface,
+    UiInterfaceEntry,
+    UiMethodSpec,
+    UiParamSpec,
+    UiPropSpec,
+    UiWidgetSpec,
+)
+
+
+@ui_interface
+class TkinterUiLibrary:
+    ROOT_MODULE: ClassVar[str] = "tkinter"
+
+    UI_INTERFACE: ClassVar[UiInterface] = UiInterface(
+        name="TkinterUiLibrary",
+        owner=None,
+        entries=frozendict({
+            "COptionMenu": UiInterfaceEntry(public_name="COptionMenu", kind="tkinter_OptionMenu"),
+            "CPanedWindow": UiInterfaceEntry(public_name="CPanedWindow", kind="tkinter_PanedWindow"),
+            "CRadiobutton": UiInterfaceEntry(public_name="CRadiobutton", kind="tkinter_Radiobutton"),
+            "CScale": UiInterfaceEntry(public_name="CScale", kind="tkinter_Scale"),
+        }),
+    )
+
+    WIDGET_SPECS: ClassVar[frozendict[str, UiWidgetSpec]] = frozendict({
+        'tkinter_OptionMenu': UiWidgetSpec(
+            kind="tkinter_OptionMenu",
+            mounted_type_name="tkinter.OptionMenu",
+            constructor_params=frozendict({
+                "master": UiParamSpec(name="master", annotation=None, default_repr=None),
+                "variable": UiParamSpec(name="variable", annotation=None, default_repr=None),
+                "value": UiParamSpec(name="value", annotation=None, default_repr=None),
+            }),
+            props=frozendict({
+                "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
+                "variable": UiPropSpec(name="variable", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='variable', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
+                "value": UiPropSpec(name="value", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='value', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
+            }),
+            methods=frozendict({
+            }),
+            events=frozendict({
+            }),
+            mount_points=frozendict({
+            }),
+            default_child_mount_point_name=None,
+            default_attach_mount_point_names=(),
+            child_policy=ChildPolicy.NONE,
+        ),
+        'tkinter_PanedWindow': UiWidgetSpec(
+            kind="tkinter_PanedWindow",
+            mounted_type_name="tkinter.PanedWindow",
+            constructor_params=frozendict({
+                "master": UiParamSpec(name="master", annotation=None, default_repr='None'),
+                "cnf": UiParamSpec(name="cnf", annotation=None, default_repr='{}'),
+            }),
+            props=frozendict({
+                "background": UiPropSpec(name="background", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "bd": UiPropSpec(name="bd", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "bg": UiPropSpec(name="bg", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "borderwidth": UiPropSpec(name="borderwidth", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "cursor": UiPropSpec(name="cursor", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "handlepad": UiPropSpec(name="handlepad", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "handlesize": UiPropSpec(name="handlesize", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "height": UiPropSpec(name="height", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "opaqueresize": UiPropSpec(name="opaqueresize", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "orient": UiPropSpec(name="orient", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "proxybackground": UiPropSpec(name="proxybackground", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "proxyborderwidth": UiPropSpec(name="proxyborderwidth", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "proxyrelief": UiPropSpec(name="proxyrelief", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "relief": UiPropSpec(name="relief", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "sashcursor": UiPropSpec(name="sashcursor", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "sashpad": UiPropSpec(name="sashpad", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "sashrelief": UiPropSpec(name="sashrelief", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "sashwidth": UiPropSpec(name="sashwidth", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "showhandle": UiPropSpec(name="showhandle", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "width": UiPropSpec(name="width", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+            }),
+            methods=frozendict({
+            }),
+            events=frozendict({
+            }),
+            mount_points=frozendict({
+                "pane": MountPointSpec(
+                    name="pane",
+                    accepted_produced_type=TypeRef(expr='tkinter.Widget'),
+                    params=(
+                    ),
+                    min_children=0,
+                    max_children=None,
+                    apply_method_name=None,
+                    sync_method_name=None,
+                    place_method_name=None,
+                    append_method_name='add',
+                    detach_method_name='remove',
+                    replay_kind=MountReplayKind.INDEX,
+                    prefer_sync=False,
+                ),
+            }),
+            default_child_mount_point_name='pane',
+            default_attach_mount_point_names=('pane',),
+            child_policy=ChildPolicy.NONE,
+        ),
+        'tkinter_Radiobutton': UiWidgetSpec(
+            kind="tkinter_Radiobutton",
+            mounted_type_name="tkinter.Radiobutton",
+            constructor_params=frozendict({
+                "master": UiParamSpec(name="master", annotation=None, default_repr='None'),
+                "cnf": UiParamSpec(name="cnf", annotation=None, default_repr='{}'),
+            }),
+            props=frozendict({
+                "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
+                "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
+                "activebackground": UiPropSpec(name="activebackground", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "activeforeground": UiPropSpec(name="activeforeground", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "anchor": UiPropSpec(name="anchor", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "background": UiPropSpec(name="background", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "bd": UiPropSpec(name="bd", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "bg": UiPropSpec(name="bg", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "bitmap": UiPropSpec(name="bitmap", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "borderwidth": UiPropSpec(name="borderwidth", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "command": UiPropSpec(name="command", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "compound": UiPropSpec(name="compound", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "cursor": UiPropSpec(name="cursor", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "disabledforeground": UiPropSpec(name="disabledforeground", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "fg": UiPropSpec(name="fg", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "font": UiPropSpec(name="font", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "foreground": UiPropSpec(name="foreground", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "height": UiPropSpec(name="height", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "highlightbackground": UiPropSpec(name="highlightbackground", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "highlightcolor": UiPropSpec(name="highlightcolor", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "highlightthickness": UiPropSpec(name="highlightthickness", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "image": UiPropSpec(name="image", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "indicatoron": UiPropSpec(name="indicatoron", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "justify": UiPropSpec(name="justify", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "offrelief": UiPropSpec(name="offrelief", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "overrelief": UiPropSpec(name="overrelief", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "padx": UiPropSpec(name="padx", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "pady": UiPropSpec(name="pady", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "relief": UiPropSpec(name="relief", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "selectcolor": UiPropSpec(name="selectcolor", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "selectimage": UiPropSpec(name="selectimage", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "state": UiPropSpec(name="state", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "takefocus": UiPropSpec(name="takefocus", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "text": UiPropSpec(name="text", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "textvariable": UiPropSpec(name="textvariable", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "tristateimage": UiPropSpec(name="tristateimage", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "tristatevalue": UiPropSpec(name="tristatevalue", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "underline": UiPropSpec(name="underline", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "value": UiPropSpec(name="value", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "variable": UiPropSpec(name="variable", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "width": UiPropSpec(name="width", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "wraplength": UiPropSpec(name="wraplength", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+            }),
+            methods=frozendict({
+            }),
+            events=frozendict({
+            }),
+            mount_points=frozendict({
+            }),
+            default_child_mount_point_name=None,
+            default_attach_mount_point_names=(),
+            child_policy=ChildPolicy.NONE,
+        ),
+        'tkinter_Scale': UiWidgetSpec(
+            kind="tkinter_Scale",
+            mounted_type_name="tkinter.Scale",
+            constructor_params=frozendict({
+                "master": UiParamSpec(name="master", annotation=None, default_repr='None'),
+                "cnf": UiParamSpec(name="cnf", annotation=None, default_repr='{}'),
+            }),
+            props=frozendict({
+                "master": UiPropSpec(name="master", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='master', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
+                "cnf": UiPropSpec(name="cnf", annotation=None, mode=PropMode.CREATE_ONLY_REMOUNT, constructor_name='cnf', setter_kind=None, setter_name=None, getter_kind=None, getter_name=None, affects_identity=True),
+                "activebackground": UiPropSpec(name="activebackground", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "background": UiPropSpec(name="background", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "bd": UiPropSpec(name="bd", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "bg": UiPropSpec(name="bg", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "bigincrement": UiPropSpec(name="bigincrement", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "borderwidth": UiPropSpec(name="borderwidth", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "command": UiPropSpec(name="command", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "cursor": UiPropSpec(name="cursor", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "digits": UiPropSpec(name="digits", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "fg": UiPropSpec(name="fg", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "font": UiPropSpec(name="font", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "foreground": UiPropSpec(name="foreground", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "highlightbackground": UiPropSpec(name="highlightbackground", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "highlightcolor": UiPropSpec(name="highlightcolor", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "highlightthickness": UiPropSpec(name="highlightthickness", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "label": UiPropSpec(name="label", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "length": UiPropSpec(name="length", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "orient": UiPropSpec(name="orient", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "relief": UiPropSpec(name="relief", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "repeatdelay": UiPropSpec(name="repeatdelay", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "repeatinterval": UiPropSpec(name="repeatinterval", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "resolution": UiPropSpec(name="resolution", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "showvalue": UiPropSpec(name="showvalue", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "sliderlength": UiPropSpec(name="sliderlength", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "sliderrelief": UiPropSpec(name="sliderrelief", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "state": UiPropSpec(name="state", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "takefocus": UiPropSpec(name="takefocus", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "tickinterval": UiPropSpec(name="tickinterval", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "to": UiPropSpec(name="to", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "troughcolor": UiPropSpec(name="troughcolor", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "variable": UiPropSpec(name="variable", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+                "width": UiPropSpec(name="width", annotation=TypeRef(expr='Any'), mode=PropMode.CREATE_UPDATE, constructor_name=None, setter_kind=AccessorKind.TK_CONFIG, setter_name="configure", getter_kind=AccessorKind.TK_CONFIG, getter_name="cget", affects_identity=False),
+            }),
+            methods=frozendict({
+                "set": UiMethodSpec(
+                    name="set",
+                    mode=MethodMode.CREATE_UPDATE,
+                    params=(
+                        UiParamSpec(name="value", annotation=None, default_repr=None),
+                    ),
+                    source_props=("value",),
+                    fill_policy=FillPolicy.RETAIN_EFFECTIVE,
+                    constructor_equivalent=False,
+                ),
+            }),
+            events=frozendict({
+            }),
+            mount_points=frozendict({
+            }),
+            default_child_mount_point_name=None,
+            default_attach_mount_point_names=(),
+            child_policy=ChildPolicy.NONE,
+        ),
+    })
+
+    class mounts:
+        pane = MountSelector.named("pane")
+
+    @classmethod
+    # NOTE: a trailing `kwds` parameter enables PyRolyze's tail kwds optimization.
+    # The compiler lowers matching wrappers so only actually passed arguments
+    # are forwarded into `UIElement.props`. See
+    # docs/design/Packed_Kwds_UI_Interface_Optimization.md.
+    def __element(cls, *, kind: str, kwds: dict[str, Any]) -> UIElement:
+        return UIElement(kind=kind, props=dict(kwds))
+
+    @classmethod
+    @pyrolyze
+    # NOTE: original signature for OptionMenu includes omitted variadic arguments
+    def COptionMenu(
+        cls,
+        master,
+        variable,
+        value,
+    ) -> None:
+        call_native(cls.__element)(
+            kind="tkinter_OptionMenu",
+            master=master,
+            variable=variable,
+            value=value,
+        )
+
+    @classmethod
+    @pyrolyze
+    # NOTE: original signature for PanedWindow includes omitted variadic arguments
+    def CPanedWindow(
+        cls,
+        *,
+        background: Any | MissingType = MISSING,
+        bd: Any | MissingType = MISSING,
+        bg: Any | MissingType = MISSING,
+        borderwidth: Any | MissingType = MISSING,
+        cursor: Any | MissingType = MISSING,
+        handlepad: Any | MissingType = MISSING,
+        handlesize: Any | MissingType = MISSING,
+        height: Any | MissingType = MISSING,
+        opaqueresize: Any | MissingType = MISSING,
+        orient: Any | MissingType = MISSING,
+        proxybackground: Any | MissingType = MISSING,
+        proxyborderwidth: Any | MissingType = MISSING,
+        proxyrelief: Any | MissingType = MISSING,
+        relief: Any | MissingType = MISSING,
+        sashcursor: Any | MissingType = MISSING,
+        sashpad: Any | MissingType = MISSING,
+        sashrelief: Any | MissingType = MISSING,
+        sashwidth: Any | MissingType = MISSING,
+        showhandle: Any | MissingType = MISSING,
+        width: Any | MissingType = MISSING,
+    ) -> None:
+        call_native(cls.__element)(
+            kind="tkinter_PanedWindow",
+            background=background,
+            bd=bd,
+            bg=bg,
+            borderwidth=borderwidth,
+            cursor=cursor,
+            handlepad=handlepad,
+            handlesize=handlesize,
+            height=height,
+            opaqueresize=opaqueresize,
+            orient=orient,
+            proxybackground=proxybackground,
+            proxyborderwidth=proxyborderwidth,
+            proxyrelief=proxyrelief,
+            relief=relief,
+            sashcursor=sashcursor,
+            sashpad=sashpad,
+            sashrelief=sashrelief,
+            sashwidth=sashwidth,
+            showhandle=showhandle,
+            width=width,
+        )
+
+    @classmethod
+    @pyrolyze
+    # NOTE: original signature for Radiobutton includes omitted variadic arguments
+    def CRadiobutton(
+        cls,
+        master = None,
+        cnf = {},
+        *,
+        activebackground: Any | MissingType = MISSING,
+        activeforeground: Any | MissingType = MISSING,
+        anchor: Any | MissingType = MISSING,
+        background: Any | MissingType = MISSING,
+        bd: Any | MissingType = MISSING,
+        bg: Any | MissingType = MISSING,
+        bitmap: Any | MissingType = MISSING,
+        borderwidth: Any | MissingType = MISSING,
+        command: Any | MissingType = MISSING,
+        compound: Any | MissingType = MISSING,
+        cursor: Any | MissingType = MISSING,
+        disabledforeground: Any | MissingType = MISSING,
+        fg: Any | MissingType = MISSING,
+        font: Any | MissingType = MISSING,
+        foreground: Any | MissingType = MISSING,
+        height: Any | MissingType = MISSING,
+        highlightbackground: Any | MissingType = MISSING,
+        highlightcolor: Any | MissingType = MISSING,
+        highlightthickness: Any | MissingType = MISSING,
+        image: Any | MissingType = MISSING,
+        indicatoron: Any | MissingType = MISSING,
+        justify: Any | MissingType = MISSING,
+        offrelief: Any | MissingType = MISSING,
+        overrelief: Any | MissingType = MISSING,
+        padx: Any | MissingType = MISSING,
+        pady: Any | MissingType = MISSING,
+        relief: Any | MissingType = MISSING,
+        selectcolor: Any | MissingType = MISSING,
+        selectimage: Any | MissingType = MISSING,
+        state: Any | MissingType = MISSING,
+        takefocus: Any | MissingType = MISSING,
+        text: Any | MissingType = MISSING,
+        textvariable: Any | MissingType = MISSING,
+        tristateimage: Any | MissingType = MISSING,
+        tristatevalue: Any | MissingType = MISSING,
+        underline: Any | MissingType = MISSING,
+        value: Any | MissingType = MISSING,
+        variable: Any | MissingType = MISSING,
+        width: Any | MissingType = MISSING,
+        wraplength: Any | MissingType = MISSING,
+    ) -> None:
+        call_native(cls.__element)(
+            kind="tkinter_Radiobutton",
+            master=master,
+            cnf=cnf,
+            activebackground=activebackground,
+            activeforeground=activeforeground,
+            anchor=anchor,
+            background=background,
+            bd=bd,
+            bg=bg,
+            bitmap=bitmap,
+            borderwidth=borderwidth,
+            command=command,
+            compound=compound,
+            cursor=cursor,
+            disabledforeground=disabledforeground,
+            fg=fg,
+            font=font,
+            foreground=foreground,
+            height=height,
+            highlightbackground=highlightbackground,
+            highlightcolor=highlightcolor,
+            highlightthickness=highlightthickness,
+            image=image,
+            indicatoron=indicatoron,
+            justify=justify,
+            offrelief=offrelief,
+            overrelief=overrelief,
+            padx=padx,
+            pady=pady,
+            relief=relief,
+            selectcolor=selectcolor,
+            selectimage=selectimage,
+            state=state,
+            takefocus=takefocus,
+            text=text,
+            textvariable=textvariable,
+            tristateimage=tristateimage,
+            tristatevalue=tristatevalue,
+            underline=underline,
+            value=value,
+            variable=variable,
+            width=width,
+            wraplength=wraplength,
+        )
+
+    @classmethod
+    @pyrolyze
+    # NOTE: original signature for Scale includes omitted variadic arguments
+    def CScale(
+        cls,
+        master = None,
+        cnf = {},
+        *,
+        activebackground: Any | MissingType = MISSING,
+        background: Any | MissingType = MISSING,
+        bd: Any | MissingType = MISSING,
+        bg: Any | MissingType = MISSING,
+        bigincrement: Any | MissingType = MISSING,
+        borderwidth: Any | MissingType = MISSING,
+        command: Any | MissingType = MISSING,
+        cursor: Any | MissingType = MISSING,
+        digits: Any | MissingType = MISSING,
+        fg: Any | MissingType = MISSING,
+        font: Any | MissingType = MISSING,
+        foreground: Any | MissingType = MISSING,
+        highlightbackground: Any | MissingType = MISSING,
+        highlightcolor: Any | MissingType = MISSING,
+        highlightthickness: Any | MissingType = MISSING,
+        label: Any | MissingType = MISSING,
+        length: Any | MissingType = MISSING,
+        orient: Any | MissingType = MISSING,
+        relief: Any | MissingType = MISSING,
+        repeatdelay: Any | MissingType = MISSING,
+        repeatinterval: Any | MissingType = MISSING,
+        resolution: Any | MissingType = MISSING,
+        showvalue: Any | MissingType = MISSING,
+        sliderlength: Any | MissingType = MISSING,
+        sliderrelief: Any | MissingType = MISSING,
+        state: Any | MissingType = MISSING,
+        takefocus: Any | MissingType = MISSING,
+        tickinterval: Any | MissingType = MISSING,
+        to: Any | MissingType = MISSING,
+        troughcolor: Any | MissingType = MISSING,
+        variable: Any | MissingType = MISSING,
+        width: Any | MissingType = MISSING,
+        value: Any | MissingType = MISSING,
+    ) -> None:
+        call_native(cls.__element)(
+            kind="tkinter_Scale",
+            master=master,
+            cnf=cnf,
+            activebackground=activebackground,
+            background=background,
+            bd=bd,
+            bg=bg,
+            bigincrement=bigincrement,
+            borderwidth=borderwidth,
+            command=command,
+            cursor=cursor,
+            digits=digits,
+            fg=fg,
+            font=font,
+            foreground=foreground,
+            highlightbackground=highlightbackground,
+            highlightcolor=highlightcolor,
+            highlightthickness=highlightthickness,
+            label=label,
+            length=length,
+            orient=orient,
+            relief=relief,
+            repeatdelay=repeatdelay,
+            repeatinterval=repeatinterval,
+            resolution=resolution,
+            showvalue=showvalue,
+            sliderlength=sliderlength,
+            sliderrelief=sliderrelief,
+            state=state,
+            takefocus=takefocus,
+            tickinterval=tickinterval,
+            to=to,
+            troughcolor=troughcolor,
+            variable=variable,
+            width=width,
+            value=value,
+        )
+
+GENERATION = '8c4455212261e06ca5ca7fbd9961384c9702ac4fe65ccefabb5dd8135d9fb826'

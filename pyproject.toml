@@ -41,7 +41,10 @@ yidl-lifecycle = { path = "../yidl-lifecycle", editable = true }
 python = ["3.12", "3.13", "3.14", "3.15"]
 
 [tool.pyrolyze]
-generated-package-directories = ["src/pyrolyze/backends/pyside6/_generated"]
+generated-package-directories = [
+    "src/pyrolyze/backends/pyside6/_generated",
+    "src/pyrolyze/backends/tkinter/_generated",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
